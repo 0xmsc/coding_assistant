@@ -35,7 +35,7 @@ def main():
     print(f"Running in working directory: {working_directoy}")
 
     get_global_config().working_directory = working_directoy
-    get_global_config().model_factory = lambda: ChatOpenAI(model="gpt-4o-mini")
+    get_global_config().model_factory = lambda: ChatOpenAI(model="gpt-4o")
     get_global_config().reasoning_model_factory = lambda: ChatOpenAI(model="o1-mini")
 
     assert get_global_config().model_factory, "No model factory set."
