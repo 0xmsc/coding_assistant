@@ -303,10 +303,7 @@ async def do_single_step(agent: Agent):
 
     trace.get_current_span().set_attribute("agent.history", json.dumps(agent.history))
 
-    completion = complete(agent.history, model=agent.model, tools=tools)
-    logger.debug(f"Got completion {completion} from LLM")
-
-    message = completion["choices"][0]["message"]
+    message = complete(agent.history, model=agent.model, tools=tools)
     trace.get_current_span().set_attribute("completion.message", message.model_dump_json())
 
     agent.history.append(message.model_dump())
