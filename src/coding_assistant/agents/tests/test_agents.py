@@ -1,12 +1,13 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from coding_assistant.agents.logic import Agent
+import pytest
+
 from coding_assistant.agents.agents import FeedbackTool, OrchestratorTool
+from coding_assistant.agents.logic import Agent
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools
 
-TEST_MODEL = "gpt-4.1"
+TEST_MODEL = "gemini/gemini-2.5-flash"
 
 
 @pytest.mark.asyncio
