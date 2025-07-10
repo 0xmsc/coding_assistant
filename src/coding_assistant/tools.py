@@ -102,7 +102,28 @@ async def get_tavily_server() -> AsyncGenerator[MCPServer, None]:
             "-y",
             "tavily-mcp@0.1.4",
         ],
-        env={"TAVILY_API_KEY": os.environ["TAVILY_API_KEY"]},
+        env={
+            "TAVILY_API_KEY": os.environ["TAVILY_API_KEY"],
+        },
+    ) as server:
+        yield server
+
+
+@asynccontextmanager
+async def get_chroma_mcp_server() -> AsyncGenerator[MCPServer, None]:
+    async with _get_mcp_server(
+        name="chroma",
+        command="uvx",
+        args=[
+            "chroma-mcp",
+            "--client-type",
+            "persistent",
+            "--data-dir",
+            str(Path("~/Temp/chroma").expanduser()),
+        ],
+        env={
+            "ANONYMIZED_TELEMETRY": "false",
+        },
     ) as server:
         yield server
 
@@ -115,6 +136,7 @@ async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer],
         servers.append(await stack.enter_async_context(get_filesystem_server(config)))
         servers.append(await stack.enter_async_context(get_git_server(config)))
         servers.append(await stack.enter_async_context(get_fetch_server()))
+        servers.append(await stack.enter_async_context(get_chroma_mcp_server()))
 
         if os.environ.get("TAVILY_API_KEY"):
             servers.append(await stack.enter_async_context(get_tavily_server()))
