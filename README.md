@@ -57,7 +57,7 @@ The assistant uses environment variables to configure LLM models and behavior. C
 ```bash
 CODING_ASSISTANT_MODEL="o4-mini"
 CODING_ASSISTANT_EXPERT_MODEL="<disabled>"
-``` 
+```
 
 Default values:
 
