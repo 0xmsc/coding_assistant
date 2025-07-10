@@ -25,15 +25,19 @@ Value: {value}
 """.strip()
 
 SYSTEM_PROMPT_TEMPLATE = """
-You are an agent named {name}.
+You are an agent named `{name}`.
 
 Your client has been given the following description of your work and capabilities: 
 
+```
 {description}
+```
 
 Your client has provided the following parameters for your task:
 
+```
 {parameters}
+```
 
 It is very important that you follow these instructions and parameters to make your client happy.
 It is also crucial that you return all results in the result parameter of the finish_task tool call.
