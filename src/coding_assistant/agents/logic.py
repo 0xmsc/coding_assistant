@@ -69,6 +69,12 @@ class Parameter:
 
 
 @dataclass
+class AgentOutput:
+    result: str
+    summary: str
+
+
+@dataclass
 class Agent:
     name: str
     model: str
@@ -85,11 +91,12 @@ class Agent:
     mcp_servers: list = field(default_factory=list)
 
     history: list = field(default_factory=list)
-    result: str | None = None
+    feedback: list[str] = field(default_factory=list)
+    output: AgentOutput | None = None
 
 
 class FinishTaskTool(Tool):
-    def __init__(self, agent):
+    def __init__(self, agent: Agent):
         self._agent = agent
 
     def name(self) -> str:
@@ -104,15 +111,22 @@ class FinishTaskTool(Tool):
             "properties": {
                 "result": {
                     "type": "string",
-                    "description": "The result of the task or a summary of the work that has been done.",
+                    "description": "The result of the work on the task. The work of the agent is evaluated based on this result.",
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "A concise summary of the conversation the agent and the client had. There should be enough context such that the work could be continued based on this summary.",
                 },
             },
-            "required": ["result"],
+            "required": ["result", "summary"],
         }
 
     async def execute(self, parameters) -> str:
-        self._agent.result = parameters["result"]
-        return "Agent result set."
+        self._agent.output = AgentOutput(
+            result=parameters["result"],
+            summary=parameters["summary"],
+        )
+        return "Agent output set."
 
 
 async def get_tools_from_mcp_servers(mcp_servers: list) -> list:
@@ -144,13 +158,29 @@ def fill_parameters(
     required = set(parameter_description.get("required", []))
 
     for name, parameter in parameter_description["properties"].items():
-        value = parameter_values.get(name)
-
-        if not value:
+        # Check if required parameters are provided
+        if name not in parameter_values:
             if name in required:
                 raise RuntimeError(f"Parameter {name} is required but not provided.")
             else:
                 continue
+
+        # Convert all parameter values to sensible string representations
+        parameter_type = parameter.get("type")
+        if parameter_type == "string":
+            value = parameter_values[name]
+
+            if not isinstance(value, str):
+                raise RuntimeError(f"Parameter {name} is not a string: {value}")
+        elif parameter_type == "array":
+            value = parameter_values[name]
+
+            if not isinstance(value, list):
+                raise RuntimeError(f"Parameter {name} is not an array: {value}")
+
+            value = textwrap.indent("\n".join(value), "- ")
+        else:
+            raise RuntimeError(f"Unsupported parameter type: {parameter_type} for parameter {name}")
 
         parameters.append(
             Parameter(
@@ -266,7 +296,18 @@ def format_parameters(parameters: list[Parameter]) -> str:
     parameter_descriptions = []
 
     for parameter in parameters:
-        parameter_descriptions.append(PARAMETER_TEMPLATE.format(**dataclasses.asdict(parameter)))
+        value_str = parameter.value
+
+        if "\n" in value_str:
+            value_str = "\n" + textwrap.indent(value_str, "  ")
+
+        parameter_descriptions.append(
+            PARAMETER_TEMPLATE.format(
+                name=parameter.name,
+                description=parameter.description,
+                value=value_str,
+            )
+        )
 
     return "\n\n".join(parameter_descriptions)
 
@@ -357,21 +398,25 @@ async def do_single_step(agent: Agent):
 @tracer.start_as_current_span("run_agent_loop")
 async def run_agent_loop(
     agent: Agent,
-) -> str:
+) -> AgentOutput:
+    if agent.output:
+        raise RuntimeError("Agent already has a result or summary.")
+
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
     parameters_json = json.dumps([dataclasses.asdict(p) for p in agent.parameters])
     trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
 
     while True:
-        while not agent.result:
+        while not agent.output:
             await do_single_step(agent)
 
-        trace.get_current_span().set_attribute("agent.result", agent.result)
+        trace.get_current_span().set_attribute("agent.result", agent.output.result)
+        trace.get_current_span().set_attribute("agent.summary", agent.output.summary)
 
         print(
             Panel(
-                agent.result,
+                f"Result: {agent.output.result}\n\nSummary: {agent.output.summary}",
                 title=f"Agent {agent.name} result",
                 border_style="red",
             ),
@@ -397,9 +442,13 @@ async def run_agent_loop(
                 }
             )
 
-            agent.result = None
+            agent.feedback.append(feedback)
+            agent.output = None
         else:
             # Feedback was ok, so we can finish the agent.
             break
 
-    return agent.result
+    if not agent.output:
+        raise RuntimeError("Agent finished without a result.")
+
+    return agent.output

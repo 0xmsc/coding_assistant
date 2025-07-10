@@ -27,20 +27,19 @@ async def _get_feedback(
     ask_user_for_feedback: bool,
     ask_agent_for_feedback: bool,
 ) -> str | None:
-    if not agent.result:
+    if not agent.output:
         raise ValueError("Agent has no result to provide feedback on.")
 
     if ask_agent_for_feedback:
         feedback_tool = FeedbackTool(config, tools)
         formatted_parameters = textwrap.indent(format_parameters(agent.parameters), "  ")
-        formatted_instructions = textwrap.indent(agent.instructions, "  ")
         agent_feedback = await feedback_tool.execute(
             parameters={
-                # Give the system message as the task.
                 "description": agent.description,
-                "instructions": "\n" + formatted_instructions,
                 "parameters": "\n" + formatted_parameters,
-                "output": agent.result,
+                "feedback": agent.feedback,
+                "result": agent.output.result,
+                "summary": agent.output.summary,
             }
         )
     else:
@@ -75,7 +74,11 @@ class OrchestratorTool(Tool):
                 "task": {
                     "type": "string",
                     "description": "The task to assign to the orchestrator agent.",
-                }
+                },
+                "history": {
+                    "type": "array",
+                    "description": "The conversation history of the client and the agent.",
+                },
             },
             "required": ["task"],
         }
@@ -106,7 +109,9 @@ class OrchestratorTool(Tool):
             instructions=self._config.instructions or "No additional instructions provided.",
         )
 
-        return await run_agent_loop(orchestrator_agent)
+        output = await run_agent_loop(orchestrator_agent)
+        self.summary = output.summary
+        return output.result
 
 
 class ResearchTool(Tool):
@@ -159,7 +164,8 @@ class ResearchTool(Tool):
             instructions=self._config.instructions or "No additional instructions provided.",
         )
 
-        return await run_agent_loop(research_agent)
+        output = await run_agent_loop(research_agent)
+        return output.result
 
 
 class DevelopTool(Tool):
@@ -208,7 +214,8 @@ class DevelopTool(Tool):
             instructions=self._config.instructions or "No additional instructions provided.",
         )
 
-        return await run_agent_loop(developer_agent)
+        output = await run_agent_loop(developer_agent)
+        return output.result
 
 
 class AskUserTool(Tool):
@@ -314,16 +321,20 @@ class FeedbackTool(Tool):
                     "type": "string",
                     "description": "The parameters the agent was given for the task.",
                 },
-                "instructions": {
+                "result": {
                     "type": "string",
-                    "description": "The instructions the agent was given for the task.",
+                    "description": "The result of the agent.",
                 },
-                "output": {
+                "summary": {
                     "type": "string",
-                    "description": "The output of the agent.",
+                    "description": "A summary of the conversation with the client.",
+                },
+                "feedback": {
+                    "type": "array",
+                    "description": "The feedback provided to the agent during the work on the task.",
                 },
             },
-            "required": ["description", "parameters", "output"],
+            "required": ["description", "parameters", "result"],
         }
 
     async def execute(self, parameters: dict) -> str:
@@ -347,4 +358,5 @@ class FeedbackTool(Tool):
             instructions=self._config.instructions or "No additional instructions provided.",
         )
 
-        return await run_agent_loop(feedback_agent)
+        output = await run_agent_loop(feedback_agent)
+        return output.result

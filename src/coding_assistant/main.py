@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -16,6 +17,7 @@ from rich.table import Table
 
 from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.agents.agents import OrchestratorTool
+from coding_assistant.cache import get_cache_dir, get_conversation_history, save_conversation_history
 from coding_assistant.config import Config
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
@@ -113,13 +115,19 @@ async def _main():
     config = load_config(args)
 
     logger.info(f"Running in working directory: {config.working_directory}")
+    conversation_history = get_conversation_history(config.working_directory)
 
     venv_directory = Path(os.environ["VIRTUAL_ENV"])
     logger.info(f"Using virtual environment directory: {venv_directory}")
 
     if not args.disable_sandbox:
         logger.info(f"Sandboxing is enabled.")
-        sandbox_directories = [config.working_directory, venv_directory, Path("/tmp")]
+        sandbox_directories = [
+            config.working_directory,
+            venv_directory,
+            Path("/tmp"),
+            get_cache_dir(),
+        ]
         sandbox(directories=sandbox_directories)
     else:
         logger.warning("Sandboxing is disabled")
@@ -135,16 +143,25 @@ async def _main():
         with tracer.start_as_current_span("run_root_agent"):
             if args.task:
                 tool = OrchestratorTool(config, tools)
-                result = await tool.execute({"task": args.task})
+                result = await tool.execute(
+                    {
+                        "task": args.task,
+                        "history": conversation_history,
+                    }
+                )
+                summary = tool.summary
             else:
                 print("No task or question specified.")
                 sys.exit(1)
 
         print(f"Finished with: {result}")
+        print(f"Summary: {summary}")
+
+        save_conversation_history(config.working_directory, summary)
 
 
 def main():
-    asyncio.run(_main(), debug=True)
+    asyncio.run(_main())
 
 
 if __name__ == "__main__":
