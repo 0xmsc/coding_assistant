@@ -531,7 +531,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.72.9"
+version = "1.73.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -546,9 +546,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/66/75/2b9219630b4a3056ceb345cc45c2a45e17798b30ef8d1a2eefe70465ddd2/litellm-1.72.9.tar.gz", hash = "sha256:2559509ae18d5c8165431e76196e9715c8e586af690f597bbaa2a1fecc303b30", size = 8448963 }
+sdist = { url = "https://files.pythonhosted.org/packages/3e/5e/e110a45916b18ac93234e1b76a6ca57e7a3f9d38c4b9c004b68aedcddf41/litellm-1.73.0.tar.gz", hash = "sha256:4fdbb86f349be2038068827517786f6f7e7f761528d8f5d4b941b406d33bb8c3", size = 8553383 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2d/75/c53d65a5797852ce42edfa93050f4e914e67c31ce531844b756e4721de8e/litellm-1.72.9-py3-none-any.whl", hash = "sha256:b0c353d426694298855e07f5387ee299442def6c9325ef8e2db5a8551a2077c8", size = 8358116 },
+    { url = "https://files.pythonhosted.org/packages/8c/ef/a788e2aca00e1afa97e07a14e85b9a1189498bbd424be7e1aea57cc5a831/litellm-1.73.0-py3-none-any.whl", hash = "sha256:0a0a14c2f2522ffaf6cfbea043108d837047ee2b8dff5fb1dc14a7bd3cea0118", size = 8358192 },
 ]
 
 [[package]]
@@ -701,7 +701,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "1.90.0"
+version = "1.91.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -713,9 +713,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2d/30/0bdb712f5e25e823a76828136de6043f28bd69363886c417e05d7021420e/openai-1.90.0.tar.gz", hash = "sha256:9771982cdd5b6631af68c6a603da72ed44cd2caf73b49f717a72b71374bc565b", size = 471896 }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/e2/a22f2973b729eff3f1f429017bdf717930c5de0fbf9e14017bae330e4e7a/openai-1.91.0.tar.gz", hash = "sha256:d6b07730d2f7c6745d0991997c16f85cddfc90ddcde8d569c862c30716b9fc90", size = 472529 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bd/e3/0d7a2ee7ae7293e794e7945ffeda942ff5e3a94de24be27cc3eb5ba6c188/openai-1.90.0-py3-none-any.whl", hash = "sha256:e5dcb5498ea6b42fec47546d10f1bcc05fb854219a7d953a5ba766718b212a02", size = 734638 },
+    { url = "https://files.pythonhosted.org/packages/7a/d2/f99bdd6fc737d6b3cf0df895508d621fc9a386b375a1230ee81d46c5436e/openai-1.91.0-py3-none-any.whl", hash = "sha256:207f87aa3bc49365e014fac2f7e291b99929f4fe126c4654143440e0ad446a5f", size = 735837 },
 ]
 
 [[package]]
@@ -948,25 +948,25 @@ wheels = [
 
 [[package]]
 name = "pydantic-settings"
-version = "2.9.1"
+version = "2.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/67/1d/42628a2c33e93f8e9acbde0d5d735fa0850f3e6a2f8cb1eb6c40b9a732ac/pydantic_settings-2.9.1.tar.gz", hash = "sha256:c509bf79d27563add44e8446233359004ed85066cd096d8b510f715e6ef5d268", size = 163234 }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/ef/3d61472b7801c896f9efd9bb8750977d9577098b05224c5c41820690155e/pydantic_settings-2.10.0.tar.gz", hash = "sha256:7a12e0767ba283954f3fd3fefdd0df3af21b28aa849c40c35811d52d682fa876", size = 172625 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b6/5f/d6d641b490fd3ec2c4c13b4244d68deea3a1b970a97be64f34fb5504ff72/pydantic_settings-2.9.1-py3-none-any.whl", hash = "sha256:59b4f431b1defb26fe620c71a7d3968a710d719f5f4cdbbdb7926edeb770f6ef", size = 44356 },
+    { url = "https://files.pythonhosted.org/packages/7d/9e/fce9331fecf1d2761ff0516c5dceab8a5fd415e82943e727dc4c5fa84a90/pydantic_settings-2.10.0-py3-none-any.whl", hash = "sha256:33781dfa1c7405d5ed2b6f150830a93bb58462a847357bd8f162f8bacb77c027", size = 45232 },
 ]
 
 [[package]]
 name = "pygments"
-version = "2.19.1"
+version = "2.19.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7c/2d/c3338d48ea6cc0feb8446d8e6937e1408088a72a39937982cc6111d17f84/pygments-2.19.1.tar.gz", hash = "sha256:61c16d2a8576dc0649d9f39e089b5f02bcd27fba10d8fb4dcc28173f7a45151f", size = 4968581 }
+sdist = { url = "https://files.pythonhosted.org/packages/b0/77/a5b8c569bf593b0140bde72ea885a803b82086995367bf2037de0159d924/pygments-2.19.2.tar.gz", hash = "sha256:636cb2477cec7f8952536970bc533bc43743542f70392ae026374600add5b887", size = 4968631 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8a/0b/9fcc47d19c48b59121088dd6da2488a49d5f72dacf8262e2790a1d2c7d15/pygments-2.19.1-py3-none-any.whl", hash = "sha256:9ea1544ad55cecf4b8242fab6dd35a93bbce657034b0611ee383099054ab6d8c", size = 1225293 },
+    { url = "https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl", hash = "sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b", size = 1225217 },
 ]
 
 [[package]]
