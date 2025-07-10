@@ -233,5 +233,5 @@ coding_assistant/
 
 ## License and Credits
 
-- **License:** [Specify here: e.g. MIT, Apache 2.0, or PRIVATE if not OSS]
+- **License:** MIT
 - **Contributions:** PRs and issues are welcome. Please ensure to add tests for all new functionality.
