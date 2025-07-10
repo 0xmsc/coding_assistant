@@ -18,6 +18,6 @@ def get_instructions(working_directory: str) -> str:
     if local_instructions_path.exists():
         with open(local_instructions_path, "r") as f:
             local_instructions = f.read().strip()
-        return f"{INSTRUCTIONS}\n\n{local_instructions}"
+        return f"{INSTRUCTIONS}\n{local_instructions}"
     else:
         return INSTRUCTIONS
