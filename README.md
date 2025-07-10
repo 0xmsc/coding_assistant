@@ -137,7 +137,7 @@ uv run coding-assistant --task "Refactor all function names to snake_case."
 
 #### Print all available MCP tools:
 ```bash
-uv run coding-assistant --print_mcp_tools
+uv run coding-assistant --print-mcp-tools
 ```
 
 #### Disable feedback agent:
