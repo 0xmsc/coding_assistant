@@ -20,6 +20,8 @@ from coding_assistant.tools.file import read_only_file_tools
 
 PLANNER_PROMPT = """
 You are an planner agent. Your responsibility is to plan an implementation task.
+While you are working on the task, you should provide detailed updates on your progress.
+Also always give detailed explanation on what you are planning next.
 
 The task should be sufficiently small for you to be able to plan it.
 If you think the task is too big, reject the task and give a reason why.

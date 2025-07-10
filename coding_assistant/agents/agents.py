@@ -30,6 +30,7 @@ def run_agent(agent, task, name, ask_user_for_feedback=False):
             break
 
         # Ask user for feedback
-        input = Prompt.ask("Feedback")
+        feedback = Prompt.ask("Feedback")
+        input = {"messages": HumanMessage(content=feedback)}
 
     return latest.content

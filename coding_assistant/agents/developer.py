@@ -20,6 +20,8 @@ from coding_assistant.tools.file import all_file_tools, read_only_file_tools
 
 DEVELOPER_PROMPT = """
 You are an developer agent. Your responsibility is to carry out a given implementation plan.
+While you are working on the task, you should provide detailed updates on your progress.
+Also always give detailed explanation on what you are planning next.
 
 Note that it is not your responsibility to plan the implementation.
 It is also not your responsibility to make decisions about the software architecture.

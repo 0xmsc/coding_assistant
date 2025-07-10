@@ -23,6 +23,8 @@ from coding_assistant.tools.user import ask_user
 ORCHESTRATOR_PROMPT = """
 You are an orchestrator agent. Your responsibility is to orchestrate other agents to complete a task.
 All other agents are available as tools.
+While you are working on the task, you should provide detailed updates on your progress.
+Also always give detailed explanation on what you are planning next.
 
 Take the following steps to complete a task:
 

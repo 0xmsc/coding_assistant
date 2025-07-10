@@ -20,6 +20,8 @@ from coding_assistant.tools.file import read_only_file_tools
 researcher_PROMPT = """
 You are a researcher agent. Your responsibility is to answer the question you're given.
 Use the tools at your disposal to find the answer.
+While you are working on the task, you should provide detailed updates on your progress.
+Also always give detailed explanation on what you are planning next.
 
 Note that you can't answer questions on how to implement something.
 You can only give information about the current code base, not plan how to change it.
