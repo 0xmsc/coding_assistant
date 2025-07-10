@@ -17,7 +17,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from coding_assistant.agents.logic import do_single_step, run_agent_loop
 from coding_assistant.agents.agents import create_orchestrator_agent
 from coding_assistant.config import Config
-from coding_assistant.tools import Tools, get_filesystem_server, get_git_server
+from coding_assistant.tools import Tools, get_all_mcp_servers
 
 
 logging.basicConfig(level=logging.WARNING)
@@ -67,11 +67,8 @@ async def _main():
     os.chdir(config.working_directory)
     logger.info(f"Running in working directory: {config.working_directory}")
 
-    async with (
-        get_filesystem_server(config) as filesystem_server,
-        get_git_server(config) as git_server,
-    ):
-        tools = Tools(mcp_servers=[filesystem_server, git_server])
+    async with get_all_mcp_servers(config) as mcp_servers:
+        tools = Tools(mcp_servers=mcp_servers)
 
         if args.task:
             agent = create_orchestrator_agent(args.task, config, tools)

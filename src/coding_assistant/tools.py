@@ -83,3 +83,11 @@ async def get_git_server(config: Config) -> AsyncGenerator[MCPServer, None]:
         config=config,
     ) as server:
         yield server
+
+@asynccontextmanager
+async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer], None]:
+    async with (
+        get_filesystem_server(config) as filesystem_server,
+        get_git_server(config) as git_server,
+    ):
+        yield [filesystem_server, git_server]
