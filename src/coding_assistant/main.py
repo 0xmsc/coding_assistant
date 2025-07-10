@@ -108,11 +108,13 @@ async def _main():
     args = parse_args()
     config = load_config(args)
 
+    logger.info(f"Running in working directory: {config.working_directory}")
+
     venv_directory = Path(os.environ["VIRTUAL_ENV"])
-    logger.info(f"Running in working directory: {config.working_directory}, venv directory: {venv_directory}")
+    logger.info(f"Using virtual environment directory: {venv_directory}")
 
     if not args.disable_sandbox:
-        logger.info(f"Sandboxing to working directory: {config.working_directory}")
+        logger.info(f"Sandboxing is enabled.")
         sandbox(working_directory=config.working_directory, venv_directory=venv_directory)
     else:
         logger.warning("Sandboxing is disabled")
