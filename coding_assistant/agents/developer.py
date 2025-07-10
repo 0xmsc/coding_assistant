@@ -29,9 +29,11 @@ It is also not your responsibility to make decisions about the software architec
 You should receive very detailed instructions on how to implement the task.
 If it is unclear on how exactly to implement the task, you should reject the task.
 
-Your output should be a detailed description of what has been implemented.
-Use the information given in the implementation plan to create the output.
-It should be markdown formatted.
+Your output should be a detailed description of all the tasks that you have done.
+Only explain the changes you have actually done to the code on the filesystem.
+Use this step to check if you have adhered to the implementation plan.
+If not, you should correct the implementation.
+The output should be markdown formatted.
 
 If you are missing an agent or a tool that would be helpful for your task, please let the user know.
 """.strip()

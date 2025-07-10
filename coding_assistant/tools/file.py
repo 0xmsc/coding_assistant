@@ -24,11 +24,8 @@ class RipgrepTool(BaseTool):
 
         cmd.append(pattern)
 
-        try:
-            result = subprocess.check_output(cmd)
-            return result.decode("utf-8")
-        except subprocess.CalledProcessError as e:
-            raise ToolException(f"Ripgrep execution failed: {e.stderr}")
+        result = subprocess.check_output(cmd)
+        return result.decode("utf-8")
 
 
 def read_only_file_tools():

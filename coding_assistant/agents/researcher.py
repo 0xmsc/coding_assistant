@@ -43,7 +43,7 @@ Do not reject tasks easily. Always try to find a satisfactory answer.
 Only reject tasks if you can't find any relevant information in the code base.
 Before you reject a task, be really sure that the information is not there.
 
-If you are missing a tool that would be helpful for your researcher, please let the user know.
+If you are missing a tool that would be helpful for your research, please let the user know.
 """.strip()
 
 console = Console()
