@@ -9,10 +9,14 @@ def _get_read_only_rule():
     return FSAccess.EXECUTE | FSAccess.READ_DIR | FSAccess.READ_FILE
 
 
-import os
-
-
 def sandbox(working_directory: Path, venv_directory: Path):
+    # Check preconditions
+    if not working_directory.exists():
+        raise FileNotFoundError(f"Working directory {working_directory} does not exist.")
+
+    if not venv_directory.exists():
+        raise FileNotFoundError(f"Virtual environment directory {venv_directory} does not exist.")
+
     rs = Ruleset()
 
     # System directories
@@ -36,10 +40,7 @@ def sandbox(working_directory: Path, venv_directory: Path):
     rs.allow(Path("~/.cfg").expanduser(), rules=_get_read_only_rule())
 
     # Allow the project Python virtual environment directory
-    
-    if venv_directory is not None and Path(venv_directory).exists():
-        rs.allow(Path(venv_directory), rules=_get_read_only_rule())
-    # else: do nothing (no VENV dir specified or found)
+    rs.allow(venv_directory, rules=_get_read_only_rule())
 
     # And finally, the working directory
     rs.allow(working_directory, rules=FSAccess.all())
