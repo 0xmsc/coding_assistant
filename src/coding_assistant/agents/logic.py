@@ -1,8 +1,10 @@
 import copy
 from dataclasses import dataclass
 from dataclasses import field
+import dataclasses
 import json
 import logging
+import textwrap
 from typing import Optional
 
 from rich import print
@@ -16,13 +18,35 @@ from coding_assistant.tools import Tool
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
 
+SYSTEM_PROMPT_TEMPLATE = """
+You are an agent named {name}.
+
+Your client has been given the following description of your work and capabilities: 
+
+{description}
+
+Your client has provided the following parameters for your task:
+
+{parameters}
+
+It is of the utmost importance that you follow these instructions and parameters to make your client happy.
+""".strip()
+
+
+@dataclass
+class Parameter:
+    name: str
+    description: str
+    value: str
+
 
 @dataclass
 class Agent:
     name: str
     model: str
-    instructions: str
-    task: str
+
+    description: str
+    parameters: list[Parameter]
 
     tools: list[Tool] = field(default_factory=list)
     mcp_servers: list = field(default_factory=list)
@@ -50,7 +74,7 @@ class FinishTaskTool(Tool):
             },
         }
 
-    async def execute(self, parameters) -> str:
+    async def execute(self, _) -> str:
         assert False, "FinishTaskTool should not be executed directly."
 
 
@@ -186,11 +210,32 @@ def trim_history(history: list):
     pass  # We would trim the history here, if necessary
 
 
+def create_system_message(agent: Agent) -> str:
+    parameter_descriptions = []
+
+    for parameter in agent.parameters:
+        parameter_descriptions.append(
+            textwrap.dedent(
+                f"""
+                Name: {parameter.name}
+                Description: {parameter.description}
+                Value: {parameter.value}
+                """
+            ).strip()
+        )
+
+    parameters_str = "\n\n".join(parameter_descriptions)
+
+    return SYSTEM_PROMPT_TEMPLATE.format(
+        name=agent.name,
+        description=textwrap.indent(agent.description, "> "),
+        parameters=textwrap.indent(parameters_str, "> "),
+    )
+
+
 @tracer.start_as_current_span("do_single_step")
 async def do_single_step(agent: Agent):
     trace.get_current_span().set_attribute("agent.name", agent.name)
-    trace.get_current_span().set_attribute("agent.task", agent.task)
-    trace.get_current_span().set_attribute("agent.history", json.dumps(agent.history))
 
     tools = []
     tools.extend(get_tools_from_agent(agent))
@@ -198,22 +243,18 @@ async def do_single_step(agent: Agent):
 
     # If the agent has no history, this is our first step
     if not agent.history:
+        system_message = create_system_message(agent)
         agent.history.append(
             {
                 "role": "system",
-                "content": agent.instructions,
-            }
-        )
-
-        agent.history.append(
-            {
-                "role": "user",
-                "content": agent.task,
+                "content": system_message,
             }
         )
 
     # Do one completion step
     trim_history(agent.history)
+    trace.get_current_span().set_attribute("agent.history", json.dumps(agent.history))
+
     completion = complete(agent.history, model=agent.model, tools=tools)
     logger.debug(f"Got completion {completion} from LLM")
 
@@ -243,13 +284,19 @@ async def do_single_step(agent: Agent):
 @tracer.start_as_current_span("run_agent_loop")
 async def run_agent_loop(agent: Agent):
     trace.get_current_span().set_attribute("agent.name", agent.name)
-    trace.get_current_span().set_attribute("agent.task", agent.task)
+
+    parameters_json = json.dumps([dataclasses.asdict(p) for p in agent.parameters])
+    trace.get_current_span().set_attribute(
+        "agent.parameter_description", parameters_json
+    )
 
     step_counter = 0
     while not agent.finished:
         await do_single_step(agent)
         step_counter += 1
+        trace.get_current_span().set_attribute("agent.step_counter", step_counter)
 
     assert agent.result
     trace.get_current_span().set_attribute("agent.result", agent.result)
+
     return agent.result

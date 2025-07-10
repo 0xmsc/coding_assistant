@@ -2,11 +2,39 @@ from dataclasses import dataclass
 import logging
 from typing import Annotated
 
-from coding_assistant.agents.logic import Agent, run_agent_loop
+from coding_assistant.agents.logic import Agent, Parameter, run_agent_loop
 from coding_assistant.config import Config
 from coding_assistant.tools import Tool, Tools
 
 logger = logging.getLogger(__name__)
+
+
+def fill_parameters(
+    parameter_description: dict,
+    parameter_values: dict,
+) -> list[Parameter]:
+    parameters = []
+
+    required = set(parameter_description.get("required", []))
+
+    for name, parameter in parameter_description["properties"].items():
+        value = parameter_values.get(name)
+
+        if not value:
+            if name in required:
+                raise RuntimeError(f"Parameter {name} is required but not provided.")
+            else:
+                continue
+
+        parameters.append(
+            Parameter(
+                name=name,
+                description=parameter["description"],
+                value=value,
+            )
+        )
+
+    return parameters
 
 
 class OrchestratorTool(Tool):
@@ -18,7 +46,7 @@ class OrchestratorTool(Tool):
         return "orchestrate"
 
     def description(self) -> str:
-        return "Launch an orchestrator agent to coordinate other agents."
+        return "Launch an orchestrator agent to coordinate other agents. It will maximize the time it will offload to other agents, as its time valuable and expensive."
 
     def parameters(self) -> dict:
         return {
@@ -33,14 +61,13 @@ class OrchestratorTool(Tool):
         }
 
     async def execute(self, parameters: dict) -> str:
-        assert "task" in parameters
-        task = parameters["task"]
-        assert isinstance(task, str), "Task must be a string"
-
-        # Inlined create_orchestrator_agent
         orchestrator_agent = Agent(
-            name="orchestrator",
-            instructions="You are an Orchestrator agent. Your goal is to coordinate other specialized agents to efficiently complete complex tasks. Note that your time is quite valuable and expensive, so you should maximize the time you offload to other agents.",
+            name="Orchestrator",
+            description=self.description(),
+            parameters=fill_parameters(
+                parameter_description=self.parameters(),
+                parameter_values=parameters,
+            ),
             mcp_servers=self._tools.mcp_servers,
             tools=[
                 ResearchTool(self._config, self._tools),
@@ -48,8 +75,6 @@ class OrchestratorTool(Tool):
                 AskUserTool(),
             ],
             model=self._config.model,
-            task=task,
-            history=[],
         )
 
         return await run_agent_loop(orchestrator_agent)
@@ -73,24 +98,26 @@ class ResearchTool(Tool):
                 "question": {
                     "type": "string",
                     "description": "The research question to answer.",
-                }
+                },
+                "expected_output": {
+                    "type": "string",
+                    "description": "The expected output to return to the client. This includes the content but also the format of the output (e.g. markdown).",
+                },
             },
             "required": ["question"],
         }
 
     async def execute(self, parameters: dict) -> str:
-        assert "question" in parameters
-        question = parameters["question"]
-
-        # Inlined create_researcher_agent
         research_agent = Agent(
-            name="researcher",
-            instructions="You are a research agent. Your goal is to gather information and provide insights.",
+            name="Researcher",
+            description=self.description(),
+            parameters=fill_parameters(
+                parameter_description=self.parameters(),
+                parameter_values=parameters,
+            ),
             mcp_servers=self._tools.mcp_servers,
             tools=[],
             model=self._config.model,
-            task=question,
-            history=[],
         )
 
         return await run_agent_loop(research_agent)
@@ -117,25 +144,23 @@ class DevelopTool(Tool):
                 },
                 "expected_output": {
                     "type": "string",
-                    "description": "The expected output to return to the user. This includes content but also the format of the output (e.g. markdown).",
+                    "description": "The expected output to return to the client. This includes the content but also the format of the output (e.g. markdown).",
                 },
             },
             "required": ["implementation_plan"],
         }
 
     async def execute(self, parameters: dict) -> str:
-        assert "implementation_plan" in parameters
-        implementation_plan = parameters["implementation_plan"]
-
-        # Inlined create_developer_agent
         developer_agent = Agent(
-            name="developer",
-            instructions="You are a developer agent. Your goal is to write code according to an implementation plan given to you.",
+            name="Developer",
+            description=self.description(),
+            parameters=fill_parameters(
+                parameter_description=self.parameters(),
+                parameter_values=parameters,
+            ),
             mcp_servers=self._tools.mcp_servers,
             tools=[],
             model=self._config.model,
-            task=implementation_plan,
-            history=[],
         )
 
         return await run_agent_loop(developer_agent)

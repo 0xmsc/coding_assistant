@@ -15,7 +15,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from coding_assistant.agents.logic import do_single_step, run_agent_loop
-from coding_assistant.agents.agents import create_orchestrator_agent
+from coding_assistant.agents.agents import OrchestratorTool
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools, get_all_mcp_servers
 
@@ -55,11 +55,6 @@ def load_config(args) -> Config:
     )
 
 
-@tracer.start_as_current_span("run_root_agent")
-async def solve_task_using_agent(agent):
-    return await run_agent_loop(agent)
-
-
 async def _main():
     args = parse_args()
     config = load_config(args)
@@ -70,13 +65,15 @@ async def _main():
     async with get_all_mcp_servers(config) as mcp_servers:
         tools = Tools(mcp_servers=mcp_servers)
 
-        if args.task:
-            agent = create_orchestrator_agent(args.task, config, tools)
-        else:
-            print("No task or question specified.")
-            sys.exit(1)
+        result = None
+        with tracer.start_as_current_span("run_root_agent"):
+            if args.task:
+                tool = OrchestratorTool(config, tools)
+                result = await tool.execute({"task": args.task})
+            else:
+                print("No task or question specified.")
+                sys.exit(1)
 
-        result = await solve_task_using_agent(agent)
         print(f"Finished with: {result}")
 
 
