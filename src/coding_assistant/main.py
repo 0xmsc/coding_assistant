@@ -11,8 +11,10 @@ from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from rich.console import Console
+from rich.table import Table
 
-from coding_assistant.agents.logic import run_agent_loop
+from coding_assistant.agents.logic import run_agent_loop, get_tools_from_mcp_servers
 from coding_assistant.agents.tools import OrchestratorTool
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools, get_all_mcp_servers
@@ -27,18 +29,8 @@ logger.setLevel(logging.INFO)
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument(
-        "--research", type=str, help="Question to ask the research agent."
-    )
     parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
-    parser.add_argument("--expert", type=str, help="Task for the expert agent.")
-    parser.add_argument(
-        "-w",
-        "--working_directory",
-        type=Path,
-        help="The working directory to use.",
-        default=Path(os.getcwd()),
-    )
+    parser.add_argument("--print_mcp_tools", action="store_true", help="Print all available tools from MCP servers.")
     return parser.parse_args()
 
 
@@ -50,21 +42,50 @@ def load_config(args) -> Config:
     logger.info(f"Using expert model: {expert_model_name}")
 
     return Config(
-        working_directory=args.working_directory,
+        working_directory=Path(os.getcwd()),
         model=model_name,
         expert_model=expert_model_name,
     )
+
+
+async def print_mcp_tools(mcp_servers):
+    console = Console()
+    tools = await get_tools_from_mcp_servers(mcp_servers)
+
+    if not tools:
+        console.print("[yellow]No MCP tools found.[/yellow]")
+        return
+
+    console.print(f"[bold green]Found {len(tools)} tools from MCP servers:[/bold green]")
+
+    table = Table(show_header=True)
+    table.add_column("Tool Name", style="cyan")
+    table.add_column("Description", style="green")
+    table.add_column("Parameters", style="yellow")
+
+    for tool in tools:
+        name = tool["function"]["name"]
+        description = tool["function"]["description"]
+        parameters = tool["function"].get("parameters", {})
+        parameters_str = ", ".join(parameters.get("properties", {}).keys()) if parameters else "None"
+
+        table.add_row(name, description, parameters_str)
+
+    console.print(table)
 
 
 async def _main():
     args = parse_args()
     config = load_config(args)
 
-    os.chdir(config.working_directory)
     logger.info(f"Running in working directory: {config.working_directory}")
 
     async with get_all_mcp_servers(config) as mcp_servers:
         tools = Tools(mcp_servers=mcp_servers)
+
+        if args.print_mcp_tools:
+            await print_mcp_tools(mcp_servers)
+            return
 
         result = None
         with tracer.start_as_current_span("run_root_agent"):
@@ -84,9 +105,7 @@ def setup_tracing():
     try:
         requests.head(TRACE_ENDPOINT, timeout=0.2)
     except requests.RequestException as e:
-        logger.info(
-            f"Tracing endpoint {TRACE_ENDPOINT} not reachable. Tracing will be disabled. Error: {e}"
-        )
+        logger.info(f"Tracing endpoint {TRACE_ENDPOINT} not reachable. Tracing will be disabled. Error: {e}")
         return
 
     resource = Resource.create(attributes={SERVICE_NAME: "coding_assistant"})
