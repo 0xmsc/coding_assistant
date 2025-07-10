@@ -115,7 +115,7 @@ async def _main():
 
     if not args.disable_sandbox:
         logger.info(f"Sandboxing is enabled.")
-        sandbox_directories = [config.working_directory, venv_directory, "/tmp"]
+        sandbox_directories = [config.working_directory, venv_directory, Path("/tmp")]
         sandbox(directories=sandbox_directories)
     else:
         logger.warning("Sandboxing is disabled")
