@@ -8,8 +8,7 @@ from pathlib import Path
 
 import requests
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import \
-    OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -18,8 +17,7 @@ from rich.table import Table
 
 from coding_assistant.agents.agents import OrchestratorTool
 from coding_assistant.agents.logic import run_agent_loop
-from coding_assistant.cache import (get_cache_dir, get_conversation_history,
-                                    save_conversation_history)
+from coding_assistant.cache import get_cache_dir, get_conversation_history, save_conversation_history
 from coding_assistant.config import Config
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
