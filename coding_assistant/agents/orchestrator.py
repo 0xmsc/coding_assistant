@@ -17,16 +17,17 @@ from coding_assistant.agents.agents import run_agent
 from coding_assistant.agents.developer import develop
 from coding_assistant.agents.expert import do_expert_analysis
 from coding_assistant.agents.planner import plan
+from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
 from coding_assistant.tools.file import read_only_file_tools
 from coding_assistant.tools.user import ask_user
 
-ORCHESTRATOR_PROMPT = """
+ORCHESTRATOR_PROMPT = f"""
 You are an orchestrator agent. Your responsibility is to orchestrate other agents to complete a task.
 All other agents are available as tools.
-While you are working on the task, you should provide detailed updates on your progress.
-Also always give detailed explanation on what you are planning next.
+
+{COMMON_AGENT_PROMPT}
 
 Take the following steps to complete a task:
 
@@ -70,8 +71,6 @@ You shall only stop when the full task is done.
 
 You should ask the user for clarifcation once you have an implementation plan.
 Before you give it to the developer agent, you should ask the user if the plan is correct.
-
-If you are missing an agent or a tool that would be needed to finish the task, output a description of what you would have done if the agent was available and what agent or tool you would have needed.
 """.strip()
 
 console = Console()

@@ -14,14 +14,15 @@ from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
 
 from coding_assistant.agents.agents import run_agent
+from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
 from coding_assistant.tools.file import all_file_tools, read_only_file_tools
 
-DEVELOPER_PROMPT = """
+DEVELOPER_PROMPT = f"""
 You are an developer agent. Your responsibility is to carry out a given implementation plan.
-While you are working on the task, you should provide detailed updates on your progress.
-Also always give detailed explanation on what you are planning next.
+
+{COMMON_AGENT_PROMPT}
 
 Note that it is not your responsibility to plan the implementation.
 It is also not your responsibility to make decisions about the software architecture.
@@ -38,9 +39,6 @@ Only explain the changes you have actually done to the code on the filesystem.
 Use this step to check if you have adhered to the implementation plan.
 If not, you should correct the implementation.
 Note that you should only explain changes that you have actually written to disk.
-The output should be markdown formatted.
-
-If you are missing an agent or a tool that would be helpful for your task, please let the user know.
 """.strip()
 
 console = Console()

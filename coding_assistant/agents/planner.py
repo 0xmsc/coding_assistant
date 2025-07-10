@@ -15,14 +15,15 @@ from langchain_core.callbacks import BaseCallbackHandler
 
 from coding_assistant.agents.agents import run_agent
 from coding_assistant.agents.expert import do_expert_analysis
+from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
 from coding_assistant.tools.file import read_only_file_tools
 
-PLANNER_PROMPT = """
+PLANNER_PROMPT = f"""
 You are an planner agent. Your responsibility is to plan an implementation task.
-While you are working on the task, you should provide detailed updates on your progress.
-Also always give detailed explanation on what you are planning next.
+
+{COMMON_AGENT_PROMPT}
 
 The task should be sufficiently small for you to be able to plan it.
 If you think the task is too big, reject the task and give a reason why.
@@ -41,8 +42,6 @@ It should be suitable for a junior engineer to implement the task.
 That means that you should explain every step that is needed, but not necessarily every line that needs to be changed.
 If you give an example code snippet, it should be clear in which file it should be placed.
 It should also be very clear if a new file should be created, or code is to be added into an existing file.
-
-If you are missing an agent or a tool that would be helpful for your task, please let the user know.
 """.strip()
 
 console = Console()

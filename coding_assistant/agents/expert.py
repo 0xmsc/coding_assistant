@@ -1,3 +1,4 @@
+from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.config import get_global_config
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.tools import tool
@@ -5,10 +6,12 @@ from langgraph.prebuilt import create_react_agent
 from coding_assistant.agents.agents import run_agent
 from coding_assistant.tools.file import read_only_file_tools
 
-EXPERT_PROMPT = """
+EXPERT_PROMPT = f"""
 You are an expert agent. Your responsibility is to deal with exceptional tasks or queries.
-You are expected to have expert level knowledge in software engineering and related fields.
 
+{COMMON_AGENT_PROMPT}
+
+You are expected to have expert level knowledge in software engineering and related fields.
 If you deem the question to not require expert level knowledge, you should reject the task immediately and give a reason why.
 Additionally, reject the question if not all necessary context is provided.
 """.strip()

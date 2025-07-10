@@ -18,7 +18,7 @@ from coding_assistant.config import get_global_config
 from coding_assistant.logging import print_agent_progress
 from coding_assistant.tools.file import read_only_file_tools
 
-researcher_PROMPT = """
+RESEARCHER_PROMPT = """
 You are a researcher agent. Your responsibility is to answer the question you're given.
 Use the tools at your disposal to find the answer.
 While you are working on the task, you should provide detailed updates on your progress.
@@ -65,7 +65,7 @@ def create_researcher_agent():
     memory = MemorySaver()
     model = get_global_config().model_factory()
     tools = create_researcher_tools()
-    return create_react_agent(model, tools, checkpointer=memory, prompt=researcher_PROMPT)
+    return create_react_agent(model, tools, checkpointer=memory, prompt=RESEARCHER_PROMPT)
 
 
 def run_researcher_agent(question: str, ask_user_for_feedback=False):
