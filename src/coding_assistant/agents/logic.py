@@ -378,10 +378,12 @@ async def do_single_step(agent: Agent):
         await handle_tool_call(tool_call, agent)
 
     if not message.tool_calls:
+        logging.warning(f"Agent {agent.name} did not call any tools, but provided a message.")
+
         agent.history.append(
             {
                 "role": "user",
-                "content": "I detected a step from you without any tool calls. Remember to call the `finish_task` tool when you are done.",
+                "content": "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. Otherwise, please call the `finish_task` tool to signal that you are done.",
             }
         )
 
