@@ -164,7 +164,7 @@ class AgentTool(Tool):
                 ExecuteShellCommandTool(),
                 AskClientTool(),
             ],
-            model=get_model(self, parameters),
+            model=self.get_model(self, parameters),
             feedback_function=lambda agent: _get_feedback(
                 agent,
                 self._config,
