@@ -131,9 +131,9 @@ async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer],
 
     async with AsyncExitStack() as stack:
         servers.append(await stack.enter_async_context(get_filesystem_server(config)))
-        servers.append(await stack.enter_async_context(get_git_server(config)))
+        # servers.append(await stack.enter_async_context(get_git_server(config)))
         servers.append(await stack.enter_async_context(get_fetch_server()))
-        servers.append(await stack.enter_async_context(get_shell_server()))
+        # servers.append(await stack.enter_async_context(get_shell_server()))
 
         if os.environ.get("TAVILY_API_KEY"):
             servers.append(await stack.enter_async_context(get_tavily_server()))
