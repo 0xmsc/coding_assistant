@@ -28,7 +28,7 @@ def test_write_with_sandbox_in_tmp(tmp_path):
         assert f.read() == "Hello, world!"
 
 
-def test_write_with_sandbox_in_home(tmp_path):
+def test_write_in_non_allowed_directory(tmp_path):
     sandbox([])
 
     test_file = tmp_path / "test.txt"
