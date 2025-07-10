@@ -100,13 +100,13 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
-    { name = "smolagents", extra = ["openai"] },
+    { name = "smolagents", extra = ["mcp", "openai"] },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=1.6.0" },
-    { name = "smolagents", extras = ["openai"], specifier = ">=1.13.0" },
+    { name = "smolagents", extras = ["mcp", "openai"], specifier = ">=1.13.0" },
 ]
 
 [[package]]
@@ -286,6 +286,15 @@ wheels = [
 ]
 
 [[package]]
+name = "jsonref"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/aa/0d/c1f3277e90ccdb50d33ed5ba1ec5b3f0a242ed8c1b1a85d3afeb68464dca/jsonref-1.1.0.tar.gz", hash = "sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552", size = 8814 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0c/ec/e1db9922bceb168197a558a2b8c03a7963f1afe93517ddd3cf99f202f996/jsonref-1.1.0-py3-none-any.whl", hash = "sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9", size = 9425 },
+]
+
+[[package]]
 name = "lxml"
 version = "5.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -407,6 +416,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/95/d2/f587cb965a56e992634bebc8611c5b579af912b74e04eb9164bd49527d21/mcp-1.6.0.tar.gz", hash = "sha256:d9324876de2c5637369f43161cd71eebfd803df5a95e46225cab8d280e366723", size = 200031 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/30/20a7f33b0b884a9d14dd3aa94ff1ac9da1479fe2ad66dd9e2736075d2506/mcp-1.6.0-py3-none-any.whl", hash = "sha256:7bd24c6ea042dbec44c754f100984d186620d8b841ec30f1b19eda9b93a634d0", size = 76077 },
+]
+
+[[package]]
+name = "mcpadapt"
+version = "0.0.19"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jsonref" },
+    { name = "mcp" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9c/f9/19685bca6172c6126e0a10b1b6b0c3521168199adcf14caeb44e34584273/mcpadapt-0.0.19.tar.gz", hash = "sha256:52ebfadf5c90ab42559f048185b31a986ed94e713ae3a8937bc61b8c8acdb0aa", size = 261655 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/68/fa/f2f27a9a6f3e8db03c75fa9e3c728a617d5413cf436de24b190c7c26eee9/mcpadapt-0.0.19-py3-none-any.whl", hash = "sha256:41ed8aa85e0bf933dbe347c986a965d35a4743d5fe07b61bfbaabbb8fe71a056", size = 14930 },
 ]
 
 [[package]]
@@ -671,6 +695,10 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+mcp = [
+    { name = "mcp" },
+    { name = "mcpadapt" },
+]
 openai = [
     { name = "openai" },
 ]

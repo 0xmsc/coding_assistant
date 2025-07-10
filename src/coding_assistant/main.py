@@ -8,6 +8,7 @@ from smolagents import OpenAIServerModel
 
 from coding_assistant.agents.orchestrator import create_orchestrator_agent
 from coding_assistant.config import Config
+from coding_assistant.tools import Tools, get_file_tool_collection
 
 
 def parse_args():
@@ -65,14 +66,18 @@ def main():
     args = parse_args()
     config = create_config(args)
 
-    if args.research:
-        pass
-    elif args.task:
-        create_orchestrator_agent(config).run(args.task)
-    elif args.expert:
-        pass
-    else:
-        print("No task specified.")
+    # Start MCPs
+    with get_file_tool_collection(config) as file_tool_collection:
+        tools = Tools(file_tools=list(file_tool_collection.tools))
+
+        if args.research:
+            pass
+        elif args.task:
+            create_orchestrator_agent(config, tools).run(args.task)
+        elif args.expert:
+            pass
+        else:
+            print("No task specified.")
 
 
 if __name__ == "__main__":
