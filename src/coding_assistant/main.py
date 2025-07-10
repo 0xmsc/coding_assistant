@@ -10,7 +10,7 @@ from typing import Any
 from coding_assistant.agents.agent import do_single_step, run_agent_loop
 from coding_assistant.agents.orchestrator import create_orchestrator_agent
 from coding_assistant.config import Config
-from coding_assistant.tools import Tools
+from coding_assistant.tools import Tools, get_filesystem_server
 
 
 logging.basicConfig(level=logging.WARNING)
@@ -52,19 +52,22 @@ async def _main():
     config = load_config(args)
 
     os.chdir(config.working_directory)
-    print(f"Running in working directory: {config.working_directory}")
+    logger.info(f"Running in working directory: {config.working_directory}")
 
-    tools = Tools()
+    task = "Read README.md"
 
-    args.task = "Ask the user something and echo it."
-    if args.task:
-        agent = create_orchestrator_agent(args.task, config, tools)
-    else:
-        print("No task or question specified.")
-        sys.exit(1)
+    async with get_filesystem_server(config) as filesystem_server:
+        tools = Tools()
 
-    agent = create_orchestrator_agent(args.task, config, tools)
-    run_agent_loop(agent)
+        if task:
+            agent = create_orchestrator_agent(task, config, tools)
+        elif args.task:
+            agent = create_orchestrator_agent(args.task, config, tools)
+        else:
+            print("No task or question specified.")
+            sys.exit(1)
+
+        run_agent_loop(agent)
 
 
 def main():
