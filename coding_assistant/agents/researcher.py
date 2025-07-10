@@ -13,6 +13,7 @@ from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
 
 from coding_assistant.agents.agents import run_agent
+from coding_assistant.agents.expert import do_expert_analysis
 from coding_assistant.config import get_global_config
 from coding_assistant.logging import print_agent_progress
 from coding_assistant.tools.file import read_only_file_tools
@@ -56,6 +57,7 @@ logger = logging.getLogger(__name__)
 def create_researcher_tools():
     tools = []
     tools.extend(read_only_file_tools())
+    tools.append(do_expert_analysis)
     return tools
 
 
