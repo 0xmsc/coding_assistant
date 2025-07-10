@@ -63,10 +63,10 @@ async def get_git_server(config: Config) -> AsyncGenerator[MCPServer, None]:
     assert config.working_directory.exists()
 
     params = StdioServerParameters(
-        command="npx",
+        command="uvx",
         args=[
-            "-y",
-            "@modelcontextprotocol/server-git",
+            "mcp-server-git",
+            "--repository",
             str(config.working_directory),
         ],
     )

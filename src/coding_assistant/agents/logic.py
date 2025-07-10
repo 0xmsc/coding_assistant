@@ -116,7 +116,9 @@ async def handle_tool_call(tool_call, agent: Agent):
     function_args = json.loads(tool_call.function.arguments)
 
     trace.get_current_span().set_attribute("function.name", function_name)
-    trace.get_current_span().set_attribute("function.args", function_args)
+    trace.get_current_span().set_attribute(
+        "function.args", tool_call.function.arguments
+    )
 
     logger.debug(f"Calling tool {function_name} with args {function_args}")
 
@@ -154,13 +156,15 @@ async def handle_tool_call(tool_call, agent: Agent):
     )
 
 
-def trim_history(history: list) -> list:
+def trim_history(history: list):
     for entry in history:
-        if entry["role"] == "tool" and len(entry["content"]) > 10_000:
+        if entry["role"] == "tool" and len(entry["content"]) > 20_000:
             logger.warning(
-                f"Tool call content too long ({len(entry['content'])} characters). Trimming to 10,000 characters."
+                f"Tool call content too long ({len(entry['content'])} characters)."
             )
-            entry["content"] = entry["content"][:10_000]
+            entry["content"] = (
+                "!!! This tool output has been removed because it was too long, try other parameters !!!"
+            )
 
 
 @tracer.start_as_current_span("do_single_step")

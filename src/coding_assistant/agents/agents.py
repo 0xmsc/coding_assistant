@@ -40,6 +40,18 @@ def create_researcher_agent(question: str, config: Config, tools: Tools) -> Agen
     )
 
 
+def create_developer_agent(task: str, config: Config, tools: Tools) -> Agent:
+    return Agent(
+        name="developer",
+        instructions="You are a developer agent. Your goal is to write code according to an implementation_plan given to you.",
+        mcp_servers=tools.mcp_servers,
+        tools=[],
+        model=config.model,
+        task=task,
+        history=[],
+    )
+
+
 class ResearchTool(Tool):
     def __init__(self, config: Config, tools: Tools):
         self._config = config
@@ -77,6 +89,43 @@ class ResearchTool(Tool):
         return await run_agent_loop(research_agent)
 
 
+class DevelopTool(Tool):
+    def __init__(self, config: Config, tools: Tools):
+        self._config = config
+        self._tools = tools
+
+    def name(self) -> str:
+        return "develop"
+
+    def description(self) -> str:
+        return "Launch a developer agent to write code according to an implementation plan."
+
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "implementation_plan": {
+                    "type": "string",
+                    "description": "The implementation plan to follow.",
+                }
+            },
+            "required": ["implementation_plan"],
+        }
+
+    async def execute(self, parameters: dict) -> str:
+        assert "implementation_plan" in parameters
+        implementation_plan = parameters.get("implementation_plan")
+
+        # Create a new developer agent
+        developer_agent = create_developer_agent(
+            task=implementation_plan,
+            config=self._config,
+            tools=self._tools,
+        )
+
+        return await run_agent_loop(developer_agent)
+
+
 class AskUserTool(Tool):
     def __init__(self):
         pass
@@ -103,5 +152,5 @@ class AskUserTool(Tool):
         assert "question" in parameters
         question = parameters.get("question")
 
-        answer = input(question)
-        return answer
+        answer = input(f"{question}\nAnswer: ")
+        return answer.strip()
