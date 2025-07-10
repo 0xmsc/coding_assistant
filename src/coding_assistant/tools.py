@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -38,12 +39,9 @@ class Tools:
 
 @asynccontextmanager
 async def _get_mcp_server(
-    name: str, command: str, args: List[str]
+    name: str, command: str, args: List[str], env: dict[str, str] | None = None
 ) -> AsyncGenerator[MCPServer, None]:
-    params = StdioServerParameters(
-        command=command,
-        args=args,
-    )
+    params = StdioServerParameters(command=command, args=args, env=env)
 
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
@@ -94,6 +92,7 @@ async def get_tavily_server(config: Config) -> AsyncGenerator[MCPServer, None]:
             "-y",
             "tavily-mcp@0.1.4",
         ],
+        env={"TAVILY_API_KEY": os.environ.get("TAVILY_API_KEY")},
     ) as server:
         yield server
 
@@ -101,9 +100,14 @@ async def get_tavily_server(config: Config) -> AsyncGenerator[MCPServer, None]:
 @asynccontextmanager
 async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer], None]:
     """Context manager that yields all available MCP servers."""
-    async with (
-        get_filesystem_server(config) as filesystem_server,
-        get_git_server(config) as git_server,
-        get_tavily_server(config) as tavily_server,
-    ):
-        yield [filesystem_server, git_server, tavily_server]
+    # Always launch filesystem and git servers
+    async with get_filesystem_server(config) as filesystem_server, \
+            get_git_server(config) as git_server:
+        servers: List[MCPServer] = [filesystem_server, git_server]
+        # Conditionally include Tavily MCP server if API key is provided
+        if os.environ.get("TAVILY_API_KEY"):
+            async with get_tavily_server(config) as tavily_server:
+                servers.append(tavily_server)
+                yield servers
+        else:
+            yield servers
