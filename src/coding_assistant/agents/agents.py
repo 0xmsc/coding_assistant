@@ -81,7 +81,7 @@ class OrchestratorTool(Tool):
                 },
                 "instructions": {
                     "type": "string",
-                    "description": "Special instructions for the agent. The agent will do everything it can to follow these instructions.",
+                    "description": "Special instructions for the agent. The agent will do everything it can to follow these instructions. The orchestrator will forward these instructions to the other agents it launches.",
                 },
             },
             "required": ["task"],
@@ -97,8 +97,7 @@ class OrchestratorTool(Tool):
             ),
             mcp_servers=self._tools.mcp_servers,
             tools=[
-                ResearchTool(self._config, self._tools),
-                DevelopTool(self._config, self._tools),
+                AgentTool(self._config, self._tools),
                 AskUserTool(),
                 ExecuteShellCommandTool(),
             ],
@@ -117,7 +116,7 @@ class OrchestratorTool(Tool):
         return output.result
 
 
-class ResearchTool(Tool):
+class AgentTool(Tool):
     def __init__(self, config: Config, tools: Tools):
         self._config = config
         self._tools = tools
@@ -126,27 +125,31 @@ class ResearchTool(Tool):
         return "launch_research_agent"
 
     def description(self) -> str:
-        return "Launch a research agent to gather information."
+        return "Launch a sub-agent to work on a given task. Examples for tasks are researching a topic or question, or developing a feature according to an implementation plan. The agent will refuse to accept any tasks that are not clearly defined and miss context. It needs to be clear what to do and how to do it using **only** the information given in the task description."
 
     def parameters(self) -> dict:
         return {
             "type": "object",
             "properties": {
-                "question": {
+                "task": {
                     "type": "string",
-                    "description": "The research question to answer.",
+                    "description": "The task to assign to the sub-agent.",
                 },
                 "expected_output": {
                     "type": "string",
                     "description": "The expected output to return to the client. This includes the content but also the format of the output (e.g. markdown).",
                 },
+                "instructions": {
+                    "type": "string",
+                    "description": "Special instructions for the agent. The agent will do everything it can to follow these instructions.",
+                },
             },
-            "required": ["question", "expected_output"],
+            "required": ["task", "expected_output"],
         }
 
     async def execute(self, parameters: dict) -> str:
         research_agent = Agent(
-            name="Researcher",
+            name="Agent",
             description=self.description(),
             parameters=fill_parameters(
                 parameter_description=self.parameters(),
@@ -167,55 +170,6 @@ class ResearchTool(Tool):
         )
 
         output = await run_agent_loop(research_agent)
-        return output.result
-
-
-class DevelopTool(Tool):
-    def __init__(self, config: Config, tools: Tools):
-        self._config = config
-        self._tools = tools
-
-    def name(self) -> str:
-        return "launch_developer_agent"
-
-    def description(self) -> str:
-        return "Launch a developer agent to write code according to an implementation plan. The developer agent will refuse to accept any tasks that are not clearly defined and miss context. It needs to be clear what to do and how to do it using **only** the information given in the implementation plan."
-
-    def parameters(self) -> dict:
-        return {
-            "type": "object",
-            "properties": {
-                "implementation_plan": {
-                    "type": "string",
-                    "description": "The implementation plan to follow.",
-                },
-            },
-            "required": ["implementation_plan"],
-        }
-
-    async def execute(self, parameters: dict) -> str:
-        developer_agent = Agent(
-            name="Developer",
-            description=self.description(),
-            parameters=fill_parameters(
-                parameter_description=self.parameters(),
-                parameter_values=parameters,
-            ),
-            mcp_servers=self._tools.mcp_servers,
-            tools=[
-                ExecuteShellCommandTool(),
-            ],
-            model=self._config.model,
-            feedback_function=lambda agent: _get_feedback(
-                agent,
-                self._config,
-                self._tools,
-                ask_user_for_feedback=not self._config.disable_user_feedback,
-                ask_agent_for_feedback=not self._config.disable_feedback_agent,
-            ),
-        )
-
-        output = await run_agent_loop(developer_agent)
         return output.result
 
 
@@ -347,7 +301,9 @@ class FeedbackTool(Tool):
                 parameter_values=parameters,
             ),
             mcp_servers=self._tools.mcp_servers,
-            tools=[],
+            tools=[
+                ExecuteShellCommandTool(),
+            ],
             model=self._config.model,
             feedback_function=lambda agent: _get_feedback(
                 agent,
