@@ -320,6 +320,12 @@ async def do_single_step(agent: Agent):
     message = complete(agent.history, model=agent.model, tools=tools)
     trace.get_current_span().set_attribute("completion.message", message.model_dump_json())
 
+    # Remove the reasoning_content from the message, we cannot send it back to the LLM API.
+    # At least DeepSeek complains about it.
+    if hasattr(message, "reasoning_content"):
+        trace.get_current_span().set_attribute("completion.reasoning_content", message.reasoning_content)
+        del message.reasoning_content
+
     agent.history.append(message.model_dump())
 
     if message.content:
