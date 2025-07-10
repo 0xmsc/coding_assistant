@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import os
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import AsyncGenerator, List
@@ -82,9 +82,7 @@ async def get_git_server(config: Config) -> AsyncGenerator[MCPServer, None]:
 
 
 @asynccontextmanager
-async def get_tavily_server(config: Config) -> AsyncGenerator[MCPServer, None]:
-    """Context manager for the Tavily MCP server."""
-    # Launch the Tavily MCP server using npx
+async def get_tavily_server() -> AsyncGenerator[MCPServer, None]:
     async with _get_mcp_server(
         name="tavily",
         command="npx",
@@ -92,22 +90,20 @@ async def get_tavily_server(config: Config) -> AsyncGenerator[MCPServer, None]:
             "-y",
             "tavily-mcp@0.1.4",
         ],
-        env={"TAVILY_API_KEY": os.environ.get("TAVILY_API_KEY")},
+        env={"TAVILY_API_KEY": os.environ["TAVILY_API_KEY"]},
     ) as server:
         yield server
 
 
 @asynccontextmanager
 async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer], None]:
-    """Context manager that yields all available MCP servers."""
-    # Always launch filesystem and git servers
-    async with get_filesystem_server(config) as filesystem_server, \
-            get_git_server(config) as git_server:
-        servers: List[MCPServer] = [filesystem_server, git_server]
-        # Conditionally include Tavily MCP server if API key is provided
+    servers: List[MCPServer] = []
+
+    async with AsyncExitStack() as stack:
+        servers.append(await stack.enter_async_context(get_filesystem_server(config)))
+        servers.append(await stack.enter_async_context(get_git_server(config)))
+
         if os.environ.get("TAVILY_API_KEY"):
-            async with get_tavily_server(config) as tavily_server:
-                servers.append(tavily_server)
-                yield servers
-        else:
-            yield servers
+            servers.append(await stack.enter_async_context(get_tavily_server()))
+
+        yield servers
