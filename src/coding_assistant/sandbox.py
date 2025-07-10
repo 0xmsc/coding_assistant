@@ -10,8 +10,6 @@ def _get_read_only_rule():
 
 
 def sandbox(working_directory: Path):
-    logger.info(f"Sandboxing to working directory: {working_directory}")
-
     rs = Ruleset()
 
     # System directories
