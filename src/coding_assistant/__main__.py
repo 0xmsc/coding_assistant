@@ -18,6 +18,7 @@ def parse_args():
     parser.add_argument("--task", type=str, help="Question to ask the research agent.")
     parser.add_argument("--expert", type=str, help="Question to ask the expert agent.")
     parser.add_argument(
+        "-w",
         "--working_directory",
         type=Path,
         help="The working directory to use.",

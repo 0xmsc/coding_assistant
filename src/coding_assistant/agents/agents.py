@@ -21,7 +21,7 @@ console = Console()
 
 
 class MyAgentState(AgentState):
-    notebook: dict = {}
+    notebook: dict
     task: str
 
 
