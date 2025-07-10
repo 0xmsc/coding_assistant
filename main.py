@@ -1,28 +1,22 @@
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import HumanMessage
-from langchain_google_community import GoogleSearchAPIWrapper, GoogleSearchResults
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import create_react_agent
+import logging
+import os
+from pathlib import Path
 
-# Create the agent
-memory = MemorySaver()
-model = ChatAnthropic(model_name="claude-3-sonnet-20240229")
-wrapper = GoogleSearchAPIWrapper()
-search = GoogleSearchResults(api_wrapper=wrapper)
-tools = [search]
-agent_executor = create_react_agent(model, tools, checkpointer=memory)
+from agents.research import run_research_agent
 
-# Use the agent
-config = {"configurable": {"thread_id": "thread-1"}}
 
-for chunk in agent_executor.stream(
-    {"messages": [HumanMessage(content="hi im bob! and i live in sf")]}, config
-):
-    print(chunk)
-    print("----")
+def main():
+    logging.basicConfig(
+        level=logging.DEBUG, format="$(filename):$(lineno):$(levelname)s: $(message)s"
+    )
 
-for chunk in agent_executor.stream(
-    {"messages": [HumanMessage(content="whats the weather where I live?")]}, config
-):
-    print(chunk)
-    print("----")
+    working_directoy: Path = Path(os.getcwd())
+    logging.debug(f"Working directory: {working_directoy}")
+
+    run_research_agent(
+        task="What agents are there in the project?", working_directory=working_directoy
+    )
+
+
+if __name__ == "__main__":
+    main()

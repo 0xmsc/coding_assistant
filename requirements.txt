@@ -1,0 +1,7 @@
+langchain-community
+langchain
+langgraph
+langgraph-checkpoint
+langchain-openai
+tavily-python
+rich
