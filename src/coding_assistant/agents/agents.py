@@ -47,7 +47,7 @@ class OrchestratorTool(Tool):
         return "launch_orchestrator_agent"
 
     def description(self) -> str:
-        return "Launch an orchestrator agent to coordinate other agents. It will maximize the time it will offload to other agents, as its time valuable and expensive."
+        return "Launch an orchestrator agent to coordinate other agents to accomplish a given task."
 
     def parameters(self) -> dict:
         return {
