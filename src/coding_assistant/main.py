@@ -46,6 +46,9 @@ def load_config(args) -> Config:
     model_name = os.environ.get("CODING_ASSISTANT_MODEL", "o4-mini")
     expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "o3")
 
+    logger.info(f"Using model: {model_name}")
+    logger.info(f"Using expert model: {expert_model_name}")
+
     return Config(
         working_directory=args.working_directory,
         model=model_name,
