@@ -1,4 +1,7 @@
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
+from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt.chat_agent_executor import AgentState
+from langgraph.checkpoint.memory import MemorySaver
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
@@ -9,6 +12,10 @@ from coding_assistant.config import get_global_config
 from coding_assistant.logging import print_agent_progress
 
 console = Console()
+
+
+class MyAgentState(AgentState):
+    notebook: dict = {}
 
 
 def create_context_prunning_prompt_function(system_prompt: str):
@@ -29,6 +36,17 @@ def create_context_prunning_prompt_function(system_prompt: str):
         return current_messages
 
     return context_prunning_prompt
+
+
+def create_agent(prompt, tools, model):
+    memory = MemorySaver()
+    return create_react_agent(
+        model,
+        tools,
+        checkpointer=memory,
+        prompt=prompt,
+        state_schema=MyAgentState,
+    )
 
 
 def run_agent(agent, task, name, ask_user_for_feedback=False):

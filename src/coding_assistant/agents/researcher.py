@@ -12,12 +12,13 @@ from rich.console import Console
 from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
 
-from coding_assistant.agents.agents import create_context_prunning_prompt_function, run_agent
+from coding_assistant.agents.agents import create_agent, create_context_prunning_prompt_function, run_agent
 from coding_assistant.agents.expert import do_expert_analysis
 from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.config import get_global_config
 from coding_assistant.logging import print_agent_progress
 from coding_assistant.tools.file import read_only_file_tools
+from coding_assistant.tools.notebook import get_notebook_tools
 
 RESEARCHER_PROMPT = f"""
 You are a researcher agent. Your responsibility is to answer the question you're given.
@@ -57,23 +58,16 @@ def create_researcher_tools():
     tools = []
     tools.extend(read_only_file_tools())
     tools.append(do_expert_analysis)
+    tools.extend(get_notebook_tools())
     return tools
 
 
-def create_researcher_agent():
-    memory = MemorySaver()
-    model = get_global_config().model_factory()
-    tools = create_researcher_tools()
-    return create_react_agent(
-        model,
-        tools,
-        checkpointer=memory,
-        prompt=create_context_prunning_prompt_function(RESEARCHER_PROMPT),
-    )
-
-
 def run_researcher_agent(question: str, ask_user_for_feedback=False):
-    agent = create_researcher_agent()
+    agent = create_agent(
+        prompt=create_context_prunning_prompt_function(RESEARCHER_PROMPT),
+        tools=create_researcher_tools(),
+        model=get_global_config().model_factory(),
+    )
     return run_agent(
         agent,
         question,

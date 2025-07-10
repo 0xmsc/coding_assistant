@@ -10,6 +10,12 @@ While you are working on your task, you should provide detailed updates on your 
 Also always give detailed explanation on what you are planning next.
 After each accomplishment, recall your original task and explain how your accomplishment fits into the task.
 
+Make use of your notebook tools to record interesting findings and to keep track of your progress.
+It might make sense to record your initial task in your notebook, so you can always refer back to it.
+If you find that you're missing context, check if you've recorded stuff in your notebook.
+You should also record stuff in your notebook that you think might be relevant to solve your task.
+Before writing your output, check your notebook for relevant information.
+
 If you find that a tool is repeatedly or unexpectedly failing, you should put this information into your output.
 If you are missing an agent or a tool that would be helpful for your task, please let the user know.
 """.strip()

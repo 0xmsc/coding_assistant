@@ -13,12 +13,13 @@ from rich.console import Console
 from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
 
-from coding_assistant.agents.agents import create_context_prunning_prompt_function, run_agent
+from coding_assistant.agents.agents import create_agent, create_context_prunning_prompt_function, run_agent
 from coding_assistant.agents.expert import do_expert_analysis
 from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
 from coding_assistant.tools.file import read_only_file_tools
+from coding_assistant.tools.notebook import get_notebook_tools
 
 PLANNER_PROMPT = f"""
 You are an planner agent. Your responsibility is to plan an implementation task.
@@ -53,23 +54,16 @@ def create_planner_tools():
     tools.extend(read_only_file_tools())
     tools.append(research)
     tools.append(do_expert_analysis)
+    tools.extend(get_notebook_tools())
     return tools
 
 
-def create_planner_agent():
-    memory = MemorySaver()
-    model = get_global_config().model_factory()
-    tools = create_planner_tools()
-    return create_react_agent(
-        model,
-        tools,
-        checkpointer=memory,
-        prompt=create_context_prunning_prompt_function(PLANNER_PROMPT),
-    )
-
-
 def run_planner_agent(task: str):
-    agent = create_planner_agent()
+    agent = create_agent(
+        prompt=create_context_prunning_prompt_function(PLANNER_PROMPT),
+        tools=create_planner_tools(),
+        model=get_global_config().model_factory(),
+    )
     return run_agent(agent, task, name="planner")
 
 

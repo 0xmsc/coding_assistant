@@ -13,11 +13,12 @@ from rich.console import Console
 from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
 
-from coding_assistant.agents.agents import run_agent
+from coding_assistant.agents.agents import create_agent, run_agent, create_context_prunning_prompt_function
 from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
 from coding_assistant.tools.file import all_file_tools, read_only_file_tools
+from coding_assistant.tools.notebook import get_notebook_tools
 
 DEVELOPER_PROMPT = f"""
 You are an developer agent. Your responsibility is to carry out a given implementation plan.
@@ -50,19 +51,17 @@ def create_developer_tools():
 
     tools.extend(all_file_tools())
     tools.append(research)
+    tools.extend(get_notebook_tools())
 
     return tools
 
 
-def create_developer_agent():
-    memory = MemorySaver()
-    model = get_global_config().model_factory()
-    tools = create_developer_tools()
-    return create_react_agent(model, tools, checkpointer=memory, prompt=DEVELOPER_PROMPT)
-
-
 def run_developer_agent(plan: str):
-    agent = create_developer_agent()
+    agent = create_agent(
+        prompt=create_context_prunning_prompt_function(DEVELOPER_PROMPT),
+        tools=create_developer_tools(),
+        model=get_global_config().model_factory(),
+    )
     return run_agent(agent, plan, name="Developer")
 
 

@@ -1,10 +1,10 @@
 from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.config import get_global_config
-from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.tools import tool
-from langgraph.prebuilt import create_react_agent
-from coding_assistant.agents.agents import run_agent
+from coding_assistant.agents.agents import create_agent, run_agent
 from coding_assistant.tools.file import read_only_file_tools
+from coding_assistant.agents.agents import create_context_prunning_prompt_function
+from coding_assistant.tools.notebook import get_notebook_tools
 
 EXPERT_PROMPT = f"""
 You are an expert agent. Your responsibility is to deal with exceptional tasks or queries.
@@ -20,17 +20,16 @@ Additionally, reject the question if not all necessary context is provided.
 def create_expert_tools():
     tools = []
     tools.extend(read_only_file_tools())
+    tools.extend(get_notebook_tools())
     return tools
 
 
-def create_expert_agent():
-    memory = MemorySaver()
-    model = get_global_config().reasoning_model_factory()
-    return create_react_agent(model, create_expert_tools(), checkpointer=memory, prompt=EXPERT_PROMPT)
-
-
 def run_expert_agent(task: str, ask_user_for_feedback: bool = False):
-    agent = create_expert_agent()
+    agent = create_agent(
+        prompt=create_context_prunning_prompt_function(EXPERT_PROMPT),
+        tools=create_expert_tools(),
+        model=get_global_config().reasoning_model_factory(),
+    )
     return run_agent(agent, task, name="Expert", ask_user_for_feedback=ask_user_for_feedback)
 
 

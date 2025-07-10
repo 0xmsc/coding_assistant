@@ -13,7 +13,7 @@ from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_community.tools import ShellTool
 
-from coding_assistant.agents.agents import create_context_prunning_prompt_function, run_agent
+from coding_assistant.agents.agents import create_agent, create_context_prunning_prompt_function, run_agent
 from coding_assistant.agents.developer import develop
 from coding_assistant.agents.expert import do_expert_analysis
 from coding_assistant.agents.planner import plan
@@ -21,6 +21,7 @@ from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
 from coding_assistant.tools.file import read_only_file_tools
+from coding_assistant.tools.notebook import get_notebook_tools
 from coding_assistant.tools.user import ask_user
 
 ORCHESTRATOR_PROMPT = f"""
@@ -86,21 +87,14 @@ def create_orchestrator_tools():
     tools.append(plan)
     tools.append(develop)
     tools.append(do_expert_analysis)
+    tools.extend(get_notebook_tools())
     return tools
 
 
-def create_orchestrator_agent():
-    memory = MemorySaver()
-    model = get_global_config().model_factory()
-    tools = create_orchestrator_tools()
-    return create_react_agent(
-        model,
-        tools,
-        checkpointer=memory,
-        prompt=create_context_prunning_prompt_function(ORCHESTRATOR_PROMPT),
-    )
-
-
 def run_orchestrator_agent(task: str, ask_user_for_feedback: bool):
-    agent = create_orchestrator_agent()
+    agent = create_agent(
+        prompt=create_context_prunning_prompt_function(ORCHESTRATOR_PROMPT),
+        tools=create_orchestrator_tools(),
+        model=get_global_config().model_factory(),
+    )
     return run_agent(agent, task, name="Orchestrator", ask_user_for_feedback=ask_user_for_feedback)
