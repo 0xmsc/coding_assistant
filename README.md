@@ -1,70 +1,78 @@
 # Coding Assistant
 
-## Introduction
+[![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+[![PyPI Version](https://img.shields.io/pypi/v/coding-assistant)](https://pypi.org/project/coding-assistant)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/yourusername/coding-assistant/ci.yml?branch=main)](https://github.com/yourusername/coding-assistant/actions)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Coding Assistant is an advanced Python-based project designed to streamline and automate various coding tasks. It employs a multi-agent architecture to handle tasks ranging from planning and research to development and expert review.
+## Overview
 
-## Project Overview
-
-The system comprises specialized agents (orchestrator, planner, developer, researcher, and expert) working together through well-defined tools and protocols. These agents coordinate to break down complex tasks, generate or modify code, perform research, and ensure high-quality outcomes.
-
-## Recent Updates
-
-- Migrated to **litellm** for streamlined LLM interactions.
-- Integrated **mcp[cli]** for robust file system operations and tooling.
-- Updated environment variable usage for specifying LLM models.
-- Enhanced agent architecture with clearer separation of responsibilities.
+Coding Assistant is an experimental, Python-based multi-agent system designed to automate and streamline coding workflows. It leverages specialized agents—Orchestrator, Planner, Developer, Researcher, and Expert—to collaboratively tackle complex tasks, from planning and research to code generation and review.
 
 ## Features
 
-- Multi-agent system (orchestrator, planner, developer, researcher, expert) for intelligent task handling
-- Automated code generation, refactoring, and review
-- Integrated file system operations via MCP
-- Modular and extensible architecture
-- Strong typing with `mypy` for improved code quality
-- Comprehensive test suite with `pytest`
-- Custom logging for enhanced debugging and monitoring
+- Multi-agent architecture for scalable, modular task handling
+- Automated code generation, refactoring, and expert review
+- Research and knowledge retrieval with a dedicated Researcher agent
+- Integrated file system operations via MCP for robust tooling
+- Strong static typing with `mypy` and comprehensive testing with `pytest`
+- Customizable logging and configuration for flexible workflows
+
+## Technologies & Libraries
+
+- Python 3.12+
+- **litellm**: Simplified LLM interaction
+- **mcp[cli]**: Filesystem operations and tooling
+- **pytest**: Testing framework
+- **mypy**: Static type checking
+- **pre-commit**: Git hooks management
+- **black**, **isort**: Code formatting and import sorting
 
 ## Installation
 
-1. Ensure you have **Python 3.12+** installed on your system.
-2. Clone the repository:
+1. Clone the repository:
    ```bash
    git clone https://github.com/yourusername/coding-assistant.git
    cd coding-assistant
    ```
-3. (Optional) Set up a virtual environment:
+2. (Optional) Create and activate a virtual environment:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
-4. Install the package and its dependencies:
+3. Install the package and development dependencies:
    ```bash
    pip install .
+   pip install --upgrade ".[dev]"
+   ```
+4. (Optional) Set up Git hooks:
+   ```bash
+   pre-commit install
    ```
 
 ## Configuration
 
-Configure the LLM models via environment variables:
+The assistant uses environment variables to configure LLM models and behavior. Create a `.env` or `.envrc` file in the project root with the following:
 
 ```bash
-export CODING_ASSISTANT_MODEL="o4-mini"
-export CODING_ASSISTANT_EXPERT_MODEL="<disabled>"
-```
+CODING_ASSISTANT_MODEL="o4-mini"
+CODING_ASSISTANT_EXPERT_MODEL="<disabled>"
+``` 
 
 Default values:
+
 - `CODING_ASSISTANT_MODEL`: `o4-mini`
 - `CODING_ASSISTANT_EXPERT_MODEL`: `<disabled>`
 
-## Usage Guide
+## Usage
 
-After installation, invoke the assistant using the provided CLI:
+Invoke the assistant via CLI:
 
 ```bash
 coding-assistant --task "Describe your task here"
 ```
 
-Alternatively, run via the Python module:
+Or run as a module:
 
 ```bash
 python -m coding_assistant.main --task "Describe your task here"
@@ -74,48 +82,42 @@ python -m coding_assistant.main --task "Describe your task here"
 
 ```
 .
-├── src/
-│   └── coding_assistant/
-│       ├── agents/
-│       ├── llm/
-│       ├── config.py
-│       ├── main.py
-│       └── tools.py
-├── tests/
-├── pyproject.toml
-└── README.md
+├── src/coding_assistant/
+│   ├── agents/        # Orchestrator, Planner, Developer, Researcher, Expert
+│   ├── llm/           # LLM integration via litellm
+│   ├── config.py      # Configuration settings
+│   ├── main.py        # CLI entry point
+│   └── tools.py       # MCP-based utilities
+├── tests/             # Test suite (pytest)
+├── pyproject.toml     # Project metadata and dependencies
+├── README.md          # This file
+└── .envrc             # direnv configuration
 ```
-
-- `src/coding_assistant/agents/`: Orchestrator, planner, developer, expert, and researcher agent implementations.
-- `src/coding_assistant/llm/`: Interface for LLM interactions via litellm.
-- `src/coding_assistant/config.py`: Configuration definitions.
-- `src/coding_assistant/main.py`: CLI entry point.
-- `src/coding_assistant/tools.py`: Utilities for MCP-based filesystem and other servers.
-
-## Technologies Used
-
-- Python 3.12+
-- litellm
-- mcp[cli]
-- pytest
-- Git
-- direnv (optional)
 
 ## Contributing
 
-We welcome contributions to the Coding Assistant project! To contribute:
+We welcome contributions! To contribute:
 
-1. Fork the repository
-2. Create a new branch: `git checkout -b feature/your-feature-name`
-3. Make your changes
-4. Run tests to ensure everything passes: `pytest`
-5. Commit your changes: `git commit -am 'Add some feature'`
-6. Push to the branch: `git push origin feature/your-feature-name`
-7. Open a Pull Request
+1. Fork this repository
+2. Create your feature branch:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. Make your changes and add tests
+4. Run tests and linters:
+   ```bash
+   pytest
+   pre-commit run --all-files
+   ```
+5. Commit and push:
+   ```bash
+   git commit -am "feat: add new feature"
+   git push origin feature/your-feature-name
+   ```
+6. Open a Pull Request
 
-Please ensure tests are updated as appropriate and adhere to the project's coding standards. For major changes, open an issue first to discuss your proposal.
+Please follow the project's coding standards and update tests as needed.
 
-## Acknowledgements
+## License
 
-- Thanks to all contributors who have helped shape Coding Assistant.
-- Special thanks to the developers of litellm, mcp, pytest, and other libraries that power this project.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
