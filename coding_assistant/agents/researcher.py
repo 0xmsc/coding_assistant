@@ -14,15 +14,16 @@ from langchain_core.callbacks import BaseCallbackHandler
 
 from coding_assistant.agents.agents import run_agent
 from coding_assistant.agents.expert import do_expert_analysis
+from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.config import get_global_config
 from coding_assistant.logging import print_agent_progress
 from coding_assistant.tools.file import read_only_file_tools
 
-RESEARCHER_PROMPT = """
+RESEARCHER_PROMPT = f"""
 You are a researcher agent. Your responsibility is to answer the question you're given.
 Use the tools at your disposal to find the answer.
-While you are working on the task, you should provide detailed updates on your progress.
-Also always give detailed explanation on what you are planning next.
+
+{COMMON_AGENT_PROMPT}
 
 Note that you can't answer questions on how to implement something.
 You can only give information about the current code base, not plan how to change it.
@@ -33,10 +34,8 @@ It never makes sense to give a general answer.
 Always reference files, snippets, functions, concepts, etc. in the code base.
 When you show a code snippet, also give the file name where it is located.
 
-Your output should be markdown formatted.
-It should contain all relevant information that you gathered during the researcher process.
-Note that you're output should be consumable by another agent.
-Because of that, it is not possible to ask further questions.
+Your output should contain all relevant information that you gathered during the researcher process.
+It is not possible to ask follow-up questions regarding your task.
 The output should be self-contained and not require follow-up questions.
 Especially put interesting files and code snippets that are relevant to the question in the output.
 
