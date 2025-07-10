@@ -44,26 +44,22 @@ def create_default_config_file(config_path: Path) -> None:
     logger.info(f"Created default configuration file at {config_path}")
 
 
-def load_user_config(config_path: Path) -> dict:
-    """Load configuration from the JSON file."""
-    if not config_path.exists():
-        return {}
+def load_user_config(config_path: Path, base_config: Config) -> Config:
+    """Load configuration from the JSON file and merge with base config."""
+    user_config = {}
     
-    try:
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-        logger.info(f"Loaded user configuration from {config_path}")
-        return config
-    except json.JSONDecodeError as e:
-        logger.warning(f"Invalid JSON in config file {config_path}: {e}. Using defaults.")
-        return {}
-    except Exception as e:
-        logger.warning(f"Error loading config file {config_path}: {e}. Using defaults.")
-        return {}
-
-
-def merge_config_with_defaults(user_config: dict, base_config: Config) -> Config:
-    """Merge user configuration with the base Config object."""
+    if config_path.exists():
+        try:
+            with open(config_path, 'r') as f:
+                user_config = json.load(f)
+            logger.info(f"Loaded user configuration from {config_path}")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Invalid JSON in config file {config_path}: {e}. Using defaults.")
+            user_config = {}
+        except Exception as e:
+            logger.warning(f"Error loading config file {config_path}: {e}. Using defaults.")
+            user_config = {}
+    
     # Extract sandbox directories from user config
     sandbox_dirs = user_config.get("sandbox", {}).get("additional_directories", [])
     validated_dirs = []
@@ -91,4 +87,12 @@ def merge_config_with_defaults(user_config: dict, base_config: Config) -> Config
     if user_config.get("instructions"):
         base_config.instructions = user_config["instructions"]
     
+    return base_config
+
+
+# Note: merge_config_with_defaults is now deprecated in favor of the updated load_user_config
+# Keeping this as a no-op for backward compatibility if needed
+def merge_config_with_defaults(user_config: dict, base_config: Config) -> Config:
+    """Deprecated: Use load_user_config instead."""
+    logger.warning("merge_config_with_defaults is deprecated. Use load_user_config directly.")
     return base_config
