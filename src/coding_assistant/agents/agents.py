@@ -32,11 +32,12 @@ async def _get_feedback(
     if ask_agent_for_feedback:
         feedback_tool = FeedbackTool(config, tools)
         formatted_parameters = textwrap.indent(format_parameters(agent.parameters), "  ")
+        formatted_instructions = textwrap.indent(agent.instructions, "  ")
         agent_feedback = await feedback_tool.execute(
             parameters={
                 # Give the system message as the task.
                 "description": agent.description,
-                "instructions": agent.instructions,
+                "instructions": "\n" + formatted_instructions,
                 "parameters": "\n" + formatted_parameters,
                 "output": agent.result,
             }
