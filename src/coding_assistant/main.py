@@ -146,7 +146,7 @@ async def _main():
                 result = await tool.execute(
                     {
                         "task": args.task,
-                        "history": conversation_history,
+                        "history": conversation_history[-5:],
                     }
                 )
                 summary = tool.summary
@@ -161,7 +161,7 @@ async def _main():
 
 
 def main():
-    asyncio.run(_main())
+    asyncio.run(_main(), debug=True)
 
 
 if __name__ == "__main__":
