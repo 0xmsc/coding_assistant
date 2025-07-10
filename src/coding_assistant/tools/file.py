@@ -36,14 +36,14 @@ def ripgrep(pattern: str, case_insensitive: bool = False, max_output_lines=100) 
 
 
 @tool
-def fdfind(pattern: str, file_type: Optional[str] = None, max_output_lines: int = 100) -> str:
+def fdfind(pattern: str, extension: Optional[str] = None, max_output_lines: int = 100) -> str:
     """
     A tool for searching files using the fd command-line utility.
     """
-    cmd = ["fd"]
+    cmd = ["fdfind"]
 
-    if file_type:
-        cmd.extend(["--extension", file_type])
+    if extension:
+        cmd.extend(["--extension", extension])
 
     cmd.append(pattern)
 

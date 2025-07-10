@@ -46,7 +46,7 @@ Coding Assistant utilizes a system of specialized agents (orchestrator, planner,
    ```
    python -m coding_assistant
    ```
-2. [Explain how to interact with the assistant, e.g., through a CLI or GUI]
+2. Interact with the assistant through the command line interface.
 3. Example commands or operations:
    - [Provide examples of how to use different features]
 
@@ -57,35 +57,38 @@ coding_assistant/
 ├── agents/
 │   ├── orchestrator.py
 │   ├── planner.py
-│   └── developer.py
-├── tools/
-│   └── file_search.py
+│   ├── developer.py
+│   ├── expert.py
+│   ├── agents.py
+│   ├── researcher.py
+│   ├── prompt.py
+└── tools/
+    ├── user.py
+    ├── notebook.py
+    ├── git_tools.py
+    └── file.py
 ├── config/
-│   └── settings.py
+│   └── config.py
 ├── tests/
-│   └── ...
-├── main.py
-├── utils.py
-└── logging_config.py
+├── __main__.py
+├── logging.py
+└── __init__.py
 ```
 
-- `agents/`: Contains the different agent types (orchestrator, planner, developer)
-- `tools/`: Includes utility tools like the file searching functionality
+- `agents/`: Contains the different agent components (orchestrator, planner, developer, etc.)
+- `tools/`: Includes utility tools and additional modules needed for various tasks
 - `config/`: Manages configuration settings for the project
-- `tests/`: Contains all the automated tests
-- `main.py`: The entry point of the application
-- `utils.py`: General utility functions
-- `logging_config.py`: Custom logging configuration
+- `tests/`: Directory containing all the automated tests
+- Other files support different functionalities and promote modularity
 
 ## Technologies Used
 
 - Python: The primary programming language for the project
-- mypy: Static type checker for Python, ensuring type consistency
+- langchain: A library for agent-based applications
+- rich: A library for rich text and beautiful formatting in the terminal
 - pytest: Testing framework for writing and running automated tests
-- ripgrep: Fast and efficient file searching utility
 - Git: Version control system for tracking changes and collaborating
 - direnv: Tool for managing project-specific environment variables
-- VS Code: Recommended IDE for development, with helpful extensions for Python and testing
 
 ## Contributing
 
@@ -106,4 +109,4 @@ For major changes, please open an issue first to discuss what you would like to 
 ## Acknowledgements
 
 - Thanks to all contributors who have helped shape Coding Assistant
-- Special thanks to the developers of ripgrep, mypy, and pytest for their excellent tools
+- Special thanks to the developers of ripgrep, langchain, rich, and pytest for their excellent tools
