@@ -11,4 +11,5 @@ def complete(
         messages=messages,
         tools=tools,
         model=model,
+        reasoning_effort="high",
     )
