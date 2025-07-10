@@ -1,7 +1,8 @@
 import logging
 from pathlib import Path
-from landlock import Ruleset, FSAccess
 from typing import List
+
+from landlock import FSAccess, Ruleset
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,6 @@ def sandbox(directories: list[Path]):
     rs.allow(Path("/proc"), rules=_get_read_only_rule())
     rs.allow(Path("/run"), rules=_get_read_only_rule())
     rs.allow(Path("/sys"), rules=_get_read_only_rule())
-    rs.allow(Path("/mnt/wsl"), rules=_get_read_only_rule())
 
     # User directories
     rs.allow(Path("~/.npm").expanduser(), rules=FSAccess.all())
