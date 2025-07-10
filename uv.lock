@@ -192,7 +192,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "beeprint", specifier = ">=2.4.11" },
+    { name = "beeprint" },
     { name = "landlock" },
     { name = "litellm" },
     { name = "mcp", extras = ["cli"] },
