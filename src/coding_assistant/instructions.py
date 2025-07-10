@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+from coding_assistant.config import Config
+
 INSTRUCTIONS = """
 - Do not initialize a new git repository, unless your client explicitly requests it.
 - Do not commit any changes to the git repository, unless your client explicitly requests it.
@@ -12,12 +14,15 @@ INSTRUCTIONS = """
 """.strip()
 
 
-def get_instructions(working_directory: str) -> str:
-    local_instructions_path = Path(working_directory) / ".coding_assistant" / "instructions.md"
+def get_instructions(working_directory: Path, config: Config) -> str:
+    instructions = INSTRUCTIONS
 
+    local_instructions_path = working_directory / ".coding_assistant" / "instructions.md"
     if local_instructions_path.exists():
-        with open(local_instructions_path, "r") as f:
-            local_instructions = f.read().strip()
-        return f"{INSTRUCTIONS}\n{local_instructions}"
-    else:
-        return INSTRUCTIONS
+        local_instructions = local_instructions_path.read_text().strip()
+        instructions = f"{instructions}\n{local_instructions}"
+
+    if config.instructions:
+        instructions = f"{instructions}\n{config.instructions.strip()}"
+
+    return instructions
