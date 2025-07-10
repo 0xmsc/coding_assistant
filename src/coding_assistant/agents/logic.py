@@ -12,6 +12,7 @@ from rich.panel import Panel
 from rich.pretty import Pretty
 from opentelemetry import trace
 
+from coding_assistant.config import Config
 from coding_assistant.llm.model import complete
 from coding_assistant.tools import Tool
 
@@ -69,8 +70,49 @@ class Agent:
     mcp_servers: list = field(default_factory=list)
 
     history: list = field(default_factory=list)
-    finished: bool = False
-    result: Optional[str] = None
+    result: str | None = None
+
+
+class FeedbackTool(Tool):
+    def __init__(self, config: Config):
+        self._config = config
+
+    def name(self) -> str:
+        return "launch_feedback_agent"
+
+    def description(self) -> str:
+        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the output is acceptable for a given task. If it is, the feedback agent will finish its task with only the output 'Ok' and nothing else. If it is not, the feedback agent will output what is wrong with the output and how it needs to be improved."
+
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "task": {
+                    "type": "string",
+                    "description": "The task that was given to the agent.",
+                },
+                "output": {
+                    "type": "string",
+                    "description": "The output of the agent.",
+                },
+            },
+            "required": ["task", "output"],
+        }
+
+    async def execute(self, parameters: dict) -> str:
+        feedback_agent = Agent(
+            name="Feedback",
+            description=self.description(),
+            parameters=fill_parameters(
+                parameter_description=self.parameters(),
+                parameter_values=parameters,
+            ),
+            mcp_servers=[],
+            tools=[],
+            model=self._config.model,
+        )
+
+        return await run_agent_loop(feedback_agent, self._config)
 
 
 class FinishTaskTool(Tool):
@@ -179,7 +221,6 @@ async def handle_tool_call(tool_call, agent: Agent):
     logger.debug(f"Calling tool {function_name} with args {function_args}")
 
     if function_name == "finish_task":
-        agent.finished = True
         agent.result = function_args.get("result", "")
         return
 
@@ -307,8 +348,33 @@ async def do_single_step(agent: Agent):
     return message
 
 
+async def get_feedback(
+    agent: Agent, config: Config, ask_for_feedback: bool
+) -> str | None:
+    # Import FeedbackTool locally to avoid circular dependency at module level
+    from coding_assistant.agents.feedback_tool import FeedbackTool
+
+    if ask_for_feedback:
+        feedback = Prompt.ask("Feedback:", default="Ok")
+    else:
+        # Spawn a feedback agent
+        feedback_tool = FeedbackTool(config)
+        feedback = await feedback_tool.execute(
+            parameters={
+                # Give the system message as the task.
+                "task": agent.history[0]["content"],
+                "output": agent.result,
+            }
+        )
+
+    if feedback == "Ok":
+        return None
+    else:
+        return feedback
+
+
 @tracer.start_as_current_span("run_agent_loop")
-async def run_agent_loop(agent: Agent, ask_for_feedback: bool = False):
+async def run_agent_loop(agent: Agent, config: Config, ask_for_feedback: bool = False):
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
     parameters_json = json.dumps([dataclasses.asdict(p) for p in agent.parameters])
@@ -318,12 +384,8 @@ async def run_agent_loop(agent: Agent, ask_for_feedback: bool = False):
 
     while True:
         # Run the agent until it finishes
-        while not agent.finished:
+        while not agent.result:
             await do_single_step(agent)
-
-        # Print the result
-        if not agent.result:
-            raise RuntimeError("Agent finished but did not return a result.")
 
         trace.get_current_span().set_attribute("agent.result", agent.result)
 
@@ -335,25 +397,27 @@ async def run_agent_loop(agent: Agent, ask_for_feedback: bool = False):
             ),
         )
 
-        # Handle feedback and restart if necessary
-        if not ask_for_feedback:
+        if feedback := await get_feedback(agent, config, ask_for_feedback):
+            print(
+                Panel(
+                    feedback,
+                    title=f"Agent {agent.name} feedback",
+                    border_style="red",
+                ),
+            )
+
+            # Remove the finish_task tool call from the history
+            agent.history.pop()
+            agent.result = None
+
+            agent.history.append(
+                {
+                    "role": "user",
+                    "content": feedback,
+                }
+            )
+        else:
+            # Feedback was ok, so we can finish the agent.
             break
-
-        feedback = Prompt.ask("Feedback:", default="ok")
-        if feedback == "ok":
-            break
-
-        agent.finished = False
-        agent.result = None
-
-        # Remove the finish_task tool call from the history
-        agent.history.pop()
-
-        agent.history.append(
-            {
-                "role": "user",
-                "content": feedback,
-            }
-        )
 
     return agent.result
