@@ -21,6 +21,7 @@ def sandbox(working_directory: Path, venv_directory: Path):
 
     # System directories
     rs.allow(Path("/dev"), rules=FSAccess.all())
+    rs.allow(Path("/tmp"), rules=FSAccess.all())
     rs.allow(Path("/usr"), rules=_get_read_only_rule())
     rs.allow(Path("/lib"), rules=_get_read_only_rule())
     rs.allow(Path("/etc"), rules=_get_read_only_rule())
