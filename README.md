@@ -78,7 +78,6 @@ flowchart TD
     WEB -.->|"Provides Services"| MCP_Servers
 
     ORCH -->|"Results / Outputs"| CLI
-    CLI -->|"Displays Output"| U
 ```
 
 **Explanation:**
