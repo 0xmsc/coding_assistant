@@ -1,3 +1,4 @@
+import subprocess
 import pytest
 
 from coding_assistant.config import Config
@@ -31,3 +32,10 @@ def test_write_with_sandbox_in_home():
     with pytest.raises(PermissionError):
         with open("/tmp/test_sandbox.txt", "w") as f:
             f.write("Hello, world!")
+
+
+def test_run_binaries_with_sandbox():
+    sandbox("/tmp")
+    subprocess.check_call(["git", "help"], cwd="/tmp")
+    subprocess.check_call(["npm", "help"], cwd="/tmp")
+    subprocess.check_call(["uvx", "--help"], cwd="/tmp")
