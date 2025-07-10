@@ -244,7 +244,7 @@ class FeedbackTool(Tool):
         return "launch_feedback_agent"
 
     def description(self) -> str:
-        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the output is acceptable for a given task. If it is, the feedback agent will finish its task with only the output 'Ok' and nothing else. If it is not, the feedback agent will output what is wrong with the output and how it needs to be improved. Note that you shall evaluate the output as if you were a paying client. Would an average client be satisfied with the output? If the agent describes filesystem changes, the feedback agent can check the files to check if the changes are as described."
+        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the output is acceptable for a given task. If it is, the feedback agent will finish its task with only the output 'Ok' and nothing else. If it is not, the feedback agent will output what is wrong with the output and how it needs to be improved. Note that you shall evaluate the output as if you were a paying client. Would an average client be satisfied with the output? If the output describes filesystem changes, the feedback agent will use the filesystem tools to read the files and check if the changes are as described. Additionally, the agent can use git tools can be used to verify changes to the repository."
 
     def parameters(self) -> dict:
         return {
