@@ -18,12 +18,7 @@ from rich.table import Table
 from coding_assistant.agents.agents import OrchestratorTool
 from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.cache import get_cache_dir, get_conversation_history, save_conversation_history
-from coding_assistant.config import (
-    Config,
-    create_default_config_file,
-    get_config_file_path,
-    load_user_config,
-)
+from coding_assistant.config import Config, load_user_config
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools import Tools, get_all_mcp_servers
@@ -44,40 +39,6 @@ def parse_args():
     )
     parser.add_argument("--disable-sandbox", action="store_true", default=False, help="Disable sandboxing.")
     return parser.parse_args()
-
-
-def load_config(args) -> Config:
-    # Load user configuration file (create if missing)
-    config_path = get_config_file_path()
-    if not config_path.exists():
-        create_default_config_file(config_path)
-    
-    # Load user config dict to extract model names
-    user_config_dict = {}
-    if config_path.exists():
-        try:
-            with open(config_path, 'r') as f:
-                user_config_dict = json.load(f)
-        except (json.JSONDecodeError, Exception):
-            user_config_dict = {}
-    
-    # Load defaults from user config with hardcoded fallbacks
-    model_name = user_config_dict.get("models", {}).get("default_model", "openai/claude-sonnet-4")
-    expert_model_name = user_config_dict.get("models", {}).get("expert_model", "openai/claude-sonnet-4")
-
-    logger.info(f"Using model: {model_name}")
-    logger.info(f"Using expert model: {expert_model_name}")
-
-    # Create base config
-    base_config = Config(
-        working_directory=Path(os.getcwd()),
-        model=model_name,
-        expert_model=expert_model_name,
-        disable_feedback_agent=args.disable_feedback_agent,
-    )
-
-    # Load and merge user configuration
-    return load_user_config(config_path, base_config)
 
 
 async def print_mcp_tools(mcp_servers):
@@ -128,20 +89,14 @@ def setup_tracing():
     logger.info(f"Tracing successfully enabled on endpoint {TRACE_ENDPOINT}.")
 
 
-def get_additional_sandbox_directories(config: Config, working_directory, venv_directory):
+def get_additional_sandbox_directories(config: Config, working_directory: Path, venv_directory: Path):
     sandbox_directories = [
         working_directory,
         venv_directory,
-        Path("/tmp"),
         get_cache_dir(),
     ]
 
-    # Add user-configured sandbox directories
     sandbox_directories.extend(config.sandbox_directories)
-
-    wsl_path = Path("/mnt/wsl")
-    if wsl_path.exists():
-        sandbox_directories.append(wsl_path)
 
     return sandbox_directories
 
@@ -150,22 +105,26 @@ async def _main():
     setup_tracing()
 
     args = parse_args()
-    config = load_config(args)
 
-    logger.info(f"Running in working directory: {config.working_directory}")
-    conversation_history = get_conversation_history(config.working_directory)
+    config = load_user_config()
+    logger.info(f"Using user configuration {config}")
+
+    working_directory = Path(os.getcwd())
+    logger.info(f"Running in working directory: {working_directory}")
+    conversation_history = get_conversation_history(working_directory)
 
     venv_directory = Path(os.environ["VIRTUAL_ENV"])
     logger.info(f"Using virtual environment directory: {venv_directory}")
 
     if not args.disable_sandbox:
         logger.info(f"Sandboxing is enabled.")
-        sandbox_directories = get_additional_sandbox_directories(config, config.working_directory, venv_directory)
+        sandbox_directories = get_additional_sandbox_directories(config, working_directory, venv_directory)
+        logger.info(f"Sandbox directories: {sandbox_directories}")
         sandbox(directories=sandbox_directories)
     else:
         logger.warning("Sandboxing is disabled")
 
-    async with get_all_mcp_servers(config) as mcp_servers:
+    async with get_all_mcp_servers(working_directory) as mcp_servers:
         tools = Tools(mcp_servers=mcp_servers)
 
         if args.print_mcp_tools:
@@ -180,7 +139,7 @@ async def _main():
                     {
                         "task": args.task,
                         "history": conversation_history[-5:],
-                        "instructions": get_instructions(config.working_directory),
+                        "instructions": get_instructions(working_directory),
                     }
                 )
                 summary = tool.summary

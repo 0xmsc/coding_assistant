@@ -22,16 +22,20 @@ class MCPServer:
 
 class Tool(ABC):
     @abstractmethod
-    def name(self) -> str: ...
+    def name(self) -> str:
+        ...
 
     @abstractmethod
-    def description(self) -> str: ...
+    def description(self) -> str:
+        ...
 
     @abstractmethod
-    def parameters(self) -> dict: ...
+    def parameters(self) -> dict:
+        ...
 
     @abstractmethod
-    async def execute(self, parameters) -> str: ...
+    async def execute(self, parameters) -> str:
+        ...
 
 
 def get_default_env():
@@ -61,14 +65,14 @@ async def _get_mcp_server(
 
 
 @asynccontextmanager
-async def get_filesystem_server(config: Config) -> AsyncGenerator[MCPServer, None]:
+async def get_filesystem_server(working_directory: Path) -> AsyncGenerator[MCPServer, None]:
     async with _get_mcp_server(
         name="filesystem",
         command="npx",
         args=[
             "-y",
             "@modelcontextprotocol/server-filesystem",
-            str(config.working_directory),
+            str(working_directory),
         ],
         env=get_default_env(),
     ) as server:
@@ -106,14 +110,14 @@ async def get_tavily_server() -> AsyncGenerator[MCPServer, None]:
 
 
 @asynccontextmanager
-async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer], None]:
-    if not config.working_directory.exists():
-        raise ValueError(f"Working directory {config.working_directory} does not exist.")
+async def get_all_mcp_servers(working_directory: Path) -> AsyncGenerator[List[MCPServer], None]:
+    if not working_directory.exists():
+        raise ValueError(f"Working directory {working_directory} does not exist.")
 
     async with AsyncExitStack() as stack:
         servers: List[MCPServer] = []
 
-        servers.append(await stack.enter_async_context(get_filesystem_server(config)))
+        servers.append(await stack.enter_async_context(get_filesystem_server(working_directory)))
         servers.append(await stack.enter_async_context(get_fetch_server()))
 
         if os.environ.get("TAVILY_API_KEY"):
