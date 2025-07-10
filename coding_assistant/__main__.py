@@ -3,6 +3,9 @@ import os
 from pathlib import Path
 from argparse import ArgumentParser
 
+from bmw_llm_adapter.langchain import BMWModel
+from bmw_llm_adapter.bmw_api_model import ModelName
+
 from coding_assistant.agents.orchestrator import run_orchestrator_agent
 from coding_assistant.agents.researcher import run_researcher_agent
 from coding_assistant.config import get_global_config
@@ -23,6 +26,7 @@ def main():
     logging.debug(f"Working directory: {working_directoy}")
 
     get_global_config().working_directory = working_directoy
+    get_global_config().model_factory = lambda: BMWModel(model_name=ModelName.gpt_4o)
 
     args = parse_args()
 
