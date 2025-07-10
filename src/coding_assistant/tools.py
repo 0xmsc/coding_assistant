@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import os
+import logging
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,6 +10,8 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from coding_assistant.config import Config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -41,6 +44,7 @@ class Tools:
 async def _get_mcp_server(
     name: str, command: str, args: List[str], env: dict[str, str] | None = None
 ) -> AsyncGenerator[MCPServer, None]:
+    logger.info(f"Starting MCP server '{name}' with command '{command}', args '{' '.join(args)}' and env: '{env}'")
     params = StdioServerParameters(command=command, args=args, env=env)
 
     async with stdio_client(params) as (read, write):
