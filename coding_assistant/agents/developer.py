@@ -18,14 +18,13 @@ from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
 
 DEVELOPER_PROMPT = """
-You are an implementation agent. Your responsibility is to carry out a given implementation plan.
+You are an developer agent. Your responsibility is to carry out a given implementation plan.
 
 Note that it is not your responsibility to plan the implementation.
 It is also not your responsibility to make decisions about the software architecture.
 
-Note that until now your job is a no-op.
-That means that you do not have the ability to change the code base.
-Still, you will report back what you would have done if you could have changed the code base.
+You should receive very detailed instructions on how to implement the task.
+If it is unclear on how exactly to implement the task, you should reject the task.
 
 If you are missing an agent or a tool that would be helpful for your task, please let the user know.
 """.strip()
@@ -34,14 +33,14 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
-def create_implementation_tools():
+def create_developer_tools():
     tools = []
 
     working_directory = get_global_config().working_directory
     tools.extend(
         FileManagementToolkit(
             root_dir=str(working_directory),
-            selected_tools=["read_file", "list_directory"],
+            selected_tools=["read_file", "list_directory", "write_file"],
         ).get_tools()
     )
 
@@ -50,23 +49,23 @@ def create_implementation_tools():
     return tools
 
 
-def create_implementation_agent():
+def create_developer_agent():
     memory = MemorySaver()
     model = ChatOpenAI(model_name="gpt-4o")
-    tools = create_implementation_tools()
+    tools = create_developer_tools()
     return create_react_agent(model, tools, checkpointer=memory, prompt=DEVELOPER_PROMPT)
 
 
-def run_implementation_agent(plan: str):
-    agent = create_implementation_agent()
-    return run_agent(agent, plan, name="implementation")
+def run_developer_agent(plan: str):
+    agent = create_developer_agent()
+    return run_agent(agent, plan, name="Developer")
 
 
 @tool
-def implement(plan: str) -> str:
+def develop(plan: str) -> str:
     """
-    Implement a plan.
-    Plan needs to be a detailed implementation plan in markdown format.
+    Implement an imeplementation plan.
+    The plan needs to be a detailed plan in markdown format.
     The output will be a detailed description of what has been implemented in markdown format.
     """
-    return run_implementation_agent(plan)
+    return run_developer_agent(plan)
