@@ -61,7 +61,7 @@ def load_config(args) -> Config:
     )
 
 
-async def main():
+async def _main():
     args = parse_args()
     config = load_config(args)
 
@@ -95,28 +95,13 @@ async def main():
             print("No task or question specified.")
             sys.exit(1)
 
-        result = Runner.run_streamed(agent_to_run, initial_input)
-
-        async for event in result.stream_events():
-            if event.type == "raw_response_event":
-                continue
-
-            if event.type == "agent_updated_stream_event":
-                print(f"Agent updated: {event.new_agent.name}")
-                continue
-
-            if event.type == "run_item_stream_event":
-                if event.item.type == "tool_call_item":
-                    print("-- Tool was called")
-                elif event.item.type == "tool_call_output_item":
-                    print(f"-- Tool output: {event.item.output}")
-                elif event.item.type == "message_output_item":
-                    print(
-                        f"-- Message output:\n {ItemHelpers.text_message_output(event.item)}"
-                    )
-
+        result = await Runner.run(agent_to_run, initial_input)
         print(result.final_output_as(str))
 
 
+def main():
+    asyncio.run(_main())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
