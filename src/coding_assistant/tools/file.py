@@ -40,7 +40,7 @@ def read_only_file_tools():
     tools.extend(
         FileManagementToolkit(
             root_dir=str(working_directory),
-            selected_tools=["read_file", "list_directory"],
+            selected_tools=["read_file", "list_directory", "file_search"],
         ).get_tools()
     )
     tools.append(RipgrepTool())
@@ -54,7 +54,7 @@ def all_file_tools():
     tools.extend(
         FileManagementToolkit(
             root_dir=str(working_directory),
-            selected_tools=["write_file"],
+            selected_tools=["write_file", "copy_file", "file_delete", "move_file"],
         ).get_tools()
     )
     return tools
