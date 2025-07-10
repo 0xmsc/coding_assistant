@@ -29,56 +29,57 @@ The Coding Assistant is structured as a multi-agent system coordinated via an Or
 
 ```mermaid
 flowchart TD
-    subgraph User
-        U[User]
+    subgraph User_Group
+        User_Node[User]
     end
-    subgraph CLI
-        CLI[CLI / Terminal]
-    end
-
-    subgraph Orchestrator
-        ORCH[Orchestrator Agent]
+    subgraph CLI_Group
+        CLI_Node[CLI / Terminal]
     end
 
-    subgraph Agents
-        RA[Research Agent]
-        DA[Developer Agent]
-        FA[Feedback Agent]
+    subgraph Orchestrator_Group
+        ORCH_Node[Orchestrator Agent]
     end
 
-    subgraph MCP_Servers [MCP Servers / Tooling]
-        FS[Filesystem]
-        GIT[Git]
-        SH[Shell]
-        WEB[Fetch / Tavily]
+    subgraph Agents_Group
+        RA_Node[Research Agent]
+        DA_Node[Developer Agent]
+        FA_Node[Feedback Agent]
     end
 
-    U -->|"Inputs via"| CLI
-    CLI -->|"Config / Task / Command"| ORCH
+    subgraph MCP_Servers_Group [MCP Servers / Tooling]
+        FS_Node[Filesystem]
+        GIT_Node[Git]
+        SH_Node[Shell]
+        WEB_Node[Fetch / Tavily]
+    end
 
-    ORCH -->|"Coordinates"| RA
-    ORCH -->|"Delegates"| DA
-    ORCH -->|"Sends for review"| FA
+    User_Node -->|"Inputs via"| CLI_Node
+    CLI_Node -->|"Config / Task / Command"| ORCH_Node
 
-    RA -- "Uses tools" --> FS
-    RA -- "Uses tools" --> GIT
-    RA -- "Uses" --> WEB
+    ORCH_Node -->|"Coordinates"| RA_Node
+    ORCH_Node -->|"Delegates"| DA_Node
+    ORCH_Node -->|"Sends for review"| FA_Node
 
-    DA -- "Uses tools" --> FS
-    DA -- "Uses tools" --> GIT
-    DA -- "Uses tools" --> SH
-    DA -- "Uses" --> WEB
+    RA_Node -- "Uses tools" --> FS_Node
+    RA_Node -- "Uses tools" --> GIT_Node
+    RA_Node -- "Uses" --> WEB_Node
 
-    FA -- "Uses tools" --> FS
-    FA -- "Uses tools" --> GIT
+    DA_Node -- "Uses tools" --> FS_Node
+    DA_Node -- "Uses tools" --> GIT_Node
+    DA_Node -- "Uses tools" --> SH_Node
+    DA_Node -- "Uses" --> WEB_Node
 
-    FS -.->|"Provides Services"| MCP_Servers
-    GIT -.->|"Provides Services"| MCP_Servers
-    SH -.->|"Provides Services"| MCP_Servers
-    WEB -.->|"Provides Services"| MCP_Servers
+    FA_Node -- "Uses tools" --> FS_Node
+    FA_Node -- "Uses tools" --> GIT_Node
 
-    ORCH -->|"Results / Outputs"| CLI
+    FS_Node -.->|"Provides Services"| MCP_Servers_Group
+    GIT_Node -.->|"Provides Services"| MCP_Servers_Group
+    SH_Node -.->|"Provides Services"| MCP_Servers_Group
+    WEB_Node -.->|"Provides Services"| MCP_Servers_Group
+
+    ORCH_Node -->|"Results / Outputs"| CLI_Node
 ```
+
 
 **Explanation:**
 - **User interacts with the Coding Assistant through the CLI.**
@@ -234,4 +235,3 @@ coding_assistant/
 
 - **License:** [Specify here: e.g. MIT, Apache 2.0, or PRIVATE if not OSS]
 - **Contributions:** PRs and issues are welcome. Please ensure to add tests for all new functionality.
-
