@@ -24,3 +24,10 @@ def create_expert_agent(config: Config, tools: Tools) -> Agent:
         mcp_servers=tools.mcp_servers,
         model=config.expert_model_factory(),
     )
+
+
+def create_expert_tool(config: Config, tools: Tools) -> Tool:
+    return create_expert_agent(config, tools).as_tool(
+        "expert_tool",
+        tool_description="Provide expert-level analysis and solutions for complex problems.",
+    )

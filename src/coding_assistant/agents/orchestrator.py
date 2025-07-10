@@ -5,9 +5,10 @@ from typing import Annotated
 from agents import Agent, Handoff, Tool, handoff
 from agents.extensions import handoff_filters
 
-from coding_assistant.agents.developer import create_developer_agent
-from coding_assistant.agents.planner import create_planner_agent
-from coding_assistant.agents.researcher import create_researcher_agent
+from coding_assistant.agents.developer import create_developer_tool
+from coding_assistant.agents.expert import create_expert_tool
+from coding_assistant.agents.planner import create_planner_tool
+from coding_assistant.agents.researcher import create_researcher_tool
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools
 
@@ -19,20 +20,15 @@ You are an Orchestrator agent. Your goal is to coordinate other specialized agen
 
 
 def create_orchestrator_agent(config: Config, tools: Tools) -> Agent:
-    planner_agent = create_planner_agent(config, tools)
-    researcher_agent = create_researcher_agent(config, tools)
-    developer_agent = create_developer_agent(config, tools)
-
-    handoffs = [
-        handoff(planner_agent, input_filter=handoff_filters.remove_all_tools),
-        handoff(researcher_agent, input_filter=handoff_filters.remove_all_tools),
-        handoff(developer_agent, input_filter=handoff_filters.remove_all_tools),
-    ]
-
     return Agent(
         name="orchestrator",
         instructions=ORCHESTRATOR_INSTRUCTIONS,
         mcp_servers=tools.mcp_servers,
-        handoffs=handoffs,
+        tools=[
+            create_planner_tool(config, tools),
+            create_researcher_tool(config, tools),
+            create_developer_tool(config, tools),
+            create_expert_tool(config, tools),
+        ],
         model=config.expert_model_factory(),
     )

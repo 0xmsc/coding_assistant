@@ -7,31 +7,34 @@ from typing import Annotated
 from agents import Agent, Handoff, Tool, handoff
 from agents.extensions import handoff_filters
 
-from coding_assistant.agents.expert import create_expert_agent
-from coding_assistant.agents.researcher import create_researcher_agent
+from coding_assistant.agents.expert import create_expert_tool
+from coding_assistant.agents.researcher import create_researcher_tool
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools
 
 PLANNER_INSTRUCTIONS = f"""
-You are a Planner agent. Your primary responsibility is to create a detailed implementation plan for a given task.
+You are a Planner agent. 
+Your primary responsibility is to create a detailed implementation plan for a given task.
 """.strip()
 
 logger = logging.getLogger(__name__)
 
 
 def create_planner_agent(config: Config, tools: Tools) -> Agent:
-    researcher_agent = create_researcher_agent(config, tools)
-    expert_agent = create_expert_agent(config, tools)
-
-    handoffs = [
-        handoff(researcher_agent, input_filter=handoff_filters.remove_all_tools),
-        handoff(expert_agent, input_filter=handoff_filters.remove_all_tools),
-    ]
-
     return Agent(
         name="planner",
         instructions=PLANNER_INSTRUCTIONS,
-        handoffs=handoffs,
+        tools=[
+            create_researcher_tool(config, tools),
+            create_expert_tool(config, tools),
+        ],
         mcp_servers=tools.mcp_servers,
         model=config.model_factory(),
+    )
+
+
+def create_planner_tool(config, tools: Tools) -> Tool:
+    return create_planner_agent(config, tools).as_tool(
+        "planner_tool",
+        tool_description="Create a detailed implementation plan for a task.",
     )

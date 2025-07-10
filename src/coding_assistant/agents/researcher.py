@@ -25,3 +25,10 @@ def create_researcher_agent(config: Config, tools: Tools) -> Agent:
         mcp_servers=tools.mcp_servers,
         model=config.model_factory(),
     )
+
+
+def create_researcher_tool(config: Config, tools: Tools) -> Tool:
+    return create_researcher_agent(config, tools).as_tool(
+        "researcher_tool",
+        tool_description="Answer questions accurately using available information sources.",
+    )

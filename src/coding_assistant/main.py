@@ -5,8 +5,18 @@ import os
 import sys
 from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
+from typing import Any
 
-from agents import AsyncOpenAI, OpenAIChatCompletionsModel, Runner
+from agents import (
+    Agent,
+    AsyncOpenAI,
+    OpenAIChatCompletionsModel,
+    RunContextWrapper,
+    RunHooks,
+    Runner,
+    Tool,
+    ItemHelpers,
+)
 
 from coding_assistant.agents.expert import create_expert_agent
 from coding_assistant.agents.orchestrator import create_orchestrator_agent
@@ -74,7 +84,27 @@ async def main():
             print("No task or question specified.")
             sys.exit(1)
 
-        result = await Runner.run(agent_to_run, initial_input)
+        result = Runner.run_streamed(agent_to_run, initial_input)
+        print("=== Run starting ===")
+
+        async for event in result.stream_events():
+            if event.type == "raw_response_event":
+                continue
+
+            if event.type == "agent_updated_stream_event":
+                print(f"Agent updated: {event.new_agent.name}")
+                continue
+
+            if event.type == "run_item_stream_event":
+                if event.item.type == "tool_call_item":
+                    print("-- Tool was called")
+                elif event.item.type == "tool_call_output_item":
+                    print(f"-- Tool output: {event.item.output}")
+                elif event.item.type == "message_output_item":
+                    print(
+                        f"-- Message output:\n {ItemHelpers.text_message_output(event.item)}"
+                    )
+
         print(result.final_output_as(str))
 
 
