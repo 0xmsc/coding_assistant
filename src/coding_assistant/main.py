@@ -18,7 +18,7 @@ from rich.table import Table
 from coding_assistant.agents.agents import OrchestratorTool
 from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.cache import get_cache_dir, get_conversation_history, save_conversation_history
-from coding_assistant.config import Config
+from coding_assistant.config import Config, get_config_file_path, create_default_config_file, load_user_config, merge_config_with_defaults
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools import Tools, get_all_mcp_servers
@@ -42,18 +42,32 @@ def parse_args():
 
 
 def load_config(args) -> Config:
-    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "gemini/gemini-2.5-flash")
-    expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "gemini/gemini-2.5-pro")
+    # Load user configuration file (create if missing)
+    config_path = get_config_file_path()
+    if not config_path.exists():
+        create_default_config_file(config_path)
+    user_config = load_user_config(config_path)
+    
+    # Load from environment variables with user config fallbacks
+    default_model = user_config.get("models", {}).get("default_model", "gemini/gemini-2.5-flash")
+    default_expert_model = user_config.get("models", {}).get("expert_model", "gemini/gemini-2.5-pro")
+    
+    model_name = os.environ.get("CODING_ASSISTANT_MODEL", default_model)
+    expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", default_expert_model)
 
     logger.info(f"Using model: {model_name}")
     logger.info(f"Using expert model: {expert_model_name}")
 
-    return Config(
+    # Create base config
+    base_config = Config(
         working_directory=Path(os.getcwd()),
         model=model_name,
         expert_model=expert_model_name,
         disable_feedback_agent=args.disable_feedback_agent,
     )
+    
+    # Merge with user configuration
+    return merge_config_with_defaults(user_config, base_config)
 
 
 async def print_mcp_tools(mcp_servers):
@@ -104,13 +118,16 @@ def setup_tracing():
     logger.info(f"Tracing successfully enabled on endpoint {TRACE_ENDPOINT}.")
 
 
-def get_additional_sandbox_directories(working_directory, venv_directory):
+def get_additional_sandbox_directories(config: Config, working_directory, venv_directory):
     sandbox_directories = [
         working_directory,
         venv_directory,
         Path("/tmp"),
         get_cache_dir(),
     ]
+    
+    # Add user-configured sandbox directories
+    sandbox_directories.extend(config.sandbox_directories)
 
     wsl_path = Path("/mnt/wsl")
     if wsl_path.exists():
@@ -133,7 +150,7 @@ async def _main():
 
     if not args.disable_sandbox:
         logger.info(f"Sandboxing is enabled.")
-        sandbox_directories = get_additional_sandbox_directories(config.working_directory, venv_directory)
+        sandbox_directories = get_additional_sandbox_directories(config, config.working_directory, venv_directory)
         sandbox(directories=sandbox_directories)
     else:
         logger.warning("Sandboxing is disabled")
