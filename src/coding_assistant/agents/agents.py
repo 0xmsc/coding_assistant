@@ -16,6 +16,7 @@ def create_orchestrator_agent(task: str, config: Config, tools: Tools) -> Agent:
         mcp_servers=tools.mcp_servers,
         tools=[
             ResearchTool(config, tools),
+            DevelopTool(config, tools),
             AskUserTool(),
         ],
         model=config.expert_model,
