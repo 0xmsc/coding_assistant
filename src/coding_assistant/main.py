@@ -42,7 +42,7 @@ def parse_args():
 
 
 def load_config(args) -> Config:
-    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "gpt-4.1-mini")
+    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "gemini/gemini-2.5-flash")
     expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "gemini/gemini-2.5-pro")
 
     logger.info(f"Using model: {model_name}")
@@ -153,7 +153,7 @@ async def _main():
                     {
                         "task": args.task,
                         "history": conversation_history[-5:],
-                        "instructions": get_instructions(),
+                        "instructions": get_instructions(config.working_directory),
                     }
                 )
                 summary = tool.summary

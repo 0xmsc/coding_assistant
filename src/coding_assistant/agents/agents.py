@@ -96,7 +96,7 @@ class OrchestratorTool(Tool):
                 AskClientTool(),
                 ExecuteShellCommandTool(),
             ],
-            model=self._config.model,
+            model=self._config.expert_model,
             feedback_function=lambda agent: _get_feedback(
                 agent,
                 self._config,
