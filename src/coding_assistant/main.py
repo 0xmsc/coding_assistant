@@ -5,24 +5,25 @@ import os
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
-import requests
 
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+import requests
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import \
+    OTLPSpanExporter
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from rich.console import Console
 from rich.table import Table
 
-from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.agents.agents import OrchestratorTool
-from coding_assistant.cache import get_cache_dir, get_conversation_history, save_conversation_history
+from coding_assistant.agents.logic import run_agent_loop
+from coding_assistant.cache import (get_cache_dir, get_conversation_history,
+                                    save_conversation_history)
 from coding_assistant.config import Config
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools import Tools, get_all_mcp_servers
-
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -49,14 +50,11 @@ def load_config(args) -> Config:
     logger.info(f"Using model: {model_name}")
     logger.info(f"Using expert model: {expert_model_name}")
 
-    instructions = get_instructions()
-
     return Config(
         working_directory=Path(os.getcwd()),
         model=model_name,
         expert_model=expert_model_name,
         disable_feedback_agent=args.disable_feedback_agent,
-        instructions=instructions,
     )
 
 
@@ -147,6 +145,7 @@ async def _main():
                     {
                         "task": args.task,
                         "history": conversation_history[-5:],
+                        "instructions": get_instructions(),
                     }
                 )
                 summary = tool.summary

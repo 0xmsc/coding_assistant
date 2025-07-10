@@ -79,6 +79,10 @@ class OrchestratorTool(Tool):
                     "type": "array",
                     "description": "The conversation history of the client and the agent.",
                 },
+                "instructions": {
+                    "type": "string",
+                    "description": "Special instructions for the agent. The agent will do everything it can to follow these instructions.",
+                },
             },
             "required": ["task"],
         }
@@ -106,7 +110,6 @@ class OrchestratorTool(Tool):
                 ask_user_for_feedback=not self._config.disable_user_feedback,
                 ask_agent_for_feedback=not self._config.disable_feedback_agent,
             ),
-            instructions=self._config.instructions or "No additional instructions provided.",
         )
 
         output = await run_agent_loop(orchestrator_agent)
@@ -161,7 +164,6 @@ class ResearchTool(Tool):
                 ask_user_for_feedback=not self._config.disable_user_feedback,
                 ask_agent_for_feedback=not self._config.disable_feedback_agent,
             ),
-            instructions=self._config.instructions or "No additional instructions provided.",
         )
 
         output = await run_agent_loop(research_agent)
@@ -211,7 +213,6 @@ class DevelopTool(Tool):
                 ask_user_for_feedback=not self._config.disable_user_feedback,
                 ask_agent_for_feedback=not self._config.disable_feedback_agent,
             ),
-            instructions=self._config.instructions or "No additional instructions provided.",
         )
 
         output = await run_agent_loop(developer_agent)
@@ -355,7 +356,6 @@ class FeedbackTool(Tool):
                 ask_user_for_feedback=False,
                 ask_agent_for_feedback=False,
             ),
-            instructions=self._config.instructions or "No additional instructions provided.",
         )
 
         output = await run_agent_loop(feedback_agent)
