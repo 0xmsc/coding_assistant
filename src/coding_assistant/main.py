@@ -7,7 +7,7 @@ from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 from typing import Any
 
-from coding_assistant.agents.agent import do_step
+from coding_assistant.agents.agent import do_single_step, run_agent_loop
 from coding_assistant.agents.orchestrator import create_orchestrator_agent
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools
@@ -37,7 +37,7 @@ def parse_args():
 
 
 def load_config(args) -> Config:
-    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "gpt-4.1-mini")
+    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "o4-mini")
     expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "<disabled>")
 
     return Config(
@@ -56,19 +56,14 @@ async def _main():
 
     tools = Tools()
 
-    # if args.task:
-    #     agent = create_orchestrator_agent(args.task, config, tools)
-    # else:
-    #     print("No task or question specified.")
-    #     sys.exit(1)
+    if args.task:
+        agent = create_orchestrator_agent(args.task, config, tools)
+    else:
+        print("No task or question specified.")
+        sys.exit(1)
 
-    task = "Give me 5 jokes, one per message."
-    agent = create_orchestrator_agent(task, config, tools)
-    while not agent.finished:
-        result = do_step(agent)
-        if result.content:
-            print(f"Step: {result.content}")
-    print(f"Final result: {agent.result}")
+    agent = create_orchestrator_agent(args.task, config, tools)
+    run_agent_loop(agent)
 
 
 def main():

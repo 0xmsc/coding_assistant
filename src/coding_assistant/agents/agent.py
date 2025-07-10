@@ -16,15 +16,16 @@ class Agent:
     model: str
     instructions: str
     task: str
+
     tools: list = field(default_factory=list)
     mcp_servers: list = field(default_factory=list)
-    history: list = field(default_factory=list)
 
+    history: list = field(default_factory=list)
     finished: bool = False
     result: Optional[str] = None
 
 
-def do_step(agent: Agent):
+def do_single_step(agent: Agent):
     tools = list(agent.tools)
     tools.append(
         {
@@ -82,3 +83,13 @@ def do_step(agent: Agent):
             pass
 
     return message
+
+
+def run_agent_loop(agent: Agent):
+    step_counter = 0
+    while not agent.finished:
+        step = do_single_step(agent)
+        if step.content:
+            logger.info(f"[{step_counter}] Agent {agent.name}: {step.content}")
+        step_counter += 1
+    return agent.result
