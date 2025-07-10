@@ -109,7 +109,7 @@ class InterruptibleSection(object):
         self.interrupt_requested = True
 
 
-def run_agent(agent, task, name, notebook, ask_user_for_feedback=False):
+def run_agent(agent, task, name, notebook, ask_user_for_feedback):
     info = task + "\n\nNotebook:\n" + _format_notebook(notebook)
     console.print(Panel(Markdown(info), title=f"Agent task: {name}", border_style="green"))
     config = RunnableConfig(configurable={"thread_id": "thread"}, recursion_limit=50)
@@ -138,6 +138,9 @@ def run_agent(agent, task, name, notebook, ask_user_for_feedback=False):
                         print(f"Agent {name} has been interrupted, the last message was '{messages[-1].content}'")
                         interruptible_section.interrupt_requested = False
                         break
+
+        if not ask_user_for_feedback:
+            break
 
         # Ask user for feedback
         feedback = Prompt.ask("Feedback", default="exit")

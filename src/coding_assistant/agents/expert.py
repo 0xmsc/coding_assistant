@@ -1,6 +1,8 @@
+from typing import Annotated
 from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.config import get_global_config
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 from coding_assistant.agents.agents import create_agent, run_agent
 from coding_assistant.tools.file import read_only_file_tools
 from coding_assistant.agents.agents import create_context_prunning_prompt_function
@@ -24,17 +26,17 @@ def create_expert_tools():
     return tools
 
 
-def run_expert_agent(task: str, ask_user_for_feedback: bool = False):
+def run_expert_agent(task: str, notebook: dict, ask_user_for_feedback: bool):
     agent = create_agent(
         prompt=create_context_prunning_prompt_function(EXPERT_PROMPT, system_message_type="developer"),
         tools=create_expert_tools(),
         model=get_global_config().reasoning_model_factory(),
     )
-    return run_agent(agent, task, name="Expert", ask_user_for_feedback=ask_user_for_feedback)
+    return run_agent(agent, task, notebook=notebook, name="Expert", ask_user_for_feedback=ask_user_for_feedback)
 
 
 @tool
-def do_expert_analysis(question: str) -> str:
+def do_expert_analysis(question: str, state: Annotated[dict, InjectedState]) -> str:
     """
     Let a software engineering expert anylze and answer a question.
     Note that this has to be an exceptionally difficult question that requires expert level knowledge.
@@ -43,4 +45,4 @@ def do_expert_analysis(question: str) -> str:
     if not get_global_config().reasoning_model_factory:
         return "Expert is not available..."
 
-    return run_expert_agent(question)
+    return run_expert_agent(question, notebook=state["notebook"], ask_user_for_feedback=True)

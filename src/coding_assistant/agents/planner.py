@@ -60,13 +60,13 @@ def create_planner_tools():
     return tools
 
 
-def run_planner_agent(task: str, notebook: dict):
+def run_planner_agent(task: str, notebook: dict, ask_user_for_feedback: bool):
     agent = create_agent(
         prompt=create_context_prunning_prompt_function(PLANNER_PROMPT),
         tools=create_planner_tools(),
         model=get_global_config().model_factory(),
     )
-    return run_agent(agent, task, notebook=notebook, name="planner")
+    return run_agent(agent, task, notebook=notebook, name="planner", ask_user_for_feedback=ask_user_for_feedback)
 
 
 @tool
@@ -76,4 +76,4 @@ def plan(task: str, state: Annotated[dict, InjectedState]) -> str:
     The task should contain all the necessary context, including which files, functions, etc. to look at.
     The output will be a detailed implementation plan in markdown format.
     """
-    return run_planner_agent(task, notebook=state["notebook"])
+    return run_planner_agent(task, notebook=state["notebook"], ask_user_for_feedback=True)

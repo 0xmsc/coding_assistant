@@ -58,13 +58,13 @@ def create_developer_tools():
     return tools
 
 
-def run_developer_agent(plan: str, notebook: dict):
+def run_developer_agent(plan: str, notebook: dict, ask_user_for_feedback: bool):
     agent = create_agent(
         prompt=create_context_prunning_prompt_function(DEVELOPER_PROMPT),
         tools=create_developer_tools(),
         model=get_global_config().model_factory(),
     )
-    return run_agent(agent, plan, name="Developer", notebook=notebook)
+    return run_agent(agent, plan, name="Developer", notebook=notebook, ask_user_for_feedback=ask_user_for_feedback)
 
 
 @tool
@@ -75,4 +75,4 @@ def develop(plan: str, state: Annotated[dict, InjectedState]) -> str:
     The output will be a detailed description of what has been implemented in markdown format.
     """
     notebook = state["notebook"]
-    return run_developer_agent(plan, notebook=notebook)
+    return run_developer_agent(plan, notebook=notebook, ask_user_for_feedback=True)

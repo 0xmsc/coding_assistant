@@ -63,7 +63,7 @@ def create_researcher_tools():
     return tools
 
 
-def run_researcher_agent(question: str, notebook: dict, ask_user_for_feedback=False):
+def run_researcher_agent(question: str, notebook: dict, ask_user_for_feedback):
     agent = create_agent(
         prompt=create_context_prunning_prompt_function(RESEARCHER_PROMPT),
         tools=create_researcher_tools(),
@@ -84,4 +84,4 @@ def research(question: str, state: Annotated[dict, InjectedState]) -> str:
     Research a question about the current code base.
     The output will be a detailed answer in markdown format.
     """
-    return run_researcher_agent(question, notebook=state["notebook"])
+    return run_researcher_agent(question, notebook=state["notebook"], ask_user_for_feedback=True)
