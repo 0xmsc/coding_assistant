@@ -21,12 +21,13 @@ Coding Assistant is an experimental, Python-based multi-agent system designed to
 ## Technologies & Libraries
 
 - Python 3.12+
-- **litellm**: Simplified LLM interaction
+- **litellm**: Simplified LLM interaction, with integrations for OpenAI, Anthropic Claude, Amazon Bedrock, Google Vertex AI, and more.
 - **mcp[cli]**: Filesystem operations and tooling
 - **pytest**: Testing framework
 - **mypy**: Static type checking
 - **pre-commit**: Git hooks management
 - **black**, **isort**: Code formatting and import sorting
+- **langchain_community**: Extended LLM utilities and community-driven models
 
 ## Installation
 
