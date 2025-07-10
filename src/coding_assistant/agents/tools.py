@@ -146,7 +146,7 @@ class ResearchTool(Tool):
                 agent,
                 self._config,
                 self._tools,
-                ask_user_for_feedback=False,
+                ask_user_for_feedback=True,
                 ask_agent_for_feedback=True,
             ),
         )
@@ -192,7 +192,7 @@ class DevelopTool(Tool):
                 agent,
                 self._config,
                 self._tools,
-                ask_user_for_feedback=False,
+                ask_user_for_feedback=True,
                 ask_agent_for_feedback=True,
             ),
         )
@@ -281,7 +281,7 @@ class FeedbackTool(Tool):
                 agent,
                 self._config,
                 self._tools,
-                ask_user_for_feedback=False,
+                ask_user_for_feedback=True,
                 ask_agent_for_feedback=False,
             ),
         )
