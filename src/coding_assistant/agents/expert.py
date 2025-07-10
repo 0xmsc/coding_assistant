@@ -1,7 +1,7 @@
 import logging
 from typing import Annotated, List
 
-from smolagents import CodeAgent, InjectedState, MultiStepAgent, Tool, tool
+from smolagents import CodeAgent, MultiStepAgent, Tool, tool
 
 from coding_assistant.config import Config, get_global_config
 from coding_assistant.tools.file import read_only_file_tools
@@ -11,9 +11,7 @@ logger = logging.getLogger(__name__)
 
 EXPERT_DESCRIPTION = """
 Expert agent, which is responsible for dealing with exceptional tasks or queries.
-This agent is expected to have expert level knowledge in software engineering and related fields.
-If the question does not require expert level knowledge, the agent should reject the task immediately.
-Additionally, the agent should reject the question if not all necessary context is provided.
+The agent is expected to have expert level knowledge in software engineering and related fields.
 """.strip()
 
 
@@ -31,4 +29,3 @@ def create_expert_agent(config: Config) -> MultiStepAgent:
         name="Expert",
         description=EXPERT_DESCRIPTION,
     )
-

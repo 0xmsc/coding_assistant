@@ -13,8 +13,8 @@ PLANNER_DESCRIPTION = """
 Planner agent, which is responsible for planner an implementation task.
 This agent is not a software architect.
 Therefore, it should already be clear how to implement the task on a high level before handing a task to this agent.
-Relevant paths, files, functions, etc. that are relevant to the task should be given to the planner agent.
-It needs to know at which files it needs to look at, which functions are relevant, etc.
+Relevant paths, files, functions, etc. that are relevant to the task should be given to the agent.
+The agent needs to know at which files it needs to look at, which functions are relevant, etc.
 """.strip()
 
 

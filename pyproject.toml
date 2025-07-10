@@ -6,11 +6,12 @@ readme = "README.md"
 authors = []
 requires-python = ">=3.12"
 dependencies = [
+    "mcp>=1.6.0",
     "smolagents[openai]>=1.13.0",
 ]
 
 [project.scripts]
-coding-assistant = "coding_assistant:main"
+coding-assistant = "coding_assistant.main:main"
 
 [build-system]
 requires = ["hatchling"]

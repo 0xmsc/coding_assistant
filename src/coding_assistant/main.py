@@ -73,3 +73,7 @@ def main():
         pass
     else:
         print("No task specified.")
+
+
+if __name__ == "__main__":
+    main()
