@@ -2,12 +2,12 @@ import os
 import litellm
 
 
-def complete(
+async def complete(
     messages: list[dict],
     tools: list = [],
     model: str = "o4-mini",
 ):
-    completion = litellm.completion(
+    completion = await litellm.acompletion(
         messages=messages,
         tools=tools,
         model=model,
