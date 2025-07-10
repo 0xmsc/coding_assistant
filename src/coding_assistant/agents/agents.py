@@ -104,7 +104,7 @@ class ResearchTool(Tool):
                     "description": "The expected output to return to the client. This includes the content but also the format of the output (e.g. markdown).",
                 },
             },
-            "required": ["question"],
+            "required": ["question", "expected_output"],
         }
 
     async def execute(self, parameters: dict) -> str:
@@ -141,10 +141,6 @@ class DevelopTool(Tool):
                 "implementation_plan": {
                     "type": "string",
                     "description": "The implementation plan to follow.",
-                },
-                "expected_output": {
-                    "type": "string",
-                    "description": "The expected output to return to the client. This includes the content but also the format of the output (e.g. markdown).",
                 },
             },
             "required": ["implementation_plan"],

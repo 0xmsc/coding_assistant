@@ -61,7 +61,7 @@ class FinishTaskTool(Tool):
         return "finish_task"
 
     def description(self) -> str:
-        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop. The final result or summary of the task should be provided in the 'result' parameter, as this is the only output accessible to the task initiator."
+        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop. The final result or summary of the task should be provided in the 'result' parameter, as this is the only output accessible to the client."
 
     def parameters(self) -> dict:
         return {
@@ -69,9 +69,10 @@ class FinishTaskTool(Tool):
             "properties": {
                 "result": {
                     "type": "string",
-                    "description": "The result of the task, if any.",
+                    "description": "The result of the task or a summary of the work that has been done.",
                 },
             },
+            "required": ["result"],
         }
 
     async def execute(self, _) -> str:
@@ -244,6 +245,15 @@ async def do_single_step(agent: Agent):
     # If the agent has no history, this is our first step
     if not agent.history:
         system_message = create_system_message(agent)
+
+        print(
+            Panel(
+                system_message,
+                title=f"Agent {agent.name} starting",
+                border_style="red",
+            ),
+        )
+
         agent.history.append(
             {
                 "role": "system",
@@ -298,5 +308,13 @@ async def run_agent_loop(agent: Agent):
 
     assert agent.result
     trace.get_current_span().set_attribute("agent.result", agent.result)
+
+    print(
+        Panel(
+            agent.result,
+            title=f"Agent {agent.name} result",
+            border_style="red",
+        ),
+    )
 
     return agent.result
