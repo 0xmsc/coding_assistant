@@ -57,7 +57,7 @@ async def _main():
     task = "Read README.md"
 
     async with get_filesystem_server(config) as filesystem_server:
-        tools = Tools()
+        tools = Tools(mcp_servers=[filesystem_server])
 
         if task:
             agent = create_orchestrator_agent(task, config, tools)
@@ -67,7 +67,7 @@ async def _main():
             print("No task or question specified.")
             sys.exit(1)
 
-        run_agent_loop(agent)
+        await run_agent_loop(agent)
 
 
 def main():

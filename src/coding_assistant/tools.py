@@ -10,12 +10,18 @@ from coding_assistant.config import Config
 
 
 @dataclass
+class MCPServer:
+    name: str
+    session: ClientSession
+
+
+@dataclass
 class Tools:
     mcp_servers: list = field(default_factory=list)
 
 
 @asynccontextmanager
-async def get_filesystem_server(config: Config) -> AsyncGenerator[ClientSession, None]:
+async def get_filesystem_server(config: Config) -> AsyncGenerator[MCPServer, None]:
     assert config.working_directory.exists()
 
     params = StdioServerParameters(
@@ -30,7 +36,10 @@ async def get_filesystem_server(config: Config) -> AsyncGenerator[ClientSession,
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            yield session
+            yield MCPServer(
+                name="filesystem",
+                session=session,
+            )
 
 
 # def get_git_server(config: Config) -> MCPServer:
