@@ -43,6 +43,12 @@ Your client has provided the following parameters for your task:
 {parameters}
 ```
 
+## Approach
+
+When you tackle a task, you should first analyze the task and break it down into smaller subtasks.
+Output which subtasks you have identified and how you plan to solve them.
+Solve the subtask one by one, and output your progress.
+
 ## Result
 
 It is crucial that you return all results in the result parameter of the finish_task tool call.
