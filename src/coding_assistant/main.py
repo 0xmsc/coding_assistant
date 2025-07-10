@@ -150,7 +150,7 @@ async def _main():
         print(f"Finished with: {result}")
         print(f"Summary: {summary}")
 
-        save_conversation_history(config.working_directory, summary)
+        save_conversation_history(working_directory, summary)
 
 
 def main():
