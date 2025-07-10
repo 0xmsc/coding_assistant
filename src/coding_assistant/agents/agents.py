@@ -1,6 +1,7 @@
 import signal
 import threading
 import sys
+import functools
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
 from langgraph.prebuilt import create_react_agent
@@ -62,34 +63,42 @@ def create_agent(prompt, tools, model):
     )
 
 
-def run_agent(agent, task, name, ask_user_for_feedback=False):
-    interrupt_requested = False
+class InterruptibleSection(object):
+    interrupt_requested: bool
 
-    def interrupt_handler(signum, frame):
-        nonlocal interrupt_requested
-        if interrupt_requested:
+    def __enter__(self):
+        self.interrupt_requested = False
+        if threading.current_thread() is threading.main_thread():
+            self.original_handler = signal.getsignal(signal.SIGINT)
+            signal.signal(signal.SIGINT, functools.partial(self._interrupt_handler))
+        else:
+            self.original_handler = None
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.original_handler:
+            signal.signal(signal.SIGINT, self.original_handler)
+
+    def _interrupt_handler(self, signum, frame):
+        if self.interrupt_requested:
             # The user really seems to want to quit :O
             print(f" Interrupt requested two times, exiting...")
             sys.exit()
 
         print(f" Interrupt requested, waiting for next change to interrupt agent...")
-        interrupt_requested = True
+        self.interrupt_requested = True
 
-    if threading.current_thread() is threading.main_thread():
-        original_handler = signal.getsignal(signal.SIGINT)
-        signal.signal(signal.SIGINT, interrupt_handler)
-    else:
-        original_handler = None
 
-    try:
-        console.print(Panel(Markdown(task), title=f"Agent task: {name}", border_style="green"))
-        config = RunnableConfig(configurable={"thread_id": "thread"}, recursion_limit=50)
-        input: MyAgentState = {"messages": HumanMessage(content=task), "notebook": dict()}
+def run_agent(agent, task, name, ask_user_for_feedback=False):
+    console.print(Panel(Markdown(task), title=f"Agent task: {name}", border_style="green"))
+    config = RunnableConfig(configurable={"thread_id": "thread"}, recursion_limit=50)
+    input: MyAgentState = {"messages": HumanMessage(content=task), "notebook": dict()}
 
-        latest = None
+    latest = None
 
-        while True:
-            # Do one round of the agent, until it stops
+    while True:
+        # Do one round of the agent, until it stops (or is interrupted)
+        with InterruptibleSection() as interruptible_section:
             for chunk in agent.stream(input=input, config=config):
                 print_agent_progress(chunk, name=name)
 
@@ -104,19 +113,16 @@ def run_agent(agent, task, name, ask_user_for_feedback=False):
                     # Check if we can interrupt the agent
                     # NOTE: We can only interrupt when the last message was an AIMessage **without** tool_calls
                     can_interrupt = messages[-1] and isinstance(messages[-1], AIMessage) and not messages[-1].tool_calls
-                    if interrupt_requested and can_interrupt:
+                    if interruptible_section.interrupt_requested and can_interrupt:
                         print(f"Agent {name} has been interrupted, the last message was '{messages[-1].content}'")
-                        interrupt_requested = False
+                        interruptible_section.interrupt_requested = False
                         break
 
-            if not ask_user_for_feedback:
-                break
+        if not ask_user_for_feedback:
+            break
 
-            # Ask user for feedback
-            feedback = Prompt.ask("Feedback")
-            input = {"messages": HumanMessage(content=feedback)}
+        # Ask user for feedback
+        feedback = Prompt.ask("Feedback")
+        input = {"messages": HumanMessage(content=feedback)}
 
-        return latest.content
-    finally:
-        if original_handler:
-            signal.signal(signal.SIGINT, original_handler)
+    return latest.content
