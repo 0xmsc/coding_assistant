@@ -29,7 +29,7 @@ Description: {description}
 Value: {value}
 """.strip()
 
-SYSTEM_PROMPT_TEMPLATE = """
+START_MESSAGE_TEMPLATE = """
 You are an agent named `{name}`.
 
 ## Task
@@ -123,12 +123,66 @@ class FinishTaskTool(Tool):
         return "Agent output set."
 
 
+# {
+#     'description': 'Parameters for fetching a URL.',
+#     'properties': {
+#         'url': {
+#             'description': 'URL to fetch',
+#             'format': 'uri',
+#             'minLength': 1,
+#             'title': 'Url',
+#             'type': 'string'
+#         },
+#         'max_length': {
+#             'default': 5000,
+#             'description': 'Maximum number of characters to return.',
+#             'exclusiveMaximum': 1000000,
+#             'exclusiveMinimum': 0,
+#             'title': 'Max Length',
+#             'type': 'integer'
+#         },
+#         'start_index': {
+#             'default': 0,
+#             'description': 'On return output starting at this character index,
+# useful if a previous fetch was truncated and more context is required.',
+#             'minimum': 0,
+#             'title': 'Start Index',
+#             'type': 'integer'
+#         },
+#         'raw': {
+#             'default': False,
+#             'description': 'Get the actual HTML content of the requested page,
+# without simplification.',
+#             'title': 'Raw',
+#             'type': 'boolean'
+#         }
+#     },
+#     'required': ['url'],
+#     'title': 'Fetch',
+#     'type': 'object'
+# }
+
+
+def fix_input_schema(input_schema: dict):
+    """
+    Fixes the input schema to be compatible with Gemini API
+    This is a workaround for the fact that Gemini API does not support certain values for the `format` field
+    """
+
+    for property in input_schema.get("properties", {}).values():
+        if (format := property.get("format")) and format == "uri":
+            # Gemini API does not support `format: uri`, so we remove it
+            property.pop("format", None)
+
+
 async def get_tools_from_mcp_servers(mcp_servers: list) -> list:
     tools = []
     for server in mcp_servers:
         for _, tool_list in await server.session.list_tools():
             for tool in tool_list or []:
                 tool_id = f"mcp_{server.name}_{tool.name}"
+
+                fix_input_schema(tool.inputSchema)
 
                 tools.append(
                     {
@@ -306,9 +360,9 @@ def format_parameters(parameters: list[Parameter]) -> str:
     return "\n\n".join(parameter_descriptions)
 
 
-def create_system_message(agent: Agent) -> str:
+def create_start_message(agent: Agent) -> str:
     parameters_str = format_parameters(agent.parameters)
-    return SYSTEM_PROMPT_TEMPLATE.format(
+    return START_MESSAGE_TEMPLATE.format(
         name=agent.name,
         description=textwrap.indent(agent.description, "  "),
         parameters=textwrap.indent(parameters_str, "  "),
@@ -331,11 +385,11 @@ async def do_single_step(agent: Agent):
 
     # If the agent has no history, this is our first step
     if not agent.history:
-        system_message = create_system_message(agent)
+        start_message = create_start_message(agent)
 
         print(
             Panel(
-                system_message,
+                start_message,
                 title=f"Agent {agent.name} starting",
                 border_style="red",
             ),
@@ -343,8 +397,8 @@ async def do_single_step(agent: Agent):
 
         agent.history.append(
             {
-                "role": "system",
-                "content": system_message,
+                "role": "user",
+                "content": start_message,
             }
         )
 
