@@ -48,7 +48,6 @@ This might be necessary if you encounter new information that changes your under
 It might also be necessary if the output of one of the agents is not satisfactory.
 It is your responsibility to make sure that the task is completed.
 Note that only in exceptional cases you should start reading files yourself.
-When you want to query information about the codebase, always use a research agent, even though you think it is easier to do so.
 
 Note that the planning agent is not a software architect.
 Therefore, it should already be clear how to implement the task on a high level before handing it to the planning agent.
@@ -60,16 +59,6 @@ It needs to know at which files it needs to look at, which functions are relevan
 Note that the developer agent needs a very detailed plan to be able to implement the task.
 Think of the agent as a junior engineer that needs to be told exactly what to do.
 
-Note that the agents do not have access to each other's output.
-You will have to provide ALL the necessary context to the agents via their task.
-For example, you need to forward the full results of your research to the planning agents.
-Another example would be that you need to fully forward the implementation plan from the planning agent to the developer agent.
-Please also forward the full output of the developer agent to the research agent for verification.
-In short it is of utmost importance that you provide all the necessary context to the agents.
-It is better to provide too much context than too little.
-
-What is shared between the agents is the notebook.
-The notebook is a dictionary that can be used to store information that is relevant to the task.
 You are responsible for removing any unrelated or too verbose information from the notebook.
 The notebook should only contain information that is relevant to the task and relevant to all agents.
 

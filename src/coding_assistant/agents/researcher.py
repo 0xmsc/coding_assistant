@@ -36,9 +36,9 @@ It never makes sense to give a general answer.
 Always reference files, snippets, functions, concepts, etc. in the code base.
 When you show a code snippet, also give the file name where it is located.
 
-Your output should contain all relevant information that you gathered during the researcher process.
 It is not possible to ask follow-up questions regarding your task.
 The output should be self-contained and not require follow-up questions.
+You should record every relevant information that you find, either in the notebook or in the output.
 Especially put interesting files and code snippets that are relevant to the question in the output.
 
 Do not reject tasks easily. Always try to find a satisfactory answer.

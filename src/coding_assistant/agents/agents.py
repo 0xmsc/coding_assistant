@@ -25,16 +25,15 @@ class MyAgentState(AgentState):
     task: str
 
 
-def _format_system_prompt_with_current_state(system_prompt, state):
-    notebook_facts = ""
-
-    if not state["notebook"]:
-        notebook_facts = "Empty"
+def _format_notebook(notebook):
+    if not notebook:
+        return "Empty"
     else:
-        for key, fact in enumerate(state["notebook"]):
-            notebook_facts += f"Key: {key}\nFact: {fact}\n\n"
+        return "\n\n".join([f"- Key: {key}\n- Fact: {fact}" for key, fact in enumerate(notebook)])
 
-    notebook_facts = notebook_facts.strip()
+
+def _format_system_prompt_with_current_state(system_prompt, state):
+    notebook_facts = _format_notebook(state["notebook"])
     return system_prompt.format(notebook_facts=notebook_facts, task=state["task"])
 
 
@@ -111,7 +110,8 @@ class InterruptibleSection(object):
 
 
 def run_agent(agent, task, name, notebook, ask_user_for_feedback=False):
-    console.print(Panel(Markdown(task), title=f"Agent task: {name}", border_style="green"))
+    info = task + "\n\nNotebook:\n" + _format_notebook(notebook)
+    console.print(Panel(Markdown(info), title=f"Agent task: {name}", border_style="green"))
     config = RunnableConfig(configurable={"thread_id": "thread"}, recursion_limit=50)
     input: MyAgentState = {"messages": HumanMessage(content=task), "notebook": notebook, "task": task}
 
@@ -139,11 +139,11 @@ def run_agent(agent, task, name, notebook, ask_user_for_feedback=False):
                         interruptible_section.interrupt_requested = False
                         break
 
-        if not ask_user_for_feedback:
+        # Ask user for feedback
+        feedback = Prompt.ask("Feedback", default="exit")
+        if feedback == "exit":
             break
 
-        # Ask user for feedback
-        feedback = Prompt.ask("Feedback")
         input = {"messages": HumanMessage(content=feedback)}
 
     return latest.content
