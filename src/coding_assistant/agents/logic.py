@@ -27,11 +27,15 @@ Value: {value}
 SYSTEM_PROMPT_TEMPLATE = """
 You are an agent named `{name}`.
 
+## Task
+
 Your client has been given the following description of your work and capabilities: 
 
 ```
 {description}
 ```
+
+## Parameters
 
 Your client has provided the following parameters for your task:
 
@@ -39,9 +43,20 @@ Your client has provided the following parameters for your task:
 {parameters}
 ```
 
-It is very important that you follow these instructions and parameters to make your client happy.
+It is very important that you follow description and parameters.
+
+## Result
+
 It is also crucial that you return all results in the result parameter of the finish_task tool call.
 Your client does not have access to any other output from you.
+
+## Memory
+
+You should use your memory capabilities to remember the context of the conversations with your client.
+When you discover a new file, class, concept, function, or anything else that is important, you should create a note and use it in the future.
+When you are working on a task, regularly check your memory to see if there are any notes that can help you with the task.
+When you notice that a note is outdated, you should update it.
+When you notice that a note is no longer relevant, you should delete it.
 """.strip()
 
 
