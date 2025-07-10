@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 def load_config(args: argparse.Namespace) -> Config:
     backend = os.environ.get("CODING_ASSISTANT_BACKEND", "OPENAI").upper()
     model = os.environ.get("CODING_ASSISTANT_MODEL", "gpt-4o")
-    reasoning_model = os.environ.get("CODING_ASSISTANT_REASONING_MODEL", "o1")
+    reasoning_model = os.environ.get("CODING_ASSISTANT_REASONING_MODEL", "o3-mini")
 
     if backend == "OPENAI":
         model_factory = lambda: ChatOpenAI(model=model)
