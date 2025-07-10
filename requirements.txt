@@ -5,3 +5,4 @@ langgraph-checkpoint
 langchain-openai
 tavily-python
 rich
+beeprint
