@@ -1,6 +1,9 @@
 import os
 import litellm
 
+litellm.telemetry = False
+litellm.modify_params = True
+
 
 async def complete(
     messages: list[dict],
