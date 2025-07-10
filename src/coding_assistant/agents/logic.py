@@ -378,7 +378,7 @@ async def do_single_step(agent: Agent):
         await handle_tool_call(tool_call, agent)
 
     if not message.tool_calls:
-        logging.warning(f"Agent {agent.name} did not call any tools, but provided a message.")
+        logger.warning(f"Agent {agent.name} did not call any tools, but provided a message.")
 
         agent.history.append(
             {
