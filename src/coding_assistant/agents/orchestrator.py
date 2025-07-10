@@ -91,6 +91,6 @@ def run_orchestrator_agent(task: str, notebook: dict, ask_user_for_feedback: boo
     agent = create_agent(
         prompt=create_context_prunning_prompt_function(ORCHESTRATOR_PROMPT),
         tools=create_orchestrator_tools(),
-        model=get_global_config().expert_model_factory(),
+        model=get_global_config().model_factory(),
     )
     return run_agent(agent, task, notebook=notebook, name="Orchestrator", ask_user_for_feedback=ask_user_for_feedback)

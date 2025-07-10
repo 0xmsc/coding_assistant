@@ -1,6 +1,6 @@
 COMMON_AGENT_PROMPT = """
 Both your inputs and outputs are to be in markdown format.
-Your output should contain a detailed explanation of the work you have done and your thought process.
+Your output should contain a detailed explanation of the work you have done and the information you have gathered.
 Additionally, do your best do answer the question or complete the task you are given.
 
 Your current task is: {task}
