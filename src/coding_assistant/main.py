@@ -48,12 +48,9 @@ def load_config(args) -> Config:
         create_default_config_file(config_path)
     user_config = load_user_config(config_path)
     
-    # Load from environment variables with user config fallbacks
-    default_model = user_config.get("models", {}).get("default_model", "gemini/gemini-2.5-flash")
-    default_expert_model = user_config.get("models", {}).get("expert_model", "gemini/gemini-2.5-pro")
-    
-    model_name = os.environ.get("CODING_ASSISTANT_MODEL", default_model)
-    expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", default_expert_model)
+    # Load defaults from user config with hardcoded fallbacks
+    model_name = user_config.get("models", {}).get("default_model", "gemini/gemini-2.5-flash")
+    expert_model_name = user_config.get("models", {}).get("expert_model", "gemini/gemini-2.5-pro")
 
     logger.info(f"Using model: {model_name}")
     logger.info(f"Using expert model: {expert_model_name}")
