@@ -199,7 +199,7 @@ async def handle_tool_call(tool_call, agent: Agent):
     )
 
     function_name = tool_call.function.name
-    function_args = json.loads(tool_call.function.arguments)
+    function_args = json.loads(tool_call.function.arguments or "{}")
 
     trace.get_current_span().set_attribute("function.name", function_name)
     trace.get_current_span().set_attribute("function.args", tool_call.function.arguments)
@@ -328,32 +328,6 @@ async def do_single_step(agent: Agent):
     return message
 
 
-class InterruptibleSection(object):
-    interrupt_requested: bool
-
-    def __enter__(self):
-        self.interrupt_requested = False
-        if threading.current_thread() is threading.main_thread():
-            self.original_handler = signal.getsignal(signal.SIGINT)
-            signal.signal(signal.SIGINT, functools.partial(self._interrupt_handler))
-        else:
-            self.original_handler = None
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.original_handler:
-            signal.signal(signal.SIGINT, self.original_handler)
-
-    def _interrupt_handler(self, signum, frame):
-        if self.interrupt_requested:
-            # The user really seems to want to quit :O
-            print(f" Interrupt requested two times, exiting...")
-            sys.exit()
-
-        print(f" Interrupt requested, waiting for next chance to interrupt agent...")
-        self.interrupt_requested = True
-
-
 @tracer.start_as_current_span("run_agent_loop")
 async def run_agent_loop(
     agent: Agent,
@@ -364,21 +338,8 @@ async def run_agent_loop(
     trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
 
     while True:
-        with InterruptibleSection() as interruptible_section:
-            # Run the agent until it finishes
-            while not agent.result:
-                await do_single_step(agent)
-
-                # Here we can inject feedback into the agent.
-                if interruptible_section.interrupt_requested and not agent.result:
-                    feedback = Prompt.ask("Feedback")
-                    agent.history.append(
-                        {
-                            "role": "user",
-                            "content": feedback,
-                        }
-                    )
-                    interruptible_section.interrupt_requested = False
+        while not agent.result:
+            await do_single_step(agent)
 
         trace.get_current_span().set_attribute("agent.result", agent.result)
 
