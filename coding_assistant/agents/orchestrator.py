@@ -17,6 +17,7 @@ from coding_assistant.agents.developer import develop
 from coding_assistant.agents.planner import plan
 from coding_assistant.agents.researcher import research
 from coding_assistant.logging import print_agent_progress
+from coding_assistant.tools.file import read_only_file_tools
 from coding_assistant.tools.user import ask_user
 
 ORCHESTRATOR_PROMPT = """
@@ -27,8 +28,12 @@ Take the following steps to complete a task:
 
 1. Use the research agent to gather information about the code base that are relevant to the task.
 2. Split the task into multiple smaller tasks. Use the information gathered by the research agent to do this.
-3. Use the planning agent to create an implementation plan for each of the smaller tasks.
-4. Use the developer agent to implement the plan for each of the smaller tasks.
+
+For each of the smaller tasks, do the following:
+
+1. Use the planning agent to create an implementation plan for each of the smaller tasks.
+2. Use the developer agent to implement the plan for each of the smaller tasks.
+3. Ask a research agent to verify that the changes are correct.
 
 Note that you don't have to follow these steps exactly. You can use the agents in any order you see fit.
 You can also go back to any step at any time, if you need to.
