@@ -21,15 +21,15 @@ def print_agent_progress(chunk, name):
     elif "agent" in chunk and "messages" in chunk["agent"]:
         for message in chunk["agent"]["messages"]:
             assert isinstance(message, AIMessage)
-            content = ""
+            title = f"Agent progress: {name}"
             if message.content:
-                content += f"{message.content}\n\n"
+                console.print(Panel(Markdown(message.content), title=title, border_style="red"))
             if message.tool_calls:
+                content = ""
                 for tool_call in message.tool_calls:
                     pretty_args = pformat(tool_call.get("args"))
                     content += f"{tool_call.get('name')}\n{pretty_args}\n"
-            content = content.strip()
-            title = f"Agent progress: {name}"
-            console.print(Panel(Markdown(content), title=title, border_style="red"))
+                content = content.strip()
+                console.print(Panel(content, title=title, border_style="red"))
     else:
         logger.warning(f"Unhandled chunk: {pformat(chunk)}")
