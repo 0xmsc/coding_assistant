@@ -61,12 +61,10 @@ async def test_feedback_tool_after_feedback(tmp_path):
             "description": "The agent will only give correct answers",
             "parameters": "What is 2 + 2?",
             "result": "5",
-            "feedback": [
-                "I made a mistake while asking the question, I actually wanted to ask 'What is 2 + 3?'",
-            ],
+            "feedback": "The client made a mistake while asking the question, he meant 'what is 2 + 3?'",
         }
     )
-    assert result != "Ok"
+    assert result == "Ok"
 
 
 @pytest.mark.asyncio

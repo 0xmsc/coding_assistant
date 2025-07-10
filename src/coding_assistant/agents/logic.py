@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-from dataclasses import field
 import dataclasses
 import functools
 import json
@@ -8,13 +6,14 @@ import signal
 import sys
 import textwrap
 import threading
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from rich.prompt import Prompt
+from opentelemetry import trace
 from rich import print
 from rich.panel import Panel
 from rich.pretty import Pretty
-from opentelemetry import trace
+from rich.prompt import Prompt
 
 from coding_assistant.config import Config
 from coding_assistant.llm.model import complete
@@ -66,6 +65,7 @@ class Parameter:
 class AgentOutput:
     result: str
     summary: str
+    feedback: str | None
 
 
 @dataclass
@@ -85,7 +85,6 @@ class Agent:
     mcp_servers: list = field(default_factory=list)
 
     history: list = field(default_factory=list)
-    feedback: list[str] = field(default_factory=list)
     output: AgentOutput | None = None
 
 
@@ -97,7 +96,7 @@ class FinishTaskTool(Tool):
         return "finish_task"
 
     def description(self) -> str:
-        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop. The final result and the summary of the work should be provided in the 'result' parameter, as this is the only output accessible to the client."
+        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop."
 
     def parameters(self) -> dict:
         return {
@@ -111,6 +110,10 @@ class FinishTaskTool(Tool):
                     "type": "string",
                     "description": "A concise summary of the conversation the agent and the client had. There should be enough context such that the work could be continued based on this summary.",
                 },
+                "feedback": {
+                    "type": "string",
+                    "description": "A summary of the feedback given by the client to the agent during the task. This can both be questions that were answered by the client, or feedback. It needs to be clear from this parameter why the result might might not fit to initial task description.",
+                },
             },
             "required": ["result", "summary"],
         }
@@ -119,6 +122,7 @@ class FinishTaskTool(Tool):
         self._agent.output = AgentOutput(
             result=parameters["result"],
             summary=parameters["summary"],
+            feedback=parameters.get("feedback"),
         )
         return "Agent output set."
 
@@ -432,8 +436,6 @@ async def run_agent_loop(
         )
 
         if feedback := await agent.feedback_function(agent):
-            agent.feedback.append(feedback)
-
             formatted_feedback = FEEDBACK_TEMPLATE.format(
                 feedback=textwrap.indent(feedback, "  "),
             )

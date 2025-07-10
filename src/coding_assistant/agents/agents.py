@@ -1,19 +1,14 @@
 import asyncio
-from dataclasses import dataclass
-import subprocess
 import json
 import logging
+import subprocess
 import textwrap
+from dataclasses import dataclass
 from typing import Annotated
+
 from rich.prompt import Prompt
 
-from coding_assistant.agents.logic import (
-    Agent,
-    Parameter,
-    format_parameters,
-    run_agent_loop,
-    fill_parameters,
-)
+from coding_assistant.agents.logic import Agent, Parameter, fill_parameters, format_parameters, run_agent_loop
 from coding_assistant.config import Config
 from coding_assistant.tools import Tool, Tools
 
@@ -37,9 +32,9 @@ async def _get_feedback(
             parameters={
                 "description": agent.description,
                 "parameters": "\n" + formatted_parameters,
-                "feedback": agent.feedback,
                 "result": agent.output.result,
                 "summary": agent.output.summary,
+                "feedback": agent.output.feedback,
             }
         )
     else:
@@ -98,7 +93,7 @@ class OrchestratorTool(Tool):
             mcp_servers=self._tools.mcp_servers,
             tools=[
                 AgentTool(self._config, self._tools),
-                AskUserTool(),
+                AskClientTool(),
                 ExecuteShellCommandTool(),
             ],
             model=self._config.model,
@@ -158,7 +153,7 @@ class AgentTool(Tool):
             mcp_servers=self._tools.mcp_servers,
             tools=[
                 ExecuteShellCommandTool(),
-                AskUserTool(),
+                AskClientTool(),
             ],
             model=self._config.model,
             feedback_function=lambda agent: _get_feedback(
@@ -174,7 +169,7 @@ class AgentTool(Tool):
         return output.result
 
 
-class AskUserTool(Tool):
+class AskClientTool(Tool):
     def __init__(self):
         pass
 
@@ -190,7 +185,7 @@ class AskUserTool(Tool):
             "properties": {
                 "question": {
                     "type": "string",
-                    "description": "The question to ask the user.",
+                    "description": "The question to ask the client.",
                 },
                 "default_answer": {
                     "type": "string",
@@ -286,7 +281,7 @@ class FeedbackTool(Tool):
                     "description": "A summary of the conversation with the client.",
                 },
                 "feedback": {
-                    "type": "array",
+                    "type": "string",
                     "description": "The feedback provided to the agent during the work on the task.",
                 },
             },
