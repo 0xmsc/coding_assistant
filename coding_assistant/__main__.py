@@ -2,6 +2,7 @@ import logging
 import os
 from pathlib import Path
 from argparse import ArgumentParser
+from langchain_openai import ChatOpenAI
 
 from coding_assistant.agents.orchestrator import run_orchestrator_agent
 from coding_assistant.agents.researcher import run_researcher_agent
@@ -32,13 +33,8 @@ def main():
     print(f"Running in working directory: {working_directoy}")
 
     get_global_config().working_directory = working_directoy
-
-    if os.environ.get("BMW_API_KEY"):
-        from bmw_llm_adapter.langchain import BMWModel
-        from bmw_llm_adapter.bmw_api_model import ModelName
-        get_global_config().model_factory = lambda: BMWModel(
-            model_name=ModelName.anthropic_claude_3_5_sonnet_20240620_v1_0
-        )
+    get_global_config().model_factory = lambda: ChatOpenAI(model="gpt-4o")
+    get_global_config().reasoning_model_factory = lambda: ChatOpenAI(model="o1")
 
     assert get_global_config().model_factory, "No model factory set."
 
