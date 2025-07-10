@@ -14,12 +14,16 @@ async def complete(
     model: str,
     tools: list = [],
 ):
-    completion = await litellm.acompletion(
-        messages=messages,
-        tools=tools,
-        model=model,
-        drop_params=True,
-    )
+    try:
+        completion = await litellm.acompletion(
+            messages=messages,
+            tools=tools,
+            model=model,
+            drop_params=True,
+        )
+    except Exception as e:
+        logger.error(f"Error during model completion: {e}, last messages: {messages[-5:]}")
+        raise e
 
     if not completion["choices"]:
         raise RuntimeError(f"No choices returned from the model: {completion}")
