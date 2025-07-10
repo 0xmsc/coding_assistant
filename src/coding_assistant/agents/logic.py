@@ -335,6 +335,14 @@ async def do_single_step(agent: Agent):
     for tool_call in message.tool_calls or []:
         await handle_tool_call(tool_call, agent)
 
+    if not message.tool_calls:
+        agent.history.append(
+            {
+                "role": "user",
+                "content": "I detected a message from you without any tool calls. Remember to call the `finish_task` tool when you are done.",
+            }
+        )
+
     return message
 
 
