@@ -8,8 +8,8 @@ litellm.modify_params = True
 
 async def complete(
     messages: list[dict],
+    model: str,
     tools: list = [],
-    model: str = "o4-mini",
 ):
     completion = await litellm.acompletion(
         messages=messages,
@@ -18,5 +18,8 @@ async def complete(
         drop_params=True,
         merge_reasoning_content_in_choices=True,
     )
+
+    if not completion["choices"]:
+        raise ValueError(f"No choices returned from the model: {completion}")
 
     return completion["choices"][0]["message"]
