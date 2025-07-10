@@ -1,37 +1,38 @@
 import subprocess
+from typing import Any, Dict, Optional, Type
+from langchain_core.tools import tool
+from pathlib import Path
 from pydantic import BaseModel, Field
 from coding_assistant.config import get_global_config
 from langchain_community.agent_toolkits import FileManagementToolkit
 from langchain_core.tools import BaseTool, ToolException
-from typing import Any, Dict, Optional, Type
-from pathlib import Path
+
+from coding_assistant.config import get_global_config
 
 FILE_TYPE_WHITELIST = ["py", "cpp"]
 
 
-class RipgrepToolInput(BaseModel):
-    pattern: str = Field(description="The pattern to search for in the files.")
-    case_insensitive: bool = Field(default=False, description="Whether the search should be case-insensitive.")
+@tool
+def ripgrep(pattern: str, case_insensitive: bool = False, max_output_lines=100) -> str:
+    """
+    A tool for searching files using the ripgrep command-line utility.
+    """
+    cmd = ["rg"]
 
+    if case_insensitive:
+        cmd.append("-i")
 
-class RipgrepTool(BaseTool):
-    name: str = "ripgrep"
-    description: str = "A tool for searching files using the `ripgrep` command-line utility."
-    args_schema: Type[BaseModel] = RipgrepToolInput
+    for extension in FILE_TYPE_WHITELIST:
+        cmd.append(f"-t{extension}")
 
-    def _run(self, pattern: str, case_insensitive: bool = False) -> str:
-        cmd = ["rg"]
+    cmd.append(pattern)
 
-        if case_insensitive:
-            cmd.append("-i")
+    result = subprocess.check_output(cmd, text=True)
 
-        for extension in FILE_TYPE_WHITELIST:
-            cmd.append(f"-t{extension}")
+    if len(result.splitlines()) > max_output_lines:
+        return f"Result was more than {max_output_lines} lines"
 
-        cmd.append(pattern)
-
-        result = subprocess.check_output(cmd)
-        return result.decode("utf-8")
+    return result
 
 
 def read_only_file_tools():
@@ -43,7 +44,7 @@ def read_only_file_tools():
             selected_tools=["read_file", "list_directory", "file_search"],
         ).get_tools()
     )
-    tools.append(RipgrepTool())
+    tools.append(ripgrep)
     return tools
 
 
