@@ -22,7 +22,7 @@ def create_orchestrator_agent(config: Config, tools: Tools) -> MultiStepAgent:
             create_planner_agent(config, tools),
             create_researcher_agent(config, tools),
         ],
-        name="Orchestrator",
+        name="orchestrator",
         description=ORCHESTRATOR_DESCRIPTION,
         planning_interval=3,
     )

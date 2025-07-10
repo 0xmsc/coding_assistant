@@ -26,6 +26,6 @@ def create_expert_agent(config: Config) -> MultiStepAgent:
     return CodeAgent(
         model=config.expert_model_factory(),
         tools=create_expert_tools(),
-        name="Expert",
+        name="expert",
         description=EXPERT_DESCRIPTION,
     )

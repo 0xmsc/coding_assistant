@@ -23,6 +23,6 @@ def create_developer_agent(config: Config, tools: Tools) -> MultiStepAgent:
         managed_agents=[
             create_researcher_agent(config, tools),
         ],
-        name="Developer",
+        name="developer",
         description=DEVELOPER_DESCRIPTION,
     )

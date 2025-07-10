@@ -22,6 +22,6 @@ def create_researcher_agent(config: Config, tools: Tools) -> MultiStepAgent:
     return CodeAgent(
         model=config.model_factory(),
         tools=[*tools.file_tools],
-        name="Researcher",
+        name="researcher",
         description=RESEARCHER_DESCRIPTION,
     )
