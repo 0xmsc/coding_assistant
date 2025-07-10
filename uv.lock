@@ -170,14 +170,10 @@ dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
-    { name = "requests" },
-    { name = "rich" },
-]
-
-[package.optional-dependencies]
-test = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "requests" },
+    { name = "rich" },
 ]
 
 [package.metadata]
@@ -187,12 +183,11 @@ requires-dist = [
     { name = "opentelemetry-api", specifier = ">=1.32.1" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.32.1" },
     { name = "opentelemetry-sdk", specifier = ">=1.32.1" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0.0" },
-    { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.23.0" },
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23.0" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "rich", specifier = ">=14.0.0" },
 ]
-provides-extras = ["test"]
 
 [[package]]
 name = "colorama"

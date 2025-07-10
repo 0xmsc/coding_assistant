@@ -165,48 +165,6 @@ class DevelopTool(Tool):
         return await run_agent_loop(developer_agent)
 
 
-class FeedbackTool(Tool):
-    def __init__(self, config: Config):
-        self._config = config
-
-    def name(self) -> str:
-        return "launch_feedback_agent"
-
-    def description(self) -> str:
-        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the output is acceptable for a given task. If it is, the feedback agent will finish its task with only the output 'Ok' and nothing else. If it is not, the feedback agent will output what is wrong with the output and how it needs to be improved."
-
-    def parameters(self) -> dict:
-        return {
-            "type": "object",
-            "properties": {
-                "task": {
-                    "type": "string",
-                    "description": "The task that was given to the agent.",
-                },
-                "output": {
-                    "type": "string",
-                    "description": "The output of the agent.",
-                },
-            },
-            "required": ["task", "output"],
-        }
-
-    async def execute(self, parameters: dict) -> str:
-        feedback_agent = Agent(
-            name="Feedback",
-            description=self.description(),
-            parameters=fill_parameters(
-                parameter_description=self.parameters(),
-                parameter_values=parameters,
-            ),
-            mcp_servers=[],
-            tools=[],
-            model=self._config.model,
-        )
-
-        return await run_agent_loop(feedback_agent)
-
-
 class AskUserTool(Tool):
     def __init__(self):
         pass
