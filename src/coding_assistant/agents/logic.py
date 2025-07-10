@@ -4,7 +4,7 @@ import dataclasses
 import json
 import logging
 import textwrap
-from typing import Optional
+from typing import Callable, Optional
 
 from rich.prompt import Prompt
 from rich import print
@@ -68,56 +68,9 @@ class Agent:
     history: list = field(default_factory=list)
     result: str | None = None
 
-
-class FeedbackTool(Tool):
-    def __init__(self, config: Config):
-        self._config = config
-
-    def name(self) -> str:
-        return "launch_feedback_agent"
-
-    def description(self) -> str:
-        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the output is acceptable for a given task. If it is, the feedback agent will finish its task with only the output 'Ok' and nothing else. If it is not, the feedback agent will output what is wrong with the output and how it needs to be improved. Note that you shall evaluate the output as if you were a paying client. Would an average client be satisfied with the output?"
-
-    def parameters(self) -> dict:
-        return {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string",
-                    "description": "The description of the agent that was working on the task.",
-                },
-                "parameters": {
-                    "type": "string",
-                    "description": "The parameters the agent was given for the task.",
-                },
-                "output": {
-                    "type": "string",
-                    "description": "The output of the agent.",
-                },
-            },
-            "required": ["description", "parameters", "output"],
-        }
-
-    async def execute(self, parameters: dict) -> str:
-        feedback_agent = Agent(
-            name="Feedback",
-            description=self.description(),
-            parameters=fill_parameters(
-                parameter_description=self.parameters(),
-                parameter_values=parameters,
-            ),
-            mcp_servers=[],
-            tools=[],
-            model=self._config.model,
-        )
-
-        return await run_agent_loop(
-            feedback_agent,
-            self._config,
-            ask_user_for_feedback=False,
-            ask_agent_for_feedback=False,  # Prevent infinite loop
-        )
+    # This is a function that can validate an agents output.
+    # If it returns a string, it will be given to the agent as feedback.
+    feedback_function: Callable = None
 
 
 class FinishTaskTool(Tool):
@@ -247,9 +200,7 @@ async def handle_tool_call(tool_call, agent: Agent):
     function_args = json.loads(tool_call.function.arguments)
 
     trace.get_current_span().set_attribute("function.name", function_name)
-    trace.get_current_span().set_attribute(
-        "function.args", tool_call.function.arguments
-    )
+    trace.get_current_span().set_attribute("function.args", tool_call.function.arguments)
 
     logger.debug(f"Calling tool {function_name} with args {function_args}")
 
@@ -260,9 +211,7 @@ async def handle_tool_call(tool_call, agent: Agent):
     function_call_result = None
 
     if function_name.startswith("mcp_"):
-        function_call_result = await handle_mcp_tool_call(
-            function_name, function_args, agent.mcp_servers
-        )
+        function_call_result = await handle_mcp_tool_call(function_name, function_args, agent.mcp_servers)
     else:
         for tool in agent.tools:
             if tool.name() == function_name:
@@ -308,9 +257,7 @@ def format_parameters(parameters: list[Parameter]) -> str:
     parameter_descriptions = []
 
     for parameter in parameters:
-        parameter_descriptions.append(
-            PARAMETER_TEMPLATE.format(**dataclasses.asdict(parameter))
-        )
+        parameter_descriptions.append(PARAMETER_TEMPLATE.format(**dataclasses.asdict(parameter)))
 
     return "\n\n".join(parameter_descriptions)
 
@@ -362,9 +309,7 @@ async def do_single_step(agent: Agent):
     logger.debug(f"Got completion {completion} from LLM")
 
     message = completion["choices"][0]["message"]
-    trace.get_current_span().set_attribute(
-        "completion.message", message.model_dump_json()
-    )
+    trace.get_current_span().set_attribute("completion.message", message.model_dump_json())
 
     agent.history.append(message.model_dump())
 
@@ -384,50 +329,14 @@ async def do_single_step(agent: Agent):
     return message
 
 
-async def get_feedback(
-    agent: Agent,
-    config: Config,
-    ask_user_for_feedback: bool,
-    ask_agent_for_feedback: bool,
-) -> str | None:
-    feedback = None
-
-    if ask_user_for_feedback:
-        feedback = Prompt.ask("Feedback:", default="Ok")
-    elif ask_agent_for_feedback:
-        # Spawn a feedback agent
-        feedback_tool = FeedbackTool(config)
-        feedback = await feedback_tool.execute(
-            parameters={
-                # Give the system message as the task.
-                "description": agent.description,
-                "parameters": "\n"
-                + textwrap.indent(format_parameters(agent.parameters), " "),
-                "output": agent.result,
-            }
-        )
-
-    if not feedback:
-        return None
-    elif feedback == "Ok":
-        return None
-    else:
-        return feedback
-
-
 @tracer.start_as_current_span("run_agent_loop")
 async def run_agent_loop(
     agent: Agent,
-    config: Config,
-    ask_user_for_feedback: bool = False,
-    ask_agent_for_feedback: bool = True,
 ) -> str:
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
     parameters_json = json.dumps([dataclasses.asdict(p) for p in agent.parameters])
-    trace.get_current_span().set_attribute(
-        "agent.parameter_description", parameters_json
-    )
+    trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
 
     while True:
         # Run the agent until it finishes
@@ -444,11 +353,8 @@ async def run_agent_loop(
             ),
         )
 
-        if feedback := await get_feedback(
+        if feedback := await agent.feedback_function(
             agent,
-            config,
-            ask_user_for_feedback=ask_user_for_feedback,
-            ask_agent_for_feedback=ask_agent_for_feedback,
         ):
             print(
                 Panel(

@@ -2,12 +2,14 @@ from dataclasses import dataclass
 import subprocess
 import json
 import logging
+import textwrap
 from typing import Annotated
 from rich.prompt import Prompt
 
 from coding_assistant.agents.logic import (
     Agent,
     Parameter,
+    format_parameters,
     run_agent_loop,
     fill_parameters,
 )
@@ -15,6 +17,41 @@ from coding_assistant.config import Config
 from coding_assistant.tools import Tool, Tools
 
 logger = logging.getLogger(__name__)
+
+
+async def _get_feedback(
+    agent: Agent,
+    config: Config,
+    tools: Tools,
+    ask_user_for_feedback: bool,
+    ask_agent_for_feedback: bool,
+) -> str | None:
+    if not agent.result:
+        raise ValueError("Agent has no result to provide feedback on.")
+
+    if ask_agent_for_feedback:
+        feedback_tool = FeedbackTool(config, tools)
+        formatted_parameters = textwrap.indent(format_parameters(agent.parameters), "  ")
+        agent_feedback = await feedback_tool.execute(
+            parameters={
+                # Give the system message as the task.
+                "description": agent.description,
+                "parameters": "\n" + formatted_parameters,
+                "output": agent.result,
+            }
+        )
+    else:
+        agent_feedback = "Ok"
+
+    if ask_user_for_feedback:
+        feedback = Prompt.ask("Feedback:", default=agent_feedback)
+    else:
+        feedback = agent_feedback
+
+    if feedback == "Ok":
+        return None
+    else:
+        return feedback
 
 
 class OrchestratorTool(Tool):
@@ -55,9 +92,16 @@ class OrchestratorTool(Tool):
                 AskUserTool(),
             ],
             model=self._config.model,
+            feedback_function=lambda agent: _get_feedback(
+                agent,
+                self._config,
+                self._tools,
+                ask_user_for_feedback=True,
+                ask_agent_for_feedback=True,
+            ),
         )
 
-        return await run_agent_loop(orchestrator_agent, self._config)
+        return await run_agent_loop(orchestrator_agent)
 
 
 class ResearchTool(Tool):
@@ -98,9 +142,16 @@ class ResearchTool(Tool):
             mcp_servers=self._tools.mcp_servers,
             tools=[],
             model=self._config.model,
+            feedback_function=lambda agent: _get_feedback(
+                agent,
+                self._config,
+                self._tools,
+                ask_user_for_feedback=False,
+                ask_agent_for_feedback=True,
+            ),
         )
 
-        return await run_agent_loop(research_agent, self._config)
+        return await run_agent_loop(research_agent)
 
 
 class DevelopTool(Tool):
@@ -137,9 +188,16 @@ class DevelopTool(Tool):
             mcp_servers=self._tools.mcp_servers,
             tools=[],
             model=self._config.model,
+            feedback_function=lambda agent: _get_feedback(
+                agent,
+                self._config,
+                self._tools,
+                ask_user_for_feedback=False,
+                ask_agent_for_feedback=True,
+            ),
         )
 
-        return await run_agent_loop(developer_agent, self._config)
+        return await run_agent_loop(developer_agent)
 
 
 class AskUserTool(Tool):
@@ -174,4 +232,58 @@ class AskUserTool(Tool):
         default_answer = parameters.get("default_answer")
 
         answer = Prompt.ask(question, default=default_answer)
-        return answer
+        return str(answer)
+
+
+class FeedbackTool(Tool):
+    def __init__(self, config: Config, tools: Tools):
+        self._tools = tools
+        self._config = config
+
+    def name(self) -> str:
+        return "launch_feedback_agent"
+
+    def description(self) -> str:
+        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the output is acceptable for a given task. If it is, the feedback agent will finish its task with only the output 'Ok' and nothing else. If it is not, the feedback agent will output what is wrong with the output and how it needs to be improved. Note that you shall evaluate the output as if you were a paying client. Would an average client be satisfied with the output? If the agent describes filesystem changes, the feedback agent can check the files to check if the changes are as described."
+
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string",
+                    "description": "The description of the agent that was working on the task.",
+                },
+                "parameters": {
+                    "type": "string",
+                    "description": "The parameters the agent was given for the task.",
+                },
+                "output": {
+                    "type": "string",
+                    "description": "The output of the agent.",
+                },
+            },
+            "required": ["description", "parameters", "output"],
+        }
+
+    async def execute(self, parameters: dict) -> str:
+        feedback_agent = Agent(
+            name="Feedback",
+            description=self.description(),
+            parameters=fill_parameters(
+                parameter_description=self.parameters(),
+                parameter_values=parameters,
+            ),
+            mcp_servers=self._tools.mcp_servers,
+            tools=[],
+            model=self._config.model,
+            feedback_function=lambda agent: _get_feedback(
+                agent,
+                self._config,
+                self._tools,
+                ask_user_for_feedback=False,
+                ask_agent_for_feedback=False,
+            ),
+        )
+
+        return await run_agent_loop(feedback_agent)
