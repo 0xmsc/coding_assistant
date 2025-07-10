@@ -1,9 +1,9 @@
 import logging
 from typing import Annotated, List
 
-from smolagents import CodeAgent, MultiStepAgent, Tool, tool, InjectedState
-from rich.console import Console
 from langchain_community.tools import ShellTool
+from rich.console import Console
+from smolagents import CodeAgent, InjectedState, MultiStepAgent, Tool, tool
 
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import Config, get_global_config
@@ -38,14 +38,3 @@ def create_developer_agent(config: Config) -> MultiStepAgent:
         description=DEVELOPER_DESCRIPTION,
     )
 
-
-@tool
-def develop(plan: str, state: Annotated[dict, InjectedState]) -> str:
-    """
-    Start a developer agent to implement a given plan.
-    The plan needs to be detailed and in markdown format.
-    The output will be a detailed description of what has been implemented in markdown format.
-    """
-    notebook = state["notebook"]
-    developer_agent = create_developer_agent(get_global_config())
-    return developer_agent.run(plan, notebook=notebook)

@@ -1,8 +1,8 @@
 import logging
 from typing import Annotated, List
 
-from smolagents import CodeAgent, MultiStepAgent, Tool, tool, InjectedState
 from rich.console import Console
+from smolagents import CodeAgent, InjectedState, MultiStepAgent, Tool, tool
 
 from coding_assistant.agents.expert import do_expert_analysis
 from coding_assistant.config import Config, get_global_config
@@ -36,14 +36,3 @@ def create_researcher_agent(config: Config) -> MultiStepAgent:
         name="Researcher",
         description=RESEARCHER_DESCRIPTION,
     )
-
-
-@tool
-def research(question: str, state: Annotated[dict, InjectedState]) -> str:
-    """
-    Research a question about the current code base.
-    The output will be a detailed answer in markdown format.
-    """
-    notebook = state["notebook"]
-    researcher_agent = create_researcher_agent(get_global_config())
-    return researcher_agent.run(question, notebook=notebook)

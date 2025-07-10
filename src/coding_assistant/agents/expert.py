@@ -1,7 +1,7 @@
 import logging
 from typing import Annotated, List
 
-from smolagents import CodeAgent, MultiStepAgent, Tool, tool, InjectedState
+from smolagents import CodeAgent, InjectedState, MultiStepAgent, Tool, tool
 
 from coding_assistant.config import Config, get_global_config
 from coding_assistant.tools.file import read_only_file_tools
@@ -32,17 +32,3 @@ def create_expert_agent(config: Config) -> MultiStepAgent:
         description=EXPERT_DESCRIPTION,
     )
 
-
-@tool
-def do_expert_analysis(question: str, state: Annotated[dict, InjectedState]) -> str:
-    """
-    Let a software engineering expert analyze and answer a question.
-    Note that this has to be an exceptionally difficult question that requires expert level knowledge.
-    Additionally, all required context for answering the question has to be provided in the question.
-    """
-    if not get_global_config().expert_model_factory:
-        return "Expert is not available..."
-
-    notebook = state["notebook"]
-    expert_agent = create_expert_agent(get_global_config())
-    return expert_agent.run(question, notebook=notebook)
