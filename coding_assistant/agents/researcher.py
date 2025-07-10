@@ -63,9 +63,14 @@ def create_researcher_agent():
     return create_react_agent(model, tools, checkpointer=memory, prompt=researcher_PROMPT)
 
 
-def run_researcher_agent(question: str):
+def run_researcher_agent(question: str, ask_user_for_feedback=False):
     agent = create_researcher_agent()
-    return run_agent(agent, question, name="Researcher")
+    return run_agent(
+        agent,
+        question,
+        name="Researcher",
+        ask_user_for_feedback=ask_user_for_feedback,
+    )
 
 
 @tool

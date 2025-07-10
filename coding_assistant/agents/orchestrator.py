@@ -30,11 +30,11 @@ Also always give detailed explanation on what you are planning next.
 Take the following steps to complete a task:
 
 1. Use the research agent to gather information about the code base that are relevant to the task.
-2. Split the task into multiple smaller tasks. Use the information gathered by the research agent to do this.
+2. Split the task into multiple smaller implementation tasks.
 
 For each of the smaller tasks, do the following:
 
-1. Use the planning agent to create an implementation plan for each of the smaller tasks.
+1. Use the planning agent to create an implementation plan for each of the implementation tasks.
 2. Use the developer agent to implement the plan for each of the smaller tasks.
 3. Ask a research agent to verify that the changes are correct, according to the implementation plan and the output of the developer agent.
 
