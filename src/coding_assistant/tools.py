@@ -26,3 +26,14 @@ def get_filesystem_server(config: Config) -> MCPServer:
             ],
         }
     )
+
+
+def get_git_server(config: Config) -> MCPServer:
+    assert config.working_directory.exists()
+
+    return MCPServerStdio(
+        params={
+            "command": "uvx",
+            "args": ["mcp-server-git", "--repository", str(config.working_directory)],
+        }
+    )

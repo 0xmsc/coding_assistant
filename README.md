@@ -6,13 +6,19 @@ Coding Assistant is an advanced Python-based project designed to streamline and 
 
 ## Project Overview
 
-Coding Assistant utilizes a system of specialized agents (orchestrator, planner, and developer) working in tandem to automate coding processes. These agents, combined with a set of powerful tools, can assist in various tasks such as code generation, refactoring, and documentation.
+Coding Assistant utilizes a system of specialized agents (orchestrator, planner, developer, researcher, and expert) working in tandem to automate coding processes. These agents, combined with a set of powerful tools, can assist in various tasks such as code generation, refactoring, and documentation.
+
+## Recent Updates
+
+- Switched from langchain to smolagents for improved agent-based functionality.
+- Enhanced environment variable usage for easier configuration of different LLM backends (OpenAI and OpenRouter).
+- Updated references and dependencies to reflect the new agent architecture and usage patterns.
 
 ## Features
 
-- Multi-agent system (orchestrator, planner, developer) for intelligent task handling
+- Multi-agent system (orchestrator, planner, developer, researcher, expert) for intelligent task handling
 - Automated code generation and refactoring
-- Integrated file searching using ripgrep
+- Integrated file searching
 - Modular and extensible architecture
 - Strong typing with mypy for improved code quality
 - Comprehensive test suite using pytest
@@ -50,7 +56,7 @@ CODING_ASSISTANT_MODEL=gpt-4o
 CODING_ASSISTANT_REASONING_MODEL=o1
 ```
 
-Currently, the project only supports OpenAI and OpenRouter as LLM backends.
+Currently, the project supports OpenAI and OpenRouter as LLM backends.
 
 ## Usage Guide
 
@@ -60,7 +66,9 @@ Currently, the project only supports OpenAI and OpenRouter as LLM backends.
    ```
 2. Interact with the assistant through the command line interface.
 3. Example commands or operations:
-   - [Provide examples of how to use different features]
+   - Provide a task or question for the planner to break down.
+   - Let the developer agent implement or modify files accordingly.
+   - Use the researcher agent to gather information about new libraries or solutions.
 
 ## Project Structure
 
@@ -72,13 +80,12 @@ coding_assistant/
 │   ├── developer.py
 │   ├── expert.py
 │   ├── agents.py
-│   ├── researcher.py
-│   ├── prompt.py
-└── tools/
-    ├── user.py
-    ├── notebook.py
-    ├── git_tools.py
-    └── file.py
+│   └── researcher.py
+├── tools/
+│   ├── user.py
+│   ├── notebook.py
+│   ├── git_tools.py
+│   └── file.py
 ├── config/
 │   └── config.py
 ├── tests/
@@ -87,7 +94,7 @@ coding_assistant/
 └── __init__.py
 ```
 
-- `agents/`: Contains the different agent components (orchestrator, planner, developer, etc.)
+- `agents/`: Contains the different agent components (orchestrator, planner, developer, expert, researcher)
 - `tools/`: Includes utility tools and additional modules needed for various tasks
 - `config/`: Manages configuration settings for the project
 - `tests/`: Directory containing all the automated tests
@@ -96,7 +103,7 @@ coding_assistant/
 ## Technologies Used
 
 - Python: The primary programming language for the project
-- langchain: A library for agent-based applications
+- smolagents: A library for building agent-based applications
 - rich: A library for rich text and beautiful formatting in the terminal
 - pytest: Testing framework for writing and running automated tests
 - Git: Version control system for tracking changes and collaborating
@@ -120,5 +127,5 @@ For major changes, please open an issue first to discuss what you would like to 
 
 ## Acknowledgements
 
-- Thanks to all contributors who have helped shape Coding Assistant
-- Special thanks to the developers of ripgrep, langchain, rich, and pytest for their excellent tools
+- Thanks to all contributors who have helped shape Coding Assistant.
+- Special thanks to the developers of smolagents, rich, pytest, and other libraries for their excellent tools.

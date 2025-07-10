@@ -10,19 +10,19 @@ from typing import Any
 from agents import (
     Agent,
     AsyncOpenAI,
+    ItemHelpers,
     OpenAIChatCompletionsModel,
     RunContextWrapper,
     RunHooks,
     Runner,
     Tool,
-    ItemHelpers,
 )
 
 from coding_assistant.agents.expert import create_expert_agent
 from coding_assistant.agents.orchestrator import create_orchestrator_agent
 from coding_assistant.agents.researcher import create_researcher_agent
 from coding_assistant.config import Config
-from coding_assistant.tools import Tools, get_filesystem_server
+from coding_assistant.tools import Tools, get_filesystem_server, get_git_server
 
 
 def parse_args():
@@ -68,8 +68,19 @@ async def main():
     os.chdir(config.working_directory)
     print(f"Running in working directory: {config.working_directory}")
 
-    async with get_filesystem_server(config) as filesystem_server:
-        tools = Tools(mcp_servers=[filesystem_server])
+    async with (
+        get_filesystem_server(config) as filesystem_server,
+        get_git_server(config) as git_server,
+    ):
+        mcp_servers = [filesystem_server, git_server]
+
+        print("Available tools from MCP servers:")
+        for server in mcp_servers:
+            print(f"  - Server: {server.name}")
+            for tool in await server.list_tools():
+                print(f"    - {tool.name}: {tool.description}")
+
+        tools = Tools(mcp_servers=mcp_servers)
 
         if args.research:
             agent_to_run = create_researcher_agent(config, tools)
@@ -85,7 +96,6 @@ async def main():
             sys.exit(1)
 
         result = Runner.run_streamed(agent_to_run, initial_input)
-        print("=== Run starting ===")
 
         async for event in result.stream_events():
             if event.type == "raw_response_event":
