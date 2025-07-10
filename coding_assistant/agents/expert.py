@@ -1,18 +1,22 @@
 from coding_assistant.config import get_global_config
 from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 from coding_assistant.agents.agents import run_agent
+from coding_assistant.tools.file import read_only_file_tools
 
 EXPERT_PROMPT = """
-You are an expert agent. Your responsibility is to deal with exceptional tasks or queries...
+You are an expert agent. Your responsibility is to deal with exceptional tasks or queries.
+You are expected to have expert level knowledge in software engineering and related fields.
+
+If you deem the question to not require expert level knowledge, you should reject the task immediately and give a reason why.
+Additionally, reject the question if not all necessary context is provided.
 """.strip()
 
 
 def create_expert_tools():
-    # Based on hypothetical tools similar to other agents
     tools = []
-    # tools.extend(possibly_some_tools())
-    # tools.append(some_other_tool)
+    tools.extend(read_only_file_tools())
     return tools
 
 
@@ -22,14 +26,16 @@ def create_expert_agent():
     return create_react_agent(model, create_expert_tools(), checkpointer=memory, prompt=EXPERT_PROMPT)
 
 
-def is_exceptional(task: str) -> bool:
-    # Example logic for determining exceptional tasks
-    return "urgent" in task or "complex" in task
-
-
 def run_expert_agent(task: str):
-    if is_exceptional(task):
-        agent = create_expert_agent()
-        return run_agent(agent, task, name="Expert")
-    else:
-        return "Task is not considered exceptional for expert intervention."
+    agent = create_expert_agent()
+    return run_agent(agent, task, name="Expert")
+
+
+@tool
+def do_expert_analysis(question: str) -> str:
+    """
+    Let a software engineering expert anylze and answer a question.
+    Note that this has to be an exceptionally difficult question that requires expert level knowledge.
+    Additionally, all required context for answering the question has to be provided in the question.
+    """
+    return run_expert_agent(question)

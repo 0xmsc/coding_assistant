@@ -15,6 +15,7 @@ from langchain_community.tools import ShellTool
 
 from coding_assistant.agents.agents import run_agent
 from coding_assistant.agents.developer import develop
+from coding_assistant.agents.expert import do_expert_analysis
 from coding_assistant.agents.planner import plan
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
@@ -85,6 +86,7 @@ def create_orchestrator_tools():
     tools.append(research)
     tools.append(plan)
     tools.append(develop)
+    tools.append(do_expert_analysis)
     return tools
 
 

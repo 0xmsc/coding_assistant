@@ -14,6 +14,7 @@ from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
 
 from coding_assistant.agents.agents import run_agent
+from coding_assistant.agents.expert import do_expert_analysis
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
 from coding_assistant.tools.file import read_only_file_tools
@@ -52,6 +53,7 @@ def create_planner_tools():
     tools = []
     tools.extend(read_only_file_tools())
     tools.append(research)
+    tools.append(do_expert_analysis)
     return tools
 
 
