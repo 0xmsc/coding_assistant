@@ -1,0 +1,7 @@
+INSTRUCTIONS = """
+- Do not initialize a new git repository, unless your client explicitly requests it.
+""".strip()
+
+
+def get_instructions() -> str:
+    return INSTRUCTIONS
