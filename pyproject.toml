@@ -3,33 +3,15 @@ name = "coding-assistant"
 version = "0.1.0"
 description = "Coding Assistant is an advanced Python-based project designed to streamline and automate various coding tasks."
 readme = "README.md"
+authors = []
 requires-python = ">=3.12"
 dependencies = [
-    "langchain>=0.3.19",
-    "langchain-community>=0.3.17",
-    "langchain-experimental>=0.3.4",
-    "langchain-openai>=0.3.6",
-    "langgraph>=0.2.73",
-    "langgraph-checkpoint>=2.0.15",
-    "litellm>=1.61.13",
-    "rich>=13.9.4",
-    "transformers>=4.49.0",
+    "smolagents>=1.13.0",
 ]
 
-[dependency-groups]
-dev = [
-    "pytest>=8.3.4"
-]
+[project.scripts]
+coding-assistant = "coding_assistant:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[project.scripts]
-coding_assistant = "coding_assistant.__main__:main"
-
-[tool.black]
-line-length = 120
-
-[tool.ruff]
-line-length = 120
