@@ -12,7 +12,7 @@ TEST_MODEL = "gemini/gemini-2.5-flash"
 
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_ok(tmp_path):
-    config = Config(working_directory=tmp_path, model=TEST_MODEL, disable_user_feedback=True)
+    config = Config(model=TEST_MODEL, disable_user_feedback=True)
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
@@ -26,7 +26,7 @@ async def test_feedback_tool_execute_ok(tmp_path):
 
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_wrong(tmp_path):
-    config = Config(working_directory=tmp_path, model=TEST_MODEL, disable_user_feedback=True)
+    config = Config(model=TEST_MODEL, disable_user_feedback=True)
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
@@ -40,7 +40,7 @@ async def test_feedback_tool_execute_wrong(tmp_path):
 
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_no_result(tmp_path):
-    config = Config(working_directory=tmp_path, model=TEST_MODEL, disable_user_feedback=True)
+    config = Config(model=TEST_MODEL, disable_user_feedback=True)
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
@@ -54,7 +54,7 @@ async def test_feedback_tool_execute_no_result(tmp_path):
 
 @pytest.mark.asyncio
 async def test_feedback_tool_after_feedback(tmp_path):
-    config = Config(working_directory=tmp_path, model=TEST_MODEL, disable_user_feedback=True)
+    config = Config(model=TEST_MODEL, disable_user_feedback=True)
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
@@ -70,7 +70,6 @@ async def test_feedback_tool_after_feedback(tmp_path):
 @pytest.mark.asyncio
 async def test_orchestrator_tool(tmp_path):
     config = Config(
-        working_directory=tmp_path,
         model=TEST_MODEL,
         expert_model=TEST_MODEL,
         disable_user_feedback=True,
@@ -83,7 +82,6 @@ async def test_orchestrator_tool(tmp_path):
 @pytest.mark.asyncio
 async def test_orchestrator_tool_instructions(tmp_path):
     config = Config(
-        working_directory=tmp_path,
         model=TEST_MODEL,
         expert_model=TEST_MODEL,
         disable_user_feedback=True,
