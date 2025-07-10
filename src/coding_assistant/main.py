@@ -17,6 +17,7 @@ from rich.table import Table
 from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.agents.agents import OrchestratorTool
 from coding_assistant.config import Config
+from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools import Tools, get_all_mcp_servers
 
@@ -46,11 +47,14 @@ def load_config(args) -> Config:
     logger.info(f"Using model: {model_name}")
     logger.info(f"Using expert model: {expert_model_name}")
 
+    instructions = get_instructions()
+
     return Config(
         working_directory=Path(os.getcwd()),
         model=model_name,
         expert_model=expert_model_name,
         disable_feedback_agent=args.disable_feedback_agent,
+        instructions=instructions,
     )
 
 
