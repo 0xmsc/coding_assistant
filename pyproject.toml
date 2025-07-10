@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Coding Assistant is an advanced Python-based project designed to streamline and automate various coding tasks."
 readme = "README.md"
 authors = []
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "litellm",

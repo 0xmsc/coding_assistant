@@ -18,7 +18,11 @@ class Config:
     disable_feedback_agent: bool = False
     disable_user_feedback: bool = False
     instructions: str | None = None
-    sandbox_directories: List[Path] = field(default_factory=list)
+    sandbox_directories: List[Path] = field(
+        default_factory=lambda: [
+            "/tmp",
+        ]
+    )
 
 
 def get_config_dir() -> Path:
