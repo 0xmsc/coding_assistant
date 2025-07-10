@@ -22,20 +22,16 @@ class MCPServer:
 
 class Tool(ABC):
     @abstractmethod
-    def name(self) -> str:
-        ...
+    def name(self) -> str: ...
 
     @abstractmethod
-    def description(self) -> str:
-        ...
+    def description(self) -> str: ...
 
     @abstractmethod
-    def parameters(self) -> dict:
-        ...
+    def parameters(self) -> dict: ...
 
     @abstractmethod
-    async def execute(self, parameters) -> str:
-        ...
+    async def execute(self, parameters) -> str: ...
 
 
 def get_default_env():
@@ -72,23 +68,6 @@ async def get_filesystem_server(config: Config) -> AsyncGenerator[MCPServer, Non
         args=[
             "-y",
             "@modelcontextprotocol/server-filesystem",
-            str(config.working_directory),
-        ],
-        env=get_default_env(),
-    ) as server:
-        yield server
-
-
-@asynccontextmanager
-async def get_git_server(config: Config) -> AsyncGenerator[MCPServer, None]:
-    assert config.working_directory.exists()
-
-    async with _get_mcp_server(
-        name="git",
-        command="uvx",
-        args=[
-            "mcp-server-git",
-            "--repository",
             str(config.working_directory),
         ],
         env=get_default_env(),
@@ -135,7 +114,6 @@ async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer],
         servers: List[MCPServer] = []
 
         servers.append(await stack.enter_async_context(get_filesystem_server(config)))
-        servers.append(await stack.enter_async_context(get_git_server(config)))
         servers.append(await stack.enter_async_context(get_fetch_server()))
 
         if os.environ.get("TAVILY_API_KEY"):
