@@ -11,7 +11,8 @@ def _get_read_only_rule():
 
 import os
 
-def sandbox(working_directory: Path, venv_directory: Path = None):
+
+def sandbox(working_directory: Path, venv_directory: Path):
     rs = Ruleset()
 
     # System directories
@@ -34,7 +35,8 @@ def sandbox(working_directory: Path, venv_directory: Path = None):
     rs.allow(Path("~/.config").expanduser(), rules=_get_read_only_rule())
     rs.allow(Path("~/.cfg").expanduser(), rules=_get_read_only_rule())
 
-    # Allow the project Python virtual environment directory recursively (read/execute)
+    # Allow the project Python virtual environment directory
+    
     if venv_directory is not None and Path(venv_directory).exists():
         rs.allow(Path(venv_directory), rules=_get_read_only_rule())
     # else: do nothing (no VENV dir specified or found)
@@ -43,4 +45,3 @@ def sandbox(working_directory: Path, venv_directory: Path = None):
     rs.allow(working_directory, rules=FSAccess.all())
 
     rs.apply()
-
