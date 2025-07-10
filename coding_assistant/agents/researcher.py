@@ -43,6 +43,9 @@ Do not reject tasks easily. Always try to find a satisfactory answer.
 Only reject tasks if you can't find any relevant information in the code base.
 Before you reject a task, be really sure that the information is not there.
 
+In some cases, you might be asked to verify an implementation according to an implementation plan.
+Immediately reject the task, if you don't have the full implementation plan.
+
 If you are missing a tool that would be helpful for your research, please let the user know.
 """.strip()
 
