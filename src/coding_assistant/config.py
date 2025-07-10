@@ -10,4 +10,3 @@ class Config:
     expert_model: str | None = None
     disable_feedback_agent: bool = False
     disable_user_feedback: bool = False
-    instructions: str | None = None

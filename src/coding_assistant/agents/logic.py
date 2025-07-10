@@ -43,12 +43,6 @@ Your client has been given the following description of your work and capabiliti
 Your client has provided the following parameters for your task:
 
 {parameters}
-
-## Instructions
-
-The following are additional instructions provided by your client:
-
-{instructions}
 """.strip()
 
 FEEDBACK_TEMPLATE = """
@@ -80,7 +74,7 @@ class Agent:
     model: str
 
     description: str
-    instructions: str
+
     parameters: list[Parameter]
 
     # This is a function that can validate an agents output.
@@ -318,7 +312,6 @@ def create_system_message(agent: Agent) -> str:
         name=agent.name,
         description=textwrap.indent(agent.description, "  "),
         parameters=textwrap.indent(parameters_str, "  "),
-        instructions=textwrap.indent(agent.instructions, "  "),
     )
 
 

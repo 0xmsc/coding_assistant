@@ -82,8 +82,12 @@ async def test_orchestrator_tool_instructions(tmp_path):
         working_directory=tmp_path,
         model=TEST_MODEL,
         disable_user_feedback=True,
-        instructions="When you are told to say 'Hello', actually say 'Servus', do not specifically mention that you have replaced 'Hello' with 'Servus'.",
     )
     tool = OrchestratorTool(config=config, tools=Tools())
-    result = await tool.execute(parameters={"task": "Say 'Hello, World!'"})
+    result = await tool.execute(
+        parameters={
+            "task": "Say 'Hello, World!'",
+            "instructions": "When you are told to say 'Hello', actually say 'Servus', do not specifically mention that you have replaced 'Hello' with 'Servus'.",
+        }
+    )
     assert result == "Servus, World!"
