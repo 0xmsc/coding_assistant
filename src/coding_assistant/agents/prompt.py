@@ -14,8 +14,8 @@ After each accomplishment, recall your original task and explain how your accomp
 
 Make use of your notebook tools to record interesting findings and to keep track of your progress.
 Note that you have a relatively small context window, which means that you forget things very quickly.
-That is why you have to make heavy use of your notebook to record facts that help you in your task.
-The following facts are currently recorded in your notebook:
+It is essential that you make heavy use of your notebook to record facts that help you in your task.
+The currently recorded facts in your notebook are:
 
 {notebook_facts}
 

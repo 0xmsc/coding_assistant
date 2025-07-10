@@ -35,16 +35,37 @@ def ripgrep(pattern: str, case_insensitive: bool = False, max_output_lines=100) 
     return result
 
 
+@tool
+def fdfind(pattern: str, file_type: Optional[str] = None, max_output_lines: int = 100) -> str:
+    """
+    A tool for searching files using the fd command-line utility.
+    """
+    cmd = ["fd"]
+
+    if file_type:
+        cmd.extend(["--extension", file_type])
+
+    cmd.append(pattern)
+
+    result = subprocess.check_output(cmd, text=True)
+
+    if len(result.splitlines()) > max_output_lines:
+        return f"Result was more than {max_output_lines} lines"
+
+    return result
+
+
 def read_only_file_tools():
     working_directory = get_global_config().working_directory
     tools = []
     tools.extend(
         FileManagementToolkit(
             root_dir=str(working_directory),
-            selected_tools=["read_file", "list_directory", "file_search"],
+            selected_tools=["read_file", "list_directory"],
         ).get_tools()
     )
     tools.append(ripgrep)
+    tools.append(fdfind)
     return tools
 
 

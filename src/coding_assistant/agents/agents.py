@@ -28,8 +28,11 @@ class MyAgentState(AgentState):
 def _format_system_prompt_with_current_state(system_prompt, state):
     notebook_facts = ""
 
-    for key, fact in enumerate(state["notebook"]):
-        notebook_facts += f"Key: {key}\nFact: {fact}\n\n"
+    if not state["notebook"]:
+        notebook_facts = "Empty"
+    else:
+        for key, fact in enumerate(state["notebook"]):
+            notebook_facts += f"Key: {key}\nFact: {fact}\n\n"
 
     notebook_facts = notebook_facts.strip()
     return system_prompt.format(notebook_facts=notebook_facts, task=state["task"])
@@ -103,7 +106,7 @@ class InterruptibleSection(object):
             print(f" Interrupt requested two times, exiting...")
             sys.exit()
 
-        print(f" Interrupt requested, waiting for next change to interrupt agent...")
+        print(f" Interrupt requested, waiting for next chance to interrupt agent...")
         self.interrupt_requested = True
 
 
