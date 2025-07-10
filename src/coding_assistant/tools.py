@@ -9,6 +9,7 @@ from coding_assistant.config import Config
 @dataclass
 class Tools:
     file_tools: list[Tool]
+    sequential_thinking_tools: list[Tool]
 
 
 def get_file_tool_collection(config: Config) -> ToolCollection:
@@ -24,6 +25,21 @@ def get_file_tool_collection(config: Config) -> ToolCollection:
                 f"--mount=type=bind,src={config.working_directory},dst=/project",
                 "mcp/filesystem",
                 "/project",
+            ],
+        ),
+        trust_remote_code=True,
+    )
+
+
+def get_sequential_thinking_tool_collection() -> ToolCollection:
+    return ToolCollection.from_mcp(
+        StdioServerParameters(
+            command="docker",
+            args=[
+                "run",
+                "-i",
+                "--rm",
+                "mcp/sequentialthinking",
             ],
         ),
         trust_remote_code=True,

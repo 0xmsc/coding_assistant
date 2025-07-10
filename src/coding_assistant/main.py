@@ -8,7 +8,11 @@ from smolagents import OpenAIServerModel
 
 from coding_assistant.agents.orchestrator import create_orchestrator_agent
 from coding_assistant.config import Config
-from coding_assistant.tools import Tools, get_file_tool_collection
+from coding_assistant.tools import (
+    Tools,
+    get_file_tool_collection,
+    get_sequential_thinking_tool_collection,
+)
 
 
 def parse_args():
@@ -67,8 +71,14 @@ def main():
     config = create_config(args)
 
     # Start MCPs
-    with get_file_tool_collection(config) as file_tool_collection:
-        tools = Tools(file_tools=list(file_tool_collection.tools))
+    with (
+        get_file_tool_collection(config) as file_tool_collection,
+        get_sequential_thinking_tool_collection() as sequential_thinking_tool_collection,
+    ):
+        tools = Tools(
+            file_tools=list(file_tool_collection.tools),
+            sequential_thinking_tools=list(sequential_thinking_tool_collection.tools),
+        )
 
         if args.research:
             pass

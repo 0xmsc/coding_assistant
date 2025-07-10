@@ -5,7 +5,9 @@ from typing import Annotated, List
 
 from smolagents import CodeAgent, MultiStepAgent, Tool
 
+from coding_assistant.agents.researcher import create_researcher_agent
 from coding_assistant.config import Config
+from coding_assistant.tools import Tools
 
 logger = logging.getLogger(__name__)
 
@@ -18,15 +20,13 @@ The agent needs to know at which files it needs to look at, which functions are 
 """.strip()
 
 
-def create_planner_tools() -> List[Tool]:
-    tools = []
-    return tools
-
-
-def create_planner_agent(config: Config) -> MultiStepAgent:
+def create_planner_agent(config: Config, tools: Tools) -> MultiStepAgent:
     return CodeAgent(
         model=config.model_factory(),
-        tools=create_planner_tools(),
+        tools=[*tools.file_tools],
+        managed_agents=[
+            create_researcher_agent(config, tools),
+        ],
         name="Planner",
         description=PLANNER_DESCRIPTION,
     )
