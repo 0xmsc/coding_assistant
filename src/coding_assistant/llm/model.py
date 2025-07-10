@@ -1,6 +1,9 @@
+import logging
 import os
 
 import litellm
+
+logger = logging.getLogger(__name__)
 
 litellm.telemetry = False
 litellm.modify_params = True
@@ -20,6 +23,8 @@ async def complete(
     )
 
     if not completion["choices"]:
-        raise ValueError(f"No choices returned from the model: {completion}")
+        error = f"No choices returned from the model: {completion}"
+        logger.error(error)
+        raise RuntimeError(error)
 
     return completion["choices"][0]["message"]
