@@ -104,6 +104,21 @@ def setup_tracing():
     logger.info(f"Tracing successfully enabled on endpoint {TRACE_ENDPOINT}.")
 
 
+def get_additional_sandbox_directories(working_directory, venv_directory):
+    sandbox_directories = [
+        working_directory,
+        venv_directory,
+        Path("/tmp"),
+        get_cache_dir(),
+    ]
+
+    wsl_path = Path("/mnt/wsl")
+    if wsl_path.exists():
+        sandbox_directories.append(wsl_path)
+
+    return sandbox_directories
+
+
 async def _main():
     setup_tracing()
 
@@ -118,12 +133,7 @@ async def _main():
 
     if not args.disable_sandbox:
         logger.info(f"Sandboxing is enabled.")
-        sandbox_directories = [
-            config.working_directory,
-            venv_directory,
-            Path("/tmp"),
-            get_cache_dir(),
-        ]
+        sandbox_directories = get_additional_sandbox_directories(config.working_directory, venv_directory)
         sandbox(directories=sandbox_directories)
     else:
         logger.warning("Sandboxing is disabled")

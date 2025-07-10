@@ -1,6 +1,6 @@
-from abc import ABC, abstractmethod
-import os
 import logging
+import os
+from abc import ABC, abstractmethod
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,16 +22,27 @@ class MCPServer:
 
 class Tool(ABC):
     @abstractmethod
-    def name(self) -> str: ...
+    def name(self) -> str:
+        ...
 
     @abstractmethod
-    def description(self) -> str: ...
+    def description(self) -> str:
+        ...
 
     @abstractmethod
-    def parameters(self) -> dict: ...
+    def parameters(self) -> dict:
+        ...
 
     @abstractmethod
-    async def execute(self, parameters) -> str: ...
+    async def execute(self, parameters) -> str:
+        ...
+
+
+def get_default_env():
+    default_env = dict()
+    if "HTTPS_PROXY" in os.environ:
+        default_env["HTTPS_PROXY"] = os.environ["HTTPS_PROXY"]
+    return default_env
 
 
 @dataclass
@@ -63,6 +74,7 @@ async def get_filesystem_server(config: Config) -> AsyncGenerator[MCPServer, Non
             "@modelcontextprotocol/server-filesystem",
             str(config.working_directory),
         ],
+        env=get_default_env(),
     ) as server:
         yield server
 
@@ -79,6 +91,7 @@ async def get_git_server(config: Config) -> AsyncGenerator[MCPServer, None]:
             "--repository",
             str(config.working_directory),
         ],
+        env=get_default_env(),
     ) as server:
         yield server
 
@@ -91,6 +104,7 @@ async def get_fetch_server() -> AsyncGenerator[MCPServer, None]:
         args=[
             "mcp-server-fetch",
         ],
+        env=get_default_env(),
     ) as server:
         yield server
 
@@ -105,6 +119,7 @@ async def get_tavily_server() -> AsyncGenerator[MCPServer, None]:
             "tavily-mcp@0.2.1",
         ],
         env={
+            **get_default_env(),
             "TAVILY_API_KEY": os.environ["TAVILY_API_KEY"],
         },
     ) as server:
@@ -116,9 +131,9 @@ async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer],
     if not config.working_directory.exists():
         raise ValueError(f"Working directory {config.working_directory} does not exist.")
 
-    servers: List[MCPServer] = []
-
     async with AsyncExitStack() as stack:
+        servers: List[MCPServer] = []
+
         servers.append(await stack.enter_async_context(get_filesystem_server(config)))
         servers.append(await stack.enter_async_context(get_git_server(config)))
         servers.append(await stack.enter_async_context(get_fetch_server()))
