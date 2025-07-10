@@ -33,6 +33,7 @@ def parse_args():
     parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
     parser.add_argument("--print_mcp_tools", action="store_true", help="Print all available tools from MCP servers.")
     parser.add_argument("--disable-feedback-agent", action="store_true", default=False, help="Disable the feedback agent.")
+    parser.add_argument("--disable-sandbox", action="store_true", default=False, help="Disable sandboxing (not recommended).")
     return parser.parse_args()
 
 
@@ -107,7 +108,10 @@ async def _main():
 
     logger.info(f"Running in working directory: {config.working_directory}")
 
-    sandbox(config.working_directory)
+    if not getattr(args, "disable_sandbox", False):
+        sandbox(config.working_directory)
+    else:
+        logger.warning("Sandboxing is disabled via --disable-sandbox flag!")
 
     async with get_all_mcp_servers(config) as mcp_servers:
         tools = Tools(mcp_servers=mcp_servers)
