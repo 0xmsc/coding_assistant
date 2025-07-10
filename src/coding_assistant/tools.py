@@ -116,7 +116,7 @@ async def get_shell_server() -> AsyncGenerator[MCPServer, None]:
             "mcp-shell-server",
         ],
         env={
-            "ALLOW_COMMANDS": "ls,just,cat,exa,rg,fd,git",
+            "ALLOW_COMMANDS": "ls,just,cat,exa,rg,fd,git,python,uv",
         },
     ) as server:
         yield server
