@@ -5,7 +5,7 @@ import sys
 from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 
-from agents import OpenAIChatCompletionsModel, Runner
+from agents import AsyncOpenAI, OpenAIChatCompletionsModel, Runner
 
 from coding_assistant.agents.expert import create_expert_agent
 from coding_assistant.agents.orchestrator import create_orchestrator_agent
@@ -38,8 +38,10 @@ def load_config(args) -> Config:
     model_name = os.environ.get("CODING_ASSISTANT_MODEL", "o4-mini")
     expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "o3")
 
-    model_factory = lambda: OpenAiChatCompletionsModel(model_name)
-    expert_model_factory = lambda: OpenAiChatCompletionsModel(expert_model_name)
+    model_factory = lambda: OpenAIChatCompletionsModel(model_name, AsyncOpenAI())
+    expert_model_factory = lambda: OpenAIChatCompletionsModel(
+        expert_model_name, AsyncOpenAI()
+    )
 
     return Config(
         working_directory=args.working_directory,
@@ -57,20 +59,20 @@ def main():
     print(f"Running in working directory: {config.working_directory}")
 
     if args.research:
-        # agent_to_run = create_researcher_agent(config, tools)
+        agent_to_run = create_researcher_agent(config, tools)
         initial_input = args.research
     elif args.task:
         agent_to_run = create_orchestrator_agent(config, tools)
         initial_input = args.task
     elif args.expert:
-        # agent_to_run = create_expert_agent(config, tools)
+        agent_to_run = create_expert_agent(config, tools)
         initial_input = args.expert
     else:
         print("No task or question specified.")
         sys.exit(1)
 
     result = Runner.run_sync(agent_to_run, initial_input)
-    print(result)
+    print(result.final_output_as(str))
 
 
 if __name__ == "__main__":

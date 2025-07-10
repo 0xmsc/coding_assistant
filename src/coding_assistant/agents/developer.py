@@ -32,4 +32,5 @@ def create_developer_agent(config: Config, tools: Tools) -> Agent:
         instructions=DEVELOPER_INSTRUCTIONS,
         tools=[*tools.file_tools],
         handoffs=handoffs,
+        model=config.model_factory(),
     )

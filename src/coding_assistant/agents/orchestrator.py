@@ -32,6 +32,7 @@ def create_orchestrator_agent(config: Config, tools: Tools) -> Agent:
     return Agent(
         name="orchestrator",
         instructions=ORCHESTRATOR_INSTRUCTIONS,
-        tools=tools.sequential_thinking_tools,
+        mcp_servers=tools.mcp_servers,
         handoffs=handoffs,
+        model=config.expert_model_factory(),
     )

@@ -36,7 +36,7 @@ def get_tools(config: Config) -> Tools:
         )
     )
 
-    # TODO: Populate the tool lists properly based on requirements
-    # For now, they remain empty lists initialized by the dataclass factory.
+    for mcp in tools.mcp_servers:
+        mcp.connect()
 
     return tools

@@ -32,4 +32,6 @@ def create_planner_agent(config: Config, tools: Tools) -> Agent:
         name="planner",
         instructions=PLANNER_INSTRUCTIONS,
         handoffs=handoffs,
+        mcp_servers=tools.mcp_servers,
+        model=config.model_factory(),
     )

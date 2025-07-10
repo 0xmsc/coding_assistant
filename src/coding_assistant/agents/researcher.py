@@ -22,5 +22,6 @@ def create_researcher_agent(config: Config, tools: Tools) -> Agent:
     return Agent(
         name="researcher",
         instructions=RESEARCHER_INSTRUCTIONS,
-        tools=[*tools.file_tools],
+        mcp_servers=tools.mcp_servers,
+        model=config.model_factory(),
     )
