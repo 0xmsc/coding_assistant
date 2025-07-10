@@ -30,7 +30,7 @@ def run_expert_agent(task: str, notebook: dict, ask_user_for_feedback: bool):
     agent = create_agent(
         prompt=create_context_prunning_prompt_function(EXPERT_PROMPT, system_message_type="developer"),
         tools=create_expert_tools(),
-        model=get_global_config().reasoning_model_factory(),
+        model=get_global_config().expert_model_factory(),
     )
     return run_agent(agent, task, notebook=notebook, name="Expert", ask_user_for_feedback=ask_user_for_feedback)
 
@@ -42,7 +42,7 @@ def do_expert_analysis(question: str, state: Annotated[dict, InjectedState]) -> 
     Note that this has to be an exceptionally difficult question that requires expert level knowledge.
     Additionally, all required context for answering the question has to be provided in the question.
     """
-    if not get_global_config().reasoning_model_factory:
+    if not get_global_config().expert_model_factory:
         return "Expert is not available..."
 
     return run_expert_agent(question, notebook=state["notebook"], ask_user_for_feedback=True)

@@ -36,11 +36,11 @@ logger = logging.getLogger(__name__)
 def load_config(args: argparse.Namespace) -> Config:
     backend = os.environ.get("CODING_ASSISTANT_BACKEND", "OPENAI").upper()
     model = os.environ.get("CODING_ASSISTANT_MODEL", "o3-mini")
-    reasoning_model = os.environ.get("CODING_ASSISTANT_REASONING_MODEL", "o3-mini")
+    expert_model = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "o1")
 
     if backend == "OPENAI":
         model_factory = lambda: ChatOpenAI(model=model)
-        reasoning_model_factory = lambda: ChatOpenAI(model=reasoning_model)
+        expert_model_factory = lambda: ChatOpenAI(model=expert_model)
 
     elif backend == "OPENROUTER":
         base_url = "https://openrouter.ai/api/v1"
@@ -49,8 +49,8 @@ def load_config(args: argparse.Namespace) -> Config:
         model_factory = lambda: ChatLiteLLM(
             model=model, base_url=base_url, api_key=api_key, custom_llm_provider=custom_llm_provider
         )
-        reasoning_model_factory = lambda: ChatLiteLLM(
-            model=reasoning_model, base_url=base_url, api_key=api_key, custom_llm_provider=custom_llm_provider
+        expert_model_factory = lambda: ChatLiteLLM(
+            model=expert_model, base_url=base_url, api_key=api_key, custom_llm_provider=custom_llm_provider
         )
 
     else:
@@ -58,7 +58,7 @@ def load_config(args: argparse.Namespace) -> Config:
 
     config = get_global_config()
     config.model_factory = model_factory
-    config.reasoning_model_factory = reasoning_model_factory
+    config.expert_model_factory = expert_model_factory
     config.working_directory = args.working_directory
     return config
 

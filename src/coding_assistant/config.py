@@ -9,7 +9,7 @@ from langchain_core.language_models import BaseChatModel
 class Config:
     working_directory: Path = None
     model_factory: Callable[[], BaseChatModel] = None
-    reasoning_model_factory: Callable[[], BaseChatModel] = None
+    expert_model_factory: Callable[[], BaseChatModel] = None
 
 
 config: Config = Config()

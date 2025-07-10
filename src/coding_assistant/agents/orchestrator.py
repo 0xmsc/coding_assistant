@@ -77,7 +77,6 @@ logger = logging.getLogger(__name__)
 
 def create_orchestrator_tools():
     tools = []
-    tools.extend(read_only_file_tools())
     tools.append(ShellTool(ask_human_input=True))
     tools.append(ask_user)
     tools.append(research)
@@ -85,7 +84,6 @@ def create_orchestrator_tools():
     tools.append(develop)
     tools.append(do_expert_analysis)
     tools.extend(get_notebook_tools())
-    tools.extend(get_git_tools())
     return tools
 
 
@@ -93,6 +91,6 @@ def run_orchestrator_agent(task: str, notebook: dict, ask_user_for_feedback: boo
     agent = create_agent(
         prompt=create_context_prunning_prompt_function(ORCHESTRATOR_PROMPT),
         tools=create_orchestrator_tools(),
-        model=get_global_config().model_factory(),
+        model=get_global_config().expert_model_factory(),
     )
     return run_agent(agent, task, notebook=notebook, name="Orchestrator", ask_user_for_feedback=ask_user_for_feedback)
