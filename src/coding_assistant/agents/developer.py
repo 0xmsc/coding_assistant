@@ -14,6 +14,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from rich.console import Console
 from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
+from langchain_community.tools import ShellTool
 
 from coding_assistant.agents.agents import create_agent, run_agent, create_context_prunning_prompt_function
 from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
@@ -54,6 +55,7 @@ def create_developer_tools():
     tools.extend(all_file_tools())
     tools.append(research)
     tools.extend(get_notebook_tools())
+    tools.append(ShellTool(ask_human_input=True))
 
     return tools
 
