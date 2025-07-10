@@ -10,11 +10,20 @@ def _get_read_only_rule():
     return FSAccess.EXECUTE | FSAccess.READ_DIR | FSAccess.READ_FILE
 
 
+def _get_read_write_file_rule():
+    return FSAccess.WRITE_FILE | FSAccess.READ_FILE
+
+
+def _get_read_only_file_rule():
+    return FSAccess.READ_FILE
+
+
 def sandbox(directories: list[Path]):
     rs = Ruleset()
 
     # System directories
-    rs.allow(Path("/dev"), rules=FSAccess.all())
+    rs.allow(Path("/dev/null"), rules=_get_read_write_file_rule())
+    rs.allow(Path("/dev/urandom"), rules=_get_read_only_file_rule())
     rs.allow(Path("/usr"), rules=_get_read_only_rule())
     rs.allow(Path("/lib"), rules=_get_read_only_rule())
     rs.allow(Path("/etc"), rules=_get_read_only_rule())
@@ -37,7 +46,6 @@ def sandbox(directories: list[Path]):
     for directory in directories:
         if not directory.exists():
             raise FileNotFoundError(f"Directory {directory} does not exist.")
-
         rs.allow(directory, rules=FSAccess.all())
 
     rs.apply()
