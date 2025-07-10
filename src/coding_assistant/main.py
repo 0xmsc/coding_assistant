@@ -123,7 +123,7 @@ def setup_tracing():
 
 def main():
     setup_tracing()
-    asyncio.run(_main())
+    asyncio.run(_main(), debug=True)
 
 
 if __name__ == "__main__":
