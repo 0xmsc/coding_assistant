@@ -25,6 +25,13 @@ Coding Assistant is an experimental, Python-based multi-agent system designed to
 - **rich**: Rich text and console formatting
 - OpenTelemetry: Tracing and telemetry integration
 
+## Recent Updates
+
+- History Trimming: Introduced a MAX_HISTORY constant and implemented trim_history logic to prevent unbounded growth of conversation history by capping stored messages.
+- Error Handling Improvements: Replaced internal assert statements with explicit exception raising to provide clearer error messages and improve runtime stability.
+- Typo Fix in LLM Model: Corrected a typo in the LLM model usage by renaming mesages to messages for proper parameter handling.
+- Import Cleanup: Removed unused imports across modules to streamline code and reduce unnecessary dependencies.
+
 ## Installation
 
 1. Clone the repository:
