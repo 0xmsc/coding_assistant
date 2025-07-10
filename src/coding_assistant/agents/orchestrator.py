@@ -1,7 +1,9 @@
 import logging
-from typing import List
+from typing import Annotated
 
-from smolagents import CodeAgent, MultiStepAgent, Tool, ToolCallingAgent
+# Import necessary components from agents SDK
+from agents import Agent, Handoff, Tool, handoff
+from agents.extensions import handoff_filters
 
 from coding_assistant.agents.developer import create_developer_agent
 from coding_assistant.agents.planner import create_planner_agent
@@ -11,19 +13,25 @@ from coding_assistant.tools import Tools
 
 logger = logging.getLogger(__name__)
 
-ORCHESTRATOR_DESCRIPTION = "Coordinates other agents to complete tasks efficiently."
+ORCHESTRATOR_INSTRUCTIONS = """
+You are an Orchestrator agent. Your goal is to coordinate other specialized agents to efficiently complete complex tasks.
+""".strip()
 
 
-def create_orchestrator_agent(config: Config, tools: Tools) -> MultiStepAgent:
-    return CodeAgent(
-        model=config.expert_model_factory(),
-        tools=[*tools.sequential_thinking_tools],
-        managed_agents=[
-            create_planner_agent(config, tools),
-            create_researcher_agent(config, tools),
-            create_developer_agent(config, tools),
-        ],
+def create_orchestrator_agent(config: Config, tools: Tools) -> Agent:
+    planner_agent = create_planner_agent(config, tools)
+    researcher_agent = create_researcher_agent(config, tools)
+    developer_agent = create_developer_agent(config, tools)
+
+    handoffs = [
+        handoff(planner_agent, input_filter=handoff_filters.remove_all_tools),
+        handoff(researcher_agent, input_filter=handoff_filters.remove_all_tools),
+        handoff(developer_agent, input_filter=handoff_filters.remove_all_tools),
+    ]
+
+    return Agent(
         name="orchestrator",
-        description=ORCHESTRATOR_DESCRIPTION,
-        planning_interval=3,
+        instructions=ORCHESTRATOR_INSTRUCTIONS,
+        tools=tools.sequential_thinking_tools,
+        handoffs=handoffs,
     )

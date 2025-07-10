@@ -6,8 +6,7 @@ readme = "README.md"
 authors = []
 requires-python = ">=3.12"
 dependencies = [
-    "mcp>=1.6.0",
-    "smolagents[mcp,openai]>=1.13.0",
+    "openai-agents>=0.0.11",
 ]
 
 [project.scripts]

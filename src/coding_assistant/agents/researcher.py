@@ -1,25 +1,26 @@
 import logging
-from typing import Annotated, List
+from typing import Annotated
 
-from smolagents import CodeAgent, MultiStepAgent, Tool, ToolCallingAgent
+# Import necessary components from agents SDK
+from agents import Agent, Handoff, Tool, handoff
+from agents.extensions import handoff_filters
 
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools
 
 logger = logging.getLogger(__name__)
 
-RESEARCHER_DESCRIPTION = """
-Researcher agent, which is responsible for answering questions.
-These can be general questions or questions about the code base.
-This agent cannot implement changes to the code base.
-This agent can access the filesystem, the web, etc.
+RESEARCHER_INSTRUCTIONS = """
+You are a Researcher agent. Your responsibility is to answer questions accurately.
+These questions can be general knowledge questions or specific questions about the provided code base.
+You cannot implement changes to the code base.
+You have access to tools for filesystem operations, web searching, etc. Use them to find the necessary information.
 """.strip()
 
 
-def create_researcher_agent(config: Config, tools: Tools) -> MultiStepAgent:
-    return CodeAgent(
-        model=config.model_factory(),
-        tools=[*tools.file_tools],
+def create_researcher_agent(config: Config, tools: Tools) -> Agent:
+    return Agent(
         name="researcher",
-        description=RESEARCHER_DESCRIPTION,
+        instructions=RESEARCHER_INSTRUCTIONS,
+        tools=[*tools.file_tools],
     )

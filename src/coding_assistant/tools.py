@@ -1,46 +1,42 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List
 
-from mcp import StdioServerParameters
-from smolagents import Tool, ToolCollection
+# Import Tool
+from agents import Tool
+from agents.mcp import MCPServer, MCPServerStdio
 
 from coding_assistant.config import Config
 
 
 @dataclass
 class Tools:
-    file_tools: list[Tool]
-    sequential_thinking_tools: list[Tool]
+    mcp_servers: list[MCPServer] = field(default_factory=list)
+    file_tools: list[Tool] = field(default_factory=list)
+    read_only_file_tools: list[Tool] = field(default_factory=list)
+    notebook_tools: list[Tool] = field(default_factory=list)
+    sequential_thinking_tools: list[Tool] = field(default_factory=list)
 
 
-def get_file_tool_collection(config: Config) -> ToolCollection:
+def get_tools(config: Config) -> Tools:
     assert config.working_directory.exists()
 
-    return ToolCollection.from_mcp(
-        StdioServerParameters(
-            command="docker",
-            args=[
-                "run",
-                "-i",
-                "--rm",
-                f"--mount=type=bind,src={config.working_directory},dst=/project",
-                "mcp/filesystem",
-                "/project",
-            ],
-        ),
-        trust_remote_code=True,
+    tools = Tools()
+
+    tools.mcp_servers.append(
+        MCPServerStdio(
+            params={
+                "command": "npx",
+                "args": [
+                    "-y",
+                    "@modelcontextprotocol/server-filesystem",
+                    str(config.working_directory),
+                ],
+            }
+        )
     )
 
+    # TODO: Populate the tool lists properly based on requirements
+    # For now, they remain empty lists initialized by the dataclass factory.
 
-def get_sequential_thinking_tool_collection() -> ToolCollection:
-    return ToolCollection.from_mcp(
-        StdioServerParameters(
-            command="docker",
-            args=[
-                "run",
-                "-i",
-                "--rm",
-                "mcp/sequentialthinking",
-            ],
-        ),
-        trust_remote_code=True,
-    )
+    return tools

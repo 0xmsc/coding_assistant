@@ -1,31 +1,26 @@
 import logging
-from typing import Annotated, List
+from typing import Annotated
 
-from smolagents import CodeAgent, MultiStepAgent, Tool, tool
+# Import necessary components from agents SDK
+from agents import Agent, Handoff, Tool, handoff
+from agents.extensions import handoff_filters
 
-from coding_assistant.config import Config, get_global_config
-from coding_assistant.tools.file import read_only_file_tools
-from coding_assistant.tools.notebook import get_notebook_tools
+from coding_assistant.config import Config
+from coding_assistant.tools import Tools
 
 logger = logging.getLogger(__name__)
 
-EXPERT_DESCRIPTION = """
-Expert agent, which is responsible for dealing with exceptional tasks or queries.
-The agent is expected to have expert level knowledge in software engineering and related fields.
+EXPERT_INSTRUCTIONS = """
+You are an Expert agent. Handle exceptional tasks or queries requiring deep expertise.
+Leverage your expert-level knowledge in software engineering and related fields to provide insightful analysis, solutions, or advice.
+Use the provided tools to gather necessary information from the file system or notebook context.
 """.strip()
 
 
-def create_expert_tools() -> List[Tool]:
-    tools = []
-    tools.extend(read_only_file_tools())
-    tools.extend(get_notebook_tools())
-    return tools
-
-
-def create_expert_agent(config: Config) -> MultiStepAgent:
-    return CodeAgent(
-        model=config.expert_model_factory(),
-        tools=create_expert_tools(),
+def create_expert_agent(config: Config, tools: Tools) -> Agent:
+    return Agent(
         name="expert",
-        description=EXPERT_DESCRIPTION,
+        instructions=EXPERT_INSTRUCTIONS,
+        mcp_servers=tools.mcp_servers,
+        model=config.expert_model_factory(),
     )

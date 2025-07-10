@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
-
-from smolagents import Model
+from typing import Any # Placeholder, adjust if Model type is known
+Model = Any # Placeholder
 
 
 @dataclass

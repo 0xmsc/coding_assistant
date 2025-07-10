@@ -1,18 +1,17 @@
 import argparse
 import logging
 import os
+import sys
 from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 
-from smolagents import OpenAIServerModel
+from agents import OpenAIChatCompletionsModel, Runner
 
+from coding_assistant.agents.expert import create_expert_agent
 from coding_assistant.agents.orchestrator import create_orchestrator_agent
+from coding_assistant.agents.researcher import create_researcher_agent
 from coding_assistant.config import Config
-from coding_assistant.tools import (
-    Tools,
-    get_file_tool_collection,
-    get_sequential_thinking_tool_collection,
-)
+from coding_assistant.tools import Tools, get_tools
 
 
 def parse_args():
@@ -20,8 +19,8 @@ def parse_args():
     parser.add_argument(
         "--research", type=str, help="Question to ask the research agent."
     )
-    parser.add_argument("--task", type=str, help="Question to ask the research agent.")
-    parser.add_argument("--expert", type=str, help="Question to ask the expert agent.")
+    parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
+    parser.add_argument("--expert", type=str, help="Task for the expert agent.")
     parser.add_argument(
         "-w",
         "--working_directory",
@@ -29,65 +28,49 @@ def parse_args():
         help="The working directory to use.",
         default=Path(os.getcwd()),
     )
-    parser.add_argument(
-        "--user-feedback",
-        default=True,
-        action=BooleanOptionalAction,
-        help="Whether to ask for user feedback.",
-    )
-    parser.add_argument(
-        "--default-model",
-        default="o3-mini",
-        type=str,
-        help="Default model to use.",
-    )
-    parser.add_argument(
-        "--expert-model",
-        default="o1",
-        type=str,
-        help="Expert model to use.",
-    )
     return parser.parse_args()
 
 
 logger = logging.getLogger(__name__)
 
 
-def create_config(args: argparse.Namespace) -> Config:
+def load_config(args) -> Config:
+    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "o4-mini")
+    expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "o3")
+
+    model_factory = lambda: OpenAiChatCompletionsModel(model_name)
+    expert_model_factory = lambda: OpenAiChatCompletionsModel(expert_model_name)
+
     return Config(
         working_directory=args.working_directory,
-        model_factory=lambda: OpenAIServerModel(model_id=args.default_model),
-        expert_model_factory=lambda: OpenAIServerModel(model_id=args.expert_model),
+        model_factory=model_factory,
+        expert_model_factory=expert_model_factory,
     )
 
 
 def main():
-    logging.basicConfig(
-        format="%(name)s:%(filename)s:%(lineno)d:%(funcName)s:%(levelname)s: %(message)s"
-    )
-    logging.getLogger("coding_assistant").setLevel(logging.DEBUG)
-
     args = parse_args()
-    config = create_config(args)
+    config = load_config(args)
+    tools = get_tools(config)
 
-    # Start MCPs
-    with (
-        get_file_tool_collection(config) as file_tool_collection,
-        get_sequential_thinking_tool_collection() as sequential_thinking_tool_collection,
-    ):
-        tools = Tools(
-            file_tools=list(file_tool_collection.tools),
-            sequential_thinking_tools=list(sequential_thinking_tool_collection.tools),
-        )
+    os.chdir(config.working_directory)
+    print(f"Running in working directory: {config.working_directory}")
 
-        if args.research:
-            pass
-        elif args.task:
-            create_orchestrator_agent(config, tools).run(args.task)
-        elif args.expert:
-            pass
-        else:
-            print("No task specified.")
+    if args.research:
+        # agent_to_run = create_researcher_agent(config, tools)
+        initial_input = args.research
+    elif args.task:
+        agent_to_run = create_orchestrator_agent(config, tools)
+        initial_input = args.task
+    elif args.expert:
+        # agent_to_run = create_expert_agent(config, tools)
+        initial_input = args.expert
+    else:
+        print("No task or question specified.")
+        sys.exit(1)
+
+    result = Runner.run_sync(agent_to_run, initial_input)
+    print(result)
 
 
 if __name__ == "__main__":
