@@ -44,7 +44,7 @@ async def _get_feedback(
         agent_feedback = "Ok"
 
     if ask_user_for_feedback:
-        feedback = Prompt.ask(f"Feedback for {agent.name}:", default=agent_feedback)
+        feedback = Prompt.ask(f"Feedback for {agent.name}", default=agent_feedback)
     else:
         feedback = agent_feedback
 

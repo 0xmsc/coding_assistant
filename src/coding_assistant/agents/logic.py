@@ -1,9 +1,13 @@
 from dataclasses import dataclass
 from dataclasses import field
 import dataclasses
+import functools
 import json
 import logging
+import signal
+import sys
 import textwrap
+import threading
 from typing import Callable, Optional
 
 from rich.prompt import Prompt
@@ -62,15 +66,15 @@ class Agent:
     description: str
     parameters: list[Parameter]
 
+    # This is a function that can validate an agents output.
+    # If it returns a string, it will be given to the agent as feedback.
+    feedback_function: Callable
+
     tools: list[Tool] = field(default_factory=list)
     mcp_servers: list = field(default_factory=list)
 
     history: list = field(default_factory=list)
     result: str | None = None
-
-    # This is a function that can validate an agents output.
-    # If it returns a string, it will be given to the agent as feedback.
-    feedback_function: Callable = None
 
 
 class FinishTaskTool(Tool):
@@ -324,6 +328,32 @@ async def do_single_step(agent: Agent):
     return message
 
 
+class InterruptibleSection(object):
+    interrupt_requested: bool
+
+    def __enter__(self):
+        self.interrupt_requested = False
+        if threading.current_thread() is threading.main_thread():
+            self.original_handler = signal.getsignal(signal.SIGINT)
+            signal.signal(signal.SIGINT, functools.partial(self._interrupt_handler))
+        else:
+            self.original_handler = None
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.original_handler:
+            signal.signal(signal.SIGINT, self.original_handler)
+
+    def _interrupt_handler(self, signum, frame):
+        if self.interrupt_requested:
+            # The user really seems to want to quit :O
+            print(f" Interrupt requested two times, exiting...")
+            sys.exit()
+
+        print(f" Interrupt requested, waiting for next chance to interrupt agent...")
+        self.interrupt_requested = True
+
+
 @tracer.start_as_current_span("run_agent_loop")
 async def run_agent_loop(
     agent: Agent,
@@ -334,9 +364,21 @@ async def run_agent_loop(
     trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
 
     while True:
-        # Run the agent until it finishes
-        while not agent.result:
-            await do_single_step(agent)
+        with InterruptibleSection() as interruptible_section:
+            # Run the agent until it finishes
+            while not agent.result:
+                await do_single_step(agent)
+
+                # Here we can inject feedback into the agent.
+                if interruptible_section.interrupt_requested and not agent.result:
+                    feedback = Prompt.ask("Feedback")
+                    agent.history.append(
+                        {
+                            "role": "user",
+                            "content": feedback,
+                        }
+                    )
+                    interruptible_section.interrupt_requested = False
 
         trace.get_current_span().set_attribute("agent.result", agent.result)
 
