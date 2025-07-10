@@ -32,17 +32,13 @@ You are an agent named `{name}`.
 
 Your client has been given the following description of your work and capabilities: 
 
-```
 {description}
-```
 
 ## Parameters
 
 Your client has provided the following parameters for your task:
 
-```
 {parameters}
-```
 
 ## Result
 
@@ -112,7 +108,13 @@ class FeedbackTool(Tool):
             model=self._config.model,
         )
 
-        return await run_agent_loop(feedback_agent, self._config)
+        return await run_agent_loop(
+            feedback_agent,
+            self._config,
+            ask_user_for_feedback=False,
+            # We cannot ask the feedback agent for feedback, as we will end up in an infinite loop.
+            ask_agent_for_feedback=False,
+        )
 
 
 class FinishTaskTool(Tool):
@@ -120,7 +122,7 @@ class FinishTaskTool(Tool):
         return "finish_task"
 
     def description(self) -> str:
-        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop. The final result or summary of the task should be provided in the 'result' parameter, as this is the only output accessible to the client."
+        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop. The final result or summary of the task should be provided in the 'result' parameter, as this is the only output accessible to the client. Your client should understand what you've done while working on the task by only looking at the `result` parameter."
 
     def parameters(self) -> dict:
         return {
@@ -311,8 +313,8 @@ def create_system_message(agent: Agent) -> str:
 
     return SYSTEM_PROMPT_TEMPLATE.format(
         name=agent.name,
-        description=agent.description,
-        parameters=parameters_str,
+        description=textwrap.indent(agent.description, "  "),
+        parameters=textwrap.indent(parameters_str, "  "),
     )
 
 
@@ -377,14 +379,16 @@ async def do_single_step(agent: Agent):
 
 
 async def get_feedback(
-    agent: Agent, config: Config, ask_for_feedback: bool
+    agent: Agent,
+    config: Config,
+    ask_user_for_feedback: bool,
+    ask_agent_for_feedback: bool,
 ) -> str | None:
-    # Import FeedbackTool locally to avoid circular dependency at module level
-    from coding_assistant.agents.feedback_tool import FeedbackTool
+    feedback = None
 
-    if ask_for_feedback:
+    if ask_user_for_feedback:
         feedback = Prompt.ask("Feedback:", default="Ok")
-    else:
+    elif ask_agent_for_feedback:
         # Spawn a feedback agent
         feedback_tool = FeedbackTool(config)
         feedback = await feedback_tool.execute(
@@ -395,14 +399,21 @@ async def get_feedback(
             }
         )
 
-    if feedback == "Ok":
+    if not feedback:
+        return None
+    elif feedback == "Ok":
         return None
     else:
         return feedback
 
 
 @tracer.start_as_current_span("run_agent_loop")
-async def run_agent_loop(agent: Agent, config: Config, ask_for_feedback: bool = False):
+async def run_agent_loop(
+    agent: Agent,
+    config: Config,
+    ask_user_for_feedback: bool = False,
+    ask_agent_for_feedback: bool = True,
+) -> str:
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
     parameters_json = json.dumps([dataclasses.asdict(p) for p in agent.parameters])
@@ -425,7 +436,12 @@ async def run_agent_loop(agent: Agent, config: Config, ask_for_feedback: bool = 
             ),
         )
 
-        if feedback := await get_feedback(agent, config, ask_for_feedback):
+        if feedback := await get_feedback(
+            agent,
+            config,
+            ask_user_for_feedback=ask_user_for_feedback,
+            ask_agent_for_feedback=ask_agent_for_feedback,
+        ):
             print(
                 Panel(
                     feedback,

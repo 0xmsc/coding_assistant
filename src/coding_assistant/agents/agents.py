@@ -57,7 +57,7 @@ class OrchestratorTool(Tool):
             model=self._config.model,
         )
 
-        return await run_agent_loop(orchestrator_agent, ask_for_feedback=True)
+        return await run_agent_loop(orchestrator_agent, self._config)
 
 
 class ResearchTool(Tool):
@@ -100,7 +100,7 @@ class ResearchTool(Tool):
             model=self._config.model,
         )
 
-        return await run_agent_loop(research_agent)
+        return await run_agent_loop(research_agent, self._config)
 
 
 class DevelopTool(Tool):
@@ -139,7 +139,7 @@ class DevelopTool(Tool):
             model=self._config.model,
         )
 
-        return await run_agent_loop(developer_agent)
+        return await run_agent_loop(developer_agent, self._config)
 
 
 class AskUserTool(Tool):
