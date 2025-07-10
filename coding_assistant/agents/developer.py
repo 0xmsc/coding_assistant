@@ -17,19 +17,15 @@ from coding_assistant.agents.agents import run_agent
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
 
-PLANNER_PROMPT = """
-You are an planner agent. Your responsibility is to plan an implementation task.
+DEVELOPER_PROMPT = """
+You are an implementation agent. Your responsibility is to carry out a given implementation plan.
 
-The task should be sufficiently small for you to be able to plan it.
-If you think the task is too big, reject the task and give a reason why.
+Note that it is not your responsibility to plan the implementation.
+It is also not your responsibility to make decisions about the software architecture.
 
-Your responsibility is only to plan the implementation of a task. 
-You are not responsible for the implementation itself.
-Use the tools at your disposal.
-If you need more information, use the research tool.
-Your output should be very detailed description in markdown on how to implement the given task.
-It should be suitable for a junior engineer to implement the task.
-That means that you should explain every step that is needed, but not necessarily every line that needs to be changed.
+Note that until now your job is a no-op.
+That means that you do not have the ability to change the code base.
+Still, you will report back what you would have done if you could have changed the code base.
 
 If you are missing an agent or a tool that would be helpful for your task, please let the user know.
 """.strip()
@@ -38,7 +34,7 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
-def create_planner_tools():
+def create_implementation_tools():
     tools = []
 
     working_directory = get_global_config().working_directory
@@ -54,22 +50,23 @@ def create_planner_tools():
     return tools
 
 
-def create_planner_agent():
+def create_implementation_agent():
     memory = MemorySaver()
     model = ChatOpenAI(model_name="gpt-4o")
-    tools = create_planner_tools()
-    return create_react_agent(model, tools, checkpointer=memory, prompt=PLANNER_PROMPT)
+    tools = create_implementation_tools()
+    return create_react_agent(model, tools, checkpointer=memory, prompt=DEVELOPER_PROMPT)
 
 
-def run_planner_agent(task: str):
-    agent = create_planner_agent()
-    return run_agent(agent, task, name="planner")
+def run_implementation_agent(plan: str):
+    agent = create_implementation_agent()
+    return run_agent(agent, plan, name="implementation")
 
 
 @tool
-def plan(task: str) -> str:
+def implement(plan: str) -> str:
     """
-    Plan an implementation.
-    The output will be a detailed implementation plan in markdown format.
+    Implement a plan.
+    Plan needs to be a detailed implementation plan in markdown format.
+    The output will be a detailed description of what has been implemented in markdown format.
     """
-    return run_planner_agent(task)
+    return run_implementation_agent(plan)

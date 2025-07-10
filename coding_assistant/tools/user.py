@@ -2,7 +2,7 @@ from langchain_core.tools import tool
 from typing import Annotated
 
 from rich.prompt import Prompt
-from coding_assistant.agents.researcher import run_research_agent
+from coding_assistant.agents.researcher import run_researcher_agent
 
 
 @tool

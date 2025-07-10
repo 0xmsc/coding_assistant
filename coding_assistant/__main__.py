@@ -4,7 +4,7 @@ from pathlib import Path
 from argparse import ArgumentParser
 
 from coding_assistant.agents.orchestrator import run_orchestrator_agent
-from coding_assistant.agents.researcher import run_research_agent
+from coding_assistant.agents.researcher import run_researcher_agent
 from coding_assistant.config import get_global_config
 
 
@@ -27,7 +27,7 @@ def main():
     args = parse_args()
 
     if args.research:
-        run_research_agent(
+        run_researcher_agent(
             question=args.research,
         )
     if args.task:

@@ -13,8 +13,9 @@ from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
 
 from coding_assistant.agents.agents import run_agent
+from coding_assistant.agents.planner import plan
+from coding_assistant.agents.researcher import research
 from coding_assistant.logging import print_agent_progress
-from coding_assistant.tools.research import research
 from coding_assistant.tools.user import ask_user
 
 ORCHESTRATOR_PROMPT = """
@@ -34,6 +35,10 @@ This might be necessary if you encounter new information that changes your under
 It might also be necessary if the output of one of the agents is not satisfactory.
 It is your responsibility to make sure that the task is completed.
 
+Note that the planning agent is not a software architect.
+Therefore, it should already be clear how to implement the task on a high level before handing it to the planning agent.
+The planning agent can come up with a detailed plan on how to implement the task, like what functions to create, what classes to use, etc.
+
 If something is unclear, you can ask the user for clarification.
 This should be exceptional and not the norm.
 Never stop working on the task to ask for clarification. Only use the ask_user tool when you're stuck.
@@ -50,6 +55,7 @@ def create_orchestrator_tools():
     tools = []
     tools.append(ask_user)
     tools.append(research)
+    tools.append(plan)
     return tools
 
 

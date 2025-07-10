@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_community.agent_toolkits import FileManagementToolkit
 from langchain_community.tools.tavily_search import TavilySearchResults
@@ -67,4 +68,13 @@ def create_researcher_agent():
 
 def run_researcher_agent(question: str):
     agent = create_researcher_agent()
-    return run_agent(agent, question, name="researcherer")
+    return run_agent(agent, question, name="Researcher")
+
+
+@tool
+def research(question: str) -> str:
+    """
+    Research a question about the current code base.
+    The output will be a detailed answer in markdown format.
+    """
+    return run_researcher_agent(question)
