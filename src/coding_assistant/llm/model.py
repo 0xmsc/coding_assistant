@@ -3,12 +3,12 @@ import litellm
 
 
 def complete(
-    mesages: list[dict],
+    messages: list[dict],
     tools: list = [],
     model: str = "o4-mini",
 ) -> dict:
     return litellm.completion(
-        messages=mesages,
+        messages=messages,
         tools=tools,
         model=model,
     )
