@@ -17,7 +17,7 @@ async def test_feedback_tool_execute_ok(tmp_path):
         parameters={
             "description": "The agent will only give correct answers",
             "parameters": "What is 2 + 2?",
-            "output": "4",
+            "result": "4",
         }
     )
     assert result == "Ok"
@@ -31,7 +31,7 @@ async def test_feedback_tool_execute_wrong(tmp_path):
         parameters={
             "description": "The agent will only give correct answers",
             "parameters": "What is 2 + 2?",
-            "output": "5",
+            "result": "5",
         }
     )
     assert result != "Ok"
@@ -45,7 +45,24 @@ async def test_feedback_tool_execute_no_result(tmp_path):
         parameters={
             "description": "The agent will only give correct answers",
             "parameters": "What is 2 + 2?",
-            "output": "I calculated the result of 2 + 2 and gave it to the user.",
+            "result": "I calculated the result of 2 + 2 and gave it to the user.",
+        }
+    )
+    assert result != "Ok"
+
+
+@pytest.mark.asyncio
+async def test_feedback_tool_after_feedback(tmp_path):
+    config = Config(working_directory=tmp_path, model=TEST_MODEL, disable_user_feedback=True)
+    tool = FeedbackTool(config=config, tools=Tools())
+    result = await tool.execute(
+        parameters={
+            "description": "The agent will only give correct answers",
+            "parameters": "What is 2 + 2?",
+            "result": "5",
+            "feedback": [
+                "I made a mistake while asking the question, I actually wanted to ask 'What is 2 + 3?'",
+            ],
         }
     )
     assert result != "Ok"
