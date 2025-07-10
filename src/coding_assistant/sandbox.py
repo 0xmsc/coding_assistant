@@ -25,7 +25,7 @@ def sandbox(directories: list[Path]):
 
     # User directories
     rs.allow(Path("~/.npm").expanduser(), rules=FSAccess.all())
-    rs.allow(Path("~/.cache").expanduser(), rules=FSAccess.all())
+    rs.allow(Path("~/.cache/uv").expanduser(), rules=FSAccess.all())
     rs.allow(Path("~/.local/share/uv").expanduser(), rules=FSAccess.all())
 
     rs.allow(Path("~/.cargo").expanduser(), rules=_get_read_only_rule())
