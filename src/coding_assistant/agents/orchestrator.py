@@ -13,7 +13,7 @@ from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_community.tools import ShellTool
 
-from coding_assistant.agents.agents import run_agent
+from coding_assistant.agents.agents import create_context_prunning_prompt_function, run_agent
 from coding_assistant.agents.developer import develop
 from coding_assistant.agents.expert import do_expert_analysis
 from coding_assistant.agents.planner import plan
@@ -93,7 +93,12 @@ def create_orchestrator_agent():
     memory = MemorySaver()
     model = get_global_config().model_factory()
     tools = create_orchestrator_tools()
-    return create_react_agent(model, tools, checkpointer=memory, prompt=ORCHESTRATOR_PROMPT)
+    return create_react_agent(
+        model,
+        tools,
+        checkpointer=memory,
+        prompt=create_context_prunning_prompt_function(ORCHESTRATOR_PROMPT),
+    )
 
 
 def run_orchestrator_agent(task: str, ask_user_for_feedback: bool):

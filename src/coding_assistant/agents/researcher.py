@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
 
-from coding_assistant.agents.agents import run_agent
+from coding_assistant.agents.agents import create_context_prunning_prompt_function, run_agent
 from coding_assistant.agents.expert import do_expert_analysis
 from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.config import get_global_config
@@ -64,7 +64,12 @@ def create_researcher_agent():
     memory = MemorySaver()
     model = get_global_config().model_factory()
     tools = create_researcher_tools()
-    return create_react_agent(model, tools, checkpointer=memory, prompt=RESEARCHER_PROMPT)
+    return create_react_agent(
+        model,
+        tools,
+        checkpointer=memory,
+        prompt=create_context_prunning_prompt_function(RESEARCHER_PROMPT),
+    )
 
 
 def run_researcher_agent(question: str, ask_user_for_feedback=False):

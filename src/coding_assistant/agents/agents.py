@@ -1,12 +1,34 @@
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.prompt import Prompt
+from pprint import pformat
 
+from coding_assistant.config import get_global_config
 from coding_assistant.logging import print_agent_progress
 
 console = Console()
+
+
+def create_context_prunning_prompt_function(system_prompt: str):
+    def context_prunning_prompt(state):
+        current_messages = [SystemMessage(content=system_prompt)] + state["messages"]
+
+        current_messages = trim_messages(
+            current_messages,
+            strategy="last",
+            token_counter=get_global_config().model_factory(),
+            max_tokens=50_000,
+            start_on="human",
+            end_on=("human", "tool"),
+            include_system=True,
+            allow_partial=False,
+        )
+
+        return current_messages
+
+    return context_prunning_prompt
 
 
 def run_agent(agent, task, name, ask_user_for_feedback=False):
