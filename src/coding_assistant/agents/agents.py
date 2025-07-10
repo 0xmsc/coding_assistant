@@ -40,7 +40,7 @@ def create_researcher_agent(question: str, config: Config, tools: Tools) -> Agen
 def create_developer_agent(task: str, config: Config, tools: Tools) -> Agent:
     return Agent(
         name="developer",
-        instructions="You are a developer agent. Your goal is to write code according to an implementation_plan given to you.",
+        instructions="You are a developer agent. Your goal is to write code according to an implementation plan given to you.",
         mcp_servers=tools.mcp_servers,
         tools=[],
         model=config.model,

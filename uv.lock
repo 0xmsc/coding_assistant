@@ -170,6 +170,7 @@ dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
+    { name = "requests" },
     { name = "rich" },
 ]
 
@@ -180,6 +181,7 @@ requires-dist = [
     { name = "opentelemetry-api", specifier = ">=1.32.1" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.32.1" },
     { name = "opentelemetry-sdk", specifier = ">=1.32.1" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "rich", specifier = ">=14.0.0" },
 ]
 

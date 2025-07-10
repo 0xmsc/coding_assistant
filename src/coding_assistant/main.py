@@ -6,6 +6,7 @@ import sys
 from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 from typing import Any
+import requests
 
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry import trace
@@ -23,7 +24,7 @@ logging.basicConfig(level=logging.WARNING)
 
 logger = logging.getLogger("coding_assistant")
 tracer = trace.get_tracer(__name__)
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.INFO)
 
 
 def parse_args():
@@ -84,11 +85,21 @@ async def _main():
 
 def setup_tracing():
     TRACE_ENDPOINT = "http://localhost:4318/v1/traces"
+
+    try:
+        requests.head(TRACE_ENDPOINT, timeout=0.2)
+    except requests.RequestException as e:
+        logger.info(
+            f"Tracing endpoint {TRACE_ENDPOINT} not reachable. Tracing will be disabled. Error: {e}"
+        )
+        return
+
     resource = Resource.create(attributes={SERVICE_NAME: "coding_assistant"})
     tracerProvider = TracerProvider(resource=resource)
     processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=TRACE_ENDPOINT))
     tracerProvider.add_span_processor(processor)
     trace.set_tracer_provider(tracerProvider)
+    logger.info(f"Tracing successfully enabled on endpoint {TRACE_ENDPOINT}.")
 
 
 def main():

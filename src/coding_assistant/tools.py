@@ -37,44 +37,49 @@ class Tools:
 
 
 @asynccontextmanager
+async def _get_mcp_server(
+    name: str, command: str, args: List[str], config: Config
+) -> AsyncGenerator[MCPServer, None]:
+    params = StdioServerParameters(
+        command=command,
+        args=args,
+    )
+
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            yield MCPServer(name=name, session=session)
+
+
+@asynccontextmanager
 async def get_filesystem_server(config: Config) -> AsyncGenerator[MCPServer, None]:
     assert config.working_directory.exists()
 
-    params = StdioServerParameters(
+    async with _get_mcp_server(
+        name="filesystem",
         command="npx",
         args=[
             "-y",
             "@modelcontextprotocol/server-filesystem",
             str(config.working_directory),
         ],
-    )
-
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield MCPServer(
-                name="filesystem",
-                session=session,
-            )
+        config=config,
+    ) as server:
+        yield server
 
 
 @asynccontextmanager
 async def get_git_server(config: Config) -> AsyncGenerator[MCPServer, None]:
     assert config.working_directory.exists()
 
-    params = StdioServerParameters(
+    async with _get_mcp_server(
+        name="git",
         command="uvx",
         args=[
             "mcp-server-git",
             "--repository",
             str(config.working_directory),
         ],
-    )
-
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield MCPServer(
-                name="git",
-                session=session,
-            )
+        config=config,
+    ) as server:
+        yield server

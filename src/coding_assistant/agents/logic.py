@@ -157,6 +157,13 @@ async def handle_tool_call(tool_call, agent: Agent):
     trace.get_current_span().set_attribute("function.result", function_call_result)
     logger.debug(f"Function {function_name} returned {function_call_result}")
 
+    if len(function_call_result) > 20_000:
+        logger.warning(
+            f"Function {function_name} returned too long result ({len(function_call_result)} characters). Trimming."
+        )
+
+        function_call_result = "System error: Tool call result too long. Please try again with different parameters."
+
     print(
         Panel(
             function_call_result,
@@ -176,15 +183,7 @@ async def handle_tool_call(tool_call, agent: Agent):
 
 
 def trim_history(history: list):
-    for entry in history:
-        if entry["role"] == "tool" and len(entry["content"]) > 20_000:
-            logger.warning(
-                f"Tool call content too long ({len(entry['content'])} characters)."
-            )
-
-            entry["content"] = (
-                "!!! This tool output has been removed because it was too long, try other parameters"
-            )
+    pass  # We would trim the history here, if necessary
 
 
 @tracer.start_as_current_span("do_single_step")
