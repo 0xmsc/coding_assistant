@@ -5,6 +5,9 @@ import json
 import logging
 from typing import Optional
 
+from rich import print
+from rich.panel import Panel
+from rich.pretty import Pretty
 from opentelemetry import trace
 
 from coding_assistant.llm.model import complete
@@ -82,6 +85,7 @@ def get_tools_from_agent(agent: Agent) -> list:
 
     result = []
     for tool in tools:
+        assert not tool.name().startswith("mcp_")
         result.append(
             {
                 "type": "function",
@@ -112,6 +116,14 @@ async def handle_mcp_tool_call(function_name, arguments, mcp_servers):
 
 @tracer.start_as_current_span("handle_tool_call")
 async def handle_tool_call(tool_call, agent: Agent):
+    print(
+        Panel(
+            Pretty(tool_call.function),
+            title=f"Agent {agent.name} tool call",
+            border_style="green",
+        ),
+    )
+
     function_name = tool_call.function.name
     function_args = json.loads(tool_call.function.arguments)
 
@@ -134,7 +146,6 @@ async def handle_tool_call(tool_call, agent: Agent):
             function_name, function_args, agent.mcp_servers
         )
     else:
-        # Call the function directly
         for tool in agent.tools:
             if tool.name() == function_name:
                 function_call_result = await tool.execute(function_args)
@@ -145,6 +156,14 @@ async def handle_tool_call(tool_call, agent: Agent):
     assert function_call_result is not None, f"Function {function_name} not implemented"
     trace.get_current_span().set_attribute("function.result", function_call_result)
     logger.debug(f"Function {function_name} returned {function_call_result}")
+
+    print(
+        Panel(
+            function_call_result,
+            title=f"Tool {function_name} result",
+            border_style="yellow",
+        ),
+    )
 
     agent.history.append(
         {
@@ -197,14 +216,23 @@ async def do_single_step(agent: Agent):
     # Do one completion step
     trim_history(agent.history)
     completion = complete(agent.history, model=agent.model, tools=tools)
-    logger.info(f"Got completion {completion} from LLM")
+    logger.debug(f"Got completion {completion} from LLM")
 
     message = completion["choices"][0]["message"]
-    agent.history.append(message.model_dump())
-
     trace.get_current_span().set_attribute(
         "completion.message", message.model_dump_json()
     )
+
+    agent.history.append(message.model_dump())
+
+    if message.content:
+        print(
+            Panel(
+                message.content,
+                title=f"Agent {agent.name} response",
+                border_style="green",
+            ),
+        )
 
     # Check if we need to do a tool call
     for tool_call in message.tool_calls or []:
@@ -220,10 +248,9 @@ async def run_agent_loop(agent: Agent):
 
     step_counter = 0
     while not agent.finished:
-        step = await do_single_step(agent)
-        if step.content:
-            logger.info(f"[{step_counter}] Agent {agent.name}: {step.content}")
+        await do_single_step(agent)
         step_counter += 1
 
+    assert agent.result
     trace.get_current_span().set_attribute("agent.result", agent.result)
     return agent.result

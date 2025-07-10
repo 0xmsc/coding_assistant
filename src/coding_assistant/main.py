@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.WARNING)
 
 logger = logging.getLogger("coding_assistant")
 tracer = trace.get_tracer(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 def parse_args():
@@ -79,7 +79,7 @@ async def _main():
             sys.exit(1)
 
         result = await solve_task_using_agent(agent)
-        print("Finished with: ", result)
+        print(f"Finished with: {result}")
 
 
 def setup_tracing():
