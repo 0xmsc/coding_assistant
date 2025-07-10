@@ -11,7 +11,7 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
-def print_agent_progress(chunk):
+def print_agent_progress(chunk, name=None):
     # logger.debug(f"Chunk: {pp(chunk, output=False)}")
     if "tools" in chunk and "messages" in chunk["tools"]:
         for message in chunk["tools"]["messages"]:
@@ -27,6 +27,7 @@ def print_agent_progress(chunk):
                 for tool_call in message.tool_calls:
                     content += f"{tool_call.get('name')}\n{pp(tool_call.get('args'), output=False)}\n"
             content = content.strip()
-            console.print(Panel(f"{content}", title="Agent", border_style="red"))
+            title = f"Agent: {name}" if name else "Agent"
+            console.print(Panel(f"{content}", title=title, border_style="red"))
     else:
         logger.warning(f"Unhandled chunk: {pp(chunk, output=False)}")

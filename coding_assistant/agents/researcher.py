@@ -12,26 +12,39 @@ from rich.console import Console
 from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
 
+from coding_assistant.agents.agents import run_agent
+from coding_assistant.config import get_global_config
 from coding_assistant.logging import print_agent_progress
 
-RESEARCH_PROMPT = """
-You are a research agent. Your responsibility is to answer the question you're given.
+researcher_PROMPT = """
+You are a researcher agent. Your responsibility is to answer the question you're given.
 Use the tools at your disposal to find the answer.
 
+Note that you can't answer questions on how to implement something.
+You can only give information about the current code base, not plan how to change it.
+If someone asks you how to implement something, you should reject the task.
+
+You always need to answer the researcher question tailored to the current code base.
+It never makes sense to give a general answer.
+Always reference files, snippets, functions, concepts, etc. in the code base.
+
 Your output should be markdown formatted.
-It should contain all relevant information that you gathered during the research process.
+It should contain all relevant information that you gathered during the researcher process.
 Note that you're output should be consumable by another agent.
 Because of that, it is not possible to ask further questions.
 The output should be self-contained and not require follow-up questions.
+
+If you are missing a tool that would be helpful for your researcher, please let the user know.
 """.strip()
 
 console = Console()
 logger = logging.getLogger(__name__)
 
 
-def create_research_tools(working_directory: Path):
+def create_researcher_tools():
     tools = []
 
+    working_directory = get_global_config().working_directory
     tools.extend(
         FileManagementToolkit(
             root_dir=str(working_directory),
@@ -45,17 +58,13 @@ def create_research_tools(working_directory: Path):
     return tools
 
 
-def create_research_agent(working_directory: Path):
+def create_researcher_agent():
     memory = MemorySaver()
     model = ChatOpenAI(model_name="gpt-4o")
-    tools = create_research_tools(working_directory=working_directory)
-    return create_react_agent(model, tools, checkpointer=memory)
+    tools = create_researcher_tools()
+    return create_react_agent(model, tools, checkpointer=memory, prompt=researcher_PROMPT)
 
 
-def run_research_agent(question: str, working_directory: Path):
-    console.print(Panel(f"Research: {question}", title="Task", border_style="green"))
-    config = {"configurable": {"thread_id": "thread"}}
-    input = {"messages": HumanMessage(content=question)}
-    agent = create_research_agent(working_directory=working_directory)
-    for chunk in agent.stream(input=input, config=config):
-        print_agent_progress(chunk)
+def run_researcher_agent(question: str):
+    agent = create_researcher_agent()
+    return run_agent(agent, question, name="researcherer")
