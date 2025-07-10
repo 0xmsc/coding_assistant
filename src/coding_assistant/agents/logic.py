@@ -123,46 +123,6 @@ class FinishTaskTool(Tool):
         return "Agent output set."
 
 
-# {
-#     'description': 'Parameters for fetching a URL.',
-#     'properties': {
-#         'url': {
-#             'description': 'URL to fetch',
-#             'format': 'uri',
-#             'minLength': 1,
-#             'title': 'Url',
-#             'type': 'string'
-#         },
-#         'max_length': {
-#             'default': 5000,
-#             'description': 'Maximum number of characters to return.',
-#             'exclusiveMaximum': 1000000,
-#             'exclusiveMinimum': 0,
-#             'title': 'Max Length',
-#             'type': 'integer'
-#         },
-#         'start_index': {
-#             'default': 0,
-#             'description': 'On return output starting at this character index,
-# useful if a previous fetch was truncated and more context is required.',
-#             'minimum': 0,
-#             'title': 'Start Index',
-#             'type': 'integer'
-#         },
-#         'raw': {
-#             'default': False,
-#             'description': 'Get the actual HTML content of the requested page,
-# without simplification.',
-#             'title': 'Raw',
-#             'type': 'boolean'
-#         }
-#     },
-#     'required': ['url'],
-#     'title': 'Fetch',
-#     'type': 'object'
-# }
-
-
 def fix_input_schema(input_schema: dict):
     """
     Fixes the input schema to be compatible with Gemini API
@@ -474,13 +434,13 @@ async def run_agent_loop(
         if feedback := await agent.feedback_function(agent):
             agent.feedback.append(feedback)
 
-            feedback = FEEDBACK_TEMPLATE.format(
+            formatted_feedback = FEEDBACK_TEMPLATE.format(
                 feedback=textwrap.indent(feedback, "  "),
             )
 
             print(
                 Panel(
-                    feedback,
+                    formatted_feedback,
                     title=f"Agent {agent.name} feedback",
                     border_style="red",
                 ),
@@ -489,7 +449,7 @@ async def run_agent_loop(
             agent.history.append(
                 {
                     "role": "user",
-                    "content": feedback,
+                    "content": formatted_feedback,
                 }
             )
 

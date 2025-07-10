@@ -1,4 +1,5 @@
 import os
+
 import litellm
 
 litellm.telemetry = False
@@ -15,5 +16,7 @@ async def complete(
         tools=tools,
         model=model,
         drop_params=True,
+        merge_reasoning_content_in_choices=True,
     )
+
     return completion["choices"][0]["message"]
