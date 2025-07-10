@@ -77,22 +77,26 @@ class FeedbackTool(Tool):
         return "launch_feedback_agent"
 
     def description(self) -> str:
-        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the output is acceptable for a given task. If it is, the feedback agent will finish its task with only the output 'Ok' and nothing else. If it is not, the feedback agent will output what is wrong with the output and how it needs to be improved."
+        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the output is acceptable for a given task. If it is, the feedback agent will finish its task with only the output 'Ok' and nothing else. If it is not, the feedback agent will output what is wrong with the output and how it needs to be improved. Note that you shall evaluate the output as if you were a paying client. Would an average client be satisfied with the output?"
 
     def parameters(self) -> dict:
         return {
             "type": "object",
             "properties": {
-                "task": {
+                "description": {
                     "type": "string",
-                    "description": "The task that was given to the agent.",
+                    "description": "The description of the agent that was working on the task.",
+                },
+                "parameters": {
+                    "type": "string",
+                    "description": "The parameters the agent was given for the task.",
                 },
                 "output": {
                     "type": "string",
                     "description": "The output of the agent.",
                 },
             },
-            "required": ["task", "output"],
+            "required": ["description", "parameters", "output"],
         }
 
     async def execute(self, parameters: dict) -> str:
@@ -112,8 +116,7 @@ class FeedbackTool(Tool):
             feedback_agent,
             self._config,
             ask_user_for_feedback=False,
-            # We cannot ask the feedback agent for feedback, as we will end up in an infinite loop.
-            ask_agent_for_feedback=False,
+            ask_agent_for_feedback=False,  # Prevent infinite loop
         )
 
 
@@ -301,16 +304,19 @@ def trim_history(history: list):
     pass
 
 
-def create_system_message(agent: Agent) -> str:
+def format_parameters(parameters: list[Parameter]) -> str:
     parameter_descriptions = []
 
-    for parameter in agent.parameters:
+    for parameter in parameters:
         parameter_descriptions.append(
             PARAMETER_TEMPLATE.format(**dataclasses.asdict(parameter))
         )
 
-    parameters_str = "\n\n".join(parameter_descriptions)
+    return "\n\n".join(parameter_descriptions)
 
+
+def create_system_message(agent: Agent) -> str:
+    parameters_str = format_parameters(agent.parameters)
     return SYSTEM_PROMPT_TEMPLATE.format(
         name=agent.name,
         description=textwrap.indent(agent.description, "  "),
@@ -394,7 +400,9 @@ async def get_feedback(
         feedback = await feedback_tool.execute(
             parameters={
                 # Give the system message as the task.
-                "task": agent.history[0]["content"],
+                "description": agent.description,
+                "parameters": "\n"
+                + textwrap.indent(format_parameters(agent.parameters), " "),
                 "output": agent.result,
             }
         )
