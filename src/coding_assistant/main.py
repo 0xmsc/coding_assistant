@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from rich.console import Console
 from rich.table import Table
 
-from coding_assistant.agents.logic import run_agent_loop, get_tools_from_mcp_servers
+from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.agents.tools import OrchestratorTool
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools, get_all_mcp_servers
@@ -50,28 +50,35 @@ def load_config(args) -> Config:
 
 async def print_mcp_tools(mcp_servers):
     console = Console()
-    tools = await get_tools_from_mcp_servers(mcp_servers)
 
-    if not tools:
-        console.print("[yellow]No MCP tools found.[/yellow]")
+    if not mcp_servers:
+        console.print("[yellow]No MCP servers found.[/yellow]")
         return
 
-    console.print(f"[bold green]Found {len(tools)} tools from MCP servers:[/bold green]")
+    for server in mcp_servers:
+        tools = await server.session.list_tools()
+        tools = tools.tools
 
-    table = Table(show_header=True)
-    table.add_column("Tool Name", style="cyan")
-    table.add_column("Description", style="green")
-    table.add_column("Parameters", style="yellow")
+        if not tools:
+            console.print(f"[yellow]No tools found for MCP server: {server.name}[/yellow]")
+            continue
 
-    for tool in tools:
-        name = tool["function"]["name"]
-        description = tool["function"]["description"]
-        parameters = tool["function"].get("parameters", {})
-        parameters_str = ", ".join(parameters.get("properties", {}).keys()) if parameters else "None"
+        console.print(f"[bold green]Tools from MCP server: {server.name} ({len(tools)} tools)[/bold green]")
 
-        table.add_row(name, description, parameters_str)
+        table = Table(show_header=True, show_lines=True)
+        table.add_column("Tool Name", style="cyan")
+        table.add_column("Description", style="green")
+        table.add_column("Parameters", style="yellow")
 
-    console.print(table)
+        for tool in tools:
+            name = tool.name
+            description = tool.description
+            parameters = tool.inputSchema
+            parameters_str = ", ".join(parameters.get("properties", {}).keys()) if parameters else "None"
+            table.add_row(name, description, parameters_str)
+
+        console.print(table)
+        console.print()  # Add a blank line between tables
 
 
 async def _main():
