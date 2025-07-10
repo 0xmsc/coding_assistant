@@ -14,6 +14,7 @@ RESEARCHER_DESCRIPTION = """
 Researcher agent, which is responsible for answering questions.
 These can be general questions or questions about the code base.
 This agent cannot implement changes to the code base.
+This agent can access the filesystem, the web, etc.
 """.strip()
 
 

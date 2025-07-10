@@ -13,7 +13,6 @@ DEVELOPER_DESCRIPTION = """
 Developer agent, which is responsible for carrying out implementation plans.
 The agent is not responsible for planning implementations or making decisions about software architecture.
 The agent should receive detailed instructions on how to implement a task, and execute those instructions.
-If the implementation plan is unclear, the agent should reject the task.
 """.strip()
 
 
