@@ -290,6 +290,10 @@ async def handle_tool_call(tool_call, agent: Agent):
         ),
     )
 
+    # HACK: Some APIs cannot handle empty content
+    if function_call_result == "":
+        function_call_result = " "
+
     agent.history.append(
         {
             "tool_call_id": tool_call.id,
