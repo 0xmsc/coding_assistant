@@ -22,20 +22,38 @@ console = Console()
 
 class MyAgentState(AgentState):
     notebook: dict = {}
+    task: str
+
+
+def _format_system_prompt_with_current_state(system_prompt, state):
+    notebook_facts = ""
+
+    for key, fact in enumerate(state["notebook"]):
+        notebook_facts += f"Key: {key}\nFact: {fact}\n\n"
+
+    notebook_facts = notebook_facts.strip()
+    return system_prompt.format(notebook_facts=notebook_facts, task=state["task"])
 
 
 def create_context_prunning_prompt_function(system_prompt: str, system_message_type="system"):
     def context_prunning_prompt(state):
+        nonlocal system_prompt
+        nonlocal system_message_type
+
+        system_prompt_with_state = _format_system_prompt_with_current_state(system_prompt=system_prompt, state=state)
+
         if system_message_type == "system":
-            system_message = SystemMessage(content=system_prompt)
+            system_message = SystemMessage(content=system_prompt_with_state)
         elif system_message_type == "developer":
             # See this crap: https://github.com/langchain-ai/langchain/issues/28895
-            system_message = SystemMessage(content=system_prompt, additional_kwargs={"__openai_role__": "developer"})
+            system_message = SystemMessage(
+                content=system_prompt_with_state,
+                additional_kwargs={"__openai_role__": "developer"},
+            )
         else:
             raise ValueError(f"Unknown system message type: {system_message_type}")
 
         current_messages = [system_message] + state["messages"]
-
         current_messages = trim_messages(
             current_messages,
             strategy="last",
@@ -92,7 +110,7 @@ class InterruptibleSection(object):
 def run_agent(agent, task, name, ask_user_for_feedback=False):
     console.print(Panel(Markdown(task), title=f"Agent task: {name}", border_style="green"))
     config = RunnableConfig(configurable={"thread_id": "thread"}, recursion_limit=50)
-    input: MyAgentState = {"messages": HumanMessage(content=task), "notebook": dict()}
+    input: MyAgentState = {"messages": HumanMessage(content=task), "notebook": dict(), "task": task}
 
     latest = None
 
