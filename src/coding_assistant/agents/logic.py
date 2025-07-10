@@ -43,11 +43,6 @@ Your client has been given the following description of your work and capabiliti
 Your client has provided the following parameters for your task:
 
 {parameters}
-
-## Result
-
-It is crucial that you return all results in the result parameter of the finish_task tool call.
-Your client does not have access to any other output from you.
 """.strip()
 
 
