@@ -7,15 +7,18 @@
 
 ## Overview
 
-Coding Assistant is an experimental, Python-based multi-agent system designed to automate and streamline coding workflows. It leverages specialized agents—Orchestrator, Researcher, and Developer—to collaboratively tackle complex tasks, from research and planning through code generation and review.
+Coding Assistant is an experimental, Python-based multi-agent system designed to automate and streamline coding workflows. It orchestrates specialized agents—Orchestrator, Researcher, and Developer—to collaboratively tackle complex tasks, from research and planning through code generation and review. Recent enhancements have further improved memory management, error handling, parameter validation, and overall code hygiene.
 
 ## Features
 
-- Modular, multi-agent architecture for scalable task handling
-- Automated code generation and refactoring
-- Research and knowledge retrieval via a dedicated Researcher agent
-- Integrated file system and Git operations via MCP for robust tooling
-- Strong static typing support and structured configuration
+- **Modular Multi-Agent Architecture**: Scales task handling across specialized agents for orchestration, research, and development.
+- **Automated Code Generation & Refactoring**: Leverages LLMs to generate, refactor, and optimize code.
+- **Research & Knowledge Retrieval**: Dedicated Researcher agent performs deep dives into documentation and resources.
+- **Filesystem & Git Integration**: Uses `mcp[cli]` to perform robust filesystem and Git operations directly from agents.
+- **Memory Management**: Automatic conversation history trimming via the `MAX_HISTORY` constant and `trim_history()` logic to bound memory usage.
+- **Robust Error Handling**: All internal `assert` statements have been replaced with explicit exceptions (e.g., `ValueError`, `RuntimeError`) for clearer, more predictable error reporting.
+- **Parameter Validation**: Corrected typos (renamed `mesages` to `messages`) to ensure proper LLM function calls.
+- **Code Hygiene**: Removed unused imports and streamlined dependencies for a cleaner, more maintainable codebase.
 
 ## Technologies & Libraries
 
@@ -23,14 +26,7 @@ Coding Assistant is an experimental, Python-based multi-agent system designed to
 - **litellm**: Simplified LLM interaction, supporting multiple providers
 - **mcp[cli]**: Filesystem and tooling operations
 - **rich**: Rich text and console formatting
-- OpenTelemetry: Tracing and telemetry integration
-
-## Recent Updates
-
-- History Trimming: Introduced a MAX_HISTORY constant and implemented trim_history logic to prevent unbounded growth of conversation history by capping stored messages.
-- Error Handling Improvements: Replaced internal assert statements with explicit exception raising to provide clearer error messages and improve runtime stability.
-- Typo Fix in LLM Model: Corrected a typo in the LLM model usage by renaming mesages to messages for proper parameter handling.
-- Import Cleanup: Removed unused imports across modules to streamline code and reduce unnecessary dependencies.
+- **OpenTelemetry**: Tracing and telemetry integration
 
 ## Installation
 
@@ -65,13 +61,13 @@ Default values:
 
 ## Usage
 
-Invoke the assistant via CLI:
+Invoke the assistant via the command-line interface:
 
 ```bash
 coding-assistant --task "Describe your task here"
 ```
 
-Or run as a module:
+Or run as a Python module:
 
 ```bash
 python -m coding_assistant.main --task "Describe your task here"
@@ -103,9 +99,8 @@ We welcome contributions! To contribute:
    ```
 3. Make your changes and commit them.
 4. Ensure your code passes any linters or style checks you use.
-5. Commit and push:
+5. Push your branch:
    ```bash
-   git commit -m "feat: add new feature"
    git push origin feature/your-feature-name
    ```
 6. Open a Pull Request describing your changes.
