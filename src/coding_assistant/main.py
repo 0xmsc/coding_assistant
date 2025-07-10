@@ -18,7 +18,12 @@ from rich.table import Table
 from coding_assistant.agents.agents import OrchestratorTool
 from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.cache import get_cache_dir, get_conversation_history, save_conversation_history
-from coding_assistant.config import Config, get_config_file_path, create_default_config_file, load_user_config, merge_config_with_defaults
+from coding_assistant.config import (
+    Config,
+    create_default_config_file,
+    get_config_file_path,
+    load_user_config,
+)
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools import Tools, get_all_mcp_servers
@@ -46,11 +51,19 @@ def load_config(args) -> Config:
     config_path = get_config_file_path()
     if not config_path.exists():
         create_default_config_file(config_path)
-    user_config = load_user_config(config_path)
+    
+    # Load user config dict to extract model names
+    user_config_dict = {}
+    if config_path.exists():
+        try:
+            with open(config_path, 'r') as f:
+                user_config_dict = json.load(f)
+        except (json.JSONDecodeError, Exception):
+            user_config_dict = {}
     
     # Load defaults from user config with hardcoded fallbacks
-    model_name = user_config.get("models", {}).get("default_model", "gemini/gemini-2.5-flash")
-    expert_model_name = user_config.get("models", {}).get("expert_model", "gemini/gemini-2.5-pro")
+    model_name = user_config_dict.get("models", {}).get("default_model", "openai/claude-sonnet-4")
+    expert_model_name = user_config_dict.get("models", {}).get("expert_model", "openai/claude-sonnet-4")
 
     logger.info(f"Using model: {model_name}")
     logger.info(f"Using expert model: {expert_model_name}")
@@ -62,9 +75,9 @@ def load_config(args) -> Config:
         expert_model=expert_model_name,
         disable_feedback_agent=args.disable_feedback_agent,
     )
-    
-    # Merge with user configuration
-    return merge_config_with_defaults(user_config, base_config)
+
+    # Load and merge user configuration
+    return load_user_config(config_path, base_config)
 
 
 async def print_mcp_tools(mcp_servers):
@@ -122,7 +135,7 @@ def get_additional_sandbox_directories(config: Config, working_directory, venv_d
         Path("/tmp"),
         get_cache_dir(),
     ]
-    
+
     # Add user-configured sandbox directories
     sandbox_directories.extend(config.sandbox_directories)
 
