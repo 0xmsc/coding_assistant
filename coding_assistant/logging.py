@@ -16,7 +16,7 @@ def print_agent_progress(chunk, name):
     if "tools" in chunk and "messages" in chunk["tools"]:
         for message in chunk["tools"]["messages"]:
             assert isinstance(message, ToolMessage)
-            console.print(Panel(message.content, title=f"Tool ({message.name})", border_style="yellow"))
+            # console.print(Panel(message.content, title=f"Tool ({message.name})", border_style="yellow"))
     elif "agent" in chunk and "messages" in chunk["agent"]:
         for message in chunk["agent"]["messages"]:
             assert isinstance(message, AIMessage)

@@ -30,7 +30,7 @@ def main():
         run_researcher_agent(
             question=args.research,
         )
-    if args.task:
+    elif args.task:
         run_orchestrator_agent(
             task=args.task,
         )
