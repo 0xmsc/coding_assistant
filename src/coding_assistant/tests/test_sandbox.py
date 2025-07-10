@@ -6,30 +6,35 @@ from coding_assistant.config import Config
 from coding_assistant.sandbox import sandbox
 
 
-def test_write_without_sandbox():
-    # Try to create a file in tmp, should work
-    with open("/tmp/test_sandbox.txt", "w") as f:
+def test_write_without_sandbox(tmp_path):
+    test_file = tmp_path / "test.txt"
+
+    with open(test_file, "w") as f:
         f.write("Hello, world!")
 
-    with open("/tmp/test_sandbox.txt", "r") as f:
+    with open(test_file, "r") as f:
         assert f.read() == "Hello, world!"
 
 
-def test_write_with_sandbox_in_tmp():
-    sandbox([Path("/tmp")])
+def test_write_with_sandbox_in_tmp(tmp_path):
+    sandbox([tmp_path])
 
-    with open("/tmp/test_sandbox.txt", "w") as f:
+    test_file = tmp_path / "test.txt"
+
+    with open(test_file, "w") as f:
         f.write("Hello, world!")
 
-    with open("/tmp/test_sandbox.txt", "r") as f:
+    with open(test_file, "r") as f:
         assert f.read() == "Hello, world!"
 
 
-def test_write_with_sandbox_in_home():
+def test_write_with_sandbox_in_home(tmp_path):
     sandbox([])
 
+    test_file = tmp_path / "test.txt"
+
     with pytest.raises(PermissionError):
-        with open("/tmp/test_sandbox.txt", "w") as f:
+        with open(test_file, "w") as f:
             f.write("Hello, world!")
 
 
@@ -39,7 +44,7 @@ def test_sandbox_fails_on_nonexistent_dir():
 
 
 def test_run_binaries_with_sandbox(tmp_path):
-    sandbox([Path("/tmp")])
-    subprocess.check_call(["git", "help"], cwd="/tmp")
-    subprocess.check_call(["npm", "help"], cwd="/tmp")
-    subprocess.check_call(["uvx", "--help"], cwd="/tmp")
+    sandbox([])
+    subprocess.check_call(["git", "help"])
+    subprocess.check_call(["npm", "help"])
+    subprocess.check_call(["uvx", "--help"])
