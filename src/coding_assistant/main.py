@@ -56,6 +56,7 @@ async def _main():
 
     tools = Tools()
 
+    args.task = "Ask the user something and echo it."
     if args.task:
         agent = create_orchestrator_agent(args.task, config, tools)
     else:
