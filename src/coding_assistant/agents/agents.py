@@ -158,6 +158,7 @@ class AgentTool(Tool):
             mcp_servers=self._tools.mcp_servers,
             tools=[
                 ExecuteShellCommandTool(),
+                AskUserTool(),
             ],
             model=self._config.model,
             feedback_function=lambda agent: _get_feedback(
