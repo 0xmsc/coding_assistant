@@ -13,7 +13,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from coding_assistant.agents.logic import run_agent_loop
-from coding_assistant.agents.agents import OrchestratorTool
+from coding_assistant.agents.tools import OrchestratorTool
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools, get_all_mcp_servers
 

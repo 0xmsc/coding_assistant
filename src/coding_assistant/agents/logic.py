@@ -74,6 +74,9 @@ class Agent:
 
 
 class FinishTaskTool(Tool):
+    def __init__(self, agent):
+        self._agent = agent
+
     def name(self) -> str:
         return "finish_task"
 
@@ -92,12 +95,9 @@ class FinishTaskTool(Tool):
             "required": ["result"],
         }
 
-    async def execute(self, _) -> str:
-        raise RuntimeError("FinishTaskTool should not be executed directly.")
-
-
-def get_default_functions() -> list:
-    return [FinishTaskTool()]
+    async def execute(self, parameters) -> str:
+        self._agent.result = parameters["result"]
+        return "Agent result set."
 
 
 async def get_tools_from_mcp_servers(mcp_servers: list) -> list:
@@ -149,13 +149,11 @@ def fill_parameters(
 
 
 def get_tools_from_agent(agent: Agent) -> list:
-    tools = []
-    tools.extend(get_default_functions())
-    tools.extend(agent.tools)
-
     result = []
-    for tool in tools:
-        assert not tool.name().startswith("mcp_")
+    for tool in agent.tools:
+        if tool.name().startswith("mcp_"):
+            raise RuntimeError("Tools cannot start with mcp_")
+
         result.append(
             {
                 "type": "function",
@@ -203,10 +201,6 @@ async def handle_tool_call(tool_call, agent: Agent):
     trace.get_current_span().set_attribute("function.args", tool_call.function.arguments)
 
     logger.debug(f"Calling tool {function_name} with args {function_args}")
-
-    if function_name == "finish_task":
-        agent.result = function_args.get("result", "")
-        return
 
     function_call_result = None
 
@@ -274,6 +268,10 @@ def create_system_message(agent: Agent) -> str:
 @tracer.start_as_current_span("do_single_step")
 async def do_single_step(agent: Agent):
     trace.get_current_span().set_attribute("agent.name", agent.name)
+
+    # Add the finish_task tool to the agent, if it is not already there.
+    if not any(tool.name() == "finish_task" for tool in agent.tools):
+        agent.tools.append(FinishTaskTool(agent))
 
     tools = []
     tools.extend(get_tools_from_agent(agent))
@@ -353,9 +351,7 @@ async def run_agent_loop(
             ),
         )
 
-        if feedback := await agent.feedback_function(
-            agent,
-        ):
+        if feedback := await agent.feedback_function(agent):
             print(
                 Panel(
                     feedback,
@@ -364,16 +360,14 @@ async def run_agent_loop(
                 ),
             )
 
-            # Remove the finish_task tool call from the history
-            agent.history.pop()
-            agent.result = None
-
             agent.history.append(
                 {
                     "role": "user",
                     "content": feedback,
                 }
             )
+
+            agent.result = None
         else:
             # Feedback was ok, so we can finish the agent.
             break
