@@ -339,7 +339,7 @@ async def do_single_step(agent: Agent):
         agent.history.append(
             {
                 "role": "user",
-                "content": "I detected a message from you without any tool calls. Remember to call the `finish_task` tool when you are done.",
+                "content": "I detected a step from you without any tool calls. Remember to call the `finish_task` tool when you are done.",
             }
         )
 
