@@ -43,7 +43,7 @@ def test_sandbox_fails_on_nonexistent_dir():
         sandbox([Path("/does-not-exist")])
 
 
-def test_run_binaries_with_sandbox(tmp_path):
+def test_run_binaries_with_sandbox():
     sandbox([])
     subprocess.check_call(["git", "help"])
     subprocess.check_call(["npm", "help"])
