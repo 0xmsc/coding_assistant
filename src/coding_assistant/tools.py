@@ -108,21 +108,6 @@ async def get_tavily_server() -> AsyncGenerator[MCPServer, None]:
 
 
 @asynccontextmanager
-async def get_memory_server(config: Config) -> AsyncGenerator[MCPServer, None]:
-    async with _get_mcp_server(
-        name="memory",
-        command="npx",
-        args=[
-            "@modelcontextprotocol/server-memory",
-        ],
-        env={
-            "MEMORY_FILE_PATH": str(config.working_directory / "memory.json"),
-        },
-    ) as server:
-        yield server
-
-
-@asynccontextmanager
 async def get_shell_server() -> AsyncGenerator[MCPServer, None]:
     async with _get_mcp_server(
         name="shell",
@@ -132,22 +117,6 @@ async def get_shell_server() -> AsyncGenerator[MCPServer, None]:
         ],
         env={
             "ALLOW_COMMANDS": "just",
-        },
-    ) as server:
-        yield server
-
-
-@asynccontextmanager
-async def get_qdrant_server() -> AsyncGenerator[MCPServer, None]:
-    async with _get_mcp_server(
-        name="qdrant",
-        command="uvx",
-        args=[
-            "mcp-server-qdrant",
-        ],
-        env={
-            "COLLECTION_NAME": "coding_assistant",
-            "QDRANT_LOCAL_PATH": str(Path("~/Temp/qdrant_db/").expanduser()),
         },
     ) as server:
         yield server
@@ -165,8 +134,6 @@ async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer],
         servers.append(await stack.enter_async_context(get_git_server(config)))
         servers.append(await stack.enter_async_context(get_fetch_server()))
         servers.append(await stack.enter_async_context(get_shell_server()))
-        # servers.append(await stack.enter_async_context(get_memory_server(config)))
-        # servers.append(await stack.enter_async_context(get_qdrant_server()))
 
         if os.environ.get("TAVILY_API_KEY"):
             servers.append(await stack.enter_async_context(get_tavily_server()))
