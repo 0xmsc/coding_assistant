@@ -250,6 +250,8 @@ async def do_single_step(agent: Agent):
     tools.extend(get_tools_from_agent(agent))
     tools.extend(await get_tools_from_mcp_servers(agent.mcp_servers))
 
+    trace.get_current_span().set_attribute("agent.tools", json.dumps(tools))
+
     # If the agent has no history, this is our first step
     if not agent.history:
         system_message = create_system_message(agent)
@@ -273,7 +275,6 @@ async def do_single_step(agent: Agent):
     trim_history(agent.history)
 
     trace.get_current_span().set_attribute("agent.history", json.dumps(agent.history))
-    trace.get_current_span().set_attribute("agent.tools", json.dumps(tools))
 
     completion = complete(agent.history, model=agent.model, tools=tools)
     logger.debug(f"Got completion {completion} from LLM")
