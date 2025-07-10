@@ -43,20 +43,10 @@ Your client has provided the following parameters for your task:
 {parameters}
 ```
 
-It is very important that you follow the given description and parameters.
-
 ## Result
 
-It is also crucial that you return all results in the result parameter of the finish_task tool call.
+It is crucial that you return all results in the result parameter of the finish_task tool call.
 Your client does not have access to any other output from you.
-
-## Memory
-
-You should use your memory capabilities to remember the context of the conversations with your client.
-When you discover a new file, class, concept, function, or anything else that is important, you should create a note and use it in the future.
-When you are working on a task, regularly check your memory to see if there are any notes that can help you.
-When you notice that a note is outdated, you should update it.
-When you notice that a note is no longer relevant, you should delete it.
 """.strip()
 
 
