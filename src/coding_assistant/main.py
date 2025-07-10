@@ -139,7 +139,7 @@ async def _main():
                     {
                         "task": args.task,
                         "history": conversation_history[-5:],
-                        "instructions": get_instructions(working_directory),
+                        "instructions": get_instructions(working_directory, config),
                     }
                 )
                 summary = tool.summary
