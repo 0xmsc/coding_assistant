@@ -1,4 +1,3 @@
-import copy
 from dataclasses import dataclass
 from dataclasses import field
 import dataclasses
@@ -62,6 +61,8 @@ class Agent:
     result: Optional[str] = None
 
 
+MAX_HISTORY = 50
+
 class FinishTaskTool(Tool):
     def name(self) -> str:
         return "finish_task"
@@ -82,7 +83,7 @@ class FinishTaskTool(Tool):
         }
 
     async def execute(self, _) -> str:
-        assert False, "FinishTaskTool should not be executed directly."
+        raise RuntimeError("FinishTaskTool should not be executed directly.")
 
 
 def get_default_functions() -> list:
@@ -216,7 +217,12 @@ async def handle_tool_call(tool_call, agent: Agent):
 
 
 def trim_history(history: list):
-    pass  # We would trim the history here, if necessary
+    """
+    Trim the message history to keep only the last MAX_HISTORY entries.
+    """
+    if len(history) > MAX_HISTORY:
+        # Keep only the last MAX_HISTORY messages
+        del history[:-MAX_HISTORY]
 
 
 def create_system_message(agent: Agent) -> str:

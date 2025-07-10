@@ -51,7 +51,8 @@ async def _get_mcp_server(
 
 @asynccontextmanager
 async def get_filesystem_server(config: Config) -> AsyncGenerator[MCPServer, None]:
-    assert config.working_directory.exists()
+    if not config.working_directory.exists():
+        raise ValueError(f"Working directory {config.working_directory} does not exist.")
 
     async with _get_mcp_server(
         name="filesystem",

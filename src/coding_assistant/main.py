@@ -1,11 +1,9 @@
-import argparse
 import asyncio
 import logging
 import os
 import sys
-from argparse import ArgumentParser, BooleanOptionalAction
+from argparse import ArgumentParser
 from pathlib import Path
-from typing import Any
 import requests
 
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -14,7 +12,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from coding_assistant.agents.logic import do_single_step, run_agent_loop
+from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.agents.agents import OrchestratorTool
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools, get_all_mcp_servers
