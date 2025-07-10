@@ -1,16 +1,22 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from coding_assistant.agents.logic import Agent, FeedbackTool
+from coding_assistant.agents.logic import Agent
+from coding_assistant.agents.tools import FeedbackTool
 from coding_assistant.config import Config
+from coding_assistant.tools import Tools
 
 
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_ok(tmp_path):
     config = Config(working_directory=tmp_path, model="o4-mini")
-    tool = FeedbackTool(config=config)
+    tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
-        parameters={"task": "Give me the result of 2 + 2", "output": "4"}
+        parameters={
+            "description": "The agent will only give correct answers",
+            "parameters": "What is 2 + 2?",
+            "output": "4",
+        }
     )
     assert result == "Ok"
 
@@ -18,9 +24,13 @@ async def test_feedback_tool_execute_ok(tmp_path):
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_wrong(tmp_path):
     config = Config(working_directory=tmp_path, model="o4-mini")
-    tool = FeedbackTool(config=config)
+    tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
-        parameters={"task": "Give me the result of 2 + 2", "output": "3"}
+        parameters={
+            "description": "The agent will only give correct answers",
+            "parameters": "What is 2 + 2?",
+            "output": "5",
+        }
     )
     assert result != "Ok"
 
@@ -28,10 +38,11 @@ async def test_feedback_tool_execute_wrong(tmp_path):
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_no_result(tmp_path):
     config = Config(working_directory=tmp_path, model="o4-mini")
-    tool = FeedbackTool(config=config)
+    tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
-            "task": "Give me the result of 2 + 2",
+            "description": "The agent will only give correct answers",
+            "parameters": "What is 2 + 2?",
             "output": "I calculated the result of 2 + 2 and gave it to the user.",
         }
     )
