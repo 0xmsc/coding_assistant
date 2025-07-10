@@ -42,7 +42,7 @@ def parse_args():
 
 
 def load_config(args) -> Config:
-    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "gemini/gemini-2.5-flash")
+    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "gemini/gemini-2.5-pro")
     expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "gemini/gemini-2.5-pro")
 
     logger.info(f"Using model: {model_name}")

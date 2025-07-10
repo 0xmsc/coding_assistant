@@ -171,7 +171,7 @@ def fill_parameters(
 
     for name, parameter in parameter_description["properties"].items():
         # Check if required parameters are provided
-        if name not in parameter_values:
+        if name not in parameter_values or parameter_values[name] is None:
             if name in required:
                 raise RuntimeError(f"Parameter {name} is required but not provided.")
             else:
