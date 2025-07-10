@@ -19,7 +19,7 @@ def create_orchestrator_agent(task: str, config: Config, tools: Tools) -> Agent:
             DevelopTool(config, tools),
             AskUserTool(),
         ],
-        model=config.expert_model,
+        model=config.model,
         task=task,
         history=[],
     )

@@ -7,27 +7,23 @@
 
 ## Overview
 
-Coding Assistant is an experimental, Python-based multi-agent system designed to automate and streamline coding workflows. It leverages specialized agents—Orchestrator, Planner, Developer, Researcher, and Expert—to collaboratively tackle complex tasks, from planning and research to code generation and review.
+Coding Assistant is an experimental, Python-based multi-agent system designed to automate and streamline coding workflows. It leverages specialized agents—Orchestrator, Researcher, and Developer—to collaboratively tackle complex tasks, from research and planning through code generation and review.
 
 ## Features
 
-- Multi-agent architecture for scalable, modular task handling
-- Automated code generation, refactoring, and expert review
-- Research and knowledge retrieval with a dedicated Researcher agent
-- Integrated file system operations via MCP for robust tooling
-- Strong static typing with `mypy` and comprehensive testing with `pytest`
-- Customizable logging and configuration for flexible workflows
+- Modular, multi-agent architecture for scalable task handling
+- Automated code generation and refactoring
+- Research and knowledge retrieval via a dedicated Researcher agent
+- Integrated file system and Git operations via MCP for robust tooling
+- Strong static typing support and structured configuration
 
 ## Technologies & Libraries
 
 - Python 3.12+
-- **litellm**: Simplified LLM interaction, with integrations for OpenAI, Anthropic Claude, Amazon Bedrock, Google Vertex AI, and more.
-- **mcp[cli]**: Filesystem operations and tooling
-- **pytest**: Testing framework
-- **mypy**: Static type checking
-- **pre-commit**: Git hooks management
-- **black**, **isort**: Code formatting and import sorting
-- **langchain_community**: Extended LLM utilities and community-driven models
+- **litellm**: Simplified LLM interaction, supporting multiple providers
+- **mcp[cli]**: Filesystem and tooling operations
+- **rich**: Rich text and console formatting
+- OpenTelemetry: Tracing and telemetry integration
 
 ## Installation
 
@@ -41,29 +37,24 @@ Coding Assistant is an experimental, Python-based multi-agent system designed to
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
-3. Install the package and development dependencies:
+3. Install the package:
    ```bash
    pip install .
-   pip install --upgrade ".[dev]"
-   ```
-4. (Optional) Set up Git hooks:
-   ```bash
-   pre-commit install
    ```
 
 ## Configuration
 
-The assistant uses environment variables to configure LLM models and behavior. Create a `.env` or `.envrc` file in the project root with the following:
+The assistant uses environment variables to configure its models and behavior. Create a `.env` or `.envrc` file in the project root with the following (optional):
 
 ```bash
 CODING_ASSISTANT_MODEL="o4-mini"
-CODING_ASSISTANT_EXPERT_MODEL="<disabled>"
+CODING_ASSISTANT_EXPERT_MODEL="o3"
 ```
 
 Default values:
 
 - `CODING_ASSISTANT_MODEL`: `o4-mini`
-- `CODING_ASSISTANT_EXPERT_MODEL`: `<disabled>`
+- `CODING_ASSISTANT_EXPERT_MODEL`: `o3`
 
 ## Usage
 
@@ -84,40 +75,35 @@ python -m coding_assistant.main --task "Describe your task here"
 ```
 .
 ├── src/coding_assistant/
-│   ├── agents/        # Orchestrator, Planner, Developer, Researcher, Expert
+│   ├── agents/        # Orchestrator, Researcher, Developer implementations
 │   ├── llm/           # LLM integration via litellm
 │   ├── config.py      # Configuration settings
 │   ├── main.py        # CLI entry point
 │   └── tools.py       # MCP-based utilities
-├── tests/             # Test suite (pytest)
 ├── pyproject.toml     # Project metadata and dependencies
 ├── README.md          # This file
-└── .envrc             # direnv configuration
+└── .envrc             # direnv configuration (if used)
 ```
 
 ## Contributing
 
 We welcome contributions! To contribute:
 
-1. Fork this repository
-2. Create your feature branch:
+1. Fork this repository.
+2. Create a feature branch:
    ```bash
    git checkout -b feature/your-feature-name
    ```
-3. Make your changes and add tests
-4. Run tests and linters:
-   ```bash
-   pytest
-   pre-commit run --all-files
-   ```
+3. Make your changes and commit them.
+4. Ensure your code passes any linters or style checks you use.
 5. Commit and push:
    ```bash
-   git commit -am "feat: add new feature"
+   git commit -m "feat: add new feature"
    git push origin feature/your-feature-name
    ```
-6. Open a Pull Request
+6. Open a Pull Request describing your changes.
 
-Please follow the project's coding standards and update tests as needed.
+Please follow the project's coding standards and update any relevant documentation.
 
 ## License
 

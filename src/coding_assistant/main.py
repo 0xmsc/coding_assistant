@@ -45,7 +45,7 @@ def parse_args():
 
 def load_config(args) -> Config:
     model_name = os.environ.get("CODING_ASSISTANT_MODEL", "o4-mini")
-    expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "o1")
+    expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "o3")
 
     return Config(
         working_directory=args.working_directory,
