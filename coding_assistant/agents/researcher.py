@@ -4,7 +4,6 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_community.agent_toolkits import FileManagementToolkit
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
@@ -16,6 +15,7 @@ from langchain_core.callbacks import BaseCallbackHandler
 from coding_assistant.agents.agents import run_agent
 from coding_assistant.config import get_global_config
 from coding_assistant.logging import print_agent_progress
+from coding_assistant.tools.file import read_only_file_tools
 
 researcher_PROMPT = """
 You are a researcher agent. Your responsibility is to answer the question you're given.
@@ -34,6 +34,11 @@ It should contain all relevant information that you gathered during the research
 Note that you're output should be consumable by another agent.
 Because of that, it is not possible to ask further questions.
 The output should be self-contained and not require follow-up questions.
+Especially put interesting files and code snippets that are relevant to the question in the output.
+
+Do not reject tasks easily. Always try to find a satisfactory answer.
+Only reject tasks if you can't find any relevant information in the code base.
+Before you reject a task, be really sure that the information is not there.
 
 If you are missing a tool that would be helpful for your researcher, please let the user know.
 """.strip()
@@ -44,18 +49,7 @@ logger = logging.getLogger(__name__)
 
 def create_researcher_tools():
     tools = []
-
-    working_directory = get_global_config().working_directory
-    tools.extend(
-        FileManagementToolkit(
-            root_dir=str(working_directory),
-            selected_tools=["read_file", "list_directory"],
-        ).get_tools()
-    )
-
-    # TODO: Only when web search enabled
-    tools.append(TavilySearchResults())
-
+    tools.extend(read_only_file_tools())
     return tools
 
 

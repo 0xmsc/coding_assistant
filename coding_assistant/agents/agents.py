@@ -2,24 +2,34 @@ from langchain_core.messages import AIMessage, HumanMessage
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
+from rich.prompt import Prompt
 
 from coding_assistant.logging import print_agent_progress
 
 console = Console()
 
 
-def run_agent(agent, task, name):
+def run_agent(agent, task, name, ask_user_for_feedback=False):
     console.print(Panel(Markdown(task), title=f"Agent task: {name}", border_style="green"))
     config = {"configurable": {"thread_id": "thread"}}
     input = {"messages": HumanMessage(content=task)}
 
     latest = None
-    for chunk in agent.stream(input=input, config=config):
-        print_agent_progress(chunk, name=name)
 
-        if "agent" in chunk and "messages" in chunk["agent"]:
-            for message in chunk["agent"]["messages"]:
-                if isinstance(message, AIMessage):
-                    latest = message
+    while True:
+        # Do one round of the agent, until it stops
+        for chunk in agent.stream(input=input, config=config):
+            print_agent_progress(chunk, name=name)
+
+            if "agent" in chunk and "messages" in chunk["agent"]:
+                for message in chunk["agent"]["messages"]:
+                    if isinstance(message, AIMessage):
+                        latest = message
+
+        if not ask_user_for_feedback:
+            break
+
+        # Ask user for feedback
+        input = Prompt.ask("Feedback")
 
     return latest.content

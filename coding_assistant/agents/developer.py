@@ -16,6 +16,7 @@ from langchain_core.callbacks import BaseCallbackHandler
 from coding_assistant.agents.agents import run_agent
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
+from coding_assistant.tools.file import read_only_file_tools
 
 DEVELOPER_PROMPT = """
 You are an developer agent. Your responsibility is to carry out a given implementation plan.
@@ -36,14 +37,7 @@ logger = logging.getLogger(__name__)
 def create_developer_tools():
     tools = []
 
-    working_directory = get_global_config().working_directory
-    tools.extend(
-        FileManagementToolkit(
-            root_dir=str(working_directory),
-            selected_tools=["read_file", "list_directory", "write_file"],
-        ).get_tools()
-    )
-
+    tools.extend(read_only_file_tools())
     tools.append(research)
 
     return tools

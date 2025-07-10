@@ -16,6 +16,7 @@ from langchain_core.callbacks import BaseCallbackHandler
 from coding_assistant.agents.agents import run_agent
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
+from coding_assistant.tools.file import read_only_file_tools
 
 PLANNER_PROMPT = """
 You are an planner agent. Your responsibility is to plan an implementation task.
@@ -26,10 +27,13 @@ If you think the task is too big, reject the task and give a reason why.
 Your responsibility is only to plan the implementation of a task. 
 You are not responsible for the implementation itself.
 Use the tools at your disposal.
+
 If you need more information, use the research tool.
 Your output should be very detailed description in markdown on how to implement the given task.
 It should be suitable for a junior engineer to implement the task.
 That means that you should explain every step that is needed, but not necessarily every line that needs to be changed.
+If you give an example code snippet, it should be clear in which file it should be placed.
+It should also be very clear if a new file should be created, or code is to be added into an existing file.
 
 If you are missing an agent or a tool that would be helpful for your task, please let the user know.
 """.strip()
@@ -40,17 +44,8 @@ logger = logging.getLogger(__name__)
 
 def create_planner_tools():
     tools = []
-
-    working_directory = get_global_config().working_directory
-    tools.extend(
-        FileManagementToolkit(
-            root_dir=str(working_directory),
-            selected_tools=["read_file", "list_directory"],
-        ).get_tools()
-    )
-
+    tools.extend(read_only_file_tools())
     tools.append(research)
-
     return tools
 
 

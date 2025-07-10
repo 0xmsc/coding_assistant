@@ -39,6 +39,7 @@ It is your responsibility to make sure that the task is completed.
 Note that the planning agent is not a software architect.
 Therefore, it should already be clear how to implement the task on a high level before handing it to the planning agent.
 The planning agent can come up with a detailed plan on how to implement the task, like what functions to create, what classes to use, etc.
+Give relevant paths, files, functions, etc. that are relevant to the task to the planning agent.
 
 Note that the developer agent needs a very detailed plan to be able to implement the task.
 Think of the agent as a junior engineer that needs to be told exactly what to do.
@@ -46,10 +47,13 @@ Think of the agent as a junior engineer that needs to be told exactly what to do
 If something is unclear, you can ask the user for clarification.
 This should be exceptional and not the norm.
 Never stop working on the task to ask for clarification. Only use the ask_user tool when you're stuck.
-You shall only stop when the task is done.
+You shall only stop when the full task is done.
 
 You should ask the user for clarifcation once you have an implementation plan.
 Before you give it to the developer agent, you should ask the user if the plan is correct.
+
+You should also ask the user if the changes that were made are correct.
+If not, you should go back to the first step and start over.
 
 If you are missing an agent or a tool that would be needed to finish the task, output a description of what you would have done if the agent was available and what agent or tool you would have needed.
 """.strip()
@@ -76,4 +80,4 @@ def create_orchestrator_agent():
 
 def run_orchestrator_agent(task: str):
     agent = create_orchestrator_agent()
-    return run_agent(agent, task, name="Orchestrator")
+    return run_agent(agent, task, name="Orchestrator", ask_user_for_feedback=True)
