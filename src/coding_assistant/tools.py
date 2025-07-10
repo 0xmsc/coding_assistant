@@ -52,7 +52,9 @@ async def _get_mcp_server(
 @asynccontextmanager
 async def get_filesystem_server(config: Config) -> AsyncGenerator[MCPServer, None]:
     if not config.working_directory.exists():
-        raise ValueError(f"Working directory {config.working_directory} does not exist.")
+        raise ValueError(
+            f"Working directory {config.working_directory} does not exist."
+        )
 
     async with _get_mcp_server(
         name="filesystem",
@@ -111,25 +113,6 @@ async def get_tavily_server() -> AsyncGenerator[MCPServer, None]:
 
 
 @asynccontextmanager
-async def get_chroma_mcp_server() -> AsyncGenerator[MCPServer, None]:
-    async with _get_mcp_server(
-        name="chroma",
-        command="uvx",
-        args=[
-            "chroma-mcp",
-            "--client-type",
-            "persistent",
-            "--data-dir",
-            str(Path("~/Temp/chroma").expanduser()),
-        ],
-        env={
-            "ANONYMIZED_TELEMETRY": "false",
-        },
-    ) as server:
-        yield server
-
-
-@asynccontextmanager
 async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer], None]:
     servers: List[MCPServer] = []
 
@@ -137,7 +120,6 @@ async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer],
         servers.append(await stack.enter_async_context(get_filesystem_server(config)))
         servers.append(await stack.enter_async_context(get_git_server(config)))
         servers.append(await stack.enter_async_context(get_fetch_server()))
-        servers.append(await stack.enter_async_context(get_chroma_mcp_server()))
 
         if os.environ.get("TAVILY_API_KEY"):
             servers.append(await stack.enter_async_context(get_tavily_server()))

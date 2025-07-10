@@ -78,7 +78,7 @@ class OrchestratorTool(Tool):
             model=self._config.model,
         )
 
-        return await run_agent_loop(orchestrator_agent)
+        return await run_agent_loop(orchestrator_agent, ask_for_feedback=True)
 
 
 class ResearchTool(Tool):

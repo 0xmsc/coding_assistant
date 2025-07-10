@@ -6,6 +6,7 @@ import logging
 import textwrap
 from typing import Optional
 
+from rich.prompt import Prompt
 from rich import print
 from rich.panel import Panel
 from rich.pretty import Pretty
@@ -34,7 +35,9 @@ Your client has provided the following parameters for your task:
 
 {parameters}
 
-It is of the utmost importance that you follow these instructions and parameters to make your client happy.
+It is very important that you follow these instructions and parameters to make your client happy.
+It is also crucial that you return all results in the result parameter of the finish_task tool call.
+Your client does not have access to any other output from you.
 """.strip()
 
 
@@ -60,8 +63,6 @@ class Agent:
     finished: bool = False
     result: Optional[str] = None
 
-
-MAX_HISTORY = 50
 
 class FinishTaskTool(Tool):
     def name(self) -> str:
@@ -217,12 +218,7 @@ async def handle_tool_call(tool_call, agent: Agent):
 
 
 def trim_history(history: list):
-    """
-    Trim the message history to keep only the last MAX_HISTORY entries.
-    """
-    if len(history) > MAX_HISTORY:
-        # Keep only the last MAX_HISTORY messages
-        del history[:-MAX_HISTORY]
+    pass
 
 
 def create_system_message(agent: Agent) -> str:
@@ -300,7 +296,7 @@ async def do_single_step(agent: Agent):
 
 
 @tracer.start_as_current_span("run_agent_loop")
-async def run_agent_loop(agent: Agent):
+async def run_agent_loop(agent: Agent, ask_for_feedback: bool = False):
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
     parameters_json = json.dumps([dataclasses.asdict(p) for p in agent.parameters])
@@ -308,21 +304,41 @@ async def run_agent_loop(agent: Agent):
         "agent.parameter_description", parameters_json
     )
 
-    step_counter = 0
-    while not agent.finished:
-        await do_single_step(agent)
-        step_counter += 1
-        trace.get_current_span().set_attribute("agent.step_counter", step_counter)
+    while True:
+        # Run the agent until it finishes
+        while not agent.finished:
+            await do_single_step(agent)
 
-    assert agent.result
-    trace.get_current_span().set_attribute("agent.result", agent.result)
+        # Print the result
+        if not agent.result:
+            raise RuntimeError("Agent finished but did not return a result.")
 
-    print(
-        Panel(
-            agent.result,
-            title=f"Agent {agent.name} result",
-            border_style="red",
-        ),
-    )
+        trace.get_current_span().set_attribute("agent.result", agent.result)
+
+        print(
+            Panel(
+                agent.result,
+                title=f"Agent {agent.name} result",
+                border_style="red",
+            ),
+        )
+
+        # Handle feedback and restart if necessary
+        if not ask_for_feedback:
+            break
+
+        feedback = Prompt.ask("Feedback:", default="ok")
+        if feedback == "ok":
+            break
+
+        agent.finished = False
+        agent.result = None
+
+        agent.history.append(
+            {
+                "role": "user",
+                "content": feedback,
+            }
+        )
 
     return agent.result
