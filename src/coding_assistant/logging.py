@@ -15,8 +15,8 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
-def print_to_console(content, print_to_console):
-    if print_to_console:
+def print_to_console(content, do_print):
+    if do_print:
         console.print(content)
 
 
@@ -25,15 +25,19 @@ def trace_to_file(data, tracing_file):
         tracing_file.write(json.dumps(data) + "\n")
 
 
-def print_agent_progress(chunk, name, print_to_console=False):
+def print_agent_progress(chunk, name, do_print=False):
     tracing_file = get_global_config().tracing_file
 
     if "tools" in chunk and "messages" in chunk["tools"]:
         for message in chunk["tools"]["messages"]:
             assert isinstance(message, ToolMessage)
             print_to_console(
-                Panel(message.content, title=f"Tool ({message.name})", border_style="yellow"),
-                print_to_console,
+                Panel(
+                    message.content,
+                    title=f"Tool ({message.name})",
+                    border_style="yellow",
+                ),
+                do_print,
             )
 
             trace_to_file(
