@@ -36,6 +36,7 @@ async def _get_feedback(
             parameters={
                 # Give the system message as the task.
                 "description": agent.description,
+                "instructions": agent.instructions,
                 "parameters": "\n" + formatted_parameters,
                 "output": agent.result,
             }
@@ -307,6 +308,10 @@ class FeedbackTool(Tool):
                 "parameters": {
                     "type": "string",
                     "description": "The parameters the agent was given for the task.",
+                },
+                "instructions": {
+                    "type": "string",
+                    "description": "The instructions the agent was given for the task.",
                 },
                 "output": {
                     "type": "string",
