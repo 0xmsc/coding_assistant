@@ -233,8 +233,8 @@ def create_system_message(agent: Agent) -> str:
 
     return SYSTEM_PROMPT_TEMPLATE.format(
         name=agent.name,
-        description=textwrap.indent(agent.description, "> "),
-        parameters=textwrap.indent(parameters_str, "> "),
+        description=agent.description,
+        parameters=parameters_str,
     )
 
 
