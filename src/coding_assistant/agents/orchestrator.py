@@ -21,6 +21,7 @@ from coding_assistant.agents.prompt import COMMON_AGENT_PROMPT
 from coding_assistant.agents.researcher import research
 from coding_assistant.config import get_global_config
 from coding_assistant.tools.file import read_only_file_tools
+from coding_assistant.tools.git_tools import get_git_tools
 from coding_assistant.tools.notebook import get_notebook_tools
 from coding_assistant.tools.user import ask_user
 
@@ -59,7 +60,7 @@ Think of the agent as a junior engineer that needs to be told exactly what to do
 
 Note that the agents do not have access to each other's output.
 You will have to provide ALL the necessary context to the agents via their task.
-For example, you might want to fully forward the output of your research results to the planning agent.
+For example, you need to forward the full results of your research to the planning agents.
 Another example would be that you need to fully forward the implementation plan from the planning agent to the developer agent.
 Please also forward the full output of the developer agent to the research agent for verification.
 In short it is of utmost importance that you provide all the necessary context to the agents.
@@ -88,6 +89,7 @@ def create_orchestrator_tools():
     tools.append(develop)
     tools.append(do_expert_analysis)
     tools.extend(get_notebook_tools())
+    tools.extend(get_git_tools())
     return tools
 
 

@@ -60,7 +60,7 @@ def create_agent(prompt, tools, model):
 def run_agent(agent, task, name, ask_user_for_feedback=False):
     console.print(Panel(Markdown(task), title=f"Agent task: {name}", border_style="green"))
     config = {"configurable": {"thread_id": "thread"}}
-    input = {"messages": HumanMessage(content=task)}
+    input: MyAgentState = {"messages": HumanMessage(content=task), "notebook": dict()}
 
     latest = None
 

@@ -5,34 +5,40 @@ import json
 
 
 @tool
-def record_fact(key: str, fact: str, notebook: Annotated[dict, InjectedState]):
+def record_fact(key: str, fact: str, state: Annotated[dict, InjectedState]) -> str:
     """
-    Record a fact in a notebook.
+    Record a fact in the notebook.
     """
+    notebook = state["notebook"]
     notebook[key] = fact
+    return "Success"
 
 
 @tool
-def get_fact(key: str, notebook: Annotated[dict, InjectedState]) -> str:
+def get_fact(key: str, state: Annotated[dict, InjectedState]) -> str:
     """
-    Retrieve a fact from a notebook.
+    Retrieve a fact from the notebook.
     """
+    notebook = state["notebook"]
     return notebook[key]
 
 
 @tool
-def delete_fact(key: str, notebook: Annotated[dict, InjectedState]):
+def delete_fact(key: str, state: Annotated[dict, InjectedState]) -> str:
     """
-    Delete a fact from a notebook.
+    Delete a fact from the notebook.
     """
+    notebook = state["notebook"]
     del notebook[key]
+    return "Success"
 
 
 @tool
-def get_facts(notebook: Annotated[dict, InjectedState]) -> str:
+def get_facts(state: Annotated[dict, InjectedState]) -> str:
     """
-    Retrieve all facts from a notebook.
+    Retrieve all facts from the notebook.
     """
+    notebook = state["notebook"]
     return json.dumps(notebook)
 
 
