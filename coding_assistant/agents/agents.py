@@ -1,14 +1,15 @@
 from langchain_core.messages import AIMessage, HumanMessage
 from rich.console import Console
 from rich.panel import Panel
+from rich.markdown import Markdown
 
 from coding_assistant.logging import print_agent_progress
 
 console = Console()
 
 
-def run_agent(agent, task, name=None):
-    console.print(Panel(f"{name}: {task}", title="Task", border_style="green"))
+def run_agent(agent, task, name):
+    console.print(Panel(Markdown(task), title=f"Agent task: {name}", border_style="green"))
     config = {"configurable": {"thread_id": "thread"}}
     input = {"messages": HumanMessage(content=task)}
 

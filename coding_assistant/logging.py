@@ -12,7 +12,7 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
-def print_agent_progress(chunk, name=None):
+def print_agent_progress(chunk, name):
     if "tools" in chunk and "messages" in chunk["tools"]:
         for message in chunk["tools"]["messages"]:
             assert isinstance(message, ToolMessage)
@@ -29,7 +29,7 @@ def print_agent_progress(chunk, name=None):
                     pretty_args = pformat(tool_call.get("args"))
                     content += f"{tool_call.get('name')}\n{pretty_args}\n"
             content = content.strip()
-            title = f"Agent: {name}" if name else "Agent"
+            title = f"Agent progress: {name}"
             console.print(Panel(Markdown(content), title=title, border_style="red"))
     else:
         logger.warning(f"Unhandled chunk: {pformat(chunk)}")
