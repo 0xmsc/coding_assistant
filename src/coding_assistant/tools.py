@@ -98,7 +98,7 @@ async def get_tavily_server() -> AsyncGenerator[MCPServer, None]:
         command="npx",
         args=[
             "-y",
-            "tavily-mcp@0.1.4",
+            "tavily-mcp@0.2.1",
         ],
         env={
             "TAVILY_API_KEY": os.environ["TAVILY_API_KEY"],
@@ -116,7 +116,7 @@ async def get_shell_server() -> AsyncGenerator[MCPServer, None]:
             "mcp-shell-server",
         ],
         env={
-            "ALLOW_COMMANDS": "just",
+            "ALLOW_COMMANDS": "ls,just,cat,exa,rg,fd,git",
         },
     ) as server:
         yield server

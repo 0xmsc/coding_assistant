@@ -14,15 +14,17 @@ def sandbox(working_directory: Path):
 
     rs = Ruleset()
 
-    rs.allow(Path("/usr"), rules=FSAccess.all())
-    rs.allow(Path("/lib"), rules=FSAccess.all())
-    rs.allow(Path("/etc"), rules=FSAccess.all())
+    # System directories
     rs.allow(Path("/dev"), rules=FSAccess.all())
-    rs.allow(Path("/proc"), rules=FSAccess.all())
-    rs.allow(Path("/run"), rules=FSAccess.all())
-    rs.allow(Path("/sys"), rules=FSAccess.all())
-    rs.allow(Path("/mnt/wsl"), rules=FSAccess.all())
+    rs.allow(Path("/usr"), rules=_get_read_only_rule())
+    rs.allow(Path("/lib"), rules=_get_read_only_rule())
+    rs.allow(Path("/etc"), rules=_get_read_only_rule())
+    rs.allow(Path("/proc"), rules=_get_read_only_rule())
+    rs.allow(Path("/run"), rules=_get_read_only_rule())
+    rs.allow(Path("/sys"), rules=_get_read_only_rule())
+    rs.allow(Path("/mnt/wsl"), rules=_get_read_only_rule())
 
+    # User directories
     rs.allow(Path("~/.npm").expanduser(), rules=FSAccess.all())
     rs.allow(Path("~/.cache").expanduser(), rules=FSAccess.all())
     rs.allow(Path("~/.local/share/uv").expanduser(), rules=FSAccess.all())
