@@ -161,7 +161,7 @@ async def _main():
 
 
 def main():
-    asyncio.run(_main(), debug=True)
+    asyncio.run(_main())
 
 
 if __name__ == "__main__":
