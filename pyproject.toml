@@ -6,7 +6,7 @@ readme = "README.md"
 authors = []
 requires-python = ">=3.12"
 dependencies = [
-    "smolagents>=1.13.0",
+    "smolagents[openai]>=1.13.0",
 ]
 
 [project.scripts]
