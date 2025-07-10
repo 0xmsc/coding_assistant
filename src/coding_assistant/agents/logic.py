@@ -334,6 +334,9 @@ async def run_agent_loop(agent: Agent, ask_for_feedback: bool = False):
         agent.finished = False
         agent.result = None
 
+        # Remove the finish_task tool call from the history
+        agent.history.pop()
+
         agent.history.append(
             {
                 "role": "user",
