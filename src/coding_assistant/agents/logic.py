@@ -37,7 +37,7 @@ class FinishTaskTool(Tool):
         return "finish_task"
 
     def description(self) -> str:
-        return "Finish the task. Only call this when the task is done. Note that this function has to bed called at some point in time, otherwise the agent will be in an infinite loop."
+        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop. The final result or summary of the task should be provided in the 'result' parameter, as this is the only output accessible to the task initiator."
 
     def parameters(self) -> dict:
         return {
@@ -50,7 +50,7 @@ class FinishTaskTool(Tool):
             },
         }
 
-    def execute(self, parameters) -> str:
+    async def execute(self, parameters) -> str:
         assert False, "FinishTaskTool should not be executed directly."
 
 
