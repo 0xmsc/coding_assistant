@@ -146,6 +146,11 @@ class AgentTool(Tool):
             "required": ["task", "expected_output"],
         }
 
+    def get_model(self, parameters: dict) -> str:
+        if parameters.get("expert_knowledge"):
+            return self._config.expert_model
+        return self._config.model
+
     async def execute(self, parameters: dict) -> str:
         research_agent = Agent(
             name="Agent",
@@ -159,7 +164,7 @@ class AgentTool(Tool):
                 ExecuteShellCommandTool(),
                 AskClientTool(),
             ],
-            model=self._config.expert_model if parameters.get("expert_knowledge") else self._config.model,
+            model=get_model(self, parameters),
             feedback_function=lambda agent: _get_feedback(
                 agent,
                 self._config,
