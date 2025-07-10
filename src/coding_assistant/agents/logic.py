@@ -319,7 +319,7 @@ async def do_single_step(agent: Agent):
 
     trace.get_current_span().set_attribute("agent.history", json.dumps(agent.history))
 
-    message = complete(agent.history, model=agent.model, tools=tools)
+    message = await complete(agent.history, model=agent.model, tools=tools)
     trace.get_current_span().set_attribute("completion.message", message.model_dump_json())
 
     # Remove the reasoning_content from the message, we cannot send it back to the LLM API.
