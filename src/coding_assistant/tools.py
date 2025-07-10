@@ -38,7 +38,7 @@ class Tools:
 
 @asynccontextmanager
 async def _get_mcp_server(
-    name: str, command: str, args: List[str], config: Config
+    name: str, command: str, args: List[str]
 ) -> AsyncGenerator[MCPServer, None]:
     params = StdioServerParameters(
         command=command,
@@ -63,7 +63,6 @@ async def get_filesystem_server(config: Config) -> AsyncGenerator[MCPServer, Non
             "@modelcontextprotocol/server-filesystem",
             str(config.working_directory),
         ],
-        config=config,
     ) as server:
         yield server
 
@@ -80,14 +79,31 @@ async def get_git_server(config: Config) -> AsyncGenerator[MCPServer, None]:
             "--repository",
             str(config.working_directory),
         ],
-        config=config,
     ) as server:
         yield server
 
+
+@asynccontextmanager
+async def get_tavily_server(config: Config) -> AsyncGenerator[MCPServer, None]:
+    """Context manager for the Tavily MCP server."""
+    # Launch the Tavily MCP server using npx
+    async with _get_mcp_server(
+        name="tavily",
+        command="npx",
+        args=[
+            "-y",
+            "tavily-mcp@0.1.4",
+        ],
+    ) as server:
+        yield server
+
+
 @asynccontextmanager
 async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer], None]:
+    """Context manager that yields all available MCP servers."""
     async with (
         get_filesystem_server(config) as filesystem_server,
         get_git_server(config) as git_server,
+        get_tavily_server(config) as tavily_server,
     ):
-        yield [filesystem_server, git_server]
+        yield [filesystem_server, git_server, tavily_server]
