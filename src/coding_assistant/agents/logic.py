@@ -49,6 +49,12 @@ Your client has provided the following parameters for your task:
 You must call the `finish_task` tool to signal that you are done with your task.
 If you do not call this tool, you will end up in an infinite loop.
 The client cannot see your work until after you call this tool.
+
+## Instructions
+
+The following are additional instructions provided by your client:
+
+{instructions}
 """.strip()
 
 FEEDBACK_TEMPLATE = """
@@ -74,6 +80,7 @@ class Agent:
     model: str
 
     description: str
+    instructions: str
     parameters: list[Parameter]
 
     # This is a function that can validate an agents output.
@@ -276,6 +283,7 @@ def create_system_message(agent: Agent) -> str:
         name=agent.name,
         description=textwrap.indent(agent.description, "  "),
         parameters=textwrap.indent(parameters_str, "  "),
+        instructions=textwrap.indent(agent.instructions, "  "),
     )
 
 
