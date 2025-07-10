@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from rich.console import Console
 from rich.panel import Panel
 from langchain_core.callbacks import BaseCallbackHandler
+from langchain_community.tools import ShellTool
 
 from coding_assistant.agents.agents import run_agent
 from coding_assistant.agents.developer import develop
@@ -78,6 +79,7 @@ logger = logging.getLogger(__name__)
 
 def create_orchestrator_tools():
     tools = []
+    tools.append(ShellTool(ask_human_input=True))
     tools.append(ask_user)
     tools.append(research)
     tools.append(plan)
