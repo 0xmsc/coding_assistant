@@ -5,12 +5,13 @@ from coding_assistant.tools.file import RipgrepTool, RipgrepToolInput, read_only
 def test_ripgrep_tool_input():
     input_data = RipgrepToolInput(pattern="TODO", case_insensitive="true")
     assert input_data.pattern == "TODO"
-    assert input_data.case_insensitive == "true"
+    assert input_data.case_insensitive == True
 
 
 def test_ripgrep_tool_run_no_mock():
     # Ensure ripgrep is available in the system
     tool = RipgrepTool()
+
     # Temporary test file
     test_filename = "test_ripgrep.txt"
     with open(test_filename, "w") as f:
