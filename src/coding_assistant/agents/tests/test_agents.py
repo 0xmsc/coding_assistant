@@ -69,7 +69,12 @@ async def test_feedback_tool_after_feedback(tmp_path):
 
 @pytest.mark.asyncio
 async def test_orchestrator_tool(tmp_path):
-    config = Config(working_directory=tmp_path, model=TEST_MODEL, disable_user_feedback=True)
+    config = Config(
+        working_directory=tmp_path,
+        model=TEST_MODEL,
+        expert_model=TEST_MODEL,
+        disable_user_feedback=True,
+    )
     tool = OrchestratorTool(config=config, tools=Tools())
     result = await tool.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result == "Hello, World!"
@@ -80,6 +85,7 @@ async def test_orchestrator_tool_instructions(tmp_path):
     config = Config(
         working_directory=tmp_path,
         model=TEST_MODEL,
+        expert_model=TEST_MODEL,
         disable_user_feedback=True,
     )
     tool = OrchestratorTool(config=config, tools=Tools())
