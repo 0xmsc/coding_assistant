@@ -11,66 +11,94 @@ Coding Assistant is an experimental, Python-based multi-agent system designed to
 
 ## Features
 
-- **Modular Multi-Agent Architecture**: Scales task handling across specialized agents for orchestration, research, and development.
-- **Automated Code Generation & Refactoring**: Leverages LLMs to generate, refactor, and optimize code.
-- **Research & Knowledge Retrieval**: Dedicated Researcher agent performs deep dives into documentation and resources.
-- **Filesystem & Git Integration**: Uses `mcp[cli]` to perform robust filesystem and Git operations directly from agents.
-- **Memory Management**: Automatic conversation history trimming via the `MAX_HISTORY` constant and `trim_history()` logic to bound memory usage.
-- **Robust Error Handling**: All internal `assert` statements have been replaced with explicit exceptions (e.g., `ValueError`, `RuntimeError`) for clearer, more predictable error reporting.
-- **Parameter Validation**: Corrected typos (renamed `mesages` to `messages`) to ensure proper LLM function calls.
-- **Code Hygiene**: Removed unused imports and streamlined dependencies for a cleaner, more maintainable codebase.
+- **Modular & Extensible Multi-Agent Architecture**: Specializes tasks across Orchestrator, Researcher, and Developer agents for scalable workflows.
+- **Versatile LLM Integration**: Seamless interaction with multiple LLM providers via `litellm`.
+- **Automated Code Generation & Refactoring**: Rapidly generate, optimize, and refactor code based on context.
+- **Deep Research & Knowledge Retrieval**: Built-in Researcher agent and `tavily-mcp` integration for real-time web search and content extraction.
+- **Filesystem & Git Operations**: Robust file and version control manipulations using `mcp[cli]`.
+- **Interactive CLI with Custom Flags**: Supports `--research` and `--expert` modes for tailored execution paths.
+- **Configurable Environment Management**: Simple setup via environment variables to manage models, API keys, and behavior.
+- **Telemetry & Monitoring**: Integrated OpenTelemetry for tracing and performance insights.
+- **Comprehensive Error Handling & Logging**: Explicit exception handling and rich-formatted logs for clarity.
+- **Memory Management**: Bounded conversation history trimming to optimize resource usage.
+- **Pluggable Tooling & Extensions**: Easily extend functionality with custom tools and modules.
 
-## Technologies & Libraries
+## Technologies & Dependencies
 
-- Python 3.12+
-- **litellm**: Simplified LLM interaction, supporting multiple providers
-- **mcp[cli]**: Filesystem and tooling operations
-- **rich**: Rich text and console formatting
-- **OpenTelemetry**: Tracing and telemetry integration
+- **Python**: 3.12+
+- **Node.js/UVX**: 16+ (Node.js runtime & UVX for fast installs)
+- **requests**: HTTP requests library
+- **mcp[cli]**: Filesystem and tool operations
+- **tavily-mcp**: Web search and extraction
+- **litellm**: Unified LLM interface
+- **OpenTelemetry**: Tracing and telemetry instrumentation
+- **rich**: ANSI and Markdown-rich console output
 
 ## Installation
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/coding-assistant.git
-   cd coding-assistant
-   ```
-2. (Optional) Create and activate a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-3. Install the package:
-   ```bash
-   pip install .
-   ```
+```bash
+# Clone repository
+git clone https://github.com/yourusername/coding-assistant.git
+cd coding-assistant
+
+# (Optional) Python virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Install Python dependencies
+pip install .
+
+# Install Node.js (v16+)
+# Recommended: use nvm
+nvm install 16
+nvm use 16
+
+# Install UVX globally (optional for faster package management)
+npm install -g uvx
+
+# Install Node.js dependencies via UVX or NPX
+uvx install        # or
+npx uvx install
+```
 
 ## Configuration
 
-The assistant uses environment variables to configure its models and behavior. Create a `.env` or `.envrc` file in the project root with the following (optional):
+Create a `.env` or `.envrc` file in the project root:
 
 ```bash
+# OpenAI/Litellm Models
 CODING_ASSISTANT_MODEL="o4-mini"
 CODING_ASSISTANT_EXPERT_MODEL="o3"
+
+# Tavily API Key for web search/extraction
+TAVILY_API_KEY="your_tavily_api_key_here"
 ```
 
-Default values:
+Default values if not specified:
 
 - `CODING_ASSISTANT_MODEL`: `o4-mini`
 - `CODING_ASSISTANT_EXPERT_MODEL`: `o3`
 
 ## Usage
 
-Invoke the assistant via the command-line interface:
-
 ```bash
+# Basic task execution
 coding-assistant --task "Describe your task here"
+
+# Include research insights
+coding-assistant --task "Describe your task here" --research
+
+# Use expert model for advanced responses
+coding-assistant --task "Describe your task here" --expert
+
+# Combine flags
+coding-assistant --task "Describe your task here" --research --expert
 ```
 
-Or run as a Python module:
+Or with Python module:
 
 ```bash
-python -m coding_assistant.main --task "Describe your task here"
+python -m coding_assistant.main --task "Your task" --research --expert
 ```
 
 ## Project Structure
@@ -78,14 +106,14 @@ python -m coding_assistant.main --task "Describe your task here"
 ```
 .
 ├── src/coding_assistant/
-│   ├── agents/        # Orchestrator, Researcher, Developer implementations
-│   ├── llm/           # LLM integration via litellm
-│   ├── config.py      # Configuration settings
-│   ├── main.py        # CLI entry point
-│   └── tools.py       # MCP-based utilities
-├── pyproject.toml     # Project metadata and dependencies
-├── README.md          # This file
-└── .envrc             # direnv configuration (if used)
+│   ├── llm/            # LLM integration modules
+│   ├── agents/         # Orchestrator, Researcher, Developer
+│   ├── tools.py        # MCP-based utilities
+│   ├── config.py       # Configuration settings
+│   └── main.py         # CLI entry point
+├── pyproject.toml      # Project metadata and dependencies
+├── README.md           # Project documentation
+└── .envrc              # direnv configuration (if used)
 ```
 
 ## Contributing
@@ -95,14 +123,14 @@ We welcome contributions! To contribute:
 1. Fork this repository.
 2. Create a feature branch:
    ```bash
-   git checkout -b feature/your-feature-name
-   ```
+git checkout -b feature/your-feature-name
+```  
 3. Make your changes and commit them.
 4. Ensure your code passes any linters or style checks you use.
 5. Push your branch:
    ```bash
-   git push origin feature/your-feature-name
-   ```
+git push origin feature/your-feature-name
+```  
 6. Open a Pull Request describing your changes.
 
 Please follow the project's coding standards and update any relevant documentation.
