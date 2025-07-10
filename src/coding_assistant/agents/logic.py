@@ -271,7 +271,9 @@ async def do_single_step(agent: Agent):
 
     # Do one completion step
     trim_history(agent.history)
+
     trace.get_current_span().set_attribute("agent.history", json.dumps(agent.history))
+    trace.get_current_span().set_attribute("agent.tools", json.dumps(tools))
 
     completion = complete(agent.history, model=agent.model, tools=tools)
     logger.debug(f"Got completion {completion} from LLM")
