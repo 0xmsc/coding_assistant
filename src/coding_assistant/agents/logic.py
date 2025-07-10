@@ -85,7 +85,7 @@ class FinishTaskTool(Tool):
         return "finish_task"
 
     def description(self) -> str:
-        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop. The final result or summary of the task should be provided in the 'result' parameter, as this is the only output accessible to the client. Your client should understand what you've done while working on the task by only looking at the `result` parameter."
+        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop. The final result or summary of the task should be provided in the 'result' parameter, as this is the only output accessible to the client. Your client should understand what you've done while working on the task by only looking at the `result` parameter. Note that after each call to finish_task, the client has the chance to provide feedback. In this case, incorporate the feedback into your next finish_task call."
 
     def parameters(self) -> dict:
         return {
