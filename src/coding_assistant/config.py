@@ -7,4 +7,4 @@ from typing import Callable
 class Config:
     working_directory: Path
     model: str
-    expert_model: str
+    expert_model: str | None = None
