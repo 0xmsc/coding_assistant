@@ -423,6 +423,8 @@ async def run_agent_loop(
         )
 
         if feedback := await agent.feedback_function(agent):
+            agent.feedback.append(feedback)
+
             feedback = FEEDBACK_TEMPLATE.format(
                 feedback=textwrap.indent(feedback, "  "),
             )
@@ -442,7 +444,6 @@ async def run_agent_loop(
                 }
             )
 
-            agent.feedback.append(feedback)
             agent.output = None
         else:
             # Feedback was ok, so we can finish the agent.
