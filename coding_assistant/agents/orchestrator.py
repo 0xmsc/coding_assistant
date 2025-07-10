@@ -35,7 +35,7 @@ For each of the smaller tasks, do the following:
 
 1. Use the planning agent to create an implementation plan for each of the smaller tasks.
 2. Use the developer agent to implement the plan for each of the smaller tasks.
-3. Ask a research agent to verify that the changes are correct, according to the output of the developer agent.
+3. Ask a research agent to verify that the changes are correct, according to the implementation plan and the output of the developer agent.
 
 Note that you don't have to follow these steps exactly. You can use the agents in any order you see fit.
 You can also go back to any step at any time, if you need to.
@@ -47,6 +47,8 @@ Note that the planning agent is not a software architect.
 Therefore, it should already be clear how to implement the task on a high level before handing it to the planning agent.
 The planning agent can come up with a detailed plan on how to implement the task, like what functions to create, what classes to use, etc.
 Give relevant paths, files, functions, etc. that are relevant to the task to the planning agent.
+The planning agent is not supposed to start again from scratch. Give it all the necessary context from the research step.
+It needs to know at which files it needs to look at, which functions are relevant, etc.
 
 Note that the developer agent needs a very detailed plan to be able to implement the task.
 Think of the agent as a junior engineer that needs to be told exactly what to do.
@@ -66,9 +68,6 @@ You shall only stop when the full task is done.
 
 You should ask the user for clarifcation once you have an implementation plan.
 Before you give it to the developer agent, you should ask the user if the plan is correct.
-
-You should also ask the user if the changes that were made are correct.
-If not, you should go back to the first step and start over.
 
 If you are missing an agent or a tool that would be needed to finish the task, output a description of what you would have done if the agent was available and what agent or tool you would have needed.
 """.strip()

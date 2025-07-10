@@ -4,6 +4,7 @@ from coding_assistant.config import get_global_config
 from langchain_community.agent_toolkits import FileManagementToolkit
 from langchain_core.tools import BaseTool, ToolException
 from typing import Any, Dict, Type
+from pathlib import Path
 
 
 class RipgrepToolInput(BaseModel):

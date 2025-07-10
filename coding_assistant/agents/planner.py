@@ -67,6 +67,7 @@ def run_planner_agent(task: str):
 def plan(task: str) -> str:
     """
     Plan an implementation.
+    The task should contain all the necessary context, including which files, functions, etc. to look at.
     The output will be a detailed implementation plan in markdown format.
     """
     return run_planner_agent(task)
