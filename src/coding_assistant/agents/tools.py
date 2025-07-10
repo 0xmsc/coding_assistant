@@ -63,7 +63,7 @@ class OrchestratorTool(Tool):
         return "launch_orchestrator_agent"
 
     def description(self) -> str:
-        return "Launch an orchestrator agent to coordinate other agents to accomplish a given task."
+        return "Launch an orchestrator agent to accomplish a given task. The agent can delegate tasks to other agents where it sees fit."
 
     def parameters(self) -> dict:
         return {

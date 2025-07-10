@@ -37,7 +37,7 @@ def parse_args():
 
 
 def load_config(args) -> Config:
-    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "gpt-4.1-mini")
+    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "gpt-4.1")
     expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "o3")
 
     logger.info(f"Using model: {model_name}")

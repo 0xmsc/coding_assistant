@@ -232,7 +232,7 @@ async def handle_tool_call(tool_call, agent: Agent):
     trace.get_current_span().set_attribute("function.result", function_call_result)
     logger.debug(f"Function {function_name} returned {function_call_result}")
 
-    if len(function_call_result) > 20_000:
+    if len(function_call_result) > 50_000:
         logger.warning(
             f"Function {function_name} returned too long result ({len(function_call_result)} characters). Trimming."
         )
