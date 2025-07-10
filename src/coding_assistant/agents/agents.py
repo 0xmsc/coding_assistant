@@ -282,7 +282,11 @@ class ExecuteShellCommandTool(Tool):
         result = subprocess.run(args, capture_output=True, text=True)
 
         if result.returncode != 0:
-            return f"Command failed with error code {result.returncode}, stderr: {result.stderr}"
+            return (
+                f"Command failed with error code {result.returncode}\n"
+                f"stdout: {result.stdout}\n"
+                f"stderr: {result.stderr}"
+            )
 
         return result.stdout
 
