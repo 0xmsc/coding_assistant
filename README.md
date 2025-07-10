@@ -105,6 +105,15 @@ We welcome contributions! To contribute:
 
 Please follow the project's coding standards and update any relevant documentation.
 
+## Changelog
+
+- Read current README.md from the project root.
+- Integrate the identified bullet list of updates into the README.md under a new section titled "Changelog" or "Recent Updates".
+- Ensure consistent markdown formatting.
+- Validate README.md formatting (e.g., headers, lists) matches project style.
+- Save changes.
+- Commit changes with a message like "docs: update README.md with recent changes".
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
