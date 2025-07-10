@@ -163,7 +163,7 @@ async def get_qdrant_server() -> AsyncGenerator[MCPServer, None]:
         ],
         env={
             "COLLECTION_NAME": "coding_assistant",
-            "QDRANT_LOCAL_PATH": str(Path("~/Temp/.qdrant_db").expanduser()),
+            "QDRANT_LOCAL_PATH": str(Path("~/Temp/qdrant_db/").expanduser()),
         },
     ) as server:
         yield server
@@ -182,7 +182,8 @@ async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer],
         servers.append(await stack.enter_async_context(get_fetch_server()))
         servers.append(await stack.enter_async_context(get_shell_server()))
         servers.append(await stack.enter_async_context(get_msc_server()))
-        servers.append(await stack.enter_async_context(get_qdrant_server()))
+        # servers.append(await stack.enter_async_context(get_memory_server(config)))
+        # servers.append(await stack.enter_async_context(get_qdrant_server()))
 
         if os.environ.get("TAVILY_API_KEY"):
             servers.append(await stack.enter_async_context(get_tavily_server()))
