@@ -1,8 +1,10 @@
-langchain-community
 langchain
+langchain-community
+langchain-openai
+langchain-experimental
+
 langgraph
 langgraph-checkpoint
-langchain-openai
-tavily-python
+
 rich
-beeprint
+pytest

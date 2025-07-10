@@ -17,7 +17,6 @@ from coding_assistant.agents.agents import run_agent
 from coding_assistant.agents.developer import develop
 from coding_assistant.agents.planner import plan
 from coding_assistant.agents.researcher import research
-from coding_assistant.logging import print_agent_progress
 from coding_assistant.tools.file import read_only_file_tools
 from coding_assistant.tools.user import ask_user
 
@@ -79,6 +78,7 @@ logger = logging.getLogger(__name__)
 
 def create_orchestrator_tools():
     tools = []
+    tools.extend(read_only_file_tools())
     tools.append(ShellTool(ask_human_input=True))
     tools.append(ask_user)
     tools.append(research)
