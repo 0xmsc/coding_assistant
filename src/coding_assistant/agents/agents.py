@@ -8,21 +8,17 @@ from coding_assistant.tools import Tool, Tools
 
 logger = logging.getLogger(__name__)
 
-ORCHESTRATOR_INSTRUCTIONS = """
-You are an Orchestrator agent. Your goal is to coordinate other specialized agents to efficiently complete complex tasks.
-""".strip()
-
 
 def create_orchestrator_agent(task: str, config: Config, tools: Tools) -> Agent:
     return Agent(
         name="orchestrator",
-        instructions=ORCHESTRATOR_INSTRUCTIONS,
+        instructions="You are an Orchestrator agent. Your goal is to coordinate other specialized agents to efficiently complete complex tasks. Note that your time is quite valuable and expensive, so you should maximize the time you offload to other agents.",
         mcp_servers=tools.mcp_servers,
         tools=[
             ResearchTool(config, tools),
             AskUserTool(),
         ],
-        model=config.model,
+        model=config.expert_model,
         task=task,
         history=[],
     )

@@ -162,8 +162,9 @@ def trim_history(history: list):
             logger.warning(
                 f"Tool call content too long ({len(entry['content'])} characters)."
             )
+
             entry["content"] = (
-                "!!! This tool output has been removed because it was too long, try other parameters !!!"
+                "!!! This tool output has been removed because it was too long, try other parameters"
             )
 
 
