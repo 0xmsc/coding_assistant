@@ -3,13 +3,13 @@ from pydantic import BaseModel, Field
 from coding_assistant.config import get_global_config
 from langchain_community.agent_toolkits import FileManagementToolkit
 from langchain_core.tools import BaseTool, ToolException
-from typing import Any, Dict, Type
+from typing import Any, Dict, Optional, Type
 from pathlib import Path
 
 
 class RipgrepToolInput(BaseModel):
     pattern: str = Field(description="The pattern to search for in the files.")
-    case_insensitive: str = Field(description="Whether the search should be case-insensitive.")
+    case_insensitive: str = Field(default=False, description="Whether the search should be case-insensitive.")
 
 
 class RipgrepTool(BaseTool):

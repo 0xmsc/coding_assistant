@@ -1,10 +1,12 @@
 import os
 from coding_assistant.tools.file import RipgrepTool, RipgrepToolInput, read_only_file_tools
 
+
 def test_ripgrep_tool_input():
     input_data = RipgrepToolInput(pattern="TODO", case_insensitive="true")
     assert input_data.pattern == "TODO"
     assert input_data.case_insensitive == "true"
+
 
 def test_ripgrep_tool_run_no_mock():
     # Ensure ripgrep is available in the system
@@ -16,11 +18,11 @@ def test_ripgrep_tool_run_no_mock():
 
     try:
         # Perform a search
-        result = tool._run("Find this")
+        result = tool.invoke({"pattern": "Find this"})
         assert "Find this line." in result
 
         # Test case insensitivity
-        result_ci = tool._run("find this", True)
+        result_ci = tool.invoke({"pattern": "find this", "case_insensitive": "true"})
         assert "Find this line." in result_ci
     finally:
         os.remove(test_filename)
