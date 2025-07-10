@@ -6,10 +6,12 @@ from langchain_core.tools import BaseTool, ToolException
 from typing import Any, Dict, Optional, Type
 from pathlib import Path
 
+FILE_TYPE_WHITELIST = ["py", "cpp"]
+
 
 class RipgrepToolInput(BaseModel):
     pattern: str = Field(description="The pattern to search for in the files.")
-    case_insensitive: str = Field(default=False, description="Whether the search should be case-insensitive.")
+    case_insensitive: bool = Field(default=False, description="Whether the search should be case-insensitive.")
 
 
 class RipgrepTool(BaseTool):
@@ -22,6 +24,9 @@ class RipgrepTool(BaseTool):
 
         if case_insensitive:
             cmd.append("-i")
+
+        for extension in FILE_TYPE_WHITELIST:
+            cmd.append(f"-t{extension}")
 
         cmd.append(pattern)
 
