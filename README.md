@@ -40,6 +40,18 @@ Coding Assistant utilizes a system of specialized agents (orchestrator, planner,
    direnv allow
    ```
 
+## Configuration
+
+The project uses environment variables to configure the LLM backend and models:
+
+```bash
+CODING_ASSISTANT_BACKEND=OPENAI # or OPENROUTER
+CODING_ASSISTANT_MODEL=gpt-4o
+CODING_ASSISTANT_REASONING_MODEL=o1
+```
+
+Currently, the project only supports OpenAI and OpenRouter as LLM backends.
+
 ## Usage Guide
 
 1. Start the Coding Assistant:

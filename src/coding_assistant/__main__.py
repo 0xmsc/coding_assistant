@@ -1,13 +1,15 @@
+import argparse
 import logging
 import os
 from pathlib import Path
 from argparse import ArgumentParser, BooleanOptionalAction
 from langchain_openai import ChatOpenAI
+from langchain_community.chat_models import ChatLiteLLM
 
 from coding_assistant.agents.expert import run_expert_agent
 from coding_assistant.agents.orchestrator import run_orchestrator_agent
 from coding_assistant.agents.researcher import run_researcher_agent
-from coding_assistant.config import get_global_config
+from coding_assistant.config import get_global_config, Config
 
 
 def parse_args():
@@ -30,21 +32,46 @@ def parse_args():
 logger = logging.getLogger(__name__)
 
 
+def load_config(args: argparse.Namespace) -> Config:
+    backend = os.environ.get("CODING_ASSISTANT_BACKEND", "OPENAI").upper()
+    model = os.environ.get("CODING_ASSISTANT_MODEL", "gpt-4o")
+    reasoning_model = os.environ.get("CODING_ASSISTANT_REASONING_MODEL", "o1")
+
+    if backend == "OPENAI":
+        model_factory = lambda: ChatOpenAI(model=model)
+        reasoning_model_factory = lambda: ChatOpenAI(model=reasoning_model)
+
+    elif backend == "OPENROUTER":
+        base_url = "https://openrouter.ai/api/v1"
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+        custom_llm_provider = "openrouter"
+        model_factory = lambda: ChatLiteLLM(
+            model=model, base_url=base_url, api_key=api_key, custom_llm_provider=custom_llm_provider
+        )
+        reasoning_model_factory = lambda: ChatLiteLLM(
+            model=reasoning_model, base_url=base_url, api_key=api_key, custom_llm_provider=custom_llm_provider
+        )
+
+    else:
+        raise ValueError(f"Unknown backend: {backend}")
+
+    config = get_global_config()
+    config.model_factory = model_factory
+    config.reasoning_model_factory = reasoning_model_factory
+    config.working_directory = args.working_directory
+    return config
+
+
 def main():
     args = parse_args()
 
     logging.basicConfig(format="%(name)s:%(filename)s:%(lineno)d:%(funcName)s:%(levelname)s: %(message)s")
     logging.getLogger("coding_assistant").setLevel(logging.DEBUG)
 
-    working_directoy = args.working_directory
-    os.chdir(working_directoy)
-    print(f"Running in working directory: {working_directoy}")
+    config = load_config(args)
 
-    get_global_config().working_directory = working_directoy
-    get_global_config().model_factory = lambda: ChatOpenAI(model="gpt-4o")
-    get_global_config().reasoning_model_factory = lambda: ChatOpenAI(model="o1")
-
-    assert get_global_config().model_factory, "No model factory set."
+    os.chdir(config.working_directory)
+    print(f"Running in working directory: {config.working_directory}")
 
     if args.research:
         run_researcher_agent(

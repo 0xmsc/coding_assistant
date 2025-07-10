@@ -8,3 +8,5 @@ langgraph-checkpoint
 
 rich
 pytest
+litellm
+transformers
