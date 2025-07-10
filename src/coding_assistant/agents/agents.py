@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 import subprocess
 import json
@@ -240,8 +241,7 @@ class AskUserTool(Tool):
         assert "question" in parameters
         question = parameters["question"]
         default_answer = parameters.get("default_answer")
-
-        answer = Prompt.ask(question, default=default_answer)
+        answer = await asyncio.to_thread(Prompt.ask, question, default=default_answer)
         return str(answer)
 
 
@@ -279,7 +279,7 @@ class ExecuteShellCommandTool(Tool):
 
         command = parameters["command"]
         args = ["bash", "-c", command]
-        result = subprocess.run(args, capture_output=True, text=True)
+        result = await asyncio.to_thread(subprocess.run, args, capture_output=True, text=True)
 
         if result.returncode != 0:
             return (
