@@ -12,7 +12,9 @@ After each accomplishment, recall your original task and explain how your accomp
 
 Make use of your notebook tools to record interesting findings and to keep track of your progress.
 It might make sense to record your initial task in your notebook, so you can always refer back to it.
-If you find that you're missing context, check if you've recorded stuff in your notebook.
+Note that you have a relatively small context window, which means that you forget things very quickly.
+That is why you have to make heavy use of your notebook to record facts that help you in your task.
+It also means that you have to regularly check your notebook to verify that you are still on the right track.
 You should also record stuff in your notebook that you think might be relevant to solve your task.
 Before writing your final output, always check your notebook for relevant information.
 

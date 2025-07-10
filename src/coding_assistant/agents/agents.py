@@ -7,6 +7,7 @@ from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.prompt import Prompt
 from pprint import pformat
+from langchain_core.runnables import RunnableConfig
 
 from coding_assistant.config import get_global_config
 from coding_assistant.logging import print_agent_progress
@@ -59,7 +60,7 @@ def create_agent(prompt, tools, model):
 
 def run_agent(agent, task, name, ask_user_for_feedback=False):
     console.print(Panel(Markdown(task), title=f"Agent task: {name}", border_style="green"))
-    config = {"configurable": {"thread_id": "thread"}}
+    config = RunnableConfig(configurable={"thread_id": "thread"}, recursion_limit=50)
     input: MyAgentState = {"messages": HumanMessage(content=task), "notebook": dict()}
 
     latest = None
