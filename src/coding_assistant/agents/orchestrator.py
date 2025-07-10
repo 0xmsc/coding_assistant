@@ -68,6 +68,11 @@ Please also forward the full output of the developer agent to the research agent
 In short it is of utmost importance that you provide all the necessary context to the agents.
 It is better to provide too much context than too little.
 
+What is shared between the agents is the notebook.
+The notebook is a dictionary that can be used to store information that is relevant to the task.
+You are responsible for removing any unrelated or too verbose information from the notebook.
+The notebook should only contain information that is relevant to the task and relevant to all agents.
+
 If something is unclear, you can ask the user for clarification.
 This should be exceptional and not the norm.
 Never stop working on the task to ask for clarification. Only use the ask_user tool when you're stuck.
@@ -95,10 +100,10 @@ def create_orchestrator_tools():
     return tools
 
 
-def run_orchestrator_agent(task: str, ask_user_for_feedback: bool):
+def run_orchestrator_agent(task: str, notebook: dict, ask_user_for_feedback: bool):
     agent = create_agent(
         prompt=create_context_prunning_prompt_function(ORCHESTRATOR_PROMPT),
         tools=create_orchestrator_tools(),
         model=get_global_config().model_factory(),
     )
-    return run_agent(agent, task, name="Orchestrator", ask_user_for_feedback=ask_user_for_feedback)
+    return run_agent(agent, task, notebook=notebook, name="Orchestrator", ask_user_for_feedback=ask_user_for_feedback)

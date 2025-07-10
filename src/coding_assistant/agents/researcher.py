@@ -1,12 +1,13 @@
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
 
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt import create_react_agent, InjectedState
 from langchain_core.messages import HumanMessage
 from rich.console import Console
 from rich.panel import Panel
@@ -62,7 +63,7 @@ def create_researcher_tools():
     return tools
 
 
-def run_researcher_agent(question: str, ask_user_for_feedback=False):
+def run_researcher_agent(question: str, notebook: dict, ask_user_for_feedback=False):
     agent = create_agent(
         prompt=create_context_prunning_prompt_function(RESEARCHER_PROMPT),
         tools=create_researcher_tools(),
@@ -71,15 +72,16 @@ def run_researcher_agent(question: str, ask_user_for_feedback=False):
     return run_agent(
         agent,
         question,
+        notebook=notebook,
         name="Researcher",
         ask_user_for_feedback=ask_user_for_feedback,
     )
 
 
 @tool
-def research(question: str) -> str:
+def research(question: str, state: Annotated[dict, InjectedState]) -> str:
     """
     Research a question about the current code base.
     The output will be a detailed answer in markdown format.
     """
-    return run_researcher_agent(question)
+    return run_researcher_agent(question, notebook=state["notebook"])

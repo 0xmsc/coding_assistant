@@ -1,7 +1,9 @@
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
 
+from langgraph.prebuilt import InjectedState
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_community.agent_toolkits import FileManagementToolkit
@@ -58,20 +60,20 @@ def create_planner_tools():
     return tools
 
 
-def run_planner_agent(task: str):
+def run_planner_agent(task: str, notebook: dict):
     agent = create_agent(
         prompt=create_context_prunning_prompt_function(PLANNER_PROMPT),
         tools=create_planner_tools(),
         model=get_global_config().model_factory(),
     )
-    return run_agent(agent, task, name="planner")
+    return run_agent(agent, task, notebook=notebook, name="planner")
 
 
 @tool
-def plan(task: str) -> str:
+def plan(task: str, state: Annotated[dict, InjectedState]) -> str:
     """
     Plan an implementation.
     The task should contain all the necessary context, including which files, functions, etc. to look at.
     The output will be a detailed implementation plan in markdown format.
     """
-    return run_planner_agent(task)
+    return run_planner_agent(task, notebook=state["notebook"])

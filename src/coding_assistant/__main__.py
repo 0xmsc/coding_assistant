@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 def load_config(args: argparse.Namespace) -> Config:
     backend = os.environ.get("CODING_ASSISTANT_BACKEND", "OPENAI").upper()
-    model = os.environ.get("CODING_ASSISTANT_MODEL", "gpt-4o")
+    model = os.environ.get("CODING_ASSISTANT_MODEL", "o3-mini")
     reasoning_model = os.environ.get("CODING_ASSISTANT_REASONING_MODEL", "o3-mini")
 
     if backend == "OPENAI":
@@ -78,16 +78,19 @@ def main():
         run_researcher_agent(
             question=args.research,
             ask_user_for_feedback=args.user_feedback,
+            notebook=dict(),
         )
     elif args.task:
         run_orchestrator_agent(
             task=args.task,
             ask_user_for_feedback=args.user_feedback,
+            notebook=dict(),
         )
     elif args.expert:
         run_expert_agent(
             task=args.expert,
             ask_user_for_feedback=args.user_feedback,
+            notebook=dict(),
         )
     else:
         print("No task specified.")
