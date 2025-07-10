@@ -58,7 +58,7 @@ def create_researcher_tools():
 
 def create_researcher_agent():
     memory = MemorySaver()
-    model = ChatOpenAI(model_name="gpt-4o")
+    model = get_global_config().model_factory()
     tools = create_researcher_tools()
     return create_react_agent(model, tools, checkpointer=memory, prompt=researcher_PROMPT)
 

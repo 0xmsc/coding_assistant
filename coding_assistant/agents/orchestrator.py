@@ -17,6 +17,7 @@ from coding_assistant.agents.agents import run_agent
 from coding_assistant.agents.developer import develop
 from coding_assistant.agents.planner import plan
 from coding_assistant.agents.researcher import research
+from coding_assistant.config import get_global_config
 from coding_assistant.tools.file import read_only_file_tools
 from coding_assistant.tools.user import ask_user
 
@@ -89,7 +90,7 @@ def create_orchestrator_tools():
 
 def create_orchestrator_agent():
     memory = MemorySaver()
-    model = ChatOpenAI(model_name="gpt-4o")
+    model = get_global_config().model_factory()
     tools = create_orchestrator_tools()
     return create_react_agent(model, tools, checkpointer=memory, prompt=ORCHESTRATOR_PROMPT)
 

@@ -53,7 +53,7 @@ def create_developer_tools():
 
 def create_developer_agent():
     memory = MemorySaver()
-    model = ChatOpenAI(model_name="gpt-4o")
+    model = get_global_config().model_factory()
     tools = create_developer_tools()
     return create_react_agent(model, tools, checkpointer=memory, prompt=DEVELOPER_PROMPT)
 
