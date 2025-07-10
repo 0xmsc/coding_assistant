@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import logging
 from typing import Annotated
+from rich.prompt import Prompt
 
 from coding_assistant.agents.logic import Agent, Parameter, run_agent_loop
 from coding_assistant.config import Config
@@ -43,7 +44,7 @@ class OrchestratorTool(Tool):
         self._tools = tools
 
     def name(self) -> str:
-        return "orchestrate"
+        return "launch_orchestrator_agent"
 
     def description(self) -> str:
         return "Launch an orchestrator agent to coordinate other agents. It will maximize the time it will offload to other agents, as its time valuable and expensive."
@@ -86,7 +87,7 @@ class ResearchTool(Tool):
         self._tools = tools
 
     def name(self) -> str:
-        return "do_research"
+        return "launch_research_agent"
 
     def description(self) -> str:
         return "Launch a research agent to gather information. This agent can also access the codebase."
@@ -129,7 +130,7 @@ class DevelopTool(Tool):
         self._tools = tools
 
     def name(self) -> str:
-        return "develop"
+        return "launch_developer_agent"
 
     def description(self) -> str:
         return "Launch a developer agent to write code according to an implementation plan."
@@ -179,7 +180,11 @@ class AskUserTool(Tool):
                 "question": {
                     "type": "string",
                     "description": "The question to ask the user.",
-                }
+                },
+                "default_answer": {
+                    "type": "string",
+                    "description": "A sensible default answer to the question.",
+                },
             },
             "required": ["question"],
         }
@@ -187,6 +192,7 @@ class AskUserTool(Tool):
     async def execute(self, parameters: dict) -> str:
         assert "question" in parameters
         question = parameters["question"]
+        default_answer = parameters.get("default_answer")
 
-        answer = input(f"{question}\nAnswer: ")
-        return answer.strip()
+        answer = Prompt.ask(question, default=default_answer)
+        return answer

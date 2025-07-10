@@ -18,6 +18,12 @@ from coding_assistant.tools import Tool
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
 
+PARAMETER_TEMPLATE = """
+Name: {name}
+Description: {description}
+Value: {value}
+""".strip()
+
 SYSTEM_PROMPT_TEMPLATE = """
 You are an agent named {name}.
 
@@ -134,6 +140,8 @@ async def handle_mcp_tool_call(function_name, arguments, mcp_servers):
     for server in mcp_servers:
         if server.name == server_name:
             result = await server.session.call_tool(tool_name, arguments)
+            if not result.content:
+                return "MCP server did not return any content."
             return result.content[0].text
 
     raise RuntimeError(f"Server {server_name} not found in MCP servers.")
@@ -216,13 +224,7 @@ def create_system_message(agent: Agent) -> str:
 
     for parameter in agent.parameters:
         parameter_descriptions.append(
-            textwrap.dedent(
-                f"""
-                Name: {parameter.name}
-                Description: {parameter.description}
-                Value: {parameter.value}
-                """
-            ).strip()
+            PARAMETER_TEMPLATE.format(**dataclasses.asdict(parameter))
         )
 
     parameters_str = "\n\n".join(parameter_descriptions)
