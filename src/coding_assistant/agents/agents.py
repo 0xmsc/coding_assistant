@@ -18,9 +18,17 @@ class MyAgentState(AgentState):
     notebook: dict = {}
 
 
-def create_context_prunning_prompt_function(system_prompt: str):
+def create_context_prunning_prompt_function(system_prompt: str, system_message_type="system"):
     def context_prunning_prompt(state):
-        current_messages = [SystemMessage(content=system_prompt)] + state["messages"]
+        if system_message_type == "system":
+            system_message = SystemMessage(content=system_prompt)
+        elif system_message_type == "developer":
+            # See this crap: https://github.com/langchain-ai/langchain/issues/28895
+            system_message = SystemMessage(content=system_prompt, additional_kwargs={"__openai_role__": "developer"})
+        else:
+            raise ValueError(f"Unknown system message type: {system_message_type}")
+
+        current_messages = [system_message] + state["messages"]
 
         current_messages = trim_messages(
             current_messages,

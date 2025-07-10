@@ -26,7 +26,7 @@ def create_expert_tools():
 
 def run_expert_agent(task: str, ask_user_for_feedback: bool = False):
     agent = create_agent(
-        prompt=create_context_prunning_prompt_function(EXPERT_PROMPT),
+        prompt=create_context_prunning_prompt_function(EXPERT_PROMPT, system_message_type="developer"),
         tools=create_expert_tools(),
         model=get_global_config().reasoning_model_factory(),
     )
