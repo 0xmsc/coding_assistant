@@ -7,22 +7,16 @@ from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 from typing import Any
 
-from agents import (
-    Agent,
-    AsyncOpenAI,
-    ItemHelpers,
-    OpenAIChatCompletionsModel,
-    RunContextWrapper,
-    RunHooks,
-    Runner,
-    Tool,
-)
-
-from coding_assistant.agents.expert import create_expert_agent
+from coding_assistant.agents.agent import do_step
 from coding_assistant.agents.orchestrator import create_orchestrator_agent
-from coding_assistant.agents.researcher import create_researcher_agent
 from coding_assistant.config import Config
-from coding_assistant.tools import Tools, get_filesystem_server, get_git_server
+from coding_assistant.tools import Tools
+
+
+logging.basicConfig(level=logging.WARNING)
+
+logger = logging.getLogger("coding_assistant")
+logger.setLevel(logging.DEBUG)
 
 
 def parse_args():
@@ -42,22 +36,14 @@ def parse_args():
     return parser.parse_args()
 
 
-logger = logging.getLogger(__name__)
-
-
 def load_config(args) -> Config:
-    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "o4-mini")
-    expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "o1")
-
-    model_factory = lambda: OpenAIChatCompletionsModel(model_name, AsyncOpenAI())
-    expert_model_factory = lambda: OpenAIChatCompletionsModel(
-        expert_model_name, AsyncOpenAI()
-    )
+    model_name = os.environ.get("CODING_ASSISTANT_MODEL", "gpt-4.1-mini")
+    expert_model_name = os.environ.get("CODING_ASSISTANT_EXPERT_MODEL", "<disabled>")
 
     return Config(
         working_directory=args.working_directory,
-        model_factory=model_factory,
-        expert_model_factory=expert_model_factory,
+        model=model_name,
+        expert_model=expert_model_name,
     )
 
 
@@ -68,35 +54,21 @@ async def _main():
     os.chdir(config.working_directory)
     print(f"Running in working directory: {config.working_directory}")
 
-    async with (
-        get_filesystem_server(config) as filesystem_server,
-        get_git_server(config) as git_server,
-    ):
-        mcp_servers = [filesystem_server, git_server]
+    tools = Tools()
 
-        print("Available tools from MCP servers:")
-        for server in mcp_servers:
-            print(f"  - Server: {server.name}")
-            for tool in await server.list_tools():
-                print(f"    - {tool.name}: {tool.description}")
+    # if args.task:
+    #     agent = create_orchestrator_agent(args.task, config, tools)
+    # else:
+    #     print("No task or question specified.")
+    #     sys.exit(1)
 
-        tools = Tools(mcp_servers=mcp_servers)
-
-        if args.research:
-            agent_to_run = create_researcher_agent(config, tools)
-            initial_input = args.research
-        elif args.task:
-            agent_to_run = create_orchestrator_agent(config, tools)
-            initial_input = args.task
-        elif args.expert:
-            agent_to_run = create_expert_agent(config, tools)
-            initial_input = args.expert
-        else:
-            print("No task or question specified.")
-            sys.exit(1)
-
-        result = await Runner.run(agent_to_run, initial_input)
-        print(result.final_output_as(str))
+    task = "Give me 5 jokes, one per message."
+    agent = create_orchestrator_agent(task, config, tools)
+    while not agent.finished:
+        result = do_step(agent)
+        if result.content:
+            print(f"Step: {result.content}")
+    print(f"Final result: {agent.result}")
 
 
 def main():

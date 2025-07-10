@@ -1,14 +1,7 @@
 import logging
 from typing import Annotated
 
-# Import necessary components from agents SDK
-from agents import Agent, Handoff, Tool, handoff
-from agents.extensions import handoff_filters
-
-from coding_assistant.agents.developer import create_developer_tool
-from coding_assistant.agents.expert import create_expert_tool
-from coding_assistant.agents.planner import create_planner_tool
-from coding_assistant.agents.researcher import create_researcher_tool
+from coding_assistant.agents.agent import Agent
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools
 
@@ -19,16 +12,13 @@ You are an Orchestrator agent. Your goal is to coordinate other specialized agen
 """.strip()
 
 
-def create_orchestrator_agent(config: Config, tools: Tools) -> Agent:
+def create_orchestrator_agent(task: str, config: Config, tools: Tools) -> Agent:
     return Agent(
         name="orchestrator",
         instructions=ORCHESTRATOR_INSTRUCTIONS,
         mcp_servers=tools.mcp_servers,
-        tools=[
-            create_planner_tool(config, tools),
-            create_researcher_tool(config, tools),
-            create_developer_tool(config, tools),
-            create_expert_tool(config, tools),
-        ],
-        model=config.expert_model_factory(),
+        tools=[],
+        model=config.model,
+        task=task,
+        history=[],
     )
