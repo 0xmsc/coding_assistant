@@ -14,7 +14,6 @@ async def complete(
         messages=messages,
         tools=tools,
         model=model,
-        reasoning_effort="high",
         drop_params=True,
     )
     return completion["choices"][0]["message"]
