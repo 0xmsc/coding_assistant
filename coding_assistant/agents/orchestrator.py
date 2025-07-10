@@ -35,7 +35,7 @@ For each of the smaller tasks, do the following:
 
 1. Use the planning agent to create an implementation plan for each of the smaller tasks.
 2. Use the developer agent to implement the plan for each of the smaller tasks.
-3. Ask a research agent to verify that the changes are correct.
+3. Ask a research agent to verify that the changes are correct, according to the output of the developer agent.
 
 Note that you don't have to follow these steps exactly. You can use the agents in any order you see fit.
 You can also go back to any step at any time, if you need to.
