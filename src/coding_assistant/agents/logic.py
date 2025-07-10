@@ -179,18 +179,18 @@ def fill_parameters(
 
         # Convert all parameter values to sensible string representations
         parameter_type = parameter.get("type")
-        if parameter_type == "string":
-            value = parameter_values[name]
-
-            if not isinstance(value, str):
+        if parameter_type in "string":
+            if not isinstance(parameter_values[name], str):
                 raise RuntimeError(f"Parameter {name} is not a string: {value}")
-        elif parameter_type == "array":
             value = parameter_values[name]
-
-            if not isinstance(value, list):
+        elif parameter_type == "array":
+            if not isinstance(parameter_values[name], list):
                 raise RuntimeError(f"Parameter {name} is not an array: {value}")
-
-            value = textwrap.indent("\n".join(value), "- ")
+            value = textwrap.indent("\n".join(parameter_values[name]), "- ")
+        elif parameter_type == "boolean":
+            if not isinstance(parameter_values[name], bool):
+                raise RuntimeError(f"Parameter {name} is not a boolean: {value}")
+            value = str(parameter_values[name])
         else:
             raise RuntimeError(f"Unsupported parameter type: {parameter_type} for parameter {name}")
 
@@ -354,7 +354,7 @@ async def do_single_step(agent: Agent):
         print(
             Panel(
                 start_message,
-                title=f"Agent {agent.name} starting",
+                title=f"Agent {agent.name} ({agent.model}) starting",
                 border_style="red",
             ),
         )

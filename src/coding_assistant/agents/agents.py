@@ -138,6 +138,10 @@ class AgentTool(Tool):
                     "type": "string",
                     "description": "Special instructions for the agent. The agent will do everything it can to follow these instructions.",
                 },
+                "expert_knowledge": {
+                    "type": "boolean",
+                    "description": "Should only be set to true when the task is extraordinarily difficult. When this is set to true, an expert-level agent will be used to work on the task.",
+                },
             },
             "required": ["task", "expected_output"],
         }
@@ -155,7 +159,7 @@ class AgentTool(Tool):
                 ExecuteShellCommandTool(),
                 AskClientTool(),
             ],
-            model=self._config.model,
+            model=self._config.expert_model if parameters.get("expert_knowledge") else self._config.model,
             feedback_function=lambda agent: _get_feedback(
                 agent,
                 self._config,
