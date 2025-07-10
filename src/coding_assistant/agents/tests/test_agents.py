@@ -11,7 +11,7 @@ TEST_MODEL = "gemini/gemini-2.5-flash"
 
 
 @pytest.mark.asyncio
-async def test_feedback_tool_execute_ok(tmp_path):
+async def test_feedback_tool_execute_ok():
     config = Config(model=TEST_MODEL, disable_user_feedback=True)
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
@@ -25,7 +25,7 @@ async def test_feedback_tool_execute_ok(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_feedback_tool_execute_wrong(tmp_path):
+async def test_feedback_tool_execute_wrong():
     config = Config(model=TEST_MODEL, disable_user_feedback=True)
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
@@ -39,7 +39,7 @@ async def test_feedback_tool_execute_wrong(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_feedback_tool_execute_no_result(tmp_path):
+async def test_feedback_tool_execute_no_result():
     config = Config(model=TEST_MODEL, disable_user_feedback=True)
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
@@ -53,7 +53,7 @@ async def test_feedback_tool_execute_no_result(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_feedback_tool_after_feedback(tmp_path):
+async def test_feedback_tool_after_feedback():
     config = Config(model=TEST_MODEL, disable_user_feedback=True)
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
@@ -68,7 +68,7 @@ async def test_feedback_tool_after_feedback(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_tool(tmp_path):
+async def test_orchestrator_tool():
     config = Config(
         model=TEST_MODEL,
         expert_model=TEST_MODEL,
@@ -80,7 +80,7 @@ async def test_orchestrator_tool(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_tool_instructions(tmp_path):
+async def test_orchestrator_tool_instructions():
     config = Config(
         model=TEST_MODEL,
         expert_model=TEST_MODEL,
