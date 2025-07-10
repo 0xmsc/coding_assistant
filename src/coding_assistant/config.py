@@ -8,4 +8,4 @@ class Config:
     working_directory: Path
     model: str
     expert_model: str | None = None
-    disable_feedback_agent: bool | None = False
+    disable_feedback_agent: bool = False

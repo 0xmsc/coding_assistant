@@ -32,7 +32,7 @@ def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
     parser.add_argument("--print_mcp_tools", action="store_true", help="Print all available tools from MCP servers.")
-    parser.add_argument("--disable-feedback-agent", action="store_true", help="Disable the feedback agent.")
+    parser.add_argument("--disable-feedback-agent", action="store_true", default=False, help="Disable the feedback agent.")
     return parser.parse_args()
 
 
