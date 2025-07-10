@@ -43,6 +43,12 @@ Your client has been given the following description of your work and capabiliti
 Your client has provided the following parameters for your task:
 
 {parameters}
+
+## Finishing
+
+You must call the `finish_task` tool to signal that you are done with your task.
+If you do not call this tool, you will end up in an infinite loop.
+The client cannot see your work until after you call this tool.
 """.strip()
 
 FEEDBACK_TEMPLATE = """
@@ -52,12 +58,6 @@ Your client has provided the following feedback on your work:
 
 Please rework your result to address the feedback.
 Afterwards, call the `finish_task` tool again to signal that you are done.
-
-## Finishing
-
-You must call the `finish_task` tool to signal that you are done with your task.
-If you do not call this tool, you will end up in an infinite loop.
-The client cannot see your work until after you call this tool.
 """.strip()
 
 
