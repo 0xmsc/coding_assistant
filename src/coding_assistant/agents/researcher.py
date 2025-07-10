@@ -1,13 +1,11 @@
 import logging
 from typing import Annotated, List
 
-from rich.console import Console
 from smolagents import CodeAgent, MultiStepAgent, Tool, ToolCallingAgent
 
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools
 
-console = Console()
 logger = logging.getLogger(__name__)
 
 RESEARCHER_DESCRIPTION = """
