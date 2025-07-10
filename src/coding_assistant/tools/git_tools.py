@@ -35,5 +35,19 @@ def git_status() -> str:
     return subprocess.check_output(["git", "status"], text=True)
 
 
+@tool
+def fetch_pr_diff(pr_number: int) -> str:
+    """
+    Fetches the diff of a Pull Request using the GitHub CLI.
+
+    Args:
+        pr_number (int): The number of the PR to fetch the diff for.
+
+    Returns:
+        str: The diff of the PR.
+    """
+    return subprocess.check_output(["gh", "pr", "diff", str(pr_number)], text=True)
+
+
 def get_git_tools():
-    return [git_add, git_commit, git_diff, git_status]
+    return [git_add, git_commit, git_diff, git_status, fetch_pr_diff]
