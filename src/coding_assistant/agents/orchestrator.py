@@ -47,6 +47,7 @@ You can also go back to any step at any time, if you need to.
 This might be necessary if you encounter new information that changes your understanding of the task.
 It might also be necessary if the output of one of the agents is not satisfactory.
 It is your responsibility to make sure that the task is completed.
+Note that only in exceptional cases you should start reading files yourself. Use research to query information.
 
 Note that the planning agent is not a software architect.
 Therefore, it should already be clear how to implement the task on a high level before handing it to the planning agent.
@@ -97,6 +98,6 @@ def run_orchestrator_agent(task: str, ask_user_for_feedback: bool):
     agent = create_agent(
         prompt=create_context_prunning_prompt_function(ORCHESTRATOR_PROMPT),
         tools=create_orchestrator_tools(),
-        model=get_global_config().model_factory(),
+        model=get_global_config().reasoning_model_factory(),
     )
     return run_agent(agent, task, name="Orchestrator", ask_user_for_feedback=ask_user_for_feedback)

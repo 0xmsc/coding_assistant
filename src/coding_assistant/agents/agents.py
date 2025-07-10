@@ -1,3 +1,7 @@
+import signal
+import threading
+import sys
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
 from langgraph.prebuilt import create_react_agent
 from langgraph.prebuilt.chat_agent_executor import AgentState
@@ -59,27 +63,60 @@ def create_agent(prompt, tools, model):
 
 
 def run_agent(agent, task, name, ask_user_for_feedback=False):
-    console.print(Panel(Markdown(task), title=f"Agent task: {name}", border_style="green"))
-    config = RunnableConfig(configurable={"thread_id": "thread"}, recursion_limit=50)
-    input: MyAgentState = {"messages": HumanMessage(content=task), "notebook": dict()}
+    interrupt_requested = False
 
-    latest = None
+    def interrupt_handler(signum, frame):
+        nonlocal interrupt_requested
+        if interrupt_requested:
+            # The user really seems to want to quit :O
+            print(f" Interrupt requested two times, exiting...")
+            sys.exit()
 
-    while True:
-        # Do one round of the agent, until it stops
-        for chunk in agent.stream(input=input, config=config):
-            print_agent_progress(chunk, name=name)
+        print(f" Interrupt requested, waiting for next change to interrupt agent...")
+        interrupt_requested = True
 
-            if "agent" in chunk and "messages" in chunk["agent"]:
-                for message in chunk["agent"]["messages"]:
-                    if isinstance(message, AIMessage):
-                        latest = message
+    if threading.current_thread() is threading.main_thread():
+        original_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, interrupt_handler)
+    else:
+        original_handler = None
 
-        if not ask_user_for_feedback:
-            break
+    try:
+        console.print(Panel(Markdown(task), title=f"Agent task: {name}", border_style="green"))
+        config = RunnableConfig(configurable={"thread_id": "thread"}, recursion_limit=50)
+        input: MyAgentState = {"messages": HumanMessage(content=task), "notebook": dict()}
 
-        # Ask user for feedback
-        feedback = Prompt.ask("Feedback")
-        input = {"messages": HumanMessage(content=feedback)}
+        latest = None
 
-    return latest.content
+        while True:
+            # Do one round of the agent, until it stops
+            for chunk in agent.stream(input=input, config=config):
+                print_agent_progress(chunk, name=name)
+
+                if "agent" in chunk and "messages" in chunk["agent"]:
+                    messages = chunk["agent"]["messages"]
+
+                    # Record the last AIMessage, it is the agents output
+                    for message in messages:
+                        if isinstance(message, AIMessage):
+                            latest = message
+
+                    # Check if we can interrupt the agent
+                    # NOTE: We can only interrupt when the last message was an AIMessage **without** tool_calls
+                    can_interrupt = messages[-1] and isinstance(messages[-1], AIMessage) and not messages[-1].tool_calls
+                    if interrupt_requested and can_interrupt:
+                        print(f"Agent {name} has been interrupted, the last message was '{messages[-1].content}'")
+                        interrupt_requested = False
+                        break
+
+            if not ask_user_for_feedback:
+                break
+
+            # Ask user for feedback
+            feedback = Prompt.ask("Feedback")
+            input = {"messages": HumanMessage(content=feedback)}
+
+        return latest.content
+    finally:
+        if original_handler:
+            signal.signal(signal.SIGINT, original_handler)
