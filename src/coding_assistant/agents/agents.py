@@ -5,39 +5,16 @@ import logging
 from typing import Annotated
 from rich.prompt import Prompt
 
-from coding_assistant.agents.logic import Agent, Parameter, run_agent_loop
+from coding_assistant.agents.logic import (
+    Agent,
+    Parameter,
+    run_agent_loop,
+    fill_parameters,
+)
 from coding_assistant.config import Config
 from coding_assistant.tools import Tool, Tools
 
 logger = logging.getLogger(__name__)
-
-
-def fill_parameters(
-    parameter_description: dict,
-    parameter_values: dict,
-) -> list[Parameter]:
-    parameters = []
-
-    required = set(parameter_description.get("required", []))
-
-    for name, parameter in parameter_description["properties"].items():
-        value = parameter_values.get(name)
-
-        if not value:
-            if name in required:
-                raise RuntimeError(f"Parameter {name} is required but not provided.")
-            else:
-                continue
-
-        parameters.append(
-            Parameter(
-                name=name,
-                description=parameter["description"],
-                value=value,
-            )
-        )
-
-    return parameters
 
 
 class OrchestratorTool(Tool):

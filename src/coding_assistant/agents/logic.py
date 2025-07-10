@@ -162,6 +162,34 @@ async def get_tools_from_mcp_servers(mcp_servers: list) -> list:
     return tools
 
 
+def fill_parameters(
+    parameter_description: dict,
+    parameter_values: dict,
+) -> list[Parameter]:
+    parameters = []
+
+    required = set(parameter_description.get("required", []))
+
+    for name, parameter in parameter_description["properties"].items():
+        value = parameter_values.get(name)
+
+        if not value:
+            if name in required:
+                raise RuntimeError(f"Parameter {name} is required but not provided.")
+            else:
+                continue
+
+        parameters.append(
+            Parameter(
+                name=name,
+                description=parameter["description"],
+                value=value,
+            )
+        )
+
+    return parameters
+
+
 def get_tools_from_agent(agent: Agent) -> list:
     tools = []
     tools.extend(get_default_functions())
