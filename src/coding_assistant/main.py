@@ -55,30 +55,28 @@ async def print_mcp_tools(mcp_servers):
         console.print("[yellow]No MCP servers found.[/yellow]")
         return
 
-    for server in mcp_servers:
-        tools = await server.session.list_tools()
-        tools = tools.tools
+    table = Table(show_header=True, show_lines=True)
+    table.add_column("Server Name", style="magenta")
+    table.add_column("Tool Name", style="cyan")
+    table.add_column("Description", style="green")
+    table.add_column("Parameters", style="yellow")
 
-        if not tools:
-            console.print(f"[yellow]No tools found for MCP server: {server.name}[/yellow]")
+    for server in mcp_servers:
+        tools_response = await server.session.list_tools()
+        server_tools = tools_response.tools
+
+        if not server_tools:
+            logger.info(f"No tools found for MCP server: {server.name}")
             continue
 
-        console.print(f"[bold green]Tools from MCP server: {server.name} ({len(tools)} tools)[/bold green]")
-
-        table = Table(show_header=True, show_lines=True)
-        table.add_column("Tool Name", style="cyan")
-        table.add_column("Description", style="green")
-        table.add_column("Parameters", style="yellow")
-
-        for tool in tools:
+        for tool in server_tools:
             name = tool.name
             description = tool.description
             parameters = tool.inputSchema
             parameters_str = ", ".join(parameters.get("properties", {}).keys()) if parameters else "None"
-            table.add_row(name, description, parameters_str)
+            table.add_row(server.name, name, description, parameters_str)
 
-        console.print(table)
-        console.print()  # Add a blank line between tables
+    console.print(table)
 
 
 async def _main():
