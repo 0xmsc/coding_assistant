@@ -31,6 +31,7 @@ def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
     parser.add_argument("--print_mcp_tools", action="store_true", help="Print all available tools from MCP servers.")
+    parser.add_argument("--disable-feedback-agent", action="store_true", help="Disable the feedback agent.")
     return parser.parse_args()
 
 
@@ -45,6 +46,7 @@ def load_config(args) -> Config:
         working_directory=Path(os.getcwd()),
         model=model_name,
         expert_model=expert_model_name,
+        disable_feedback_agent=args.disable_feedback_agent,
     )
 
 
