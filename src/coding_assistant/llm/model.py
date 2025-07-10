@@ -19,12 +19,9 @@ async def complete(
         tools=tools,
         model=model,
         drop_params=True,
-        merge_reasoning_content_in_choices=True,
     )
 
     if not completion["choices"]:
-        error = f"No choices returned from the model: {completion}"
-        logger.error(error)
-        raise RuntimeError(error)
+        raise RuntimeError(f"No choices returned from the model: {completion}")
 
     return completion["choices"][0]["message"]
