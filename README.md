@@ -2,130 +2,120 @@
 
 ## Introduction
 
-Coding Assistant is an advanced Python-based project designed to streamline and automate various coding tasks. By leveraging different types of intelligent agents and powerful tools, Coding Assistant aims to enhance developer productivity and code quality.
+Coding Assistant is an advanced Python-based project designed to streamline and automate various coding tasks. It employs a multi-agent architecture to handle tasks ranging from planning and research to development and expert review.
 
 ## Project Overview
 
-Coding Assistant utilizes a system of specialized agents (orchestrator, planner, developer, researcher, and expert) working in tandem to automate coding processes. These agents, combined with a set of powerful tools, can assist in various tasks such as code generation, refactoring, and documentation.
+The system comprises specialized agents (orchestrator, planner, developer, researcher, and expert) working together through well-defined tools and protocols. These agents coordinate to break down complex tasks, generate or modify code, perform research, and ensure high-quality outcomes.
 
 ## Recent Updates
 
-- Switched from langchain to smolagents for improved agent-based functionality.
-- Enhanced environment variable usage for easier configuration of different LLM backends (OpenAI and OpenRouter).
-- Updated references and dependencies to reflect the new agent architecture and usage patterns.
+- Migrated to **litellm** for streamlined LLM interactions.
+- Integrated **mcp[cli]** for robust file system operations and tooling.
+- Updated environment variable usage for specifying LLM models.
+- Enhanced agent architecture with clearer separation of responsibilities.
 
 ## Features
 
 - Multi-agent system (orchestrator, planner, developer, researcher, expert) for intelligent task handling
-- Automated code generation and refactoring
-- Integrated file searching
+- Automated code generation, refactoring, and review
+- Integrated file system operations via MCP
 - Modular and extensible architecture
-- Strong typing with mypy for improved code quality
-- Comprehensive test suite using pytest
+- Strong typing with `mypy` for improved code quality
+- Comprehensive test suite with `pytest`
 - Custom logging for enhanced debugging and monitoring
 
 ## Installation
 
-1. Ensure you have Python 3.x installed on your system.
+1. Ensure you have **Python 3.12+** installed on your system.
 2. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/coding-assistant.git
+   cd coding-assistant
    ```
-   git clone https://github.com/yourusername/coding_assistant.git
-   cd coding_assistant
-   ```
-3. Set up a virtual environment (optional but recommended):
-   ```
+3. (Optional) Set up a virtual environment:
+   ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
    ```
-4. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-5. Set up direnv for environment management (optional):
-   ```
-   direnv allow
+4. Install the package and its dependencies:
+   ```bash
+   pip install .
    ```
 
 ## Configuration
 
-The project uses environment variables to configure the LLM backend and models:
+Configure the LLM models via environment variables:
 
 ```bash
-CODING_ASSISTANT_BACKEND=OPENAI # or OPENROUTER
-CODING_ASSISTANT_MODEL=gpt-4o
-CODING_ASSISTANT_REASONING_MODEL=o1
+export CODING_ASSISTANT_MODEL="o4-mini"
+export CODING_ASSISTANT_EXPERT_MODEL="<disabled>"
 ```
 
-Currently, the project supports OpenAI and OpenRouter as LLM backends.
+Default values:
+- `CODING_ASSISTANT_MODEL`: `o4-mini`
+- `CODING_ASSISTANT_EXPERT_MODEL`: `<disabled>`
 
 ## Usage Guide
 
-1. Start the Coding Assistant:
-   ```
-   python -m coding_assistant
-   ```
-2. Interact with the assistant through the command line interface.
-3. Example commands or operations:
-   - Provide a task or question for the planner to break down.
-   - Let the developer agent implement or modify files accordingly.
-   - Use the researcher agent to gather information about new libraries or solutions.
+After installation, invoke the assistant using the provided CLI:
+
+```bash
+coding-assistant --task "Describe your task here"
+```
+
+Alternatively, run via the Python module:
+
+```bash
+python -m coding_assistant.main --task "Describe your task here"
+```
 
 ## Project Structure
 
 ```
-coding_assistant/
-├── agents/
-│   ├── orchestrator.py
-│   ├── planner.py
-│   ├── developer.py
-│   ├── expert.py
-│   ├── agents.py
-│   └── researcher.py
-├── tools/
-│   ├── user.py
-│   ├── notebook.py
-│   ├── git_tools.py
-│   └── file.py
-├── config/
-│   └── config.py
+.
+├── src/
+│   └── coding_assistant/
+│       ├── agents/
+│       ├── llm/
+│       ├── config.py
+│       ├── main.py
+│       └── tools.py
 ├── tests/
-├── __main__.py
-├── logging.py
-└── __init__.py
+├── pyproject.toml
+└── README.md
 ```
 
-- `agents/`: Contains the different agent components (orchestrator, planner, developer, expert, researcher)
-- `tools/`: Includes utility tools and additional modules needed for various tasks
-- `config/`: Manages configuration settings for the project
-- `tests/`: Directory containing all the automated tests
-- Other files support different functionalities and promote modularity
+- `src/coding_assistant/agents/`: Orchestrator, planner, developer, expert, and researcher agent implementations.
+- `src/coding_assistant/llm/`: Interface for LLM interactions via litellm.
+- `src/coding_assistant/config.py`: Configuration definitions.
+- `src/coding_assistant/main.py`: CLI entry point.
+- `src/coding_assistant/tools.py`: Utilities for MCP-based filesystem and other servers.
 
 ## Technologies Used
 
-- Python: The primary programming language for the project
-- smolagents: A library for building agent-based applications
-- rich: A library for rich text and beautiful formatting in the terminal
-- pytest: Testing framework for writing and running automated tests
-- Git: Version control system for tracking changes and collaborating
-- direnv: Tool for managing project-specific environment variables
+- Python 3.12+
+- litellm
+- mcp[cli]
+- pytest
+- Git
+- direnv (optional)
 
 ## Contributing
 
-We welcome contributions to the Coding Assistant project! Here's how you can help:
+We welcome contributions to the Coding Assistant project! To contribute:
 
 1. Fork the repository
-2. Create a new branch (`git checkout -b feature/your-feature-name`)
+2. Create a new branch: `git checkout -b feature/your-feature-name`
 3. Make your changes
-4. Run tests to ensure everything is working (`pytest`)
-5. Commit your changes (`git commit -am 'Add some feature'`)
-6. Push to the branch (`git push origin feature/your-feature-name`)
-7. Create a new Pull Request
+4. Run tests to ensure everything passes: `pytest`
+5. Commit your changes: `git commit -am 'Add some feature'`
+6. Push to the branch: `git push origin feature/your-feature-name`
+7. Open a Pull Request
 
-Please make sure to update tests as appropriate and adhere to the project's coding standards.
-
-For major changes, please open an issue first to discuss what you would like to change.
+Please ensure tests are updated as appropriate and adhere to the project's coding standards. For major changes, open an issue first to discuss your proposal.
 
 ## Acknowledgements
 
 - Thanks to all contributors who have helped shape Coding Assistant.
-- Special thanks to the developers of smolagents, rich, pytest, and other libraries for their excellent tools.
+- Special thanks to the developers of litellm, mcp, pytest, and other libraries that power this project.

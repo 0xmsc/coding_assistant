@@ -54,7 +54,7 @@ async def _main():
     os.chdir(config.working_directory)
     logger.info(f"Running in working directory: {config.working_directory}")
 
-    task = "Read README.md"
+    task = "Update the contents of README.md, if necessary."
 
     async with get_filesystem_server(config) as filesystem_server:
         tools = Tools(mcp_servers=[filesystem_server])

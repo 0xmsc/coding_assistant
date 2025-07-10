@@ -122,6 +122,7 @@ async def handle_tool_call(tool_call, agent: Agent):
         )
 
     assert function_call_result is not None, f"Function {function_name} not implemented"
+    logger.debug(f"Function {function_name} returned {function_call_result}")
 
     agent.history.append(
         {
