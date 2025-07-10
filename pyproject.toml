@@ -15,6 +15,7 @@ dependencies = [
     "requests>=2.31.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "pytest-xdist>=3.6.1",
 ]
 
 [project.scripts]

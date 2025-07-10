@@ -112,7 +112,7 @@ class DevelopTool(Tool):
         return "launch_developer_agent"
 
     def description(self) -> str:
-        return "Launch a developer agent to write code according to an implementation plan."
+        return "Launch a developer agent to write code according to an implementation plan. The developer agent will refuse to accept any tasks that are not clearly defined and miss context. It needs to be clear what to do and how to do it using **only** the information given in the implementation plan."
 
     def parameters(self) -> dict:
         return {

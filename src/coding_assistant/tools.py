@@ -123,6 +123,21 @@ async def get_memory_server(config: Config) -> AsyncGenerator[MCPServer, None]:
 
 
 @asynccontextmanager
+async def get_shell_server() -> AsyncGenerator[MCPServer, None]:
+    async with _get_mcp_server(
+        name="shell",
+        command="uvx",
+        args=[
+            "mcp-server-shell",
+        ],
+        env={
+            "ALLOW_COMMANDS": "just",
+        },
+    ) as server:
+        yield server
+
+
+@asynccontextmanager
 async def get_all_mcp_servers(config: Config) -> AsyncGenerator[List[MCPServer], None]:
     if not config.working_directory.exists():
         raise ValueError(
