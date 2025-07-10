@@ -54,14 +54,10 @@ async def _main():
     os.chdir(config.working_directory)
     logger.info(f"Running in working directory: {config.working_directory}")
 
-    task = "Update the contents of README.md, if necessary."
-
     async with get_filesystem_server(config) as filesystem_server:
         tools = Tools(mcp_servers=[filesystem_server])
 
-        if task:
-            agent = create_orchestrator_agent(task, config, tools)
-        elif args.task:
+        if args.task:
             agent = create_orchestrator_agent(args.task, config, tools)
         else:
             print("No task or question specified.")
