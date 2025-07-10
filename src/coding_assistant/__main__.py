@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
 from langchain_openai import ChatOpenAI
 
 from coding_assistant.agents.expert import run_expert_agent
@@ -16,7 +16,13 @@ def parse_args():
     parser.add_argument("--task", type=str, help="Question to ask the research agent.")
     parser.add_argument("--expert", type=str, help="Question to ask the expert agent.")
     parser.add_argument(
-        "--working_directory", type=Path, help="The working directory to use.", default=Path(os.getcwd())
+        "--working_directory",
+        type=Path,
+        help="The working directory to use.",
+        default=Path(os.getcwd()),
+    )
+    parser.add_argument(
+        "--user-feedback", default=True, action=BooleanOptionalAction, help="Whether to ask for user feedback."
     )
     return parser.parse_args()
 
@@ -43,15 +49,17 @@ def main():
     if args.research:
         run_researcher_agent(
             question=args.research,
-            ask_user_for_feedback=True,
+            ask_user_for_feedback=args.user_feedback,
         )
     elif args.task:
         run_orchestrator_agent(
             task=args.task,
+            ask_user_for_feedback=args.user_feedback,
         )
     elif args.expert:
         run_expert_agent(
             task=args.expert,
+            ask_user_for_feedback=args.user_feedback,
         )
     else:
         print("No task specified.")

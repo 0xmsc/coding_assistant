@@ -96,6 +96,6 @@ def create_orchestrator_agent():
     return create_react_agent(model, tools, checkpointer=memory, prompt=ORCHESTRATOR_PROMPT)
 
 
-def run_orchestrator_agent(task: str):
+def run_orchestrator_agent(task: str, ask_user_for_feedback: bool):
     agent = create_orchestrator_agent()
-    return run_agent(agent, task, name="Orchestrator", ask_user_for_feedback=True)
+    return run_agent(agent, task, name="Orchestrator", ask_user_for_feedback=ask_user_for_feedback)

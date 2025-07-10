@@ -29,9 +29,9 @@ def create_expert_agent():
     return create_react_agent(model, create_expert_tools(), checkpointer=memory, prompt=EXPERT_PROMPT)
 
 
-def run_expert_agent(task: str):
+def run_expert_agent(task: str, ask_user_for_feedback: bool = False):
     agent = create_expert_agent()
-    return run_agent(agent, task, name="Expert")
+    return run_agent(agent, task, name="Expert", ask_user_for_feedback=ask_user_for_feedback)
 
 
 @tool
