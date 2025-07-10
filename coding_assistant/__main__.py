@@ -36,7 +36,9 @@ def main():
     if os.environ.get("BMW_API_KEY"):
         from bmw_llm_adapter.langchain import BMWModel
         from bmw_llm_adapter.bmw_api_model import ModelName
-        get_global_config().model_factory = lambda: BMWModel(model_name=ModelName.gpt_4o)
+        get_global_config().model_factory = lambda: BMWModel(
+            model_name=ModelName.anthropic_claude_3_5_sonnet_20240620_v1_0
+        )
 
     assert get_global_config().model_factory, "No model factory set."
 
