@@ -3,9 +3,6 @@ import os
 from pathlib import Path
 from argparse import ArgumentParser
 
-from bmw_llm_adapter.langchain import BMWModel
-from bmw_llm_adapter.bmw_api_model import ModelName
-
 from coding_assistant.agents.orchestrator import run_orchestrator_agent
 from coding_assistant.agents.researcher import run_researcher_agent
 from coding_assistant.config import get_global_config
@@ -35,7 +32,13 @@ def main():
     print(f"Running in working directory: {working_directoy}")
 
     get_global_config().working_directory = working_directoy
-    get_global_config().model_factory = lambda: BMWModel(model_name=ModelName.gpt_4o)
+
+    if os.environ.get("BMW_API_KEY"):
+        from bmw_llm_adapter.langchain import BMWModel
+        from bmw_llm_adapter.bmw_api_model import ModelName
+        get_global_config().model_factory = lambda: BMWModel(model_name=ModelName.gpt_4o)
+
+    assert get_global_config().model_factory, "No model factory set."
 
     if args.research:
         run_researcher_agent(
