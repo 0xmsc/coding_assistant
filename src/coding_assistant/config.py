@@ -9,3 +9,4 @@ class Config:
     model: str
     expert_model: str | None = None
     disable_feedback_agent: bool = False
+    disable_user_feedback: bool = False

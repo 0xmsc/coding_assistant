@@ -9,7 +9,7 @@ from coding_assistant.tools import Tools
 
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_ok(tmp_path):
-    config = Config(working_directory=tmp_path, model="o4-mini")
+    config = Config(working_directory=tmp_path, model="o4-mini", disable_user_feedback=True)
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
@@ -23,7 +23,7 @@ async def test_feedback_tool_execute_ok(tmp_path):
 
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_wrong(tmp_path):
-    config = Config(working_directory=tmp_path, model="o4-mini")
+    config = Config(working_directory=tmp_path, model="o4-mini", disable_user_feedback=True)
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
@@ -37,7 +37,7 @@ async def test_feedback_tool_execute_wrong(tmp_path):
 
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_no_result(tmp_path):
-    config = Config(working_directory=tmp_path, model="o4-mini")
+    config = Config(working_directory=tmp_path, model="o4-mini", disable_user_feedback=True)
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={

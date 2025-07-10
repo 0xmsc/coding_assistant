@@ -96,7 +96,7 @@ class OrchestratorTool(Tool):
                 agent,
                 self._config,
                 self._tools,
-                ask_user_for_feedback=True,
+                ask_user_for_feedback=not self._config.disable_user_feedback,
                 ask_agent_for_feedback=not self._config.disable_feedback_agent,
             ),
         )
@@ -146,7 +146,7 @@ class ResearchTool(Tool):
                 agent,
                 self._config,
                 self._tools,
-                ask_user_for_feedback=True,
+                ask_user_for_feedback=not self._config.disable_user_feedback,
                 ask_agent_for_feedback=not self._config.disable_feedback_agent,
             ),
         )
@@ -192,7 +192,7 @@ class DevelopTool(Tool):
                 agent,
                 self._config,
                 self._tools,
-                ask_user_for_feedback=True,
+                ask_user_for_feedback=not self._config.disable_user_feedback,
                 ask_agent_for_feedback=not self._config.disable_feedback_agent,
             ),
         )
