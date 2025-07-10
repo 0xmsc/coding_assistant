@@ -38,4 +38,7 @@ def do_expert_analysis(question: str) -> str:
     Note that this has to be an exceptionally difficult question that requires expert level knowledge.
     Additionally, all required context for answering the question has to be provided in the question.
     """
+    if not get_global_config().reasoning_model_factory:
+        return "Expert is not available..."
+
     return run_expert_agent(question)
