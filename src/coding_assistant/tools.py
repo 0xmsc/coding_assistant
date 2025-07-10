@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,9 +16,24 @@ class MCPServer:
     session: ClientSession
 
 
+class Tool(ABC):
+    @abstractmethod
+    def name(self) -> str: ...
+
+    @abstractmethod
+    def description(self) -> str: ...
+
+    @abstractmethod
+    def parameters(self) -> dict: ...
+
+    @abstractmethod
+    async def execute(self, parameters) -> str: ...
+
+
 @dataclass
 class Tools:
     mcp_servers: list = field(default_factory=list)
+    tools: list = field(default_factory=list)
 
 
 @asynccontextmanager
@@ -42,12 +58,23 @@ async def get_filesystem_server(config: Config) -> AsyncGenerator[MCPServer, Non
             )
 
 
-# def get_git_server(config: Config) -> MCPServer:
-#     assert config.working_directory.exists()
-#
-#     return MCPServerStdio(
-#         params={
-#             "command": "uvx",
-#             "args": ["mcp-server-git", "--repository", str(config.working_directory)],
-#         }
-#     )
+@asynccontextmanager
+async def get_git_server(config: Config) -> AsyncGenerator[MCPServer, None]:
+    assert config.working_directory.exists()
+
+    params = StdioServerParameters(
+        command="npx",
+        args=[
+            "-y",
+            "@modelcontextprotocol/server-git",
+            str(config.working_directory),
+        ],
+    )
+
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            yield MCPServer(
+                name="git",
+                session=session,
+            )

@@ -5,9 +5,13 @@ import json
 import logging
 from typing import Optional
 
+from opentelemetry import trace
+
 from coding_assistant.llm.model import complete
+from coding_assistant.tools import Tool
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(__name__)
 
 
 @dataclass
@@ -17,7 +21,7 @@ class Agent:
     instructions: str
     task: str
 
-    tools: list = field(default_factory=list)
+    tools: list[Tool] = field(default_factory=list)
     mcp_servers: list = field(default_factory=list)
 
     history: list = field(default_factory=list)
@@ -25,42 +29,30 @@ class Agent:
     result: Optional[str] = None
 
 
+class FinishTaskTool(Tool):
+    def name(self) -> str:
+        return "finish_task"
+
+    def description(self) -> str:
+        return "Finish the task. Only call this when the task is done. Note that this function has to bed called at some point in time, otherwise the agent will be in an infinite loop."
+
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "result": {
+                    "type": "string",
+                    "description": "The result of the task, if any.",
+                },
+            },
+        }
+
+    def execute(self, parameters) -> str:
+        assert False, "FinishTaskTool should not be executed directly."
+
+
 def get_default_functions() -> list:
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": "finish_task",
-                "description": "Finish the task. Only call this when the task is done.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "result": {
-                            "type": "string",
-                            "description": "The result of the task, if any.",
-                        },
-                    },
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "ask_user",
-                "description": "Ask the user for input.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "question": {
-                            "type": "string",
-                            "description": "The question to ask the user.",
-                        },
-                    },
-                    "required": ["question"],
-                },
-            },
-        },
-    ]
+    return [FinishTaskTool()]
 
 
 async def get_tools_from_mcp_servers(mcp_servers: list) -> list:
@@ -68,8 +60,6 @@ async def get_tools_from_mcp_servers(mcp_servers: list) -> list:
     for server in mcp_servers:
         for _, tool_list in await server.session.list_tools():
             for tool in tool_list or []:
-                assert not "." in tool.name, "Tool name should not contain '.'"
-                assert not "." in server.name, "Server name should not contain '.'"
                 tool_id = f"mcp_{server.name}_{tool.name}"
 
                 tools.append(
@@ -83,6 +73,26 @@ async def get_tools_from_mcp_servers(mcp_servers: list) -> list:
                     }
                 )
     return tools
+
+
+def get_tools_from_agent(agent: Agent) -> list:
+    tools = []
+    tools.extend(get_default_functions())
+    tools.extend(agent.tools)
+
+    result = []
+    for tool in tools:
+        result.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name(),
+                    "description": tool.description(),
+                    "parameters": tool.parameters(),
+                },
+            }
+        )
+    return result
 
 
 async def handle_mcp_tool_call(function_name, arguments, mcp_servers):
@@ -100,9 +110,13 @@ async def handle_mcp_tool_call(function_name, arguments, mcp_servers):
     raise RuntimeError(f"Server {server_name} not found in MCP servers.")
 
 
+@tracer.start_as_current_span("handle_tool_call")
 async def handle_tool_call(tool_call, agent: Agent):
     function_name = tool_call.function.name
     function_args = json.loads(tool_call.function.arguments)
+
+    trace.get_current_span().set_attribute("function.name", function_name)
+    trace.get_current_span().set_attribute("function.args", function_args)
 
     logger.debug(f"Calling tool {function_name} with args {function_args}")
 
@@ -113,15 +127,21 @@ async def handle_tool_call(tool_call, agent: Agent):
 
     function_call_result = None
 
-    if function_name == "ask_user":
-        question = function_args.get("question")
-        function_call_result = input(f"Agent {agent.name} asks: {question}\nAnswer: ")
     if function_name.startswith("mcp_"):
         function_call_result = await handle_mcp_tool_call(
             function_name, function_args, agent.mcp_servers
         )
+    else:
+        # Call the function directly
+        for tool in agent.tools:
+            if tool.name() == function_name:
+                function_call_result = await tool.execute(function_args)
+                break
+        else:
+            raise RuntimeError(f"Tool {function_name} not found in agent tools.")
 
     assert function_call_result is not None, f"Function {function_name} not implemented"
+    trace.get_current_span().set_attribute("function.result", function_call_result)
     logger.debug(f"Function {function_name} returned {function_call_result}")
 
     agent.history.append(
@@ -134,9 +154,23 @@ async def handle_tool_call(tool_call, agent: Agent):
     )
 
 
+def trim_history(history: list) -> list:
+    for entry in history:
+        if entry["role"] == "tool" and len(entry["content"]) > 10_000:
+            logger.warning(
+                f"Tool call content too long ({len(entry['content'])} characters). Trimming to 10,000 characters."
+            )
+            entry["content"] = entry["content"][:10_000]
+
+
+@tracer.start_as_current_span("do_single_step")
 async def do_single_step(agent: Agent):
-    tools = list(agent.tools)
-    tools.extend(get_default_functions())
+    trace.get_current_span().set_attribute("agent.name", agent.name)
+    trace.get_current_span().set_attribute("agent.task", agent.task)
+    trace.get_current_span().set_attribute("agent.history", json.dumps(agent.history))
+
+    tools = []
+    tools.extend(get_tools_from_agent(agent))
     tools.extend(await get_tools_from_mcp_servers(agent.mcp_servers))
 
     # If the agent has no history, this is our first step
@@ -156,11 +190,16 @@ async def do_single_step(agent: Agent):
         )
 
     # Do one completion step
+    trim_history(agent.history)
     completion = complete(agent.history, model=agent.model, tools=tools)
     logger.info(f"Got completion {completion} from LLM")
 
     message = completion["choices"][0]["message"]
-    agent.history.append(dict(message))
+    agent.history.append(message.model_dump())
+
+    trace.get_current_span().set_attribute(
+        "completion.message", message.model_dump_json()
+    )
 
     # Check if we need to do a tool call
     for tool_call in message.tool_calls or []:
@@ -169,11 +208,17 @@ async def do_single_step(agent: Agent):
     return message
 
 
+@tracer.start_as_current_span("run_agent_loop")
 async def run_agent_loop(agent: Agent):
+    trace.get_current_span().set_attribute("agent.name", agent.name)
+    trace.get_current_span().set_attribute("agent.task", agent.task)
+
     step_counter = 0
     while not agent.finished:
         step = await do_single_step(agent)
         if step.content:
             logger.info(f"[{step_counter}] Agent {agent.name}: {step.content}")
         step_counter += 1
+
+    trace.get_current_span().set_attribute("agent.result", agent.result)
     return agent.result
