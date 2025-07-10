@@ -17,6 +17,7 @@ from rich.table import Table
 from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.agents.tools import OrchestratorTool
 from coding_assistant.config import Config
+from coding_assistant.sandbox import sandbox
 from coding_assistant.tools import Tools, get_all_mcp_servers
 
 
@@ -81,11 +82,32 @@ async def print_mcp_tools(mcp_servers):
     console.print(table)
 
 
+def setup_tracing():
+    TRACE_ENDPOINT = "http://localhost:4318/v1/traces"
+
+    try:
+        requests.head(TRACE_ENDPOINT, timeout=0.2)
+    except requests.RequestException as e:
+        logger.info(f"Tracing endpoint {TRACE_ENDPOINT} not reachable. Tracing will be disabled. Error: {e}")
+        return
+
+    resource = Resource.create(attributes={SERVICE_NAME: "coding_assistant"})
+    tracerProvider = TracerProvider(resource=resource)
+    processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=TRACE_ENDPOINT))
+    tracerProvider.add_span_processor(processor)
+    trace.set_tracer_provider(tracerProvider)
+    logger.info(f"Tracing successfully enabled on endpoint {TRACE_ENDPOINT}.")
+
+
 async def _main():
+    setup_tracing()
+
     args = parse_args()
     config = load_config(args)
 
     logger.info(f"Running in working directory: {config.working_directory}")
+
+    sandbox(config.working_directory)
 
     async with get_all_mcp_servers(config) as mcp_servers:
         tools = Tools(mcp_servers=mcp_servers)
@@ -106,25 +128,7 @@ async def _main():
         print(f"Finished with: {result}")
 
 
-def setup_tracing():
-    TRACE_ENDPOINT = "http://localhost:4318/v1/traces"
-
-    try:
-        requests.head(TRACE_ENDPOINT, timeout=0.2)
-    except requests.RequestException as e:
-        logger.info(f"Tracing endpoint {TRACE_ENDPOINT} not reachable. Tracing will be disabled. Error: {e}")
-        return
-
-    resource = Resource.create(attributes={SERVICE_NAME: "coding_assistant"})
-    tracerProvider = TracerProvider(resource=resource)
-    processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=TRACE_ENDPOINT))
-    tracerProvider.add_span_processor(processor)
-    trace.set_tracer_provider(tracerProvider)
-    logger.info(f"Tracing successfully enabled on endpoint {TRACE_ENDPOINT}.")
-
-
 def main():
-    setup_tracing()
     asyncio.run(_main(), debug=True)
 
 
