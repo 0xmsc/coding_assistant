@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import subprocess
+import json
 import logging
 from typing import Annotated
 from rich.prompt import Prompt
@@ -90,7 +92,7 @@ class ResearchTool(Tool):
         return "launch_research_agent"
 
     def description(self) -> str:
-        return "Launch a research agent to gather information. This agent can also access the codebase."
+        return "Launch a research agent to gather information."
 
     def parameters(self) -> dict:
         return {
