@@ -90,6 +90,7 @@ class OrchestratorTool(Tool):
                 ResearchTool(self._config, self._tools),
                 DevelopTool(self._config, self._tools),
                 AskUserTool(),
+                ExecuteShellCommandTool(),
             ],
             model=self._config.model,
             feedback_function=lambda agent: _get_feedback(
@@ -140,7 +141,9 @@ class ResearchTool(Tool):
                 parameter_values=parameters,
             ),
             mcp_servers=self._tools.mcp_servers,
-            tools=[],
+            tools=[
+                ExecuteShellCommandTool(),
+            ],
             model=self._config.model,
             feedback_function=lambda agent: _get_feedback(
                 agent,
@@ -186,7 +189,9 @@ class DevelopTool(Tool):
                 parameter_values=parameters,
             ),
             mcp_servers=self._tools.mcp_servers,
-            tools=[],
+            tools=[
+                ExecuteShellCommandTool(),
+            ],
             model=self._config.model,
             feedback_function=lambda agent: _get_feedback(
                 agent,
@@ -233,6 +238,48 @@ class AskUserTool(Tool):
 
         answer = Prompt.ask(question, default=default_answer)
         return str(answer)
+
+
+class ExecuteShellCommandTool(Tool):
+    def __init__(self):
+        pass
+
+    def name(self) -> str:
+        return "execute_shell_command"
+
+    def description(self) -> str:
+        return (
+            "Execute a shell command and return the output. The command will be executed in bash. Examples for commands are:\n"
+            "- `exa` for listing files in a directory\n"
+            "- `git` for running git commands\n"
+            "- `fd` for searching files\n"
+            "- `rg` for searching text in files\n"
+            "- `gh` for interfacing with GitHub\n"
+        )
+
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "The shell command to execute.",
+                },
+            },
+            "required": ["command"],
+        }
+
+    async def execute(self, parameters: dict) -> str:
+        assert "command" in parameters
+
+        command = parameters["command"]
+        args = ["bash", "-c", command]
+        result = subprocess.run(args, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            return f"Command failed with error code {result.returncode}, stderr: {result.stderr}"
+
+        return result.stdout
 
 
 class FeedbackTool(Tool):
