@@ -116,10 +116,9 @@ async def get_tavily_server() -> AsyncGenerator[MCPServer, None]:
 async def get_memory_server() -> AsyncGenerator[MCPServer, None]:
     async with _get_mcp_server(
         name="memory",
-        command="uvx",
+        command="npx",
         args=[
-            "basic-memory",
-            "mcp",
+            "@modelcontextprotocol/server-memory",
         ],
     ) as server:
         yield server
