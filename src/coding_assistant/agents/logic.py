@@ -424,9 +424,16 @@ async def run_agent_loop(
     parameters_json = json.dumps([dataclasses.asdict(p) for p in agent.parameters])
     trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
 
+    step_count = 0
     while True:
         while not agent.output:
             await do_single_step(agent)
+            
+            # Periodically save history for orchestrator agents (every 3 steps)
+            step_count += 1
+            if agent.name == "Orchestrator" and step_count % 3 == 0:
+                # We'll save history in the finally block of main instead
+                pass
 
         trace.get_current_span().set_attribute("agent.result", agent.output.result)
         trace.get_current_span().set_attribute("agent.summary", agent.output.summary)

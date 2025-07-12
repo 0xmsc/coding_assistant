@@ -17,7 +17,7 @@ from rich.table import Table
 
 from coding_assistant.agents.agents import OrchestratorTool
 from coding_assistant.agents.logic import run_agent_loop
-from coding_assistant.cache import get_conversation_history, save_conversation_history
+from coding_assistant.cache import get_conversation_history, save_conversation_history, save_orchestrator_history, load_orchestrator_history, trim_orchestrator_history
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
@@ -33,6 +33,7 @@ logger.setLevel(logging.INFO)
 def parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant CLI")
     parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
+    parser.add_argument("--resume", nargs="?", const=True, default=False, metavar="FILE", help="Resume from a previously saved orchestrator history file in .coding_assistant/history/. If no file is given, resume the latest session.")
     parser.add_argument("--print-mcp-tools", action="store_true", help="Print all available tools from MCP servers.")
     parser.add_argument("--model", type=str, default="gpt-4.1", help="Model to use for the orchestrator agent.")
     parser.add_argument("--expert-model", type=str, default="o3", help="Expert model to use.")
@@ -157,7 +158,32 @@ async def _main():
 
     working_directory = Path(os.getcwd())
     logger.info(f"Running in working directory: {working_directory}")
+
+    # Trim orchestrator history to keep only the latest 10 files
+    trim_orchestrator_history(working_directory)
+
     conversation_history = get_conversation_history(working_directory)
+
+    # Handle resume logic
+    # --resume can take a file argument, or loads the latest session if no file is given
+    task = args.task
+    instructions = get_instructions(working_directory, config)
+    orchestrator_agent = None
+    saved_history = None
+    file_arg = args.resume if args.resume not in (False, True) else None
+    
+    if args.resume:
+        saved_history = load_orchestrator_history(working_directory, file_arg)
+        if saved_history:
+            task = saved_history["task"]
+            instructions = saved_history.get("instructions", instructions)
+            logger.info(f"Resuming session from {saved_history['timestamp']} with task: {task}")
+        else:
+            logger.error("No saved history found to resume from.")
+            return
+    elif not task:
+        logger.error("No task provided. Please specify a task to execute or use --resume.")
+        return
 
     venv_directory = Path(os.environ["VIRTUAL_ENV"])
     logger.info(f"Using virtual environment directory: {venv_directory}")
@@ -174,32 +200,50 @@ async def _main():
     mcp_server_configs = config.mcp_servers
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
-    async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
-        tools = Tools(mcp_servers=mcp_servers)
+    try:
+        async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
+            tools = Tools(mcp_servers=mcp_servers)
 
-        if args.print_mcp_tools:
-            await print_mcp_tools(mcp_servers)
-            return
+            if args.print_mcp_tools:
+                await print_mcp_tools(mcp_servers)
+                return
 
-        if not args.task:
-            logger.error("No task provided. Please specify a task to execute.")
-            return
-
-        with tracer.start_as_current_span("run_root_agent"):
-            tool = OrchestratorTool(config, tools)
-            result = await tool.execute(
-                {
-                    "task": args.task,
+            with tracer.start_as_current_span("run_root_agent"):
+                tool = OrchestratorTool(config, tools)
+                
+                # Prepare parameters for orchestrator
+                orchestrator_params = {
+                    "task": task,
                     "history": conversation_history[-5:],
-                    "instructions": get_instructions(working_directory, config),
+                    "instructions": instructions,
                 }
+                
+                # If resuming, we need to get the agent instance to restore history
+                if args.resume and saved_history:
+                    # We'll need to modify OrchestratorTool to support resuming
+                    orchestrator_params["resume_history"] = saved_history["agent_history"]
+                
+                result = await tool.execute(orchestrator_params)
+                summary = tool.summary
+                
+                # Get the agent instance for history saving
+                orchestrator_agent = getattr(tool, '_agent', None)
+
+            print(f"Finished with: {result}")
+            print(f"Summary: {summary}")
+
+            save_conversation_history(working_directory, summary)
+            # No need to clear history, we trim on startup
+            
+    finally:
+        # Save orchestrator history before exiting (for crash recovery)
+        if orchestrator_agent and orchestrator_agent.history:
+            save_orchestrator_history(
+                working_directory=working_directory,
+                agent_history=orchestrator_agent.history,
+                task=task,
+                instructions=instructions,
             )
-            summary = tool.summary
-
-        print(f"Finished with: {result}")
-        print(f"Summary: {summary}")
-
-        save_conversation_history(working_directory, summary)
 
 
 def main():

@@ -78,17 +78,28 @@ class OrchestratorTool(Tool):
                     "type": "string",
                     "description": "Special instructions for the agent. The agent will do everything it can to follow these instructions. The orchestrator will forward these instructions to the other agents it launches.",
                 },
+                "resume_history": {
+                    "type": "array",
+                    "description": "Previously saved agent history to resume from (internal parameter).",
+                },
             },
             "required": ["task"],
         }
 
     async def execute(self, parameters: dict) -> str:
+        # Filter out internal parameters from the agent parameters
+        agent_parameters = {k: v for k, v in parameters.items() if k != "resume_history"}
+        
         orchestrator_agent = Agent(
             name="Orchestrator",
             description=self.description(),
             parameters=fill_parameters(
-                parameter_description=self.parameters(),
-                parameter_values=parameters,
+                parameter_description={
+                    "type": "object",
+                    "properties": {k: v for k, v in self.parameters()["properties"].items() if k != "resume_history"},
+                    "required": self.parameters()["required"],
+                },
+                parameter_values=agent_parameters,
             ),
             mcp_servers=self._tools.mcp_servers,
             tools=[
@@ -105,6 +116,14 @@ class OrchestratorTool(Tool):
                 ask_agent_for_feedback=not self._config.disable_feedback_agent,
             ),
         )
+
+        # If resuming, restore the agent's history
+        if "resume_history" in parameters and parameters["resume_history"]:
+            orchestrator_agent.history = parameters["resume_history"]
+            logger.info(f"Restored {len(orchestrator_agent.history)} history entries for orchestrator agent")
+
+        # Store the agent instance so it can be accessed for history saving
+        self._agent = orchestrator_agent
 
         output = await run_agent_loop(orchestrator_agent)
         self.summary = output.summary
