@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.logging import RichHandler
 
-from coding_assistant.agents.tools import OrchestratorTool
+from coding_assistant.tools.tools import OrchestratorTool
 from coding_assistant.cache import (
     get_conversation_summaries,
     get_latest_orchestrator_history_file,
@@ -31,7 +31,7 @@ from coding_assistant.cache import (
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
-from coding_assistant.mcp import get_mcp_servers_from_config, print_mcp_tools
+from coding_assistant.tools.mcp import get_mcp_servers_from_config, print_mcp_tools
 from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks, RichCallbacks
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
@@ -204,15 +204,7 @@ async def run_orchestrator_agent(
     summary = tool.summary
     save_conversation_summary(working_directory, summary)
 
-    rich_print(
-        Panel(
-            f"Result: {result}\n\nSummary: {summary}",
-            title="🎉 Final Result",
-            border_style="bright_green",
-        )
-    )
-
-
+    print(f"🎉 Final Result\n\nSummary:\n\n{summary}\n\nResult:\n\n{result.content}")
     return result
 
 
