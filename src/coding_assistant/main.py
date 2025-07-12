@@ -171,7 +171,12 @@ async def run_orchestrator_agent(
             "summaries": conversation_summaries[-5:],
             "instructions": instructions,
         }
-        result = await tool.execute(orchestrator_params)
+
+        try:
+            result = await tool.execute(orchestrator_params)
+        finally:
+            save_orchestrator_history(working_directory, tool.history)
+
         summary = tool.summary
 
     print(f"Finished with: {result}")
