@@ -84,12 +84,9 @@ async def get_mcp_servers_from_config(
                 if env_var in os.environ:
                     env[env_var] = os.environ[env_var]
 
-            try:
-                server = await stack.enter_async_context(
-                    _get_mcp_server(name=server_config.name, command=server_config.command, args=args, env=env)
-                )
-                servers.append(server)
-            except Exception as e:
-                logger.warning(f"Failed to start MCP server '{server_config.name}': {e}")
+            server = await stack.enter_async_context(
+                _get_mcp_server(name=server_config.name, command=server_config.command, args=args, env=env)
+            )
+            servers.append(server)
 
         yield servers
