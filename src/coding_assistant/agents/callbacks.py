@@ -100,7 +100,7 @@ class RichCallbacks(AgentCallbacks):
         print(
             Panel(
                 message,
-                title=f"Agent {agent_name} TC",
+                title=f"Agent {agent_name} tool call",
                 border_style="yellow",
             ),
         )

@@ -270,13 +270,14 @@ coding_assistant/
 │       ├── llm/
 │       │   └── model.py          # LLM model interface
 │       ├── main.py               # CLI entry point
-│       ├── mcp.py                # MCP server integration
 │       ├── sandbox.py            # Sandbox implementation (Landlock)
 │       ├── agents/
-│       │   ├── tools.py          # All core agent/tool classes
-│       │   ├── logic.py          # Agent orchestration logic
+│       │   ├── types.py          # All core agent/tool classes
+│       │   ├── callbacks.py      # Agent callback interfaces
+│       │   ├── history.py        # Agent history management
 │       │   └── tests/            # Agent-specific tests
-│       └── tests/                # Sandbox & integration tests
+│       ├── tools/
+│       │   ├── mcp.py            # MCP server integration
 ├── justfile                      # Development commands
 ├── pyproject.toml                # Dependencies and build configuration  
 ├── run.fish                      # Launch script with sensible defaults
