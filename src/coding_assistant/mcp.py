@@ -9,7 +9,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from coding_assistant.config import Config, MCPServerConfig
-from coding_assistant.tools import Tool, Tools
+from coding_assistant.agents.tools import Tool, Tools
 
 logger = logging.getLogger(__name__)
 
