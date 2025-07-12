@@ -20,7 +20,7 @@ def get_conversation_history_file(working_directory: Path) -> Path:
     return conversations_file
 
 
-def get_conversation_history(working_directory: Path) -> list[str]:
+def get_conversation_summaries(working_directory: Path) -> list[str]:
     conversations_file = get_conversation_history_file(working_directory)
 
     if not conversations_file.exists():
@@ -53,17 +53,15 @@ def get_orchestrator_history_dir(working_directory: Path) -> Path:
     return history_dir
 
 
-def save_orchestrator_history(working_directory: Path, agent_history: list, task: str, instructions: str | None = None):
-    """Save orchestrator agent history for crash recovery as a new file."""
+def save_orchestrator_history(working_directory: Path, agent_history: list):
+    """Save orchestrator agent history for crash recovery as a new file. Only saves agent_history."""
     from datetime import datetime
+
     history_dir = get_orchestrator_history_dir(working_directory)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     history_file = history_dir / f"history_{timestamp}.json"
     history_data = {
         "timestamp": timestamp,
-        "working_directory": str(working_directory),
-        "task": task,
-        "instructions": instructions,
         "agent_history": agent_history,
     }
     history_file.write_text(json.dumps(history_data, indent=2))
@@ -76,10 +74,9 @@ def get_latest_orchestrator_history_file(working_directory: Path) -> Path | None
     return history_files[0] if history_files else None
 
 
-def load_orchestrator_history(working_directory: Path, file: str | None = None) -> dict | None:
-    """Load a specific or the latest orchestrator agent history for crash recovery."""
+def load_orchestrator_history(working_directory: Path, file: str | None = None) -> list | None:
+    """Load a specific or the latest orchestrator agent history for crash recovery. Returns agent_history list or None."""
     if file and file is not True:
-        # If file is a path, use it directly; if just a filename, resolve in history dir
         file_path = Path(file)
         if not file_path.is_absolute():
             file_path = get_orchestrator_history_dir(working_directory) / file
@@ -87,14 +84,15 @@ def load_orchestrator_history(working_directory: Path, file: str | None = None) 
             logger.error(f"Specified history file {file_path} does not exist.")
             return None
         logger.info(f"Loading orchestrator history from {file_path}.")
-        return json.loads(file_path.read_text())
-    # Default: load latest
+        data = json.loads(file_path.read_text())
+        return data.get("agent_history")
     history_file = get_latest_orchestrator_history_file(working_directory)
     if not history_file or not history_file.exists():
         logger.info("No orchestrator history file found.")
         return None
     logger.info(f"Loading orchestrator history from {history_file}.")
-    return json.loads(history_file.read_text())
+    data = json.loads(history_file.read_text())
+    return data.get("agent_history")
 
 
 def clear_orchestrator_history(working_directory: Path):

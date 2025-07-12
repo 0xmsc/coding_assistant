@@ -351,30 +351,16 @@ async def do_single_step(agent: Agent):
 
     trace.get_current_span().set_attribute("agent.tools", json.dumps(tools))
 
-    # If the agent has no history, this is our first step
+    # Check that the agent has history
     if not agent.history:
-        start_message = create_start_message(agent)
+        raise RuntimeError("Agent needs to have history in order to run a step.")
 
-        print(
-            Panel(
-                start_message,
-                title=f"Agent {agent.name} ({agent.model}) starting",
-                border_style="red",
-            ),
-        )
-
-        agent.history.append(
-            {
-                "role": "user",
-                "content": start_message,
-            }
-        )
-
-    # Do one completion step
+    # Trim the history if its getting too big
     trim_history(agent.history)
 
     trace.get_current_span().set_attribute("agent.history", json.dumps(agent.history))
 
+    # Do one completion step
     message = await complete(agent.history, model=agent.model, tools=tools)
     trace.get_current_span().set_attribute("completion.message", message.model_dump_json())
 
@@ -424,16 +410,31 @@ async def run_agent_loop(
     parameters_json = json.dumps([dataclasses.asdict(p) for p in agent.parameters])
     trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
 
-    step_count = 0
+    if agent.history:
+        logger.info(f"Agent already has history, resuming.")
+    else:
+        logger.info(f"Initializing agent {agent.name} with no history.")
+
+        start_message = create_start_message(agent)
+
+        print(
+            Panel(
+                start_message,
+                title=f"Agent {agent.name} ({agent.model}) starting",
+                border_style="red",
+            ),
+        )
+
+        agent.history.append(
+            {
+                "role": "user",
+                "content": start_message,
+            }
+        )
+
     while True:
         while not agent.output:
             await do_single_step(agent)
-            
-            # Periodically save history for orchestrator agents (every 3 steps)
-            step_count += 1
-            if agent.name == "Orchestrator" and step_count % 3 == 0:
-                # We'll save history in the finally block of main instead
-                pass
 
         trace.get_current_span().set_attribute("agent.result", agent.output.result)
         trace.get_current_span().set_attribute("agent.summary", agent.output.summary)
