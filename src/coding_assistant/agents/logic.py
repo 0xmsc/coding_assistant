@@ -6,6 +6,7 @@ import signal
 import sys
 import textwrap
 import threading
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -17,7 +18,6 @@ from rich.prompt import Prompt
 
 from coding_assistant.config import Config
 from coding_assistant.llm.model import complete
-from coding_assistant.mcp import Tool
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -52,6 +52,20 @@ Your client has provided the following feedback on your work:
 Please rework your result to address the feedback.
 Afterwards, call the `finish_task` tool again to signal that you are done.
 """.strip()
+
+
+class Tool(ABC):
+    @abstractmethod
+    def name(self) -> str: ...
+
+    @abstractmethod
+    def description(self) -> str: ...
+
+    @abstractmethod
+    def parameters(self) -> dict: ...
+
+    @abstractmethod
+    async def execute(self, parameters) -> str: ...
 
 
 @dataclass
