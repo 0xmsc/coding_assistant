@@ -3,16 +3,36 @@ import json
 import logging
 import subprocess
 import textwrap
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated
+from abc import ABC, abstractmethod
 
 from rich.prompt import Prompt
 
 from coding_assistant.agents.logic import Agent, Parameter, fill_parameters, format_parameters, run_agent_loop
 from coding_assistant.config import Config
-from coding_assistant.tools import Tool, Tools
 
 logger = logging.getLogger(__name__)
+
+
+class Tool(ABC):
+    @abstractmethod
+    def name(self) -> str: ...
+
+    @abstractmethod
+    def description(self) -> str: ...
+
+    @abstractmethod
+    def parameters(self) -> dict: ...
+
+    @abstractmethod
+    async def execute(self, parameters) -> str: ...
+
+
+@dataclass
+class Tools:
+    mcp_servers: list = field(default_factory=list)
+    tools: list = field(default_factory=list)
 
 
 async def _get_feedback(
