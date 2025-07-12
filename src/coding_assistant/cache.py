@@ -60,8 +60,8 @@ def save_orchestrator_history(working_directory: Path, agent_history: list):
     history_dir = get_orchestrator_history_dir(working_directory)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     history_file = history_dir / f"history_{timestamp}.json"
-    # Only save agent_history, no timestamp or other metadata
     history_file.write_text(json.dumps(agent_history, indent=2))
+
     logger.info(f"Saved orchestrator history for {working_directory} to {history_file}.")
 
 
