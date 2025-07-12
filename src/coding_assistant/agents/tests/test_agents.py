@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from coding_assistant.agents.agents import FeedbackTool, OrchestratorTool
-from coding_assistant.agents.logic import Agent
+from coding_assistant.agents.logic import Agent, create_start_message
 from coding_assistant.config import Config
 from coding_assistant.tools import Tools
 
@@ -86,6 +86,19 @@ async def test_orchestrator_tool():
     tool = OrchestratorTool(config=config, tools=Tools())
     result = await tool.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result == "Hello, World!"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_tool_resume():
+    config = create_test_config()
+    first = OrchestratorTool(config=config, tools=Tools())
+
+    result = await first.execute(parameters={"task": "Say 'Hello, World!'"})
+    assert result == "Hello, World!"
+
+    second = OrchestratorTool(config=config, tools=Tools(), history=first.history)
+    result = await second.execute(parameters={"task": "Re-do your previous task, just say 'Servus' instead of 'Hello'"})
+    assert result == "Servus, World!"
 
 
 @pytest.mark.asyncio

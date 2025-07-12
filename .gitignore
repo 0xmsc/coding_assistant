@@ -7,3 +7,4 @@ __pycache__
 .venv
 memory.json
 .coding_assistant
+.github
