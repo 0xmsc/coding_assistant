@@ -68,18 +68,14 @@ def create_config_from_args(args) -> Config:
     # Parse MCP server configurations from JSON strings
     mcp_servers = []
     for mcp_config_json in args.mcp_servers:
-        try:
-            config_dict = json.loads(mcp_config_json)
-            mcp_server_config = MCPServerConfig(
-                name=config_dict["name"],
-                command=config_dict["command"],
-                args=config_dict.get("args", []),
-                env=config_dict.get("env", []),  # Now expects a list of env var keys
-            )
-            mcp_servers.append(mcp_server_config)
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.error(f"Invalid MCP server configuration: {mcp_config_json}. Error: {e}")
-            sys.exit(1)
+        config_dict = json.loads(mcp_config_json)
+        mcp_server_config = MCPServerConfig(
+            name=config_dict["name"],
+            command=config_dict["command"],
+            args=config_dict.get("args", []),
+            env=config_dict.get("env", []),
+        )
+        mcp_servers.append(mcp_server_config)
 
     return Config(
         model=args.model,

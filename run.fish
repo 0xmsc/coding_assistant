@@ -5,8 +5,8 @@ set sandbox_dirs \
     /mnt/wsl
 
 set mcp_servers \
-    '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{working_directory}"], "env": []}' \
-    '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"], "env": []}'
+    '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{working_directory}"]}' \
+    '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}'
 
 uv --project (dirname (status filename)) run coding-assistant \
     --model "gemini/gemini-2.5-flash" \
