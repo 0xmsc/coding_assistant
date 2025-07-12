@@ -17,6 +17,7 @@ from coding_assistant.agents.logic import (
     AgentOutput,
     Tool,
 )
+from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
 from coding_assistant.config import Config
 
 logger = logging.getLogger(__name__)
@@ -28,12 +29,13 @@ async def _get_feedback(
     mcp_servers: list,
     ask_user_for_feedback: bool,
     ask_agent_for_feedback: bool,
+    agent_callbacks: Optional[AgentCallbacks] = None,
 ) -> str | None:
     if not agent.output:
         raise ValueError("Agent has no result to provide feedback on.")
 
     if ask_agent_for_feedback:
-        feedback_tool = FeedbackTool(config, mcp_servers)
+        feedback_tool = FeedbackTool(config, mcp_servers, agent_callbacks)
         formatted_parameters = textwrap.indent(format_parameters(agent.parameters), "  ")
         agent_feedback = await feedback_tool.execute(
             parameters={
@@ -64,10 +66,12 @@ class OrchestratorTool(Tool):
         config: Config,
         mcp_servers: list | None = None,
         history: list | None = None,
+        agent_callbacks: Optional[AgentCallbacks] = None,
     ):
         self._config = config
         self._mcp_servers = mcp_servers or []
         self._history = history
+        self._agent_callbacks = agent_callbacks or NullCallbacks()
 
     def name(self) -> str:
         return "launch_orchestrator_agent"
@@ -106,7 +110,7 @@ class OrchestratorTool(Tool):
             ),
             mcp_servers=self._mcp_servers,
             tools=[
-                AgentTool(self._config, self._mcp_servers),
+                AgentTool(self._config, self._mcp_servers, self._agent_callbacks),
                 AskClientTool(),
                 ExecuteShellCommandTool(),
             ],
@@ -117,11 +121,12 @@ class OrchestratorTool(Tool):
                 self._mcp_servers,
                 ask_user_for_feedback=self._config.enable_user_feedback,
                 ask_agent_for_feedback=self._config.enable_feedback_agent,
+                agent_callbacks=self._agent_callbacks,
             ),
         )
 
         try:
-            output = await run_agent_loop(orchestrator_agent)
+            output = await run_agent_loop(orchestrator_agent, self._agent_callbacks)
             self.summary = output.summary
         finally:
             self.history = orchestrator_agent.history
@@ -130,9 +135,10 @@ class OrchestratorTool(Tool):
 
 
 class AgentTool(Tool):
-    def __init__(self, config: Config, mcp_servers: list | None = None):
+    def __init__(self, config: Config, mcp_servers: list | None = None, agent_callbacks: Optional[AgentCallbacks] = None):
         self._config = config
         self._mcp_servers = mcp_servers or []
+        self._agent_callbacks = agent_callbacks or NullCallbacks()
 
     def name(self) -> str:
         return "launch_research_agent"
@@ -189,10 +195,11 @@ class AgentTool(Tool):
                 self._mcp_servers,
                 ask_user_for_feedback=self._config.enable_user_feedback,
                 ask_agent_for_feedback=self._config.enable_feedback_agent,
+                agent_callbacks=self._agent_callbacks,
             ),
         )
 
-        output = await run_agent_loop(research_agent)
+        output = await run_agent_loop(research_agent, self._agent_callbacks)
         return output.result
 
 
@@ -277,9 +284,10 @@ class ExecuteShellCommandTool(Tool):
 
 
 class FeedbackTool(Tool):
-    def __init__(self, config: Config, mcp_servers: list | None = None):
+    def __init__(self, config: Config, mcp_servers: list | None = None, agent_callbacks: Optional[AgentCallbacks] = None):
         self._mcp_servers = mcp_servers or []
         self._config = config
+        self._agent_callbacks = agent_callbacks or NullCallbacks()
 
     def name(self) -> str:
         return "launch_feedback_agent"
@@ -334,15 +342,16 @@ class FeedbackTool(Tool):
                 self._mcp_servers,
                 ask_user_for_feedback=False,
                 ask_agent_for_feedback=False,
+                agent_callbacks=self._agent_callbacks,
             ),
         )
 
-        output = await run_agent_loop(feedback_agent)
+        output = await run_agent_loop(feedback_agent, self._agent_callbacks)
         return output.result
 
 
 class FinishTaskTool(Tool):
-    def __init__(self, agent: "Agent"):
+    def __init__(self, agent: Agent):
         self._agent = agent
 
     def name(self) -> str:
