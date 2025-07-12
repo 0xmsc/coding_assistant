@@ -28,7 +28,7 @@ from coding_assistant.cache import (
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
-from coding_assistant.mcp import get_mcp_servers_from_config
+from coding_assistant.mcp import get_mcp_servers_from_config, print_mcp_tools
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -104,37 +104,6 @@ def create_config_from_args(args) -> Config:
         sandbox_directories=sandbox_dirs,
         mcp_servers=mcp_servers,
     )
-
-
-async def print_mcp_tools(mcp_servers):
-    console = Console()
-
-    if not mcp_servers:
-        console.print("[yellow]No MCP servers found.[/yellow]")
-        return
-
-    table = Table(show_header=True, show_lines=True)
-    table.add_column("Server Name", style="magenta")
-    table.add_column("Tool Name", style="cyan")
-    table.add_column("Description", style="green")
-    table.add_column("Parameters", style="yellow")
-
-    for server in mcp_servers:
-        tools_response = await server.session.list_tools()
-        server_tools = tools_response.tools
-
-        if not server_tools:
-            logger.info(f"No tools found for MCP server: {server.name}")
-            continue
-
-        for tool in server_tools:
-            name = tool.name
-            description = tool.description
-            parameters = tool.inputSchema
-            parameters_str = ", ".join(parameters.get("properties", {}).keys()) if parameters else "None"
-            table.add_row(server.name, name, description, parameters_str)
-
-    console.print(table)
 
 
 def setup_tracing():

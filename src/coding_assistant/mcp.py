@@ -7,6 +7,8 @@ from typing import AsyncGenerator, List
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from rich.console import Console
+from rich.table import Table
 
 from coding_assistant.config import MCPServerConfig
 
@@ -72,3 +74,34 @@ async def get_mcp_servers_from_config(
             servers.append(server)
 
         yield servers
+
+
+async def print_mcp_tools(mcp_servers):
+    console = Console()
+
+    if not mcp_servers:
+        console.print("[yellow]No MCP servers found.[/yellow]")
+        return
+
+    table = Table(show_header=True, show_lines=True)
+    table.add_column("Server Name", style="magenta")
+    table.add_column("Tool Name", style="cyan")
+    table.add_column("Description", style="green")
+    table.add_column("Parameters", style="yellow")
+
+    for server in mcp_servers:
+        tools_response = await server.session.list_tools()
+        server_tools = tools_response.tools
+
+        if not server_tools:
+            logger.info(f"No tools found for MCP server: {server.name}")
+            continue
+
+        for tool in server_tools:
+            name = tool.name
+            description = tool.description
+            parameters = tool.inputSchema
+            parameters_str = ", ".join(parameters.get("properties", {}).keys()) if parameters else "None"
+            table.add_row(server.name, name, description, parameters_str)
+
+    console.print(table)
