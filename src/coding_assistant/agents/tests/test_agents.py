@@ -9,13 +9,13 @@ from coding_assistant.config import Config
 TEST_MODEL = "gemini/gemini-2.5-pro"
 
 
-def create_test_config(disable_user_feedback: bool = True) -> Config:
+def create_test_config() -> Config:
     """Helper function to create a test Config with all required parameters."""
     return Config(
         model=TEST_MODEL,
         expert_model=TEST_MODEL,
-        disable_feedback_agent=False,
-        disable_user_feedback=disable_user_feedback,
+        enable_feedback_agent=True,
+        enable_user_feedback=False,
         instructions=None,
         sandbox_directories=[],
         mcp_servers=[],
