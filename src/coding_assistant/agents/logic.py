@@ -17,7 +17,7 @@ from rich.prompt import Prompt
 
 from coding_assistant.config import Config
 from coding_assistant.llm.model import complete
-from coding_assistant.tools import Tool
+from coding_assistant.mcp import Tool
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
