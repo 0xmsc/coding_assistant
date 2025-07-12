@@ -60,11 +60,8 @@ def save_orchestrator_history(working_directory: Path, agent_history: list):
     history_dir = get_orchestrator_history_dir(working_directory)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     history_file = history_dir / f"history_{timestamp}.json"
-    history_data = {
-        "timestamp": timestamp,
-        "agent_history": agent_history,
-    }
-    history_file.write_text(json.dumps(history_data, indent=2))
+    # Only save agent_history, no timestamp or other metadata
+    history_file.write_text(json.dumps(agent_history, indent=2))
     logger.info(f"Saved orchestrator history for {working_directory} to {history_file}.")
 
 
@@ -84,15 +81,13 @@ def load_orchestrator_history(working_directory: Path, file: str | None = None) 
             logger.error(f"Specified history file {file_path} does not exist.")
             return None
         logger.info(f"Loading orchestrator history from {file_path}.")
-        data = json.loads(file_path.read_text())
-        return data.get("agent_history")
+        return json.loads(file_path.read_text())
     history_file = get_latest_orchestrator_history_file(working_directory)
     if not history_file or not history_file.exists():
         logger.info("No orchestrator history file found.")
         return None
     logger.info(f"Loading orchestrator history from {history_file}.")
-    data = json.loads(history_file.read_text())
-    return data.get("agent_history")
+    return json.loads(history_file.read_text())
 
 
 def clear_orchestrator_history(working_directory: Path):
