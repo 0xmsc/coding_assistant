@@ -55,8 +55,6 @@ def get_orchestrator_history_dir(working_directory: Path) -> Path:
 
 def save_orchestrator_history(working_directory: Path, agent_history: list):
     """Save orchestrator agent history for crash recovery as a new file. Only saves agent_history."""
-    from datetime import datetime
-
     history_dir = get_orchestrator_history_dir(working_directory)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     history_file = history_dir / f"history_{timestamp}.json"
@@ -71,23 +69,14 @@ def get_latest_orchestrator_history_file(working_directory: Path) -> Path | None
     return history_files[0] if history_files else None
 
 
-def load_orchestrator_history(working_directory: Path, file: str | None = None) -> list | None:
-    """Load a specific or the latest orchestrator agent history for crash recovery. Returns agent_history list or None."""
-    if file and file is not True:
-        file_path = Path(file)
-        if not file_path.is_absolute():
-            file_path = get_orchestrator_history_dir(working_directory) / file
-        if not file_path.exists():
-            logger.error(f"Specified history file {file_path} does not exist.")
-            return None
-        logger.info(f"Loading orchestrator history from {file_path}.")
-        return json.loads(file_path.read_text())
-    history_file = get_latest_orchestrator_history_file(working_directory)
-    if not history_file or not history_file.exists():
-        logger.info("No orchestrator history file found.")
+def load_orchestrator_history(file: str | Path) -> list | None:
+    """Load orchestrator agent history from a specific file. Returns agent_history list or None."""
+    file_path = Path(file)
+    if not file_path.exists():
+        logger.error(f"Specified history file {file_path} does not exist.")
         return None
-    logger.info(f"Loading orchestrator history from {history_file}.")
-    return json.loads(history_file.read_text())
+    logger.info(f"Loading orchestrator history from {file_path}.")
+    return json.loads(file_path.read_text())
 
 
 def clear_orchestrator_history(working_directory: Path):
