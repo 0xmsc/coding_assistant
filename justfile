@@ -3,5 +3,5 @@ test:
 
 hello-world:
     ./run.fish \
-      --disable-user-feedback --disable-feedback-agent \
+      --no-user-feedback --no-feedback-agent \
       --task "Say 'Hello World'"
