@@ -17,7 +17,13 @@ from rich.table import Table
 
 from coding_assistant.agents.agents import OrchestratorTool
 from coding_assistant.agents.logic import run_agent_loop
-from coding_assistant.cache import get_conversation_history, save_conversation_history, save_orchestrator_history, load_orchestrator_history, trim_orchestrator_history
+from coding_assistant.cache import (
+    get_conversation_summaries,
+    save_conversation_history,
+    save_orchestrator_history,
+    load_orchestrator_history,
+    trim_orchestrator_history,
+)
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
@@ -33,7 +39,14 @@ logger.setLevel(logging.INFO)
 def parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant CLI")
     parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
-    parser.add_argument("--resume", nargs="?", const=True, default=False, metavar="FILE", help="Resume from a previously saved orchestrator history file in .coding_assistant/history/. If no file is given, resume the latest session.")
+    parser.add_argument(
+        "--resume",
+        nargs="?",
+        const=True,
+        default=False,
+        metavar="FILE",
+        help="Resume from a previously saved orchestrator history file in .coding_assistant/history/. If no file is given, resume the latest session.",
+    )
     parser.add_argument("--print-mcp-tools", action="store_true", help="Print all available tools from MCP servers.")
     parser.add_argument("--model", type=str, default="gpt-4.1", help="Model to use for the orchestrator agent.")
     parser.add_argument("--expert-model", type=str, default="o3", help="Expert model to use.")
@@ -160,21 +173,18 @@ async def _main():
     logger.info(f"Running in working directory: {working_directory}")
 
     trim_orchestrator_history(working_directory)
-
-    conversation_history = get_conversation_history(working_directory)
+    conversation_summaries = get_conversation_summaries(working_directory)
 
     task = args.task
     instructions = get_instructions(working_directory, config)
     orchestrator_agent = None
     saved_history = None
     file_arg = args.resume if args.resume not in (False, True) else None
-    
+
     if args.resume:
         saved_history = load_orchestrator_history(working_directory, file_arg)
         if saved_history:
-            task = saved_history["task"]
-            instructions = saved_history.get("instructions", instructions)
-            logger.info(f"Resuming session from {saved_history['timestamp']} with task: {task}")
+            logger.info(f"Resuming session from saved agent history.")
         else:
             logger.error("No saved history found to resume from.")
             return
@@ -208,16 +218,16 @@ async def _main():
                 tool = OrchestratorTool(
                     config,
                     tools,
-                    resume_history=saved_history["agent_history"] if args.resume and saved_history else None,
+                    history=saved_history if args.resume and saved_history else None,
                 )
                 orchestrator_params = {
                     "task": task,
-                    "history": conversation_history[-5:],
+                    "summaries": conversation_summaries[-5:],
                     "instructions": instructions,
                 }
                 result = await tool.execute(orchestrator_params)
                 summary = tool.summary
-                orchestrator_agent = getattr(tool, '_agent', None)
+                orchestrator_agent = getattr(tool, "_agent", None)
 
             print(f"Finished with: {result}")
             print(f"Summary: {summary}")
@@ -228,8 +238,6 @@ async def _main():
             save_orchestrator_history(
                 working_directory=working_directory,
                 agent_history=orchestrator_agent.history,
-                task=task,
-                instructions=instructions,
             )
 
 
