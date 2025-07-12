@@ -8,15 +8,9 @@ from typing import Annotated, Optional
 
 from rich.prompt import Prompt
 
-from coding_assistant.agents.logic import (
-    Agent,
-    Parameter,
-    fill_parameters,
-    format_parameters,
-    run_agent_loop,
-    AgentOutput,
-    Tool,
-)
+from coding_assistant.agents.execution import run_agent_loop
+from coding_assistant.agents.types import Agent, AgentOutput, Tool, TextResult, FinishTaskResult, ShortenConversationResult, ToolResult
+from coding_assistant.agents.parameters import fill_parameters, format_parameters, Parameter
 from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
 from coding_assistant.config import Config
 
@@ -37,7 +31,7 @@ async def _get_feedback(
     if ask_agent_for_feedback:
         feedback_tool = FeedbackTool(config, mcp_servers, agent_callbacks)
         formatted_parameters = textwrap.indent(format_parameters(agent.parameters), "  ")
-        agent_feedback = await feedback_tool.execute(
+        agent_feedback_result = await feedback_tool.execute(
             parameters={
                 "description": agent.description,
                 "parameters": "\n" + formatted_parameters,
@@ -46,6 +40,7 @@ async def _get_feedback(
                 "feedback": agent.output.feedback,
             }
         )
+        agent_feedback = agent_feedback_result.content
     else:
         agent_feedback = "Ok"
 
@@ -99,7 +94,7 @@ class OrchestratorTool(Tool):
             "required": ["task"],
         }
 
-    async def execute(self, parameters: dict) -> str:
+    async def execute(self, parameters: dict) -> TextResult:
         orchestrator_agent = Agent(
             name="Orchestrator",
             history=self._history or [],
@@ -113,6 +108,8 @@ class OrchestratorTool(Tool):
                 AgentTool(self._config, self._mcp_servers, self._agent_callbacks),
                 AskClientTool(),
                 ExecuteShellCommandTool(),
+                FinishTaskTool(),
+                ShortenConversation(),
             ],
             model=self._config.expert_model,
             feedback_function=lambda agent: _get_feedback(
@@ -125,16 +122,13 @@ class OrchestratorTool(Tool):
             ),
         )
 
-        orchestrator_agent.tools.append(FinishTaskTool(orchestrator_agent))
-        orchestrator_agent.tools.append(ShortenConversation(orchestrator_agent))
-
         try:
             output = await run_agent_loop(orchestrator_agent, self._agent_callbacks)
             self.summary = output.summary
         finally:
             self.history = orchestrator_agent.history
 
-        return output.result
+        return TextResult(content=output.result)
 
 
 class AgentTool(Tool):
@@ -180,7 +174,7 @@ class AgentTool(Tool):
             return self._config.expert_model
         return self._config.model
 
-    async def execute(self, parameters: dict) -> str:
+    async def execute(self, parameters: dict) -> TextResult:
         agent = Agent(
             name="Agent",
             description=self.description(),
@@ -192,6 +186,8 @@ class AgentTool(Tool):
             tools=[
                 ExecuteShellCommandTool(),
                 AskClientTool(),
+                FinishTaskTool(),
+                ShortenConversation(),
             ],
             model=self.get_model(parameters),
             feedback_function=lambda agent: _get_feedback(
@@ -204,11 +200,8 @@ class AgentTool(Tool):
             ),
         )
 
-        agent.tools.append(FinishTaskTool(agent))
-        agent.tools.append(ShortenConversation(agent))
-
         output = await run_agent_loop(agent, self._agent_callbacks)
-        return output.result
+        return TextResult(content=output.result)
 
 
 class AskClientTool(Tool):
@@ -237,12 +230,12 @@ class AskClientTool(Tool):
             "required": ["question"],
         }
 
-    async def execute(self, parameters: dict) -> str:
+    async def execute(self, parameters: dict) -> TextResult:
         assert "question" in parameters
         question = parameters["question"]
         default_answer = parameters.get("default_answer")
         answer = await asyncio.to_thread(Prompt.ask, question, default=default_answer)
-        return str(answer)
+        return TextResult(content=str(answer))
 
 
 class ExecuteShellCommandTool(Tool):
@@ -274,7 +267,7 @@ class ExecuteShellCommandTool(Tool):
             "required": ["command"],
         }
 
-    async def execute(self, parameters: dict) -> str:
+    async def execute(self, parameters: dict) -> TextResult:
         assert "command" in parameters
 
         command = parameters["command"]
@@ -282,13 +275,13 @@ class ExecuteShellCommandTool(Tool):
         result = await asyncio.to_thread(subprocess.run, args, capture_output=True, text=True)
 
         if result.returncode != 0:
-            return (
+            return TextResult(content=(
                 f"Command failed with error code {result.returncode}\n"
                 f"stdout: {result.stdout}\n"
                 f"stderr: {result.stderr}"
-            )
+            ))
 
-        return result.stdout
+        return TextResult(content=result.stdout)
 
 
 class FeedbackTool(Tool):
@@ -333,7 +326,7 @@ class FeedbackTool(Tool):
             "required": ["description", "parameters", "result"],
         }
 
-    async def execute(self, parameters: dict) -> str:
+    async def execute(self, parameters: dict) -> TextResult:
         feedback_agent = Agent(
             name="Feedback",
             description=self.description(),
@@ -344,6 +337,8 @@ class FeedbackTool(Tool):
             mcp_servers=self._mcp_servers,
             tools=[
                 ExecuteShellCommandTool(),
+                FinishTaskTool(),
+                ShortenConversation(),
             ],
             model=self._config.model,
             feedback_function=lambda agent: _get_feedback(
@@ -357,13 +352,10 @@ class FeedbackTool(Tool):
         )
 
         output = await run_agent_loop(feedback_agent, self._agent_callbacks)
-        return output.result
+        return TextResult(content=output.result)
 
 
 class FinishTaskTool(Tool):
-    def __init__(self, agent: Agent):
-        self._agent = agent
-
     def name(self) -> str:
         return "finish_task"
 
@@ -390,19 +382,15 @@ class FinishTaskTool(Tool):
             "required": ["result", "summary"],
         }
 
-    async def execute(self, parameters) -> str:
-        self._agent.output = AgentOutput(
+    async def execute(self, parameters) -> FinishTaskResult:
+        return FinishTaskResult(
             result=parameters["result"],
             summary=parameters["summary"],
             feedback=parameters.get("feedback"),
         )
-        return "Agent output set."
 
 
 class ShortenConversation(Tool):
-    def __init__(self, agent: Agent):
-        self._agent = agent
-
     def name(self) -> str:
         return "shorten_conversation"
 
@@ -421,6 +409,5 @@ class ShortenConversation(Tool):
             "required": ["summary"],
         }
 
-    async def execute(self, parameters) -> str:
-        self._agent.shortened_conversation = parameters["summary"]
-        return "Shortened conversation set."
+    async def execute(self, parameters) -> ShortenConversationResult:
+        return ShortenConversationResult(summary=parameters["summary"])

@@ -1,7 +1,7 @@
 import logging
 import os
 from contextlib import AsyncExitStack, asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncGenerator, List
 
@@ -74,6 +74,23 @@ async def get_mcp_servers_from_config(
             servers.append(server)
 
         yield servers
+
+
+async def handle_mcp_tool_call(function_name, arguments, mcp_servers):
+    parts = function_name.split("_")
+    assert parts[0] == "mcp"
+
+    server_name = parts[1]
+    tool_name = "_".join(parts[2:])
+
+    for server in mcp_servers:
+        if server.name == server_name:
+            result = await server.session.call_tool(tool_name, arguments)
+            if not result.content:
+                return "MCP server did not return any content."
+            return result.content[0].text
+
+    raise RuntimeError(f"Server {server_name} not found in MCP servers.")
 
 
 async def print_mcp_tools(mcp_servers):
