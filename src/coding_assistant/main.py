@@ -182,12 +182,10 @@ async def _main():
             await print_mcp_tools(mcp_servers)
             return
 
-        result = None
-        
         if not args.task:
             logger.error("No task provided. Please specify a task to execute.")
             return
-        
+
         with tracer.start_as_current_span("run_root_agent"):
             tool = OrchestratorTool(config, tools)
             result = await tool.execute(

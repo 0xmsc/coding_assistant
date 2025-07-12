@@ -81,8 +81,9 @@ async def get_mcp_servers_from_config(
 
             # Add environment variables specified in server config
             for env_var in server_config.env:
-                if env_var in os.environ:
-                    env[env_var] = os.environ[env_var]
+                if env_var not in os.environ:
+                    raise ValueError(f"Required environment variable '{env_var}' for MCP server '{server_config.name}' is not set")
+                env[env_var] = os.environ[env_var]
 
             server = await stack.enter_async_context(
                 _get_mcp_server(name=server_config.name, command=server_config.command, args=args, env=env)
