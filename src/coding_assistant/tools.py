@@ -9,7 +9,7 @@ from typing import AsyncGenerator, List
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from coding_assistant.config import Config
+from coding_assistant.config import Config, MCPServerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -22,20 +22,16 @@ class MCPServer:
 
 class Tool(ABC):
     @abstractmethod
-    def name(self) -> str:
-        ...
+    def name(self) -> str: ...
 
     @abstractmethod
-    def description(self) -> str:
-        ...
+    def description(self) -> str: ...
 
     @abstractmethod
-    def parameters(self) -> dict:
-        ...
+    def parameters(self) -> dict: ...
 
     @abstractmethod
-    async def execute(self, parameters) -> str:
-        ...
+    async def execute(self, parameters) -> str: ...
 
 
 def get_default_env():
@@ -65,62 +61,35 @@ async def _get_mcp_server(
 
 
 @asynccontextmanager
-async def get_filesystem_server(working_directory: Path) -> AsyncGenerator[MCPServer, None]:
-    async with _get_mcp_server(
-        name="filesystem",
-        command="npx",
-        args=[
-            "-y",
-            "@modelcontextprotocol/server-filesystem",
-            str(working_directory),
-        ],
-        env=get_default_env(),
-    ) as server:
-        yield server
-
-
-@asynccontextmanager
-async def get_fetch_server() -> AsyncGenerator[MCPServer, None]:
-    async with _get_mcp_server(
-        name="fetch",
-        command="uvx",
-        args=[
-            "mcp-server-fetch",
-        ],
-        env=get_default_env(),
-    ) as server:
-        yield server
-
-
-@asynccontextmanager
-async def get_tavily_server() -> AsyncGenerator[MCPServer, None]:
-    async with _get_mcp_server(
-        name="tavily",
-        command="npx",
-        args=[
-            "-y",
-            "tavily-mcp@0.2.1",
-        ],
-        env={
-            **get_default_env(),
-            "TAVILY_API_KEY": os.environ["TAVILY_API_KEY"],
-        },
-    ) as server:
-        yield server
-
-
-@asynccontextmanager
-async def get_all_mcp_servers(working_directory: Path) -> AsyncGenerator[List[MCPServer], None]:
+async def get_mcp_servers_from_config(
+    config_servers: List[MCPServerConfig], working_directory: Path
+) -> AsyncGenerator[List[MCPServer], None]:
+    """Create MCP servers from configuration objects."""
     if not working_directory.exists():
         raise ValueError(f"Working directory {working_directory} does not exist.")
 
     async with AsyncExitStack() as stack:
         servers: List[MCPServer] = []
 
-        servers.append(await stack.enter_async_context(get_filesystem_server(working_directory)))
-        servers.append(await stack.enter_async_context(get_fetch_server()))
+        for server_config in config_servers:
+            # Format all arguments with available variables
+            format_vars = {"working_directory": str(working_directory)}
+            args = [arg.format(**format_vars) for arg in server_config.args]
 
-        if os.environ.get("TAVILY_API_KEY"):
-            servers.append(await stack.enter_async_context(get_tavily_server()))
+            # Merge environment variables with current environment and server-specific env
+            env = {**get_default_env()}
+
+            # Add environment variables specified in server config
+            for env_var in server_config.env:
+                if env_var in os.environ:
+                    env[env_var] = os.environ[env_var]
+
+            try:
+                server = await stack.enter_async_context(
+                    _get_mcp_server(name=server_config.name, command=server_config.command, args=args, env=env)
+                )
+                servers.append(server)
+            except Exception as e:
+                logger.warning(f"Failed to start MCP server '{server_config.name}': {e}")
 
         yield servers
