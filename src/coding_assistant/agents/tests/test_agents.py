@@ -10,9 +10,22 @@ from coding_assistant.tools import Tools
 TEST_MODEL = "gemini/gemini-2.5-flash"
 
 
+def create_test_config(disable_user_feedback: bool = True) -> Config:
+    """Helper function to create a test Config with all required parameters."""
+    return Config(
+        model=TEST_MODEL,
+        expert_model=TEST_MODEL,
+        disable_feedback_agent=False,
+        disable_user_feedback=disable_user_feedback,
+        instructions=None,
+        sandbox_directories=[],
+        mcp_servers=[],
+    )
+
+
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_ok():
-    config = Config(model=TEST_MODEL, disable_user_feedback=True)
+    config = create_test_config()
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
@@ -26,7 +39,7 @@ async def test_feedback_tool_execute_ok():
 
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_wrong():
-    config = Config(model=TEST_MODEL, disable_user_feedback=True)
+    config = create_test_config()
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
@@ -40,7 +53,7 @@ async def test_feedback_tool_execute_wrong():
 
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_no_result():
-    config = Config(model=TEST_MODEL, disable_user_feedback=True)
+    config = create_test_config()
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
@@ -54,7 +67,7 @@ async def test_feedback_tool_execute_no_result():
 
 @pytest.mark.asyncio
 async def test_feedback_tool_after_feedback():
-    config = Config(model=TEST_MODEL, disable_user_feedback=True)
+    config = create_test_config()
     tool = FeedbackTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
@@ -69,11 +82,7 @@ async def test_feedback_tool_after_feedback():
 
 @pytest.mark.asyncio
 async def test_orchestrator_tool():
-    config = Config(
-        model=TEST_MODEL,
-        expert_model=TEST_MODEL,
-        disable_user_feedback=True,
-    )
+    config = create_test_config()
     tool = OrchestratorTool(config=config, tools=Tools())
     result = await tool.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result == "Hello, World!"
@@ -81,11 +90,7 @@ async def test_orchestrator_tool():
 
 @pytest.mark.asyncio
 async def test_orchestrator_tool_instructions():
-    config = Config(
-        model=TEST_MODEL,
-        expert_model=TEST_MODEL,
-        disable_user_feedback=True,
-    )
+    config = create_test_config()
     tool = OrchestratorTool(config=config, tools=Tools())
     result = await tool.execute(
         parameters={
