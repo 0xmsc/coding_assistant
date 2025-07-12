@@ -15,12 +15,12 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from rich.console import Console
 from rich.table import Table
 
-from coding_assistant.agents.tools import OrchestratorTool, Tools
+from coding_assistant.agents.tools import OrchestratorTool
 from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.cache import (
     get_conversation_summaries,
     get_latest_orchestrator_history_file,
-    save_conversation_history,
+    save_conversation_summary,
     save_orchestrator_history,
     load_orchestrator_history,
     trim_orchestrator_history,
@@ -165,6 +165,54 @@ def get_additional_sandbox_directories(config: Config, working_directory: Path, 
     return sandbox_directories
 
 
+def get_resume_history(args, working_directory):
+    if args.resume_file:
+        if not args.resume_file.exists():
+            raise FileNotFoundError(f"Resume file {args.resume_file} does not exist.")
+        logger.info(f"Resuming session from file: {args.resume_file}")
+        return load_orchestrator_history(args.resume_file)
+    elif args.resume:
+        latest_history_file = get_latest_orchestrator_history_file(working_directory)
+        if not latest_history_file:
+            raise FileNotFoundError(
+                f"No latest orchestrator history file found in {working_directory}/.coding_assistant/history."
+            )
+        logger.info(f"Resuming session from latest saved agent history: {latest_history_file}")
+        return load_orchestrator_history(latest_history_file)
+    return None
+
+
+async def run_orchestrator_agent(
+    task: str,
+    config: Config,
+    mcp_servers: list,
+    history: list | None,
+    conversation_summaries: list[str],
+    instructions: str | None,
+    working_directory: Path,
+):
+    with tracer.start_as_current_span("run_root_agent"):
+        tool = OrchestratorTool(
+            config,
+            mcp_servers,
+            history=history,
+        )
+        orchestrator_params = {
+            "task": task,
+            "summaries": conversation_summaries[-5:],
+            "instructions": instructions,
+        }
+        result = await tool.execute(orchestrator_params)
+        summary = tool.summary
+
+    print(f"Finished with: {result}")
+    print(f"Summary: {summary}")
+
+    save_conversation_summary(working_directory, summary)
+
+    return result
+
+
 async def _main():
     setup_tracing()
 
@@ -179,27 +227,8 @@ async def _main():
     trim_orchestrator_history(working_directory)
     conversation_summaries = get_conversation_summaries(working_directory)
 
-    task = args.task
     instructions = get_instructions(working_directory, config)
-    orchestrator_agent = None
-    resume_history = None
-
-    if args.resume_file:
-        if not args.resume_file.exists():
-            raise FileNotFoundError(f"Resume file {args.resume_file} does not exist.")
-        logger.info(f"Resuming session from file: {args.resume_file}")
-        resume_history = load_orchestrator_history(args.resume_file)
-    elif args.resume:
-        latest_history_file = get_latest_orchestrator_history_file(working_directory)
-        if not latest_history_file:
-            raise FileNotFoundError(
-                f"No latest orchestrator history file found in {working_directory}/.coding_assistant/history."
-            )
-        logger.info(f"Resuming session from latest saved agent history: {latest_history_file}")
-        resume_history = load_orchestrator_history(latest_history_file)
-    elif not task:
-        logger.error("No task provided. Please specify a task to execute or use --resume/--resume-file.")
-        return
+    resume_history = get_resume_history(args, working_directory)
 
     venv_directory = Path(os.environ["VIRTUAL_ENV"])
     logger.info(f"Using virtual environment directory: {venv_directory}")
@@ -215,39 +244,20 @@ async def _main():
     mcp_server_configs = config.mcp_servers
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
-    try:
-        async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
-            tools = Tools(mcp_servers=mcp_servers)
+    async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
+        if args.print_mcp_tools:
+            await print_mcp_tools(mcp_servers)
+            return
 
-            if args.print_mcp_tools:
-                await print_mcp_tools(mcp_servers)
-                return
-
-            with tracer.start_as_current_span("run_root_agent"):
-                tool = OrchestratorTool(
-                    config,
-                    tools,
-                    history=resume_history if (args.resume or args.resume_file) and resume_history else None,
-                )
-                orchestrator_params = {
-                    "task": task,
-                    "summaries": conversation_summaries[-5:],
-                    "instructions": instructions,
-                }
-                result = await tool.execute(orchestrator_params)
-                summary = tool.summary
-                orchestrator_agent = getattr(tool, "_agent", None)
-
-            print(f"Finished with: {result}")
-            print(f"Summary: {summary}")
-
-            save_conversation_history(working_directory, summary)
-    finally:
-        if orchestrator_agent and orchestrator_agent.history:
-            save_orchestrator_history(
-                working_directory=working_directory,
-                agent_history=orchestrator_agent.history,
-            )
+        await run_orchestrator_agent(
+            task=args.task,
+            config=config,
+            mcp_servers=mcp_servers,
+            history=resume_history,
+            conversation_summaries=conversation_summaries,
+            instructions=instructions,
+            working_directory=working_directory,
+        )
 
 
 def main():
