@@ -32,7 +32,7 @@ def get_conversation_summaries(working_directory: Path) -> list[str]:
     return conversations.get("summaries", [])
 
 
-def save_conversation_history(working_directory: Path, summary: str):
+def save_conversation_summary(working_directory: Path, summary: str):
     conversations_file = get_conversation_history_file(working_directory)
 
     if conversations_file.exists():
