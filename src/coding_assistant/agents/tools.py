@@ -365,7 +365,7 @@ class FinishTaskTool(Tool):
                 },
                 "feedback": {
                     "type": "string",
-                    "description": "A summary of the feedback given by the client to the agent during the task. This can both be questions that were answered by the client, or feedback. It needs to be clear from this parameter why the result might might not fit to initial task description.",
+                    "description": "A summary of the feedback given by the client to the agent during the task. This can both be questions that were answered by the client, or feedback. It needs to be clear from this parameter why the result might not fit to initial task description.",
                 },
             },
             "required": ["result", "summary"],
