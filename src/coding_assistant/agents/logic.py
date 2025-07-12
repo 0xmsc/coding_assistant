@@ -366,7 +366,8 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_
             agent.name,
             "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. Otherwise, please call the `finish_task` tool to signal that you are done.",
         )
-    elif completion.tokens > shorten_conversation_at_tokens and not agent.shortened_conversation:
+
+    if completion.tokens > shorten_conversation_at_tokens and not agent.shortened_conversation:
         append_user_message(
             agent.history,
             agent_callbacks,
