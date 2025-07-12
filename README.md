@@ -13,11 +13,12 @@
 ## Key Features
 
 - **Agent Orchestration**: The Orchestrator agent coordinates tasks by delegating work to specialized sub-agents as required.
+- **Resume Functionality**: Resume work from a previous session, allowing the agent to continue its task without starting over.
+- **Project-Specific Caching**: Conversation history and agent state are cached within a `.coding_assistant` directory in your project for easy access and version control.
 - **Generic Agent System**: Flexible agent tool that can handle research, development, and analysis tasks based on provided instructions.
 - **Feedback Agent**: Automatically reviews and validates agent results, ensuring they meet user requirements.
 - **Flexible CLI**: Launch, control, and interact with agents/tasks from the command line.
-- **MCP Server Integration**: Native support for MCP server toolchains (filesystem, fetch/web search, git, Tavily, etc). 
-- **CLI-Based Configuration**: Simple command-line configuration without config files, with conversation history.
+- **MCP Server Integration**: Native support for MCP server toolchains (filesystem, fetch/web search, git, Tavily, etc).
 - **Tracing with OpenTelemetry**: Optional tracing and observability via OpenTelemetry compatible endpoints.
 - **Sandbox Security**: Landlock-based filesystem sandbox for secure task execution with configurable directories.
 
@@ -141,6 +142,16 @@ The coding assistant uses a simple command-line interface with the `run.fish` sc
 ./run.fish --task "Refactor all function names to snake_case."
 ```
 
+#### Hello World:
+```bash
+./run.fish --task "Say 'Hello World'"
+```
+
+#### Resume Last Session:
+```bash
+./run.fish --task "Continue with the previous task." --resume
+```
+
 #### Print all available MCP tools:
 ```bash
 ./run.fish --print-mcp-tools
@@ -259,10 +270,10 @@ coding_assistant/
 │       ├── llm/
 │       │   └── model.py          # LLM model interface
 │       ├── main.py               # CLI entry point
+│       ├── mcp.py                # MCP server integration
 │       ├── sandbox.py            # Sandbox implementation (Landlock)
-│       ├── tools.py              # MCP server & tool integration
 │       ├── agents/
-│       │   ├── agents.py         # All core agent/tool classes
+│       │   ├── tools.py          # All core agent/tool classes
 │       │   ├── logic.py          # Agent orchestration logic
 │       │   └── tests/            # Agent-specific tests
 │       └── tests/                # Sandbox & integration tests
@@ -392,11 +403,11 @@ uv run pytest -n auto
 
 ## Advanced Features
 
-### Conversation History
-- Automatically stored in `~/.config/coding_assistant/cache/`
-- Maintains context across sessions
-- Used for agent learning and improvement
-- **No configuration required** - managed automatically
+### Conversation History and Caching
+- **Project-Specific Cache**: All conversation summaries and agent history are stored in a `.coding_assistant` directory within your project's working directory. This makes the context portable and specific to each project.
+- **Resume Functionality**: The agent's state is saved, allowing you to resume a task from where you left off using the `--resume` flag.
+- **Automatic Management**: The cache is managed automatically, with no configuration required.
+- **Easy to Version Control**: Since the cache is in the project directory, you can choose to include it in your version control system to share context with your team.
 
 ### Sandboxing
 - Landlock-based filesystem restrictions for security
