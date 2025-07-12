@@ -13,7 +13,7 @@ class AgentCallbacks(ABC):
     """Abstract interface for agent callbacks."""
 
     @abstractmethod
-    def on_agent_start(self, agent_name: str, model: str, start_message: str, is_resuming: bool = False):
+    def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
         """Handle agent start events."""
         pass
 
@@ -41,7 +41,7 @@ class AgentCallbacks(ABC):
 class NullCallbacks(AgentCallbacks):
     """Null object implementation that does nothing."""
 
-    def on_agent_start(self, agent_name: str, model: str, start_message: str, is_resuming: bool = False):
+    def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
         pass
 
     def on_agent_end(self, agent_name: str, result: str, summary: str):
@@ -58,11 +58,11 @@ class NullCallbacks(AgentCallbacks):
 
 
 class RichCallbacks(AgentCallbacks):
-    def on_agent_start(self, agent_name: str, model: str, start_message: str, is_resuming: bool = False):
+    def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
         status = "resuming" if is_resuming else "starting"
         print(
             Panel(
-                start_message,
+                "",
                 title=f"Agent {agent_name} ({model}) {status}",
                 border_style="red",
             ),

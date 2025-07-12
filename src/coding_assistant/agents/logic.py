@@ -97,9 +97,48 @@ class Agent:
     mcp_servers: list = field(default_factory=list)
 
     history: list = field(default_factory=list)
-    history_token: int = 0
+    shortened_conversation: str | None = None
 
     output: AgentOutput | None = None
+
+
+def append_tool_message(
+    history: list,
+    callbacks: AgentCallbacks,
+    agent_name: str,
+    tool_call_id: str,
+    function_name: str,
+    function_args: dict,
+    function_call_result: str,
+):
+    callbacks.on_tool_message(agent_name, function_name, function_args, function_call_result)
+
+    history.append(
+        {
+            "tool_call_id": tool_call_id,
+            "role": "tool",
+            "name": function_name,
+            "content": function_call_result,
+        }
+    )
+
+
+def append_user_message(history: list, callbacks: AgentCallbacks, agent_name: str, content: str):
+    callbacks.on_user_message(agent_name, content)
+
+    history.append(
+        {
+            "role": "user",
+            "content": content,
+        }
+    )
+
+
+def append_assistant_message(history: list, callbacks: AgentCallbacks, agent_name: str, message):
+    if message.content:
+        callbacks.on_assistant_message(agent_name, message.content)
+
+    history.append(message.model_dump())
 
 
 def fix_input_schema(input_schema: dict):
@@ -246,15 +285,8 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
 
         function_call_result = "System error: Tool call result too long. Please try again with different parameters."
 
-    agent_callbacks.on_tool_message(agent.name, function_name, function_args, function_call_result)
-
-    agent.history.append(
-        {
-            "tool_call_id": tool_call.id,
-            "role": "tool",
-            "name": function_name,
-            "content": function_call_result,
-        }
+    append_tool_message(
+        agent.history, agent_callbacks, agent.name, tool_call.id, function_name, function_args, function_call_result
     )
 
 
@@ -292,7 +324,7 @@ def create_start_message(agent: Agent) -> str:
 
 
 @tracer.start_as_current_span("do_single_step")
-async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks):
+async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_conversation_at_tokens: int):
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
     if not any(tool.name() == "finish_task" for tool in agent.tools):
@@ -325,30 +357,27 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks):
         trace.get_current_span().set_attribute("completion.reasoning_content", message.reasoning_content)
         del message.reasoning_content
 
-    agent.history_token = completion.tokens
-    agent.history.append(message.model_dump())
-
-    logger.info(f"Has {len(agent.history)} messages in history, tokens {agent.history_token}")
-
-    if message.content:
-        agent_callbacks.on_assistant_message(agent.name, message.content)
+    append_assistant_message(agent.history, agent_callbacks, agent.name, message)
 
     # Check if we need to do a tool call
     for tool_call in message.tool_calls or []:
         await handle_tool_call(tool_call, agent, agent_callbacks)
 
+    logger.info(f"Current tokens: {completion.tokens}, compact history at: {shorten_conversation_at_tokens}")
+
     if not message.tool_calls:
-        logger.warning(f"Agent {agent.name} did not call any tools, but provided a message.")
-
-        user_message_content = "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. Otherwise, please call the `finish_task` tool to signal that you are done."
-
-        agent_callbacks.on_user_message(agent.name, user_message_content)
-
-        agent.history.append(
-            {
-                "role": "user",
-                "content": user_message_content,
-            }
+        append_user_message(
+            agent.history,
+            agent_callbacks,
+            agent.name,
+            "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. Otherwise, please call the `finish_task` tool to signal that you are done.",
+        )
+    elif completion.tokens > shorten_conversation_at_tokens and not agent.shortened_conversation:
+        append_user_message(
+            agent.history,
+            agent_callbacks,
+            agent.name,
+            "Your conversation is becoming too long. Please call `shorten_conversation` to trim it.",
         )
 
     return message
@@ -358,6 +387,7 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks):
 async def run_agent_loop(
     agent: Agent,
     agent_callbacks: AgentCallbacks,
+    shorten_conversation_at_tokens=5_000,
 ) -> AgentOutput:
     if agent.output:
         raise RuntimeError("Agent already has a result or summary.")
@@ -370,20 +400,34 @@ async def run_agent_loop(
     start_message = create_start_message(agent)
 
     if agent.history:
-        agent_callbacks.on_agent_start(agent.name, agent.model, start_message, is_resuming=True)
+        agent_callbacks.on_agent_start(agent.name, agent.model, is_resuming=True)
     else:
-        agent_callbacks.on_agent_start(agent.name, agent.model, start_message, is_resuming=False)
+        agent_callbacks.on_agent_start(agent.name, agent.model, is_resuming=False)
 
-    agent.history.append(
-        {
-            "role": "user",
-            "content": start_message,
-        }
-    )
+    append_user_message(agent.history, agent_callbacks, agent.name, start_message)
 
     while True:
         while not agent.output:
-            await do_single_step(agent, agent_callbacks)
+            await do_single_step(agent, agent_callbacks, shorten_conversation_at_tokens)
+
+            if agent.shortened_conversation:
+                agent.history = []
+
+                append_user_message(
+                    agent.history,
+                    agent_callbacks,
+                    agent.name,
+                    start_message,
+                )
+
+                append_user_message(
+                    agent.history,
+                    agent_callbacks,
+                    agent.name,
+                    f"A summary of your conversation with the client until now:\n\n{agent.shortened_conversation}\n\nPlease continue your work.",
+                )
+
+                agent.shortened_conversation = None
 
         trace.get_current_span().set_attribute("agent.result", agent.output.result)
         trace.get_current_span().set_attribute("agent.summary", agent.output.summary)
@@ -395,14 +439,7 @@ async def run_agent_loop(
                 feedback=textwrap.indent(feedback, "  "),
             )
 
-            agent_callbacks.on_user_message(agent.name, formatted_feedback)
-
-            agent.history.append(
-                {
-                    "role": "user",
-                    "content": formatted_feedback,
-                }
-            )
+            append_user_message(agent.history, agent_callbacks, agent.name, formatted_feedback)
 
             agent.output = None
         else:

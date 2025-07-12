@@ -126,6 +126,7 @@ class OrchestratorTool(Tool):
         )
 
         orchestrator_agent.tools.append(FinishTaskTool(orchestrator_agent))
+        orchestrator_agent.tools.append(ShortenConversation(orchestrator_agent))
 
         try:
             output = await run_agent_loop(orchestrator_agent, self._agent_callbacks)
@@ -204,6 +205,7 @@ class AgentTool(Tool):
         )
 
         agent.tools.append(FinishTaskTool(agent))
+        agent.tools.append(ShortenConversation(agent))
 
         output = await run_agent_loop(agent, self._agent_callbacks)
         return output.result
@@ -395,3 +397,30 @@ class FinishTaskTool(Tool):
             feedback=parameters.get("feedback"),
         )
         return "Agent output set."
+
+
+class ShortenConversation(Tool):
+    def __init__(self, agent: Agent):
+        self._agent = agent
+
+    def name(self) -> str:
+        return "shorten_conversation"
+
+    def description(self) -> str:
+        return "Give the framework a short, concise summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. This tool should only be called when the client tells you to call it."
+
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "summary": {
+                    "type": "string",
+                    "description": "A summary of the conversation so far.",
+                },
+            },
+            "required": ["summary"],
+        }
+
+    async def execute(self, parameters) -> str:
+        self._agent.shortened_conversation = parameters["summary"]
+        return "Shortened conversation set."
