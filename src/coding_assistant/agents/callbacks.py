@@ -1,6 +1,8 @@
 """Callback interfaces for agent interactions."""
 
 from abc import ABC, abstractmethod
+from pprint import pformat
+import json
 
 from rich import print
 from rich.panel import Panel
@@ -94,7 +96,7 @@ class RichCallbacks(AgentCallbacks):
         )
 
     def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
-        message = f"Name: {tool_name}\nArguments: {arguments}\nResult: {result}"
+        message = f"Name: {tool_name}\n\nArguments: {json.dumps(arguments, indent=2)}\n\nResult:\n\n{result}"
         print(
             Panel(
                 message,
