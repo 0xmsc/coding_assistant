@@ -15,7 +15,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from rich.console import Console
 from rich.table import Table
 
-from coding_assistant.agents.agents import OrchestratorTool
+from coding_assistant.agents.tools import OrchestratorTool, Tools
 from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.cache import (
     get_conversation_summaries,
@@ -28,7 +28,7 @@ from coding_assistant.cache import (
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
-from coding_assistant.tools import Tools, get_mcp_servers_from_config
+from coding_assistant.mcp import get_mcp_servers_from_config
 
 logging.basicConfig(level=logging.WARNING)
 
