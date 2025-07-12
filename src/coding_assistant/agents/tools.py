@@ -5,28 +5,21 @@ import subprocess
 import textwrap
 from dataclasses import dataclass, field
 from typing import Annotated
-from abc import ABC, abstractmethod
 
 from rich.prompt import Prompt
 
-from coding_assistant.agents.logic import Agent, Parameter, fill_parameters, format_parameters, run_agent_loop
+from coding_assistant.agents.logic import (
+    Agent,
+    Parameter,
+    fill_parameters,
+    format_parameters,
+    run_agent_loop,
+    AgentOutput,
+    Tool,
+)
 from coding_assistant.config import Config
 
 logger = logging.getLogger(__name__)
-
-
-class Tool(ABC):
-    @abstractmethod
-    def name(self) -> str: ...
-
-    @abstractmethod
-    def description(self) -> str: ...
-
-    @abstractmethod
-    def parameters(self) -> dict: ...
-
-    @abstractmethod
-    async def execute(self, parameters) -> str: ...
 
 
 @dataclass
@@ -352,3 +345,42 @@ class FeedbackTool(Tool):
 
         output = await run_agent_loop(feedback_agent)
         return output.result
+
+
+class FinishTaskTool(Tool):
+    def __init__(self, agent: "Agent"):
+        self._agent = agent
+
+    def name(self) -> str:
+        return "finish_task"
+
+    def description(self) -> str:
+        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop."
+
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "result": {
+                    "type": "string",
+                    "description": "The result of the work on the task. The work of the agent is evaluated based on this result.",
+                },
+                "summary": {
+                    "type": "string",
+                    "description": "A concise summary of the conversation the agent and the client had. There should be enough context such that the work could be continued based on this summary.",
+                },
+                "feedback": {
+                    "type": "string",
+                    "description": "A summary of the feedback given by the client to the agent during the task. This can both be questions that were answered by the client, or feedback. It needs to be clear from this parameter why the result might might not fit to initial task description.",
+                },
+            },
+            "required": ["result", "summary"],
+        }
+
+    async def execute(self, parameters) -> str:
+        self._agent.output = AgentOutput(
+            result=parameters["result"],
+            summary=parameters["summary"],
+            feedback=parameters.get("feedback"),
+        )
+        return "Agent output set."
