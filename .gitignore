@@ -6,3 +6,4 @@ __pycache__
 .pytest_cache
 .venv
 memory.json
+.coding_assistant
