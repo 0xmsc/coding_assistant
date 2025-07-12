@@ -205,14 +205,16 @@ async def _main():
                 return
 
             with tracer.start_as_current_span("run_root_agent"):
-                tool = OrchestratorTool(config, tools)
+                tool = OrchestratorTool(
+                    config,
+                    tools,
+                    resume_history=saved_history["agent_history"] if args.resume and saved_history else None,
+                )
                 orchestrator_params = {
                     "task": task,
                     "history": conversation_history[-5:],
                     "instructions": instructions,
                 }
-                if args.resume and saved_history:
-                    orchestrator_params["resume_history"] = saved_history["agent_history"]
                 result = await tool.execute(orchestrator_params)
                 summary = tool.summary
                 orchestrator_agent = getattr(tool, '_agent', None)
