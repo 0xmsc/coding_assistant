@@ -18,7 +18,7 @@ from rich.table import Table
 from coding_assistant.agents.agents import OrchestratorTool
 from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.cache import get_cache_dir, get_conversation_history, save_conversation_history
-from coding_assistant.config import Config, load_user_config
+from coding_assistant.config import Config
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools import Tools, get_all_mcp_servers
@@ -34,11 +34,43 @@ def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
     parser.add_argument("--print-mcp-tools", action="store_true", help="Print all available tools from MCP servers.")
+    
+    # Configuration options (replacing config file)
+    parser.add_argument("--model", type=str, default="gpt-4.1", help="Model to use for the orchestrator agent.")
+    parser.add_argument("--expert-model", type=str, default="o3", help="Expert model to use.")
     parser.add_argument(
         "--disable-feedback-agent", action="store_true", default=False, help="Disable the feedback agent."
     )
+    parser.add_argument(
+        "--disable-user-feedback", action="store_true", default=False, help="Disable user feedback."
+    )
+    parser.add_argument("--instructions", type=str, help="Custom instructions for the agent.")
+    parser.add_argument(
+        "--sandbox-directories", 
+        nargs="*", 
+        default=["/tmp"], 
+        help="Additional directories to include in the sandbox (default: /tmp)."
+    )
     parser.add_argument("--disable-sandbox", action="store_true", default=False, help="Disable sandboxing.")
+    
     return parser.parse_args()
+
+
+def create_config_from_args(args) -> Config:
+    sandbox_dirs = [Path(d) for d in args.sandbox_directories]
+    
+    # Expand user directories
+    for i, directory in enumerate(sandbox_dirs):
+        sandbox_dirs[i] = directory.expanduser()
+    
+    return Config(
+        model=args.model,
+        expert_model=args.expert_model,
+        disable_feedback_agent=args.disable_feedback_agent,
+        disable_user_feedback=args.disable_user_feedback,
+        instructions=args.instructions,
+        sandbox_directories=sandbox_dirs
+    )
 
 
 async def print_mcp_tools(mcp_servers):
@@ -106,8 +138,8 @@ async def _main():
 
     args = parse_args()
 
-    config = load_user_config()
-    logger.info(f"Using user configuration {config}")
+    config = create_config_from_args(args)
+    logger.info(f"Using configuration from command line arguments: {config}")
 
     working_directory = Path(os.getcwd())
     logger.info(f"Running in working directory: {working_directory}")
