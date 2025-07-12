@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import sys
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 
 import requests
@@ -14,6 +14,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from rich.console import Console
 from rich.table import Table
+from rich.logging import RichHandler
 
 from coding_assistant.agents.tools import OrchestratorTool
 from coding_assistant.agents.logic import run_agent_loop
@@ -30,8 +31,7 @@ from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.mcp import get_mcp_servers_from_config, print_mcp_tools
 
-logging.basicConfig(level=logging.WARNING)
-
+logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
 logger = logging.getLogger("coding_assistant")
 tracer = trace.get_tracer(__name__)
 logger.setLevel(logging.INFO)
@@ -55,9 +55,17 @@ def parse_args():
     parser.add_argument("--model", type=str, default="gpt-4.1", help="Model to use for the orchestrator agent.")
     parser.add_argument("--expert-model", type=str, default="o3", help="Expert model to use.")
     parser.add_argument(
-        "--enable-feedback-agent", action="store_true", default=False, help="Enable the feedback agent."
+        "--feedback-agent",
+        action=BooleanOptionalAction,
+        default=False,
+        help="Enable the feedback agent.",
     )
-    parser.add_argument("--enable-user-feedback", action="store_true", default=False, help="Enable user feedback.")
+    parser.add_argument(
+        "--user-feedback",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Enable user feedback.",
+    )
     parser.add_argument("--instructions", type=str, help="Custom instructions for the agent.")
     parser.add_argument(
         "--sandbox-directories",
@@ -65,7 +73,12 @@ def parse_args():
         default=["/tmp"],
         help="Additional directories to include in the sandbox.",
     )
-    parser.add_argument("--disable-sandbox", action="store_true", default=False, help="Disable sandboxing.")
+    parser.add_argument(
+        "--sandbox",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Enable sandboxing.",
+    )
     parser.add_argument(
         "--mcp-servers",
         nargs="*",
@@ -104,8 +117,8 @@ def create_config_from_args(args) -> Config:
     return Config(
         model=args.model,
         expert_model=args.expert_model,
-        enable_feedback_agent=args.enable_feedback_agent,
-        enable_user_feedback=args.enable_user_feedback,
+        enable_feedback_agent=args.feedback_agent,
+        enable_user_feedback=args.user_feedback,
         instructions=args.instructions,
         sandbox_directories=sandbox_dirs,
         mcp_servers=mcp_servers,
@@ -212,7 +225,7 @@ async def _main():
     venv_directory = Path(os.environ["VIRTUAL_ENV"])
     logger.info(f"Using virtual environment directory: {venv_directory}")
 
-    if not args.disable_sandbox:
+    if args.sandbox:
         logger.info(f"Sandboxing is enabled.")
         sandbox_directories = get_additional_sandbox_directories(config, working_directory, venv_directory)
         logger.info(f"Sandbox directories: {sandbox_directories}")
