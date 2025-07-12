@@ -5,6 +5,7 @@ import os
 import sys
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
 from pathlib import Path
+from typing import Optional
 
 import requests
 from opentelemetry import trace
@@ -12,12 +13,13 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from rich.panel import Panel
+from rich import print as rich_print
 from rich.console import Console
 from rich.table import Table
 from rich.logging import RichHandler
 
 from coding_assistant.agents.tools import OrchestratorTool
-from coding_assistant.agents.logic import run_agent_loop
 from coding_assistant.cache import (
     get_conversation_summaries,
     get_latest_orchestrator_history_file,
@@ -30,6 +32,7 @@ from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.mcp import get_mcp_servers_from_config, print_mcp_tools
+from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks, RichCallbacks
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
 logger = logging.getLogger("coding_assistant")
@@ -178,12 +181,14 @@ async def run_orchestrator_agent(
     conversation_summaries: list[str],
     instructions: str | None,
     working_directory: Path,
+    agent_callbacks: AgentCallbacks,
 ):
     with tracer.start_as_current_span("run_root_agent"):
         tool = OrchestratorTool(
             config,
             mcp_servers,
             history=history,
+            agent_callbacks=agent_callbacks,
         )
         orchestrator_params = {
             "task": task,
@@ -196,12 +201,17 @@ async def run_orchestrator_agent(
         finally:
             save_orchestrator_history(working_directory, tool.history)
 
-        summary = tool.summary
-
-    print(f"Finished with: {result}")
-    print(f"Summary: {summary}")
-
+    summary = tool.summary
     save_conversation_summary(working_directory, summary)
+
+    rich_print(
+        Panel(
+            f"Result: {result}\n\nSummary: {summary}",
+            title="🎉 Final Result",
+            border_style="bright_green",
+        )
+    )
+
 
     return result
 
@@ -244,6 +254,8 @@ async def _main():
         if not args.task:
             raise ValueError("Task must be provided. Use --task to specify the task for the orchestrator agent.")
 
+        agent_callbacks = RichCallbacks()
+
         await run_orchestrator_agent(
             task=args.task,
             config=config,
@@ -252,6 +264,7 @@ async def _main():
             conversation_summaries=conversation_summaries,
             instructions=instructions,
             working_directory=working_directory,
+            agent_callbacks=agent_callbacks,
         )
 
 

@@ -12,10 +12,8 @@ from typing import Callable, Optional
 
 from opentelemetry import trace
 from rich import print
-from rich.panel import Panel
-from rich.pretty import Pretty
-from rich.prompt import Prompt
 
+from coding_assistant.agents.callbacks import AgentCallbacks
 from coding_assistant.config import Config
 from coding_assistant.llm.model import complete
 
@@ -256,14 +254,8 @@ async def handle_mcp_tool_call(function_name, arguments, mcp_servers):
 
 
 @tracer.start_as_current_span("handle_tool_call")
-async def handle_tool_call(tool_call, agent: Agent):
-    print(
-        Panel(
-            Pretty(tool_call.function),
-            title=f"Agent {agent.name} tool call",
-            border_style="green",
-        ),
-    )
+async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallbacks):
+    agent_callbacks.add_tool_call(agent.name, tool_call)
 
     function_name = tool_call.function.name
     function_args = json.loads(tool_call.function.arguments or "{}")
@@ -296,13 +288,7 @@ async def handle_tool_call(tool_call, agent: Agent):
 
         function_call_result = "System error: Tool call result too long. Please try again with different parameters."
 
-    print(
-        Panel(
-            function_call_result,
-            title=f"Tool {function_name} result",
-            border_style="yellow",
-        ),
-    )
+    agent_callbacks.add_tool_result(function_name, function_call_result)
 
     # HACK: Some APIs cannot handle empty content
     if function_call_result == "":
@@ -352,7 +338,7 @@ def create_start_message(agent: Agent) -> str:
 
 
 @tracer.start_as_current_span("do_single_step")
-async def do_single_step(agent: Agent):
+async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks):
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
     # Add the finish_task tool to the agent, if it is not already there.
@@ -387,17 +373,11 @@ async def do_single_step(agent: Agent):
     agent.history.append(message.model_dump())
 
     if message.content:
-        print(
-            Panel(
-                message.content,
-                title=f"Agent {agent.name} response",
-                border_style="green",
-            ),
-        )
+        agent_callbacks.add_agent_response(agent.name, message.content)
 
     # Check if we need to do a tool call
     for tool_call in message.tool_calls or []:
-        await handle_tool_call(tool_call, agent)
+        await handle_tool_call(tool_call, agent, agent_callbacks)
 
     if not message.tool_calls:
         logger.warning(f"Agent {agent.name} did not call any tools, but provided a message.")
@@ -415,6 +395,7 @@ async def do_single_step(agent: Agent):
 @tracer.start_as_current_span("run_agent_loop")
 async def run_agent_loop(
     agent: Agent,
+    agent_callbacks: AgentCallbacks,
 ) -> AgentOutput:
     if agent.output:
         raise RuntimeError("Agent already has a result or summary.")
@@ -427,21 +408,9 @@ async def run_agent_loop(
     start_message = create_start_message(agent)
 
     if agent.history:
-        print(
-            Panel(
-                start_message,
-                title=f"Agent {agent.name} ({agent.model}) resuming",
-                border_style="red",
-            ),
-        )
+        agent_callbacks.add_agent_start(agent.name, agent.model, start_message, is_resuming=True)
     else:
-        print(
-            Panel(
-                start_message,
-                title=f"Agent {agent.name} ({agent.model}) starting",
-                border_style="red",
-            ),
-        )
+        agent_callbacks.add_agent_start(agent.name, agent.model, start_message, is_resuming=False)
 
     agent.history.append(
         {
@@ -452,31 +421,19 @@ async def run_agent_loop(
 
     while True:
         while not agent.output:
-            await do_single_step(agent)
+            await do_single_step(agent, agent_callbacks)
 
         trace.get_current_span().set_attribute("agent.result", agent.output.result)
         trace.get_current_span().set_attribute("agent.summary", agent.output.summary)
 
-        print(
-            Panel(
-                f"Result: {agent.output.result}\n\nSummary: {agent.output.summary}",
-                title=f"Agent {agent.name} result",
-                border_style="red",
-            ),
-        )
+        agent_callbacks.add_agent_result(agent.name, agent.output.result, agent.output.summary)
 
         if feedback := await agent.feedback_function(agent):
             formatted_feedback = FEEDBACK_TEMPLATE.format(
                 feedback=textwrap.indent(feedback, "  "),
             )
 
-            print(
-                Panel(
-                    formatted_feedback,
-                    title=f"Agent {agent.name} feedback",
-                    border_style="red",
-                ),
-            )
+            agent_callbacks.add_agent_feedback(agent.name, formatted_feedback)
 
             agent.history.append(
                 {
