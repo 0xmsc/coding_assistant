@@ -279,10 +279,6 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
     trace.get_current_span().set_attribute("function.result", function_call_result)
 
     if len(function_call_result) > 50_000:
-        logger.warning(
-            f"Function {function_name} returned too long result ({len(function_call_result)} characters). Trimming."
-        )
-
         function_call_result = "System error: Tool call result too long. Please try again with different parameters."
 
     append_tool_message(
@@ -363,8 +359,6 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_
     for tool_call in message.tool_calls or []:
         await handle_tool_call(tool_call, agent, agent_callbacks)
 
-    logger.info(f"Current tokens: {completion.tokens}, compact history at: {shorten_conversation_at_tokens}")
-
     if not message.tool_calls:
         append_user_message(
             agent.history,
@@ -387,7 +381,7 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_
 async def run_agent_loop(
     agent: Agent,
     agent_callbacks: AgentCallbacks,
-    shorten_conversation_at_tokens=5_000,
+    shorten_conversation_at_tokens=100_000,
 ) -> AgentOutput:
     if agent.output:
         raise RuntimeError("Agent already has a result or summary.")
