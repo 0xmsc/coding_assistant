@@ -17,7 +17,7 @@
 - **Feedback Agent**: Automatically reviews and validates agent results, ensuring they meet user requirements.
 - **Flexible CLI**: Launch, control, and interact with agents/tasks from the command line.
 - **MCP Server Integration**: Native support for MCP server toolchains (filesystem, fetch/web search, git, Tavily, etc). 
-- **Configuration Management**: User configuration system with JSON-based settings and conversation history.
+- **CLI-Based Configuration**: Simple command-line configuration without config files, with conversation history.
 - **Tracing with OpenTelemetry**: Optional tracing and observability via OpenTelemetry compatible endpoints.
 - **Sandbox Security**: Landlock-based filesystem sandbox for secure task execution with configurable directories.
 
@@ -35,8 +35,7 @@ flowchart TD
     subgraph CLI_Group
         CLI_Node[CLI / Terminal]
     end
-    subgraph Config_Group
-        CONFIG_Node[User Config]
+    subgraph Cache_Group
         CACHE_Node[Conversation Cache]
     end
 
@@ -56,8 +55,7 @@ flowchart TD
     end
 
     User_Node -->|"Inputs via"| CLI_Node
-    CLI_Node -->|"Config / Task / Command"| ORCH_Node
-    ORCH_Node <-->|"Loads/Saves"| CONFIG_Node
+    CLI_Node -->|"Arguments / Task"| ORCH_Node
     ORCH_Node <-->|"History"| CACHE_Node
 
     ORCH_Node -->|"Delegates"| GA_Node
@@ -78,9 +76,9 @@ flowchart TD
 ```
 
 **Explanation:**
-- **User interacts with the Coding Assistant through the CLI.**
-- **CLI collects user inputs and passes them to the Orchestrator Agent.**
-- **Configuration and conversation history are managed automatically.**
+- **User interacts with the Coding Assistant through the CLI with command-line arguments.**
+- **CLI passes arguments and tasks directly to the Orchestrator Agent.**
+- **Conversation history is managed automatically (no config files needed).**
 - **The Orchestrator delegates tasks to specialist agents (Generic Agent, Feedback Agent).**
 - **Agents interact with external services (MCP Servers: Filesystem, Shell, Fetch/Tavily) as needed for their task.**
 - **Results flow back through the Orchestrator to the CLI, and are shown to the user.**
@@ -112,16 +110,22 @@ uv pip install -e .
 ```
 
 ### 4. Set environment variables
-- Copy or edit `.envrc` to provide API keys:
+- Set up environment variables for API keys:
     - `OPENAI_API_KEY` (for OpenAI model access)
-    - `TAVILY_API_KEY` (for web research)
-    - `DEEPSEEK_API_KEY` (optional, for DeepSeek models)
-    - `GEMINI_API_KEY` (optional, for Google Gemini models)
+    - `GEMINI_API_KEY` (for Google Gemini models - recommended)
     - `ANTHROPIC_API_KEY` (optional, for Anthropic Claude models)
+    - `DEEPSEEK_API_KEY` (optional, for DeepSeek models)
+    - `TAVILY_API_KEY` (optional, for enhanced web research)
 
-If using direnv:
+You can either:
+- Use a `.envrc` file with direnv:
 ```bash
+echo 'export GEMINI_API_KEY="your-key-here"' >> .envrc
 direnv allow
+```
+- Or export them manually in your shell:
+```bash
+export GEMINI_API_KEY="your-key-here"
 ```
 
 ---
@@ -130,9 +134,9 @@ direnv allow
 
 ### Launching the Orchestrator via CLI
 
-You can now run the coding assistant using the `run.fish` script, which simplifies the process of configuring and launching the agent.
+The coding assistant uses a simple command-line interface with the `run.fish` script that provides sensible defaults and easy configuration.
 
-#### Run an Orchestrator Task:
+#### Basic Usage:
 ```bash
 ./run.fish --task "Refactor all function names to snake_case."
 ```
@@ -142,47 +146,103 @@ You can now run the coding assistant using the `run.fish` script, which simplifi
 ./run.fish --print-mcp-tools
 ```
 
-#### Example with all arguments:
+#### Advanced usage with custom configuration:
 ```bash
 ./run.fish \
     --model "gemini/gemini-2.5-flash" \
     --expert-model "gemini/gemini-2.5-pro" \
     --disable-feedback-agent \
     --disable-user-feedback \
-    --instructions "Be concise." \
+    --instructions "Be concise and use modern Python patterns." \
     --sandbox-directories /tmp /mnt/wsl \
     --task "Update the README.md"
+```
+
+#### Using different models:
+```bash
+# Use OpenAI models
+./run.fish --model "gpt-4o" --expert-model "o3" --task "Analyze this codebase"
+
+# Use Anthropic models  
+./run.fish --model "claude-3-5-sonnet-20241022" --task "Review code quality"
 ```
 
 ---
 
 ## Configuration
 
-Configuration is now handled via command-line arguments, providing a more flexible and straightforward way to run the agent. The `run.fish` script provides a convenient way to pass these arguments.
+The coding assistant is configured entirely through command-line arguments - **no configuration files are needed**. This makes it simple to use and eliminates configuration management complexity.
 
 ### Command-Line Arguments
 
--   `--model`: The language model to use for the main agent (default: `gpt-4.1`).
--   `--expert-model`: The language model to use for the expert agent (default: `o3`).
--   `--disable-feedback-agent`: Disables the feedback agent.
--   `--disable-user-feedback`: Disables user feedback prompts.
--   `--instructions`: Custom instructions for the agent.
--   `--sandbox-directories`: A list of directories to include in the sandbox (default: `/tmp`).
--   `--disable-sandbox`: Disables the sandbox entirely.
--   `--mcp-servers`: A list of MCP server configurations as JSON strings.
--   `--print-mcp-tools`: Print all available tools from MCP servers.
--   `--task`: The task for the orchestrator agent.
+All configuration is passed via command-line flags:
+
+#### Core Options:
+- `--task`: The task for the orchestrator agent to execute (required unless using `--print-mcp-tools`)
+- `--model`: LLM model for the main agent (default: `gpt-4.1`)
+- `--expert-model`: LLM model for expert-level tasks (default: `o3`)
+
+#### Agent Control:
+- `--disable-feedback-agent`: Skip automatic feedback validation
+- `--disable-user-feedback`: Skip user feedback prompts during execution
+- `--instructions`: Custom instructions to append to all agents
+
+#### Environment:
+- `--sandbox-directories`: Directories to allow in sandbox mode (default: `/tmp`)
+- `--disable-sandbox`: Completely disable sandboxing (use with caution)
+
+#### MCP Servers:
+- `--mcp-servers`: MCP server configurations as JSON strings (see MCP section below)
+- `--print-mcp-tools`: Print all available tools and exit
+
+### The `run.fish` Script
+
+The included `run.fish` script provides sensible defaults for common usage:
+
+```fish
+#!/usr/bin/env fish
+
+uv --project (dirname (status filename)) run coding-assistant \
+    --model "gemini/gemini-2.5-flash" \
+    --expert-model "gemini/gemini-2.5-pro" \
+    --sandbox-directories /tmp /mnt/wsl \
+    --mcp-servers \
+        '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{working_directory}"]}' \
+        '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}' \
+    $argv
+```
+
+This script:
+- Uses Gemini 2.5 models by default (cost-effective and fast)
+- Includes standard sandbox directories
+- Sets up filesystem and fetch MCP servers
+- Passes through any additional arguments you provide
+
+### Benefits of CLI-Only Configuration
+
+- **No configuration drift**: Every run is explicit and reproducible
+- **Easy to script**: Perfect for CI/CD and automation
+- **Version control friendly**: Configuration is in your commands, not hidden files
+- **Debugging friendly**: All settings are visible in the command line
+- **Multi-environment**: Easy to use different settings for different projects
 
 ### Environment Variables
 
-Required/Optional environment variables:
-- `OPENAI_API_KEY` (required for OpenAI models)
-- `TAVILY_API_KEY` (required for web research functionality)
-- `DEEPSEEK_API_KEY` (optional, for DeepSeek models)
-- `GEMINI_API_KEY` (optional, for Google Gemini models)
-- `ANTHROPIC_API_KEY` (optional, for Anthropic Claude models)
+The following environment variables are used for API access:
 
-Place these in `.envrc` or export manually in your shell.
+#### Required (choose at least one):
+- `OPENAI_API_KEY`: For OpenAI models (gpt-4o, o3, etc.)
+- `GEMINI_API_KEY`: For Google Gemini models (gemini-2.5-flash, gemini-2.5-pro, etc.)
+- `ANTHROPIC_API_KEY`: For Anthropic Claude models (claude-3-5-sonnet, etc.)
+
+#### Optional:
+- `DEEPSEEK_API_KEY`: For DeepSeek models
+- `TAVILY_API_KEY`: For enhanced web research via Tavily MCP server
+
+#### Proxy Support:
+- `HTTPS_PROXY`: Automatically passed to MCP servers if set
+
+**Note**: You only need to set the API key(s) for the model provider(s) you plan to use.
 
 ---
 
@@ -207,9 +267,9 @@ coding_assistant/
 │       │   └── tests/            # Agent-specific tests
 │       └── tests/                # Sandbox & integration tests
 ├── justfile                      # Development commands
-├── pyproject.toml                # Dependencies and build configuration
+├── pyproject.toml                # Dependencies and build configuration  
+├── run.fish                      # Launch script with sensible defaults
 ├── README.md                     # This document
-├── .envrc                        # Environment variables template
 ├── .python-version               # Python version specification
 └── uv.lock                       # Dependency lock file
 ```
@@ -217,10 +277,10 @@ coding_assistant/
 ### Key Files
 
 - **pyproject.toml**: Declares all dependencies and CLI entry point
+- **run.fish**: Convenient script with sensible defaults for launching the assistant
 - **justfile**: Development commands (`just test` for running tests)
-- **.envrc**: Template for environment variables
-- **cache.py**: Manages conversation history storage
-- **config.py**: User configuration and settings management
+- **cache.py**: Manages conversation history storage (no config files needed)
+- **config.py**: Configuration data structures for runtime use
 
 ---
 
@@ -255,21 +315,56 @@ Specialized agent for:
 
 ## MCP Server Integration
 
-The system initializes MCP servers based on the `--mcp-servers` command-line argument. The `run.fish` script provides a default configuration for the `filesystem` and `fetch` servers.
+MCP (Model Context Protocol) servers provide the tools that agents use to interact with external systems. The coding assistant supports flexible MCP server configuration through command-line arguments.
 
-### Default MCP Servers in `run.fish`
+### MCP Server Configuration
 
--   **Filesystem Server**:
-    -   **Name**: `filesystem`
-    -   **Command**: `npx -y @modelcontextprotocol/server-filesystem {working_directory}`
-    -   **Purpose**: File system operations and management.
--   **Fetch Server**:
-    -   **Name**: `fetch`
-    -   **Command**: `uvx mcp-server-fetch`
-    -   **Purpose**: Web content fetching and HTTP requests.
--   **Tavily Server (Optional)**:
-    -   To enable the Tavily server, you would add its configuration to the `$mcp_servers` variable in `run.fish`.
-    -   **Requirement**: `TAVILY_API_KEY` environment variable.
+MCP servers are configured using JSON strings passed to the `--mcp-servers` argument:
+
+```bash
+./run.fish --mcp-servers \
+    '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{working_directory}"]}' \
+    '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}' \
+    '{"name": "git", "command": "uvx", "args": ["mcp-server-git"], "env": ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL"]}'
+```
+
+#### Configuration Format:
+- `name`: Unique identifier for the server
+- `command`: Executable command to start the server
+- `args`: List of arguments (supports `{working_directory}` substitution)
+- `env`: List of environment variable names to pass through (optional)
+
+### Built-in MCP Servers
+
+The `run.fish` script includes these servers by default:
+
+#### Filesystem Server
+- **Purpose**: File operations (read, write, list directories)
+- **Command**: `npx -y @modelcontextprotocol/server-filesystem {working_directory}`
+- **Requirements**: Node.js and npx
+
+#### Fetch Server  
+- **Purpose**: HTTP requests and web content fetching
+- **Command**: `uvx mcp-server-fetch`
+- **Requirements**: Python and uvx
+
+### Optional MCP Servers
+
+#### Git Server
+Add git operations support:
+```bash
+--mcp-servers '{"name": "git", "command": "uvx", "args": ["mcp-server-git"]}'
+```
+
+#### Tavily Server (Web Research)
+For enhanced web research (requires `TAVILY_API_KEY`):
+```bash
+--mcp-servers '{"name": "tavily", "command": "npx", "args": ["-y", "tavily-mcp@0.2.1"], "env": ["TAVILY_API_KEY"]}'
+```
+
+### Environment Variable Validation
+
+**Important**: If you specify environment variables in the `env` list, they **must** be available in your environment. The system will fail with a clear error message if any required environment variable is missing.
 
 ---
 
@@ -301,16 +396,18 @@ uv run pytest -n auto
 - Automatically stored in `~/.config/coding_assistant/cache/`
 - Maintains context across sessions
 - Used for agent learning and improvement
+- **No configuration required** - managed automatically
 
 ### Sandboxing
-- Landlock-based filesystem restrictions
-- Configurable allowed directories
+- Landlock-based filesystem restrictions for security
+- Configurable allowed directories via `--sandbox-directories`
 - Can be disabled for development with `--disable-sandbox`
+- Default: `/tmp` directory only
 
 ### Tracing and Observability
-- OpenTelemetry integration
+- OpenTelemetry integration for debugging
 - Automatic detection of trace endpoint at `http://localhost:4318/v1/traces`
-- Comprehensive span tracking for debugging
+- Comprehensive span tracking for performance analysis
 
 ---
 
@@ -320,28 +417,34 @@ uv run pytest -n auto
 
 **Installation Problems:**
 - Ensure Python 3.12+ is installed
-- Use `uv pip install -e .` instead of requirements.txt
-- Verify Node.js is available for MCP servers
+- Use `uv pip install -e .` for installation
+- Verify Node.js is available for MCP servers (`node --version`)
 
 **API Key Errors:**
-- Check `.envrc` file exists and is loaded
-- Verify API keys are valid and not expired
-- Ensure direnv is installed and allowed if using `.envrc`
+- Set required environment variables for your chosen model provider
+- Verify API keys are valid and have sufficient credits/quota
+- For Gemini: Ensure you have API access enabled in Google AI Studio
+
+**Command-Line Issues:**
+- Check that all required arguments are provided
+- Use `./run.fish --help` to see available options  
+- Ensure MCP server JSON configurations are valid
 
 **Sandbox Errors:**
-- Add required directories to `sandbox_directories` in config
-- Use `--disable-sandbox` for debugging
-- Check file permissions in working directory
+- Add required directories with `--sandbox-directories /path/to/dir`
+- Use `--disable-sandbox` for debugging (not recommended for production)
+- Check file permissions in the working directory
 
 **MCP Server Issues:**
-- Verify Node.js installation
-- Check `npx` is available in PATH
-- Ensure network connectivity for package downloads
+- Verify Node.js and npx are installed (`npx --version`)
+- Check that uvx is available (`uvx --version`)  
+- Ensure network connectivity for downloading MCP server packages
+- If using environment variables in MCP config, ensure they're set
 
-**Configuration Problems:**
-- Check `~/.config/coding_assistant/config.json` exists
-- Verify JSON syntax is valid
-- Reset config by deleting file (will regenerate defaults)
+**Environment Variable Problems:**
+- List all set environment variables: `env | grep -i key`
+- Check if direnv is properly configured: `direnv status`
+- Verify `.envrc` syntax if using direnv
 
 ### Getting Help
 - Check agent logs for detailed error messages
