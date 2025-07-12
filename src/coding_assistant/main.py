@@ -159,13 +159,10 @@ async def _main():
     working_directory = Path(os.getcwd())
     logger.info(f"Running in working directory: {working_directory}")
 
-    # Trim orchestrator history to keep only the latest 10 files
     trim_orchestrator_history(working_directory)
 
     conversation_history = get_conversation_history(working_directory)
 
-    # Handle resume logic
-    # --resume can take a file argument, or loads the latest session if no file is given
     task = args.task
     instructions = get_instructions(working_directory, config)
     orchestrator_agent = None
@@ -196,7 +193,6 @@ async def _main():
     else:
         logger.warning("Sandboxing is disabled")
 
-    # Use configured MCP servers
     mcp_server_configs = config.mcp_servers
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
@@ -210,33 +206,22 @@ async def _main():
 
             with tracer.start_as_current_span("run_root_agent"):
                 tool = OrchestratorTool(config, tools)
-                
-                # Prepare parameters for orchestrator
                 orchestrator_params = {
                     "task": task,
                     "history": conversation_history[-5:],
                     "instructions": instructions,
                 }
-                
-                # If resuming, we need to get the agent instance to restore history
                 if args.resume and saved_history:
-                    # We'll need to modify OrchestratorTool to support resuming
                     orchestrator_params["resume_history"] = saved_history["agent_history"]
-                
                 result = await tool.execute(orchestrator_params)
                 summary = tool.summary
-                
-                # Get the agent instance for history saving
                 orchestrator_agent = getattr(tool, '_agent', None)
 
             print(f"Finished with: {result}")
             print(f"Summary: {summary}")
 
             save_conversation_history(working_directory, summary)
-            # No need to clear history, we trim on startup
-            
     finally:
-        # Save orchestrator history before exiting (for crash recovery)
         if orchestrator_agent and orchestrator_agent.history:
             save_orchestrator_history(
                 working_directory=working_directory,
