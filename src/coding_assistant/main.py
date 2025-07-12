@@ -223,6 +223,9 @@ async def _main():
             await print_mcp_tools(mcp_servers)
             return
 
+        if not args.task:
+            raise ValueError("Task must be provided. Use --task to specify the task for the orchestrator agent.")
+
         await run_orchestrator_agent(
             task=args.task,
             config=config,

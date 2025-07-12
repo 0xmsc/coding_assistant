@@ -6,7 +6,7 @@ from coding_assistant.agents.tools import FeedbackTool, OrchestratorTool
 from coding_assistant.agents.logic import Agent, create_start_message
 from coding_assistant.config import Config
 
-TEST_MODEL = "gemini/gemini-2.5-flash"
+TEST_MODEL = "gemini/gemini-2.5-pro"
 
 
 def create_test_config(disable_user_feedback: bool = True) -> Config:
@@ -73,7 +73,7 @@ async def test_feedback_tool_after_feedback():
             "description": "The agent will only give correct answers",
             "parameters": "What is 2 + 2?",
             "result": "5",
-            "feedback": "The client made a mistake while asking the question, he meant 'what is 2 + 3? He wanted me to give the question to the updated answer.'",
+            "feedback": "The client made a mistake while asking the question, he meant 'what is 2 + 3?'. He wanted me to give an answer to the updated question.",
         }
     )
     assert result == "Ok"
@@ -96,8 +96,10 @@ async def test_orchestrator_tool_resume():
     assert result == "Hello, World!"
 
     second = OrchestratorTool(config=config, history=first.history)
-    result = await second.execute(parameters={"task": "Re-do your previous task, just say 'Servus' instead of 'Hello'"})
-    assert result == "Servus, World!"
+    result = await second.execute(
+        parameters={"task": "Re-do your previous task, just translate your output to German."}
+    )
+    assert result == "Hallo, Welt!"
 
 
 @pytest.mark.asyncio
