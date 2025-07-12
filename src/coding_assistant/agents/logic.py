@@ -410,13 +410,17 @@ async def run_agent_loop(
     parameters_json = json.dumps([dataclasses.asdict(p) for p in agent.parameters])
     trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
 
+    start_message = create_start_message(agent)
+
     if agent.history:
-        logger.info(f"Agent already has history, resuming.")
+        print(
+            Panel(
+                start_message,
+                title=f"Agent {agent.name} ({agent.model}) resuming",
+                border_style="red",
+            ),
+        )
     else:
-        logger.info(f"Initializing agent {agent.name} with no history.")
-
-        start_message = create_start_message(agent)
-
         print(
             Panel(
                 start_message,
@@ -425,12 +429,12 @@ async def run_agent_loop(
             ),
         )
 
-        agent.history.append(
-            {
-                "role": "user",
-                "content": start_message,
-            }
-        )
+    agent.history.append(
+        {
+            "role": "user",
+            "content": start_message,
+        }
+    )
 
     while True:
         while not agent.output:
