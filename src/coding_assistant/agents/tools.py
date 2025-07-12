@@ -4,7 +4,7 @@ import logging
 import subprocess
 import textwrap
 from dataclasses import dataclass, field
-from typing import Annotated
+from typing import Annotated, Optional
 
 from rich.prompt import Prompt
 
@@ -22,16 +22,10 @@ from coding_assistant.config import Config
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class Tools:
-    mcp_servers: list = field(default_factory=list)
-    tools: list = field(default_factory=list)
-
-
 async def _get_feedback(
     agent: Agent,
     config: Config,
-    tools: Tools,
+    mcp_servers: list,
     ask_user_for_feedback: bool,
     ask_agent_for_feedback: bool,
 ) -> str | None:
@@ -39,7 +33,7 @@ async def _get_feedback(
         raise ValueError("Agent has no result to provide feedback on.")
 
     if ask_agent_for_feedback:
-        feedback_tool = FeedbackTool(config, tools)
+        feedback_tool = FeedbackTool(config, mcp_servers)
         formatted_parameters = textwrap.indent(format_parameters(agent.parameters), "  ")
         agent_feedback = await feedback_tool.execute(
             parameters={
@@ -68,11 +62,11 @@ class OrchestratorTool(Tool):
     def __init__(
         self,
         config: Config,
-        tools: Tools,
+        mcp_servers: list | None = None,
         history: list | None = None,
     ):
         self._config = config
-        self._tools = tools
+        self._mcp_servers = mcp_servers or []
         self._history = history
 
     def name(self) -> str:
@@ -110,9 +104,9 @@ class OrchestratorTool(Tool):
                 parameter_description=self.parameters(),
                 parameter_values=parameters,
             ),
-            mcp_servers=self._tools.mcp_servers,
+            mcp_servers=self._mcp_servers,
             tools=[
-                AgentTool(self._config, self._tools),
+                AgentTool(self._config, self._mcp_servers),
                 AskClientTool(),
                 ExecuteShellCommandTool(),
             ],
@@ -120,7 +114,7 @@ class OrchestratorTool(Tool):
             feedback_function=lambda agent: _get_feedback(
                 agent,
                 self._config,
-                self._tools,
+                self._mcp_servers,
                 ask_user_for_feedback=not self._config.disable_user_feedback,
                 ask_agent_for_feedback=not self._config.disable_feedback_agent,
             ),
@@ -136,9 +130,9 @@ class OrchestratorTool(Tool):
 
 
 class AgentTool(Tool):
-    def __init__(self, config: Config, tools: Tools):
+    def __init__(self, config: Config, mcp_servers: list | None = None):
         self._config = config
-        self._tools = tools
+        self._mcp_servers = mcp_servers or []
 
     def name(self) -> str:
         return "launch_research_agent"
@@ -183,7 +177,7 @@ class AgentTool(Tool):
                 parameter_description=self.parameters(),
                 parameter_values=parameters,
             ),
-            mcp_servers=self._tools.mcp_servers,
+            mcp_servers=self._mcp_servers,
             tools=[
                 ExecuteShellCommandTool(),
                 AskClientTool(),
@@ -192,7 +186,7 @@ class AgentTool(Tool):
             feedback_function=lambda agent: _get_feedback(
                 agent,
                 self._config,
-                self._tools,
+                self._mcp_servers,
                 ask_user_for_feedback=not self._config.disable_user_feedback,
                 ask_agent_for_feedback=not self._config.disable_feedback_agent,
             ),
@@ -283,8 +277,8 @@ class ExecuteShellCommandTool(Tool):
 
 
 class FeedbackTool(Tool):
-    def __init__(self, config: Config, tools: Tools):
-        self._tools = tools
+    def __init__(self, config: Config, mcp_servers: list | None = None):
+        self._mcp_servers = mcp_servers or []
         self._config = config
 
     def name(self) -> str:
@@ -329,7 +323,7 @@ class FeedbackTool(Tool):
                 parameter_description=self.parameters(),
                 parameter_values=parameters,
             ),
-            mcp_servers=self._tools.mcp_servers,
+            mcp_servers=self._mcp_servers,
             tools=[
                 ExecuteShellCommandTool(),
             ],
@@ -337,7 +331,7 @@ class FeedbackTool(Tool):
             feedback_function=lambda agent: _get_feedback(
                 agent,
                 self._config,
-                self._tools,
+                self._mcp_servers,
                 ask_user_for_feedback=False,
                 ask_agent_for_feedback=False,
             ),
