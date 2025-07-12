@@ -4,16 +4,22 @@ from typing import List
 
 
 @dataclass
+class MCPServerConfig:
+    """Configuration for an MCP server."""
+    name: str
+    command: str
+    args: List[str] = field(default_factory=list)
+    env: List[str] = field(default_factory=list)  # List of env var keys to pass through
+
+
+@dataclass
 class Config:
-    model: str = "gpt-4.1"
-    expert_model: str = "o3"
-    disable_feedback_agent: bool = False
-    disable_user_feedback: bool = False
-    instructions: str | None = None
-    sandbox_directories: List[Path] = field(
-        default_factory=lambda: [
-            Path("/tmp"),
-        ]
-    )
+    model: str
+    expert_model: str
+    disable_feedback_agent: bool
+    disable_user_feedback: bool
+    instructions: str | None
+    sandbox_directories: List[Path]
+    mcp_servers: List[MCPServerConfig]
     
 

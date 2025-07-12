@@ -222,10 +222,10 @@ class ExecuteShellCommandTool(Tool):
     def description(self) -> str:
         return (
             "Execute a shell command and return the output. The command will be executed in bash. Examples for commands are:\n"
-            "- `exa` for listing files in a directory\n"
+            "- `eza` or `ls` for listing files in a directory\n"
             "- `git` for running git commands\n"
-            "- `fd` for searching files\n"
-            "- `rg` for searching text in files\n"
+            "- `fd` or `find` for searching files\n"
+            "- `rg` or `grep` for searching text in files\n"
             "- `gh` for interfacing with GitHub\n"
         )
 
