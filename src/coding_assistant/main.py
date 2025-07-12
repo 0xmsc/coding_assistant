@@ -41,11 +41,15 @@ def parse_args():
     parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
     parser.add_argument(
         "--resume",
-        nargs="?",
-        const=True,
-        default=False,
+        action="store_true",
+        help="Resume from the latest orchestrator history file in .coding_assistant/history/.",
+    )
+    parser.add_argument(
+        "--resume-file",
+        type=str,
+        default=None,
         metavar="FILE",
-        help="Resume from a previously saved orchestrator history file in .coding_assistant/history/. If no file is given, resume the latest session.",
+        help="Resume from a specific orchestrator history file in .coding_assistant/history/.",
     )
     parser.add_argument("--print-mcp-tools", action="store_true", help="Print all available tools from MCP servers.")
     parser.add_argument("--model", type=str, default="gpt-4.1", help="Model to use for the orchestrator agent.")
@@ -66,9 +70,12 @@ def parse_args():
         "--mcp-servers",
         nargs="*",
         default=[],
-        help='MCP server configurations as JSON strings. Format: \'{"name": "server_name", "command": "command", "args": ["arg1", "arg2"], "env": ["ENV_VAR1", "ENV_VAR2"]}\'',
+        help=(
+            "MCP server configurations as JSON strings. "
+            "Format: '{\"name\": \"server_name\", \"command\": \"command\", "
+            "\"args\": [\"arg1\", \"arg2\"], \"env\": [\"ENV_VAR1\", \"ENV_VAR2\"]}'"
+        ),
     )
-
     return parser.parse_args()
 
 
@@ -179,17 +186,23 @@ async def _main():
     instructions = get_instructions(working_directory, config)
     orchestrator_agent = None
     saved_history = None
-    file_arg = args.resume if args.resume not in (False, True) else None
 
-    if args.resume:
-        saved_history = load_orchestrator_history(working_directory, file_arg)
+    if args.resume_file:
+        saved_history = load_orchestrator_history(working_directory, args.resume_file)
         if saved_history:
-            logger.info(f"Resuming session from saved agent history.")
+            logger.info(f"Resuming session from file: {args.resume_file}")
+        else:
+            logger.error(f"No saved history found in file: {args.resume_file}")
+            return
+    elif args.resume:
+        saved_history = load_orchestrator_history(working_directory)
+        if saved_history:
+            logger.info(f"Resuming session from latest saved agent history.")
         else:
             logger.error("No saved history found to resume from.")
             return
     elif not task:
-        logger.error("No task provided. Please specify a task to execute or use --resume.")
+        logger.error("No task provided. Please specify a task to execute or use --resume/--resume-file.")
         return
 
     venv_directory = Path(os.environ["VIRTUAL_ENV"])
@@ -218,7 +231,7 @@ async def _main():
                 tool = OrchestratorTool(
                     config,
                     tools,
-                    history=saved_history if args.resume and saved_history else None,
+                    history=saved_history if (args.resume or args.resume_file) and saved_history else None,
                 )
                 orchestrator_params = {
                     "task": task,
