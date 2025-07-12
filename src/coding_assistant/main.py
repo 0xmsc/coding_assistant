@@ -17,7 +17,7 @@ from rich.table import Table
 
 from coding_assistant.agents.agents import OrchestratorTool
 from coding_assistant.agents.logic import run_agent_loop
-from coding_assistant.cache import get_cache_dir, get_conversation_history, save_conversation_history
+from coding_assistant.cache import get_conversation_history, save_conversation_history
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
@@ -140,7 +140,6 @@ def get_additional_sandbox_directories(config: Config, working_directory: Path, 
     sandbox_directories = [
         working_directory,
         venv_directory,
-        get_cache_dir(),
     ]
 
     sandbox_directories.extend(config.sandbox_directories)
