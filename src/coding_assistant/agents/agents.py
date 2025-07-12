@@ -52,10 +52,15 @@ async def _get_feedback(
 
 
 class OrchestratorTool(Tool):
-    def __init__(self, config: Config, tools: Tools, resume_history=None):
+    def __init__(
+        self,
+        config: Config,
+        tools: Tools,
+        history: list | None = None,
+    ):
         self._config = config
         self._tools = tools
-        self._resume_history = resume_history
+        self._history = history
 
     def name(self) -> str:
         return "launch_orchestrator_agent"
@@ -71,9 +76,9 @@ class OrchestratorTool(Tool):
                     "type": "string",
                     "description": "The task to assign to the orchestrator agent.",
                 },
-                "history": {
+                "summaries": {
                     "type": "array",
-                    "description": "The conversation history of the client and the agent.",
+                    "description": "The past conversation summaries of the client and the agent.",
                 },
                 "instructions": {
                     "type": "string",
@@ -84,13 +89,13 @@ class OrchestratorTool(Tool):
         }
 
     async def execute(self, parameters: dict) -> str:
-        agent_parameters = parameters
         orchestrator_agent = Agent(
             name="Orchestrator",
+            history=self._history or [],
             description=self.description(),
             parameters=fill_parameters(
                 parameter_description=self.parameters(),
-                parameter_values=agent_parameters,
+                parameter_values=parameters,
             ),
             mcp_servers=self._tools.mcp_servers,
             tools=[
@@ -108,14 +113,12 @@ class OrchestratorTool(Tool):
             ),
         )
 
-        # If resuming, restore the agent's history from the constructor
-        if self._resume_history:
-            orchestrator_agent.history = self._resume_history
-            logger.info(f"Restored {len(orchestrator_agent.history)} history entries for orchestrator agent")
+        try:
+            output = await run_agent_loop(orchestrator_agent)
+            self.summary = output.summary
+        finally:
+            self.history = orchestrator_agent.history
 
-        self._agent = orchestrator_agent
-        output = await run_agent_loop(orchestrator_agent)
-        self.summary = output.summary
         return output.result
 
 
