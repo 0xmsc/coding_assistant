@@ -16,11 +16,10 @@ class MCPServerConfig:
 class Config:
     model: str
     expert_model: str
-    disable_feedback_agent: bool
-    disable_user_feedback: bool
+    enable_feedback_agent: bool
+    enable_user_feedback: bool
     instructions: str | None
     sandbox_directories: List[Path]
     mcp_servers: List[MCPServerConfig]
-    trace_endpoint: str
-    
+
 

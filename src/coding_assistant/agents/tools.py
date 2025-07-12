@@ -115,8 +115,8 @@ class OrchestratorTool(Tool):
                 agent,
                 self._config,
                 self._mcp_servers,
-                ask_user_for_feedback=not self._config.disable_user_feedback,
-                ask_agent_for_feedback=not self._config.disable_feedback_agent,
+                ask_user_for_feedback=self._config.enable_user_feedback,
+                ask_agent_for_feedback=self._config.enable_feedback_agent,
             ),
         )
 
@@ -187,8 +187,8 @@ class AgentTool(Tool):
                 agent,
                 self._config,
                 self._mcp_servers,
-                ask_user_for_feedback=not self._config.disable_user_feedback,
-                ask_agent_for_feedback=not self._config.disable_feedback_agent,
+                ask_user_for_feedback=self._config.enable_user_feedback,
+                ask_agent_for_feedback=self._config.enable_feedback_agent,
             ),
         )
 

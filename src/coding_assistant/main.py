@@ -55,9 +55,9 @@ def parse_args():
     parser.add_argument("--model", type=str, default="gpt-4.1", help="Model to use for the orchestrator agent.")
     parser.add_argument("--expert-model", type=str, default="o3", help="Expert model to use.")
     parser.add_argument(
-        "--disable-feedback-agent", action="store_true", default=False, help="Disable the feedback agent."
+        "--enable-feedback-agent", action="store_true", default=False, help="Enable the feedback agent."
     )
-    parser.add_argument("--disable-user-feedback", action="store_true", default=False, help="Disable user feedback.")
+    parser.add_argument("--enable-user-feedback", action="store_true", default=False, help="Enable user feedback.")
     parser.add_argument("--instructions", type=str, help="Custom instructions for the agent.")
     parser.add_argument(
         "--sandbox-directories",
@@ -104,17 +104,16 @@ def create_config_from_args(args) -> Config:
     return Config(
         model=args.model,
         expert_model=args.expert_model,
-        disable_feedback_agent=args.disable_feedback_agent,
-        disable_user_feedback=args.disable_user_feedback,
+        enable_feedback_agent=args.enable_feedback_agent,
+        enable_user_feedback=args.enable_user_feedback,
         instructions=args.instructions,
         sandbox_directories=sandbox_dirs,
         mcp_servers=mcp_servers,
-        trace_endpoint=args.trace_endpoint,
     )
 
 
-def setup_tracing(config: Config):
-    TRACE_ENDPOINT = config.trace_endpoint
+def setup_tracing(args):
+    TRACE_ENDPOINT = args.trace_endpoint
 
     try:
         requests.head(TRACE_ENDPOINT, timeout=0.2)
@@ -196,10 +195,9 @@ async def run_orchestrator_agent(
 
 async def _main():
     args = parse_args()
+    setup_tracing(args)
+
     config = create_config_from_args(args)
-
-    setup_tracing(config)
-
     logger.info(f"Using configuration from command line arguments: {config}")
 
     working_directory = Path(os.getcwd())
