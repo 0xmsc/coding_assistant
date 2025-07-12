@@ -130,55 +130,48 @@ direnv allow
 
 ### Launching the Orchestrator via CLI
 
+You can now run the coding assistant using the `run.fish` script, which simplifies the process of configuring and launching the agent.
+
 #### Run an Orchestrator Task:
 ```bash
-uv run coding-assistant --task "Refactor all function names to snake_case."
+./run.fish --task "Refactor all function names to snake_case."
 ```
 
 #### Print all available MCP tools:
 ```bash
-uv run coding-assistant --print-mcp-tools
+./run.fish --print-mcp-tools
 ```
 
-#### Disable feedback agent:
+#### Example with all arguments:
 ```bash
-uv run coding-assistant --task "Update documentation" --disable-feedback-agent
-```
-
-#### Disable sandboxing (for development):
-```bash
-uv run coding-assistant --task "Debug issue" --disable-sandbox
+./run.fish \
+    --model "gemini/gemini-2.5-flash" \
+    --expert-model "gemini/gemini-2.5-pro" \
+    --disable-feedback-agent \
+    --disable-user-feedback \
+    --instructions "Be concise." \
+    --sandbox-directories /tmp /mnt/wsl \
+    --task "Update the README.md"
 ```
 
 ---
 
 ## Configuration
 
-### User Configuration File
+Configuration is now handled via command-line arguments, providing a more flexible and straightforward way to run the agent. The `run.fish` script provides a convenient way to pass these arguments.
 
-The system automatically creates a configuration file at `~/.config/coding_assistant/config.json` with the following structure:
+### Command-Line Arguments
 
-```json
-{
-  "model": "gpt-4o",
-  "expert_model": "o3",
-  "disable_feedback_agent": false,
-  "disable_user_feedback": false,
-  "instructions": null,
-  "sandbox_directories": [
-    "/tmp"
-  ]
-}
-```
-
-### Configuration Options
-
-- **model**: Default LLM model for general agents
-- **expert_model**: LLM model for complex tasks requiring expert-level reasoning
-- **disable_feedback_agent**: Skip automatic feedback validation
-- **disable_user_feedback**: Skip user feedback prompts
-- **instructions**: Custom instructions to append to all agents
-- **sandbox_directories**: Additional directories to allow in sandbox mode
+-   `--model`: The language model to use for the main agent (default: `gpt-4.1`).
+-   `--expert-model`: The language model to use for the expert agent (default: `o3`).
+-   `--disable-feedback-agent`: Disables the feedback agent.
+-   `--disable-user-feedback`: Disables user feedback prompts.
+-   `--instructions`: Custom instructions for the agent.
+-   `--sandbox-directories`: A list of directories to include in the sandbox (default: `/tmp`).
+-   `--disable-sandbox`: Disables the sandbox entirely.
+-   `--mcp-servers`: A list of MCP server configurations as JSON strings.
+-   `--print-mcp-tools`: Print all available tools from MCP servers.
+-   `--task`: The task for the orchestrator agent.
 
 ### Environment Variables
 
@@ -262,20 +255,21 @@ Specialized agent for:
 
 ## MCP Server Integration
 
-The system automatically initializes MCP servers based on available tools and API keys:
+The system initializes MCP servers based on the `--mcp-servers` command-line argument. The `run.fish` script provides a default configuration for the `filesystem` and `fetch` servers.
 
-### Filesystem Server
-- **Command**: `npx @modelcontextprotocol/server-filesystem <working_directory>`
-- **Purpose**: File system operations and management
+### Default MCP Servers in `run.fish`
 
-### Fetch Server
-- **Command**: `uvx mcp-server-fetch`
-- **Purpose**: Web content fetching and HTTP requests
-
-### Tavily Server (Optional)
-- **Command**: `npx tavily-mcp@0.2.1`
-- **Purpose**: Advanced web search and research
-- **Requirement**: `TAVILY_API_KEY` environment variable
+-   **Filesystem Server**:
+    -   **Name**: `filesystem`
+    -   **Command**: `npx -y @modelcontextprotocol/server-filesystem {working_directory}`
+    -   **Purpose**: File system operations and management.
+-   **Fetch Server**:
+    -   **Name**: `fetch`
+    -   **Command**: `uvx mcp-server-fetch`
+    -   **Purpose**: Web content fetching and HTTP requests.
+-   **Tavily Server (Optional)**:
+    -   To enable the Tavily server, you would add its configuration to the `$mcp_servers` variable in `run.fish`.
+    -   **Requirement**: `TAVILY_API_KEY` environment variable.
 
 ---
 
