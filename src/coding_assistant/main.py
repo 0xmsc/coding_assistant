@@ -63,7 +63,7 @@ def parse_args():
         "--sandbox-directories",
         nargs="*",
         default=["/tmp"],
-        help="Additional directories to include in the sandbox (default: /tmp).",
+        help="Additional directories to include in the sandbox.",
     )
     parser.add_argument("--disable-sandbox", action="store_true", default=False, help="Disable sandboxing.")
     parser.add_argument(
@@ -71,6 +71,12 @@ def parse_args():
         nargs="*",
         default=[],
         help='MCP server configurations as JSON strings. Format: \'{"name": "server_name", "command": "command", "args": ["arg1", "arg2"], "env": ["ENV_VAR1", "ENV_VAR2"]}\'',
+    )
+    parser.add_argument(
+        "--trace-endpoint",
+        type=str,
+        default="http://localhost:4318/v1/traces",
+        help="Endpoint for OTLP trace exporter.",
     )
 
     return parser.parse_args()
@@ -103,11 +109,12 @@ def create_config_from_args(args) -> Config:
         instructions=args.instructions,
         sandbox_directories=sandbox_dirs,
         mcp_servers=mcp_servers,
+        trace_endpoint=args.trace_endpoint,
     )
 
 
-def setup_tracing():
-    TRACE_ENDPOINT = "http://localhost:4318/v1/traces"
+def setup_tracing(config: Config):
+    TRACE_ENDPOINT = config.trace_endpoint
 
     try:
         requests.head(TRACE_ENDPOINT, timeout=0.2)
@@ -188,11 +195,11 @@ async def run_orchestrator_agent(
 
 
 async def _main():
-    setup_tracing()
-
     args = parse_args()
-
     config = create_config_from_args(args)
+
+    setup_tracing(config)
+
     logger.info(f"Using configuration from command line arguments: {config}")
 
     working_directory = Path(os.getcwd())
