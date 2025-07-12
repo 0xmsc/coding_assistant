@@ -162,8 +162,8 @@ The coding assistant uses a simple command-line interface with the `run.fish` sc
 ./run.fish \
     --model "gemini/gemini-2.5-flash" \
     --expert-model "gemini/gemini-2.5-pro" \
-    --disable-feedback-agent \
-    --disable-user-feedback \
+    --no-feedback-agent \
+    --no-user-feedback \
     --instructions "Be concise and use modern Python patterns." \
     --sandbox-directories /tmp /mnt/wsl \
     --task "Update the README.md"
@@ -194,13 +194,13 @@ All configuration is passed via command-line flags:
 - `--expert-model`: LLM model for expert-level tasks (default: `o3`)
 
 #### Agent Control:
-- `--disable-feedback-agent`: Skip automatic feedback validation
-- `--disable-user-feedback`: Skip user feedback prompts during execution
+- `--feedback-agent` / `--no-feedback-agent`: Enable/disable automatic feedback validation (default: disabled)
+- `--user-feedback`: / `--no-user-feedback`: Enable/disable user feedback prompts during execution (default: enabled)
 - `--instructions`: Custom instructions to append to all agents
 
 #### Environment:
 - `--sandbox-directories`: Directories to allow in sandbox mode (default: `/tmp`)
-- `--disable-sandbox`: Completely disable sandboxing (use with caution)
+- `--sandbox` / `--no-sandbox`: Completely enable/disable sandboxing (default: enabled)
 
 #### MCP Servers:
 - `--mcp-servers`: MCP server configurations as JSON strings (see MCP section below)
@@ -412,7 +412,7 @@ uv run pytest -n auto
 ### Sandboxing
 - Landlock-based filesystem restrictions for security
 - Configurable allowed directories via `--sandbox-directories`
-- Can be disabled for development with `--disable-sandbox`
+- Can be disabled for development with `--no-sandbox`
 - Default: `/tmp` directory only
 
 ### Tracing and Observability
@@ -443,7 +443,7 @@ uv run pytest -n auto
 
 **Sandbox Errors:**
 - Add required directories with `--sandbox-directories /path/to/dir`
-- Use `--disable-sandbox` for debugging (not recommended for production)
+- Use `--no-sandbox` for debugging (not recommended for production)
 - Check file permissions in the working directory
 
 **MCP Server Issues:**
