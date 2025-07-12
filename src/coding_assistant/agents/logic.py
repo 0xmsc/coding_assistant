@@ -97,46 +97,9 @@ class Agent:
     mcp_servers: list = field(default_factory=list)
 
     history: list = field(default_factory=list)
+    history_token: int = 0
+
     output: AgentOutput | None = None
-
-
-class FinishTaskTool(Tool):
-    def __init__(self, agent: Agent):
-        self._agent = agent
-
-    def name(self) -> str:
-        return "finish_task"
-
-    def description(self) -> str:
-        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop."
-
-    def parameters(self) -> dict:
-        return {
-            "type": "object",
-            "properties": {
-                "result": {
-                    "type": "string",
-                    "description": "The result of the work on the task. The work of the agent is evaluated based on this result.",
-                },
-                "summary": {
-                    "type": "string",
-                    "description": "A concise summary of the conversation the agent and the client had. There should be enough context such that the work could be continued based on this summary.",
-                },
-                "feedback": {
-                    "type": "string",
-                    "description": "A summary of the feedback given by the client to the agent during the task. This can both be questions that were answered by the client, or feedback. It needs to be clear from this parameter why the result might might not fit to initial task description.",
-                },
-            },
-            "required": ["result", "summary"],
-        }
-
-    async def execute(self, parameters) -> str:
-        self._agent.output = AgentOutput(
-            result=parameters["result"],
-            summary=parameters["summary"],
-            feedback=parameters.get("feedback"),
-        )
-        return "Agent output set."
 
 
 def fix_input_schema(input_schema: dict):
@@ -255,15 +218,11 @@ async def handle_mcp_tool_call(function_name, arguments, mcp_servers):
 
 @tracer.start_as_current_span("handle_tool_call")
 async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallbacks):
-    agent_callbacks.add_tool_call(agent.name, tool_call)
-
     function_name = tool_call.function.name
     function_args = json.loads(tool_call.function.arguments or "{}")
 
     trace.get_current_span().set_attribute("function.name", function_name)
     trace.get_current_span().set_attribute("function.args", tool_call.function.arguments)
-
-    logger.debug(f"Calling tool {function_name} with args {function_args}")
 
     function_call_result = None
 
@@ -279,7 +238,6 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
 
     assert function_call_result is not None, f"Function {function_name} not implemented"
     trace.get_current_span().set_attribute("function.result", function_call_result)
-    logger.debug(f"Function {function_name} returned {function_call_result}")
 
     if len(function_call_result) > 50_000:
         logger.warning(
@@ -288,11 +246,7 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
 
         function_call_result = "System error: Tool call result too long. Please try again with different parameters."
 
-    agent_callbacks.add_tool_result(function_name, function_call_result)
-
-    # HACK: Some APIs cannot handle empty content
-    if function_call_result == "":
-        function_call_result = " "
+    agent_callbacks.on_tool_message(agent.name, function_name, function_args, function_call_result)
 
     agent.history.append(
         {
@@ -341,9 +295,8 @@ def create_start_message(agent: Agent) -> str:
 async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks):
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
-    # Add the finish_task tool to the agent, if it is not already there.
     if not any(tool.name() == "finish_task" for tool in agent.tools):
-        agent.tools.append(FinishTaskTool(agent))
+        raise RuntimeError("Agent needs to have a `finish_task` tool in order to run a step.")
 
     tools = []
     tools.extend(get_tools_from_agent(agent))
@@ -361,19 +314,24 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks):
     trace.get_current_span().set_attribute("agent.history", json.dumps(agent.history))
 
     # Do one completion step
-    message = await complete(agent.history, model=agent.model, tools=tools)
+    completion = await complete(agent.history, model=agent.model, tools=tools)
+    message = completion.message
+
     trace.get_current_span().set_attribute("completion.message", message.model_dump_json())
 
     # Remove the reasoning_content from the message, we cannot send it back to the LLM API.
     # At least DeepSeek complains about it.
-    if hasattr(message, "reasoning_content"):
+    if hasattr(message, "reasoning_content") and message.reasoning_content:
         trace.get_current_span().set_attribute("completion.reasoning_content", message.reasoning_content)
         del message.reasoning_content
 
+    agent.history_token = completion.tokens
     agent.history.append(message.model_dump())
 
+    logger.info(f"Has {len(agent.history)} messages in history, tokens {agent.history_token}")
+
     if message.content:
-        agent_callbacks.add_agent_response(agent.name, message.content)
+        agent_callbacks.on_assistant_message(agent.name, message.content)
 
     # Check if we need to do a tool call
     for tool_call in message.tool_calls or []:
@@ -382,10 +340,14 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks):
     if not message.tool_calls:
         logger.warning(f"Agent {agent.name} did not call any tools, but provided a message.")
 
+        user_message_content = "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. Otherwise, please call the `finish_task` tool to signal that you are done."
+
+        agent_callbacks.on_user_message(agent.name, user_message_content)
+
         agent.history.append(
             {
                 "role": "user",
-                "content": "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. Otherwise, please call the `finish_task` tool to signal that you are done.",
+                "content": user_message_content,
             }
         )
 
@@ -408,9 +370,9 @@ async def run_agent_loop(
     start_message = create_start_message(agent)
 
     if agent.history:
-        agent_callbacks.add_agent_start(agent.name, agent.model, start_message, is_resuming=True)
+        agent_callbacks.on_agent_start(agent.name, agent.model, start_message, is_resuming=True)
     else:
-        agent_callbacks.add_agent_start(agent.name, agent.model, start_message, is_resuming=False)
+        agent_callbacks.on_agent_start(agent.name, agent.model, start_message, is_resuming=False)
 
     agent.history.append(
         {
@@ -426,14 +388,14 @@ async def run_agent_loop(
         trace.get_current_span().set_attribute("agent.result", agent.output.result)
         trace.get_current_span().set_attribute("agent.summary", agent.output.summary)
 
-        agent_callbacks.add_agent_result(agent.name, agent.output.result, agent.output.summary)
+        agent_callbacks.on_agent_end(agent.name, agent.output.result, agent.output.summary)
 
         if feedback := await agent.feedback_function(agent):
             formatted_feedback = FEEDBACK_TEMPLATE.format(
                 feedback=textwrap.indent(feedback, "  "),
             )
 
-            agent_callbacks.add_agent_feedback(agent.name, formatted_feedback)
+            agent_callbacks.on_user_message(agent.name, formatted_feedback)
 
             agent.history.append(
                 {

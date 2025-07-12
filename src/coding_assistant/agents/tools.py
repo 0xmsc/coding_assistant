@@ -125,6 +125,8 @@ class OrchestratorTool(Tool):
             ),
         )
 
+        orchestrator_agent.tools.append(FinishTaskTool(orchestrator_agent))
+
         try:
             output = await run_agent_loop(orchestrator_agent, self._agent_callbacks)
             self.summary = output.summary
@@ -135,7 +137,9 @@ class OrchestratorTool(Tool):
 
 
 class AgentTool(Tool):
-    def __init__(self, config: Config, mcp_servers: list | None = None, agent_callbacks: Optional[AgentCallbacks] = None):
+    def __init__(
+        self, config: Config, mcp_servers: list | None = None, agent_callbacks: Optional[AgentCallbacks] = None
+    ):
         self._config = config
         self._mcp_servers = mcp_servers or []
         self._agent_callbacks = agent_callbacks or NullCallbacks()
@@ -176,7 +180,7 @@ class AgentTool(Tool):
         return self._config.model
 
     async def execute(self, parameters: dict) -> str:
-        research_agent = Agent(
+        agent = Agent(
             name="Agent",
             description=self.description(),
             parameters=fill_parameters(
@@ -199,7 +203,9 @@ class AgentTool(Tool):
             ),
         )
 
-        output = await run_agent_loop(research_agent, self._agent_callbacks)
+        agent.tools.append(FinishTaskTool(agent))
+
+        output = await run_agent_loop(agent, self._agent_callbacks)
         return output.result
 
 
@@ -284,7 +290,9 @@ class ExecuteShellCommandTool(Tool):
 
 
 class FeedbackTool(Tool):
-    def __init__(self, config: Config, mcp_servers: list | None = None, agent_callbacks: Optional[AgentCallbacks] = None):
+    def __init__(
+        self, config: Config, mcp_servers: list | None = None, agent_callbacks: Optional[AgentCallbacks] = None
+    ):
         self._mcp_servers = mcp_servers or []
         self._config = config
         self._agent_callbacks = agent_callbacks or NullCallbacks()
