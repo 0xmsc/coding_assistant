@@ -52,9 +52,10 @@ async def _get_feedback(
 
 
 class OrchestratorTool(Tool):
-    def __init__(self, config: Config, tools: Tools):
+    def __init__(self, config: Config, tools: Tools, resume_history=None):
         self._config = config
         self._tools = tools
+        self._resume_history = resume_history
 
     def name(self) -> str:
         return "launch_orchestrator_agent"
@@ -78,27 +79,17 @@ class OrchestratorTool(Tool):
                     "type": "string",
                     "description": "Special instructions for the agent. The agent will do everything it can to follow these instructions. The orchestrator will forward these instructions to the other agents it launches.",
                 },
-                "resume_history": {
-                    "type": "array",
-                    "description": "Previously saved agent history to resume from (internal parameter).",
-                },
             },
             "required": ["task"],
         }
 
     async def execute(self, parameters: dict) -> str:
-        # Filter out internal parameters from the agent parameters
-        agent_parameters = {k: v for k, v in parameters.items() if k != "resume_history"}
-        
+        agent_parameters = parameters
         orchestrator_agent = Agent(
             name="Orchestrator",
             description=self.description(),
             parameters=fill_parameters(
-                parameter_description={
-                    "type": "object",
-                    "properties": {k: v for k, v in self.parameters()["properties"].items() if k != "resume_history"},
-                    "required": self.parameters()["required"],
-                },
+                parameter_description=self.parameters(),
                 parameter_values=agent_parameters,
             ),
             mcp_servers=self._tools.mcp_servers,
@@ -117,14 +108,12 @@ class OrchestratorTool(Tool):
             ),
         )
 
-        # If resuming, restore the agent's history
-        if "resume_history" in parameters and parameters["resume_history"]:
-            orchestrator_agent.history = parameters["resume_history"]
+        # If resuming, restore the agent's history from the constructor
+        if self._resume_history:
+            orchestrator_agent.history = self._resume_history
             logger.info(f"Restored {len(orchestrator_agent.history)} history entries for orchestrator agent")
 
-        # Store the agent instance so it can be accessed for history saving
         self._agent = orchestrator_agent
-
         output = await run_agent_loop(orchestrator_agent)
         self.summary = output.summary
         return output.result
