@@ -20,6 +20,7 @@ def create_test_config() -> Config:
         instructions=None,
         sandbox_directories=[],
         mcp_servers=[],
+        shorten_conversation_at_tokens=200_000,
     )
 
 

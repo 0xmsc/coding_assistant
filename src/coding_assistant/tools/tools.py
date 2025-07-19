@@ -9,7 +9,15 @@ from typing import Annotated, Optional
 from rich.prompt import Prompt
 
 from coding_assistant.agents.execution import run_agent_loop
-from coding_assistant.agents.types import Agent, AgentOutput, Tool, TextResult, FinishTaskResult, ShortenConversationResult, ToolResult
+from coding_assistant.agents.types import (
+    Agent,
+    AgentOutput,
+    Tool,
+    TextResult,
+    FinishTaskResult,
+    ShortenConversationResult,
+    ToolResult,
+)
 from coding_assistant.agents.parameters import fill_parameters, format_parameters, Parameter
 from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
 from coding_assistant.config import Config
@@ -123,7 +131,9 @@ class OrchestratorTool(Tool):
         )
 
         try:
-            output = await run_agent_loop(orchestrator_agent, self._agent_callbacks)
+            output = await run_agent_loop(
+                orchestrator_agent, self._agent_callbacks, self._config.shorten_conversation_at_tokens
+            )
             self.summary = output.summary
         finally:
             self.history = orchestrator_agent.history
@@ -200,7 +210,7 @@ class AgentTool(Tool):
             ),
         )
 
-        output = await run_agent_loop(agent, self._agent_callbacks)
+        output = await run_agent_loop(agent, self._agent_callbacks, self._config.shorten_conversation_at_tokens)
         return TextResult(content=output.result)
 
 
@@ -275,11 +285,13 @@ class ExecuteShellCommandTool(Tool):
         result = await asyncio.to_thread(subprocess.run, args, capture_output=True, text=True)
 
         if result.returncode != 0:
-            return TextResult(content=(
-                f"Command failed with error code {result.returncode}\n"
-                f"stdout: {result.stdout}\n"
-                f"stderr: {result.stderr}"
-            ))
+            return TextResult(
+                content=(
+                    f"Command failed with error code {result.returncode}\n"
+                    f"stdout: {result.stdout}\n"
+                    f"stderr: {result.stderr}"
+                )
+            )
 
         return TextResult(content=result.stdout)
 
@@ -351,7 +363,9 @@ class FeedbackTool(Tool):
             ),
         )
 
-        output = await run_agent_loop(feedback_agent, self._agent_callbacks)
+        output = await run_agent_loop(
+            feedback_agent, self._agent_callbacks, self._config.shorten_conversation_at_tokens
+        )
         return TextResult(content=output.result)
 
 
@@ -395,7 +409,7 @@ class ShortenConversation(Tool):
         return "shorten_conversation"
 
     def description(self) -> str:
-        return "Give the framework a short, concise summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. This tool should only be called when the client tells you to call it."
+        return "Give the framework a short, concise summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. Additionally, you should include the next steps you had planned. This tool should only be called when the client tells you to call it."
 
     def parameters(self) -> dict:
         return {

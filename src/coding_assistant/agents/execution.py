@@ -160,9 +160,13 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_
             "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
         )
 
-    # Note: We removed the token-based shortening prompt since conversation shortening
-    # is now handled immediately when the shorten_conversation tool is called.
-    # The agent can be instructed to call shorten_conversation through other means.
+    if completion.tokens > shorten_conversation_at_tokens:
+        append_user_message(
+            agent.history,
+            agent_callbacks,
+            agent.name,
+            "Your conversation history has grown too large. Please summarize it by using the `shorten_conversation` tool.",
+        )
 
     return message
 
@@ -171,7 +175,7 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_
 async def run_agent_loop(
     agent: Agent,
     agent_callbacks: AgentCallbacks,
-    shorten_conversation_at_tokens=100_000,
+    shorten_conversation_at_tokens=200_000,
 ) -> AgentOutput:
     if agent.output:
         raise RuntimeError("Agent already has a result or summary.")

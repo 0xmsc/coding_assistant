@@ -94,6 +94,12 @@ def parse_args():
         default="http://localhost:4318/v1/traces",
         help="Endpoint for OTLP trace exporter.",
     )
+    parser.add_argument(
+        "--shorten-conversation-at-tokens",
+        type=int,
+        default=200_000,
+        help="Number of tokens after which conversation should be shortened.",
+    )
 
     return parser.parse_args()
 
@@ -125,6 +131,7 @@ def create_config_from_args(args) -> Config:
         instructions=args.instructions,
         sandbox_directories=sandbox_dirs,
         mcp_servers=mcp_servers,
+        shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
     )
 
 

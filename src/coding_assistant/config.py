@@ -21,5 +21,6 @@ class Config:
     instructions: str | None
     sandbox_directories: List[Path]
     mcp_servers: List[MCPServerConfig]
+    shorten_conversation_at_tokens: int
 
 
