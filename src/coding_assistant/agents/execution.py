@@ -175,7 +175,7 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_
 async def run_agent_loop(
     agent: Agent,
     agent_callbacks: AgentCallbacks,
-    shorten_conversation_at_tokens=200_000,
+    shorten_conversation_at_tokens,
 ) -> AgentOutput:
     if agent.output:
         raise RuntimeError("Agent already has a result or summary.")
