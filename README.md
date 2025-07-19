@@ -91,7 +91,7 @@ flowchart TD
 ### System Requirements
 - **Python**: 3.12+ (see `.python-version`)
 - **Node.js**: For running MCP servers (filesystem, Tavily).
-- **Additional tools**: `uv`, `npx`, and optionally `git`, `npm`, `pytest`.
+- **Additional tools**: `uv`, `npx`, and optionally `git`, `npm`, `pytest`. For a complete list of Python dependencies, please see the `pyproject.toml` file.
 
 ### 1. Clone the repository & enter the directory
 ```bash
@@ -274,10 +274,13 @@ coding_assistant/
 │       ├── agents/
 │       │   ├── types.py          # All core agent/tool classes
 │       │   ├── callbacks.py      # Agent callback interfaces
+│       │   ├── execution.py      # Agent execution logic
 │       │   ├── history.py        # Agent history management
+│       │   ├── parameters.py     # Agent parameter handling
 │       │   └── tests/            # Agent-specific tests
 │       ├── tools/
 │       │   ├── mcp.py            # MCP server integration
+│       │   └── tools.py          # Core tool implementations
 ├── justfile                      # Development commands
 ├── pyproject.toml                # Dependencies and build configuration  
 ├── run.fish                      # Launch script with sensible defaults
@@ -292,7 +295,7 @@ coding_assistant/
 - **run.fish**: Convenient script with sensible defaults for launching the assistant
 - **justfile**: Development commands (`just test` for running tests)
 - **cache.py**: Manages conversation history storage (no config files needed)
-- **config.py**: Configuration data structures for runtime use
+- **config.py**: Handles command-line argument parsing and configuration data structures.
 
 ---
 
@@ -319,6 +322,7 @@ Specialized agent for:
 - Providing quality control and improvement suggestions
 
 ### Utility Tools
+The following utility tools are available in the `src/coding_assistant/tools/` directory:
 - **AskClientTool**: Interactive user input
 - **ExecuteShellCommandTool**: Shell command execution
 - **FinishTaskTool**: Task completion signaling
