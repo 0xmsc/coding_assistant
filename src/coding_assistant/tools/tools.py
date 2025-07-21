@@ -80,7 +80,7 @@ class OrchestratorTool(Tool):
         return "launch_orchestrator_agent"
 
     def description(self) -> str:
-        return "Launch an orchestrator agent to accomplish a given task. The agent can delegate tasks to other agents where it sees fit. For bigger tasks, the orchestrator agent will make a plan with multiple milestones to tackle the task and ask the user whether it is okay to proceed with the plan. Additionall, the orchestrator will ask the user whether it should continue on the current path or not after completion of each milestone."
+        return "Launch an orchestrator agent to accomplish a given task. The agent can delegate tasks to other agents where it sees fit. For bigger tasks, the orchestrator agent will make a plan with multiple milestones to tackle the task and ask the user whether it is okay to proceed with the plan. Additionally, the orchestrator will ask the user whether it should continue on the current path or not after completion of each milestone."
 
     def parameters(self) -> dict:
         return {
@@ -96,7 +96,7 @@ class OrchestratorTool(Tool):
                 },
                 "instructions": {
                     "type": "string",
-                    "description": "Special instructions for the agent. The agent will do everything it can to follow these instructions. The orchestrator will forward these instructions to the other agents it launches.",
+                    "description": "Special instructions for the agent. The agent will do everything it can to follow these instructions. The orchestrator will forward relevant instructions to the other agents it launches.",
                 },
             },
             "required": ["task"],
@@ -150,7 +150,7 @@ class AgentTool(Tool):
         self._agent_callbacks = agent_callbacks or NullCallbacks()
 
     def name(self) -> str:
-        return "launch_research_agent"
+        return "launch_agent"
 
     def description(self) -> str:
         return "Launch a sub-agent to work on a given task. Examples for tasks are researching a topic or question, or developing a feature according to an implementation plan. The agent will refuse to accept any tasks that are not clearly defined and miss context. It needs to be clear what to do and how to do it using **only** the information given in the task description."
@@ -308,7 +308,7 @@ class FeedbackTool(Tool):
         return "launch_feedback_agent"
 
     def description(self) -> str:
-        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the result is acceptable for a given description, parameters, summary and feedback. If it is, the feedback agent will call `finish_task` with the result being 'Ok' and nothing else. If it is not, the feedback agent will output as a result what is wrong with the result and how it needs to be improved. The agent will evaluate the result as if it were a paying client. Would an average client be satisfied with the output? The feedback agent will thorougly review every change that is described and will look at file system, git history, etc. as it deems necessary."
+        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the result is acceptable for a given description, parameters, summary and feedback. The agent will evaluate the result as if it were a paying client. The feedback agent will thorougly review every change that is described and will look at file system, git history, etc. as it deems necessary. If the result is acceptable, the feedback agent will call `finish_task` with the result being 'Ok'. Otherwise, it will output what is wrong with the result and how it needs to be improved."
 
     def parameters(self) -> dict:
         return {
