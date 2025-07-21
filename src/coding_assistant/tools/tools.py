@@ -114,7 +114,7 @@ class OrchestratorTool(Tool):
             mcp_servers=self._mcp_servers,
             tools=[
                 AgentTool(self._config, self._mcp_servers, self._agent_callbacks),
-                AskClientTool(),
+                AskClientTool(self._config),
                 ExecuteShellCommandTool(),
                 FinishTaskTool(),
                 ShortenConversation(),
@@ -195,7 +195,7 @@ class AgentTool(Tool):
             mcp_servers=self._mcp_servers,
             tools=[
                 ExecuteShellCommandTool(),
-                AskClientTool(),
+                AskClientTool(self._config),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
@@ -215,14 +215,14 @@ class AgentTool(Tool):
 
 
 class AskClientTool(Tool):
-    def __init__(self):
-        pass
+    def __init__(self, config: Config):
+        self.enabled = config.enable_ask_user
 
     def name(self) -> str:
-        return "ask_user"
+        return "ask_client"
 
     def description(self) -> str:
-        return "Ask the user for input."
+        return "Ask the client for input."
 
     def parameters(self) -> dict:
         return {
@@ -242,6 +242,10 @@ class AskClientTool(Tool):
 
     async def execute(self, parameters: dict) -> TextResult:
         assert "question" in parameters
+
+        if not self.enabled:
+            return TextResult("Client input is disabled for this session. Please continue as if the client had given the most sensible answer to your question.")
+
         question = parameters["question"]
         default_answer = parameters.get("default_answer")
         answer = await asyncio.to_thread(Prompt.ask, question, default=default_answer)

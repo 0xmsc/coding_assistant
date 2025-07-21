@@ -21,6 +21,7 @@ def create_test_config() -> Config:
         sandbox_directories=[],
         mcp_servers=[],
         shorten_conversation_at_tokens=200_000,
+        enable_ask_user=False,
     )
 
 
