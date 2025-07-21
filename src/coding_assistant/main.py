@@ -69,6 +69,12 @@ def parse_args():
         default=True,
         help="Enable user feedback.",
     )
+    parser.add_argument(
+        "--ask-user",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Whether the agent can ask the user questions.",
+    )
     parser.add_argument("--instructions", type=str, help="Custom instructions for the agent.")
     parser.add_argument(
         "--sandbox-directories",
@@ -132,6 +138,7 @@ def create_config_from_args(args) -> Config:
         sandbox_directories=sandbox_dirs,
         mcp_servers=mcp_servers,
         shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
+        enable_ask_user=args.ask_user,
     )
 
 
