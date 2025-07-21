@@ -312,7 +312,7 @@ class FeedbackTool(Tool):
         return "launch_feedback_agent"
 
     def description(self) -> str:
-        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the result is acceptable for a given description, parameters, summary and feedback. The agent will evaluate the result as if it were a paying client. The feedback agent will thorougly review every change that is described and will look at file system, git history, etc. as it deems necessary. If the result is acceptable, the feedback agent will call `finish_task` with the result being 'Ok'. Otherwise, it will output what is wrong with the result and how it needs to be improved."
+        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the result is acceptable for a given description, parameters, summary and feedback. The agent will evaluate the result as if it were a paying client. The feedback agent will thoroughly review every change that is described and will look at file system, git history, etc. as it deems necessary. If the result is acceptable, the feedback agent will call `finish_task` with the result being 'Ok'. Otherwise, it will output what is wrong with the result and how it needs to be improved."
 
     def parameters(self) -> dict:
         return {
