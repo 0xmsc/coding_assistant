@@ -173,7 +173,7 @@ class AgentTool(Tool):
                 },
                 "expert_knowledge": {
                     "type": "boolean",
-                    "description": "Should only be set to true when the task is extraordinarily difficult. When this is set to true, an expert-level agent will be used to work on the task.",
+                    "description": "Should only be set to true when the task is difficult. When this is set to true, an expert-level agent will be used to work on the task.",
                 },
             },
             "required": ["task", "expected_output"],
