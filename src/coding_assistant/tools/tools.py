@@ -130,14 +130,14 @@ class OrchestratorTool(Tool):
             ),
         )
 
-        try:
-            output = await run_agent_loop(
-                orchestrator_agent, self._agent_callbacks, self._config.shorten_conversation_at_tokens
-            )
-            self.summary = output.summary
-        finally:
-            self.history = orchestrator_agent.history
-
+        output = await run_agent_loop(
+            orchestrator_agent,
+            self._agent_callbacks,
+            self._config.shorten_conversation_at_tokens,
+            self._config.print_chunks,
+        )
+        self.summary = output.summary
+        self.history = orchestrator_agent.history
         return TextResult(content=output.result)
 
 
@@ -210,7 +210,12 @@ class AgentTool(Tool):
             ),
         )
 
-        output = await run_agent_loop(agent, self._agent_callbacks, self._config.shorten_conversation_at_tokens)
+        output = await run_agent_loop(
+            agent,
+            self._agent_callbacks,
+            self._config.shorten_conversation_at_tokens,
+            self._config.print_chunks,
+        )
         return TextResult(content=output.result)
 
 
@@ -368,7 +373,10 @@ class FeedbackTool(Tool):
         )
 
         output = await run_agent_loop(
-            feedback_agent, self._agent_callbacks, self._config.shorten_conversation_at_tokens
+            feedback_agent,
+            self._agent_callbacks,
+            self._config.shorten_conversation_at_tokens,
+            self._config.print_chunks,
         )
         return TextResult(content=output.result)
 

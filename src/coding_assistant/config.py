@@ -23,5 +23,7 @@ class Config:
     mcp_servers: List[MCPServerConfig]
     shorten_conversation_at_tokens: int
     enable_ask_user: bool
+    print_chunks: bool
+
 
 

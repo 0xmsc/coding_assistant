@@ -106,6 +106,12 @@ def parse_args():
         default=200_000,
         help="Number of tokens after which conversation should be shortened.",
     )
+    parser.add_argument(
+        "--print-chunks",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Print chunks from the model stream.",
+    )
 
     return parser.parse_args()
 
@@ -139,6 +145,7 @@ def create_config_from_args(args) -> Config:
         mcp_servers=mcp_servers,
         shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
         enable_ask_user=args.ask_user,
+        print_chunks=args.print_chunks,
     )
 
 
