@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 litellm.telemetry = False
 litellm.modify_params = True
+litellm.drop_params = True
 
 
 @dataclass
@@ -22,17 +23,24 @@ async def complete(
     tools: list = [],
 ):
     try:
-        completion = await litellm.acompletion(
+        response = await litellm.acompletion(
             messages=messages,
             tools=tools,
             model=model,
-            drop_params=True,
+            stream=True,
         )
 
-        if not completion["choices"]:
-            raise RuntimeError(f"No choices returned from the model: {completion}")
+        chunks = []
+        async for chunk in response:
+            chunks.append(chunk)
 
-        return Completion(message=completion["choices"][0]["message"], tokens=completion["usage"]["total_tokens"])
+        completion = litellm.stream_chunk_builder(chunks)
+        print(completion)
+
+        return Completion(
+            message=completion.choices[0].message,
+            tokens=completion.usage.total_tokens,
+        )
     except Exception as e:
         logger.error(f"Error during model completion: {e}, last messages: {messages[-5:]}")
         raise e
