@@ -115,7 +115,9 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
 
 
 @tracer.start_as_current_span("do_single_step")
-async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_conversation_at_tokens: int):
+async def do_single_step(
+    agent: Agent, agent_callbacks: AgentCallbacks, shorten_conversation_at_tokens: int, print_chunks: bool
+):
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
     if not any(tool.name() == "finish_task" for tool in agent.tools):
@@ -135,7 +137,9 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_
     trace.get_current_span().set_attribute("agent.history", json.dumps(agent.history))
 
     # Do one completion step
-    completion = await complete(agent.history, model=agent.model, tools=tools)
+    completion = await complete(
+        agent.history, model=agent.model, tools=tools, print_chunks=print_chunks
+    )
     message = completion.message
 
     trace.get_current_span().set_attribute("completion.message", message.model_dump_json())
@@ -175,7 +179,8 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_
 async def run_agent_loop(
     agent: Agent,
     agent_callbacks: AgentCallbacks,
-    shorten_conversation_at_tokens,
+    shorten_conversation_at_tokens: int,
+    print_chunks: bool,
 ) -> AgentOutput:
     if agent.output:
         raise RuntimeError("Agent already has a result or summary.")
@@ -196,7 +201,12 @@ async def run_agent_loop(
 
     while True:
         while not agent.output:
-            await do_single_step(agent, agent_callbacks, shorten_conversation_at_tokens)
+            await do_single_step(
+                agent,
+                agent_callbacks,
+                shorten_conversation_at_tokens,
+                print_chunks,
+            )
 
         trace.get_current_span().set_attribute("agent.result", agent.output.result)
         trace.get_current_span().set_attribute("agent.summary", agent.output.summary)
