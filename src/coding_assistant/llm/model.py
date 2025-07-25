@@ -32,7 +32,16 @@ async def complete(
 
         chunks = []
         async for chunk in response:
+            if (
+                len(chunk["choices"]) > 0
+                and "content" in chunk["choices"][0]["delta"]
+                and chunk["choices"][0]["delta"]["content"] is not None
+            ):
+                print(chunk["choices"][0]["delta"]["content"], end="", flush=True)
+
             chunks.append(chunk)
+
+        print()
 
         completion = litellm.stream_chunk_builder(chunks)
 
