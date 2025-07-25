@@ -22,6 +22,7 @@ def create_test_config() -> Config:
         mcp_servers=[],
         shorten_conversation_at_tokens=200_000,
         enable_ask_user=False,
+        print_chunks=False,
     )
 
 

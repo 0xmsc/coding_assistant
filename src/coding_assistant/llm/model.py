@@ -21,6 +21,7 @@ async def complete(
     messages: list[dict],
     model: str,
     tools: list = [],
+    print_chunks: bool = True,
 ):
     try:
         response = await litellm.acompletion(
@@ -32,16 +33,18 @@ async def complete(
 
         chunks = []
         async for chunk in response:
-            if (
-                len(chunk["choices"]) > 0
-                and "content" in chunk["choices"][0]["delta"]
-                and chunk["choices"][0]["delta"]["content"] is not None
-            ):
-                print(chunk["choices"][0]["delta"]["content"], end="", flush=True)
+            if print_chunks:
+                if (
+                    len(chunk["choices"]) > 0
+                    and "content" in chunk["choices"][0]["delta"]
+                    and chunk["choices"][0]["delta"]["content"] is not None
+                ):
+                    print(chunk["choices"][0]["delta"]["content"], end="", flush=True)
 
             chunks.append(chunk)
 
-        print()
+        if print_chunks:
+            print()
 
         completion = litellm.stream_chunk_builder(chunks)
 
