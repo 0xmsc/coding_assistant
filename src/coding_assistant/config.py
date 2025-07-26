@@ -16,7 +16,8 @@ class Config(BaseModel):
     enable_feedback_agent: bool
     enable_user_feedback: bool
     instructions: str | None
-    sandbox_directories: List[Path]
+    readable_sandbox_directories: List[Path]
+    writable_sandbox_directories: List[Path]
     mcp_servers: List[MCPServerConfig]
     shorten_conversation_at_tokens: int
     enable_ask_user: bool
