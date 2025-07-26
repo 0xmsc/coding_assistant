@@ -110,7 +110,7 @@ def parse_args():
     parser.add_argument(
         "--print-chunks",
         action=BooleanOptionalAction,
-        default=True,
+        default=False,
         help="Print chunks from the model stream.",
     )
 
