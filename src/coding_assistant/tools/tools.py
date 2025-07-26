@@ -8,18 +8,18 @@ from typing import Annotated, Optional
 
 from rich.prompt import Prompt
 
+from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
 from coding_assistant.agents.execution import run_agent_loop
+from coding_assistant.agents.parameters import Parameter, fill_parameters, format_parameters
 from coding_assistant.agents.types import (
     Agent,
     AgentOutput,
-    Tool,
-    TextResult,
     FinishTaskResult,
     ShortenConversationResult,
+    TextResult,
+    Tool,
     ToolResult,
 )
-from coding_assistant.agents.parameters import fill_parameters, format_parameters, Parameter
-from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
 from coding_assistant.config import Config
 
 logger = logging.getLogger(__name__)
@@ -249,7 +249,9 @@ class AskClientTool(Tool):
         assert "question" in parameters
 
         if not self.enabled:
-            return TextResult("Client input is disabled for this session. Please continue as if the client had given the most sensible answer to your question.")
+            return TextResult(
+                "Client input is disabled for this session. Please continue as if the client had given the most sensible answer to your question."
+            )
 
         question = parameters["question"]
         default_answer = parameters.get("default_answer")
