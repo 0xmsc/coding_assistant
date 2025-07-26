@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import litellm
 
+from coding_assistant.agents.callbacks import AgentCallbacks
+
 logger = logging.getLogger(__name__)
 
 litellm.telemetry = False
@@ -21,7 +23,7 @@ async def complete(
     messages: list[dict],
     model: str,
     tools: list,
-    print_chunks: bool,
+    callbacks: AgentCallbacks,
 ):
     try:
         response = await litellm.acompletion(
@@ -33,18 +35,14 @@ async def complete(
 
         chunks = []
         async for chunk in response:
-            if print_chunks:
-                if (
-                    len(chunk["choices"]) > 0
-                    and "content" in chunk["choices"][0]["delta"]
-                    and chunk["choices"][0]["delta"]["content"] is not None
-                ):
-                    print(chunk["choices"][0]["delta"]["content"], end="", flush=True)
+            if (
+                len(chunk["choices"]) > 0
+                and "content" in chunk["choices"][0]["delta"]
+                and chunk["choices"][0]["delta"]["content"] is not None
+            ):
+                callbacks.on_llm_chunk(chunk["choices"][0]["delta"]["content"])
 
             chunks.append(chunk)
-
-        if print_chunks:
-            print()
 
         completion = litellm.stream_chunk_builder(chunks)
         return Completion(
