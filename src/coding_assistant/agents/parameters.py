@@ -1,5 +1,6 @@
-from dataclasses import dataclass
 import textwrap
+from dataclasses import dataclass
+
 
 @dataclass
 class Parameter:
@@ -27,16 +28,10 @@ def fill_parameters(
         # Convert all parameter values to sensible string representations
         parameter_type = parameter.get("type")
         if parameter_type == "string":
-            if not isinstance(parameter_values[name], str):
-                raise RuntimeError(f"Parameter {name} is not a string: {parameter_values[name]}")
             value = parameter_values[name]
         elif parameter_type == "array":
-            if not isinstance(parameter_values[name], list):
-                raise RuntimeError(f"Parameter {name} is not an array: {parameter_values[name]}")
             value = textwrap.indent("\n".join(parameter_values[name]), "- ")
         elif parameter_type == "boolean":
-            if not isinstance(parameter_values[name], bool):
-                raise RuntimeError(f"Parameter {name} is not a boolean: {parameter_values[name]}")
             value = str(parameter_values[name])
         else:
             raise RuntimeError(f"Unsupported parameter type: {parameter_type} for parameter {name}")
