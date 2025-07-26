@@ -114,7 +114,7 @@ class OrchestratorTool(Tool):
             mcp_servers=self._mcp_servers,
             tools=[
                 AgentTool(self._config, self._mcp_servers, self._agent_callbacks),
-                AskClientTool(self._config),
+                AskClientTool(self._config.enable_ask_user),
                 ExecuteShellCommandTool(),
                 FinishTaskTool(),
                 ShortenConversation(),
@@ -195,7 +195,7 @@ class AgentTool(Tool):
             mcp_servers=self._mcp_servers,
             tools=[
                 ExecuteShellCommandTool(),
-                AskClientTool(self._config),
+                AskClientTool(self._config.enable_ask_user),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
@@ -220,8 +220,8 @@ class AgentTool(Tool):
 
 
 class AskClientTool(Tool):
-    def __init__(self, config: Config):
-        self.enabled = config.enable_ask_user
+    def __init__(self, enabled: bool):
+        self.enabled = enabled
 
     def name(self) -> str:
         return "ask_client"
