@@ -122,9 +122,9 @@ class RichCallbacks(AgentCallbacks):
     def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
         render_group = Group(
             # Name
-            Padding(Markdown(f"Name: `{tool_name}`"), (1, 0, 0, 0)),
+            Markdown(f"Name: `{tool_name}`"),
             # Arguments
-            Padding(Pretty(arguments, expand_all=True), (1, 0, 0, 0)),
+            Padding(Pretty(arguments, expand_all=True, indent_size=2), (1, 0, 0, 0)),
             # Result
             Padding(Markdown(f"Result:\n```\n{result}\n```"), (1, 0, 0, 0)),
         )
