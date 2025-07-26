@@ -40,7 +40,8 @@ async def complete(
                 and "content" in chunk["choices"][0]["delta"]
                 and chunk["choices"][0]["delta"]["content"] is not None
             ):
-                callbacks.on_chunk(chunk["choices"][0]["delta"]["content"])
+                content = chunk["choices"][0]["delta"]["content"]
+                callbacks.on_chunk(content)
 
             chunks.append(chunk)
 
