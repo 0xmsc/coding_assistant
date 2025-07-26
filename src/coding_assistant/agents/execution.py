@@ -64,7 +64,9 @@ def _handle_finish_task_result(result: FinishTaskResult, agent: Agent):
     return "Agent output set."
 
 
-def _handle_shorten_conversation_result(result: ShortenConversationResult, agent: Agent, agent_callbacks: AgentCallbacks):
+def _handle_shorten_conversation_result(
+    result: ShortenConversationResult, agent: Agent, agent_callbacks: AgentCallbacks
+):
     start_message = create_start_message(agent)
     agent.history = []
     append_user_message(
@@ -112,7 +114,6 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
     )
 
 
-
 def _validate_agent_tools(agent: Agent):
     if not any(tool.name() == "finish_task" for tool in agent.tools):
         raise RuntimeError("Agent needs to have a `finish_task` tool in order to run a step.")
@@ -129,7 +130,9 @@ def _handle_no_tool_calls(agent: Agent, agent_callbacks: AgentCallbacks):
     )
 
 
-def _check_conversation_length(agent: Agent, agent_callbacks: AgentCallbacks, tokens: int, shorten_conversation_at_tokens: int):
+def _check_conversation_length(
+    agent: Agent, agent_callbacks: AgentCallbacks, tokens: int, shorten_conversation_at_tokens: int
+):
     if tokens > shorten_conversation_at_tokens:
         append_user_message(
             agent.history,
@@ -177,17 +180,6 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_
     return message
 
 
-async def _handle_feedback(agent: Agent, agent_callbacks: AgentCallbacks):
-    if feedback := await agent.feedback_function(agent):
-        formatted_feedback = FEEDBACK_TEMPLATE.format(
-            feedback=textwrap.indent(feedback, "  "),
-        )
-        append_user_message(agent.history, agent_callbacks, agent.name, formatted_feedback)
-        agent.output = None
-        return True
-    return False
-
-
 @tracer.start_as_current_span("run_agent_loop")
 async def run_agent_loop(
     agent: Agent,
@@ -205,24 +197,25 @@ async def run_agent_loop(
     agent_callbacks.on_agent_start(agent.name, agent.model, is_resuming=bool(agent.history))
     append_user_message(agent.history, agent_callbacks, agent.name, start_message)
 
-    while not agent.output:
-        await do_single_step(
-            agent,
-            agent_callbacks,
-            shorten_conversation_at_tokens,
-        )
+    while True:
+        while not agent.output:
+            await do_single_step(agent, agent_callbacks, shorten_conversation_at_tokens)
 
-        if agent.output:
-            trace.get_current_span().set_attribute("agent.result", agent.output.result)
-            trace.get_current_span().set_attribute("agent.summary", agent.output.summary)
-            agent_callbacks.on_agent_end(agent.name, agent.output.result, agent.output.summary)
+        trace.get_current_span().set_attribute("agent.result", agent.output.result)
+        trace.get_current_span().set_attribute("agent.summary", agent.output.summary)
+        agent_callbacks.on_agent_end(agent.name, agent.output.result, agent.output.summary)
 
-            if await _handle_feedback(agent, agent_callbacks):
-                continue
-            else:
-                break
+        feedback = await agent.feedback_function(agent)
+        if feedback:
+            formatted_feedback = FEEDBACK_TEMPLATE.format(
+                feedback=textwrap.indent(feedback, "  "),
+            )
+            append_user_message(agent.history, agent_callbacks, agent.name, formatted_feedback)
 
-    if not agent.output:
-        raise RuntimeError("Agent finished without a result.")
+            # Clear output so agent continues working
+            agent.output = None
+        else:
+            # No feedback - we're done
+            break
 
     return agent.output
