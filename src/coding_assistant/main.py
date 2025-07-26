@@ -7,6 +7,7 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptio
 from pathlib import Path
 from typing import Optional
 
+import debugpy
 import requests
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -266,6 +267,8 @@ async def _main():
 
 
 def main():
+    # debugpy.listen(1234)
+    # debugpy.wait_for_client()
     asyncio.run(_main())
 
 
