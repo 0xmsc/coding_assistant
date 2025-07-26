@@ -4,10 +4,14 @@ import json
 from abc import ABC, abstractmethod
 from pprint import pformat
 
+from rich.padding import Padding
 from rich import print
+from rich.console import Group
+from rich.json import JSON
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.pretty import Pretty
-from rich.markdown import Markdown
+from rich.text import Text
 
 
 class AgentCallbacks(ABC):
@@ -98,7 +102,6 @@ class RichCallbacks(AgentCallbacks):
         )
 
     def on_user_message(self, agent_name: str, content: str):
-        print(content)
         print(
             Panel(
                 Markdown(content),
@@ -117,10 +120,17 @@ class RichCallbacks(AgentCallbacks):
         )
 
     def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
-        message = f"Name: {tool_name}\n\nArguments: {json.dumps(arguments, indent=2)}\n\nResult:\n\n{result}"
+        render_group = Group(
+            # Name
+            Padding(Markdown(f"Name: `{tool_name}`"), (1, 0, 0, 0)),
+            # Arguments
+            Padding(Pretty(arguments, expand_all=True), (1, 0, 0, 0)),
+            # Result
+            Padding(Markdown(f"Result:\n```\n{result}\n```"), (1, 0, 0, 0)),
+        )
         print(
             Panel(
-                message,
+                render_group,
                 title=f"Agent {agent_name} tool call",
                 border_style="yellow",
             ),
