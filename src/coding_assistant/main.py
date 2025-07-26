@@ -244,13 +244,19 @@ async def _main(args):
 
     if args.sandbox:
         logger.info(f"Sandboxing is enabled.")
+
         readable_sandbox_directories = [
-            working_directory,
+            *config.readable_sandbox_directories,
             venv_directory,
         ]
-        readable_sandbox_directories.extend(config.readable_sandbox_directories)
-        writable_sandbox_directories = config.writable_sandbox_directories
-        logger.info(f"Sandbox directories: {readable_sandbox_directories}")
+        logger.info(f"Readable sandbox directories: {readable_sandbox_directories}")
+
+        writable_sandbox_directories = [
+            *config.writable_sandbox_directories,
+            working_directory,
+        ]
+        logger.info(f"Writable sandbox directories: {writable_sandbox_directories}")
+
         sandbox(readable_directories=readable_sandbox_directories, writable_directories=writable_sandbox_directories)
     else:
         logger.warning("Sandboxing is disabled")
