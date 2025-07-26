@@ -20,6 +20,7 @@ dependencies = [
     "landlock",
     "beeprint",
     "pydantic",
+    "debugpy>=1.8.15",
 ]
 
 [tool.black]
