@@ -76,13 +76,13 @@ class AgentToolBase(Tool):
 
 
 class LaunchOrchestratorAgentSchema(BaseModel):
-    task: str = Field(..., description="The task to assign to the orchestrator agent.")
+    task: str = Field(description="The task to assign to the orchestrator agent.")
     summaries: List[str] = Field(
         default_factory=list,
         description="The past conversation summaries of the client and the agent.",
     )
-    instructions: str = Field(
-        "",
+    instructions: str | None = Field(
+        default=None,
         description="Special instructions for the agent. The agent will do everything it can to follow these instructions. The orchestrator will forward relevant instructions to the other agents it launches.",
     )
 
@@ -144,13 +144,12 @@ class OrchestratorTool(AgentToolBase):
 
 
 class LaunchAgentSchema(BaseModel):
-    task: str = Field(..., description="The task to assign to the sub-agent.")
+    task: str = Field(description="The task to assign to the sub-agent.")
     expected_output: str = Field(
-        ...,
         description="The expected output to return to the client. This includes the content but also the format of the output (e.g. markdown).",
     )
-    instructions: str = Field(
-        "",
+    instructions: str | None = Field(
+        default=None,
         description="Special instructions for the agent. The agent will do everything it can to follow these instructions.",
     )
     expert_knowledge: bool = Field(
@@ -210,8 +209,8 @@ class AgentTool(AgentToolBase):
 
 
 class AskClientSchema(BaseModel):
-    question: str = Field(..., description="The question to ask the client.")
-    default_answer: str = Field("", description="A sensible default answer to the question.")
+    question: str = Field(description="The question to ask the client.")
+    default_answer: str | None = Field(default=None, description="A sensible default answer to the question.")
 
 
 class AskClientTool(Tool):
@@ -242,7 +241,7 @@ class AskClientTool(Tool):
 
 
 class ExecuteShellCommandSchema(BaseModel):
-    command: str = Field(..., description="The shell command to execute.")
+    command: str = Field(description="The shell command to execute.")
     timeout: int = Field(60, description="The timeout for the command in seconds.")
 
 
@@ -293,11 +292,11 @@ class ExecuteShellCommandTool(Tool):
 
 
 class LaunchFeedbackAgentSchema(BaseModel):
-    description: str = Field(..., description="The description of the agent that was working on the task.")
-    parameters: str = Field(..., description="The parameters the agent was given for the task.")
-    result: str = Field(..., description="The result of the agent.")
-    summary: str = Field("", description="A summary of the conversation with the client.")
-    feedback: str = Field("", description="The feedback provided to the agent during the work on the task.")
+    description: str = Field(description="The description of the agent that was working on the task.")
+    parameters: str = Field(description="The parameters the agent was given for the task.")
+    result: str = Field(description="The result of the agent.")
+    summary: str | None = Field(default=None, description="A summary of the conversation with the client.")
+    feedback: str | None = Field(default=None, description="The feedback provided to the agent during the work on the task.")
 
 
 class FeedbackTool(AgentToolBase):
@@ -346,14 +345,13 @@ class FeedbackTool(AgentToolBase):
 
 class FinishTaskSchema(BaseModel):
     result: str = Field(
-        ..., description="The result of the work on the task. The work of the agent is evaluated based on this result."
+        description="The result of the work on the task. The work of the agent is evaluated based on this result."
     )
     summary: str = Field(
-        ...,
         description="A concise summary of the conversation the agent and the client had. There should be enough context such that the work could be continued based on this summary.",
     )
-    feedback: str = Field(
-        "",
+    feedback: str | None = Field(
+        default=None,
         description="A summary of the feedback given by the client to the agent during the task. This can both be questions that were answered by the client, or feedback. It needs to be clear from this parameter why the result might not fit to initial task description.",
     )
 
@@ -377,7 +375,7 @@ class FinishTaskTool(Tool):
 
 
 class ShortenConversationSchema(BaseModel):
-    summary: str = Field(..., description="A summary of the conversation so far.")
+    summary: str = Field(description="A summary of the conversation so far.")
 
 
 class ShortenConversation(Tool):

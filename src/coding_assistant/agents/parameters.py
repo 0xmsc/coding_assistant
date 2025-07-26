@@ -25,10 +25,20 @@ def fill_parameters(
             else:
                 continue
 
-        # Convert all parameter values to sensible string representations
-        parameter_type = parameter.get("type")
+        # Extract parameter type
+        parameter_type = None
+        if "type" in parameter:
+            parameter_type = parameter["type"]
+        elif "anyOf" in parameter:
+            types_except_null = [t for t in parameter["anyOf"] if t.get("type") != "null"]
+            if len(types_except_null) == 1:
+                parameter_type = types_except_null[0].get("type")
+
+        if not parameter_type:
+            raise RuntimeError(f"Could not determine type for parameter {name}, schema {parameter}")
+
         if parameter_type == "string":
-            value = parameter_values[name]
+            value = str(parameter_values[name])
         elif parameter_type == "array":
             value = textwrap.indent("\n".join(parameter_values[name]), "- ")
         elif parameter_type == "boolean":
