@@ -201,6 +201,7 @@ async def run_orchestrator_agent(
             result = await tool.execute(orchestrator_params)
         finally:
             save_orchestrator_history(working_directory, tool.history)
+            trim_orchestrator_history(working_directory)
 
     summary = tool.summary
     save_conversation_summary(working_directory, summary)
@@ -218,7 +219,6 @@ async def _main(args):
     working_directory = Path(os.getcwd())
     logger.info(f"Running in working directory: {working_directory}")
 
-    trim_orchestrator_history(working_directory)
     conversation_summaries = get_conversation_summaries(working_directory)
 
     if args.resume_file:
