@@ -3,6 +3,7 @@
 import json
 from abc import ABC, abstractmethod
 from pprint import pformat
+import textwrap
 
 from rich.padding import Padding
 from rich import print
@@ -95,7 +96,7 @@ class RichCallbacks(AgentCallbacks):
     def on_agent_end(self, agent_name: str, result: str, summary: str):
         print(
             Panel(
-                f"Result: {result}\n\nSummary: {summary}",
+                Markdown(f"Result\n\n{textwrap.indent(result, '> ')}\n\nSummary\n\n{textwrap.indent(summary, '> ')}"),
                 title=f"Agent {agent_name} result",
                 border_style="red",
             ),
