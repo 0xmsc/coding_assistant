@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,7 +19,7 @@ def create_test_config() -> Config:
         enable_feedback_agent=True,
         enable_user_feedback=False,
         instructions=None,
-        sandbox_directories=["/tmp"],
+        sandbox_directories=[Path("/tmp")],
         mcp_servers=[],
         shorten_conversation_at_tokens=200_000,
         enable_ask_user=False,

@@ -8,4 +8,4 @@ hello-world:
 
 commit:
     ./run.fish \
-    --task "Review the unstaged changes and commit them, if they're okay. You can also create multiple commits if you want to."
+    --task "Review the uncommited changes and commit them, if they're okay. You can also create multiple commits if you want to."

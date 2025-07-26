@@ -11,6 +11,7 @@ INSTRUCTIONS = """
 - Do not install any software on the users computer before asking.
 - Do not run any binary using `uvx` or `npx` without asking the user first.
 - Almost all of your tasks are related to the codebase you are currently working in. When the user asks a question, be *very* sure before starting a web search that this is what the user wants.
+- If you output text, use markdown formatting where appropriate.
 """.strip()
 
 
