@@ -74,6 +74,9 @@ class NullCallbacks(AgentCallbacks):
 
 
 class RichCallbacks(AgentCallbacks):
+    def __init__(self, print_chunks: bool = True):
+        self.print_chunks = print_chunks
+
     def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
         status = "resuming" if is_resuming else "starting"
         print(
@@ -122,7 +125,9 @@ class RichCallbacks(AgentCallbacks):
         )
 
     def on_chunk(self, chunk: str):
-        print(chunk, end="", flush=True)
+        if self.print_chunks:
+            print(chunk, end="", flush=True)
 
     def on_chunks_end(self):
-        print()
+        if self.print_chunks:
+            print()

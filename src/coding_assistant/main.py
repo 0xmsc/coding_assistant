@@ -258,7 +258,7 @@ async def _main(args):
         if not args.task:
             raise ValueError("Task must be provided. Use --task to specify the task for the orchestrator agent.")
 
-        agent_callbacks = RichCallbacks()
+        agent_callbacks = RichCallbacks(print_chunks=args.print_chunks)
 
         await run_orchestrator_agent(
             task=args.task,
