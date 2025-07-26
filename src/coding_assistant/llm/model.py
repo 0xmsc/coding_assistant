@@ -1,6 +1,6 @@
-from dataclasses import dataclass
 import logging
 import os
+from dataclasses import dataclass
 
 import litellm
 
@@ -47,10 +47,9 @@ async def complete(
             print()
 
         completion = litellm.stream_chunk_builder(chunks)
-
         return Completion(
-            message=completion.choices[0].message,
-            tokens=completion.usage.total_tokens,
+            message=completion["choices"][0]["message"],
+            tokens=completion["usage"]["total_tokens"],
         )
     except Exception as e:
         logger.error(f"Error during model completion: {e}, last messages: {messages[-5:]}")
