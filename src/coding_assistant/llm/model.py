@@ -40,7 +40,7 @@ async def complete(
                 and "content" in chunk["choices"][0]["delta"]
                 and chunk["choices"][0]["delta"]["content"] is not None
             ):
-                callbacks.on_llm_chunk(chunk["choices"][0]["delta"]["content"])
+                callbacks.on_chunk(chunk["choices"][0]["delta"]["content"])
 
             chunks.append(chunk)
 

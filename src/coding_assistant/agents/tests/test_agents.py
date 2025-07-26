@@ -2,10 +2,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from coding_assistant.tools.tools import FeedbackTool, OrchestratorTool
-from coding_assistant.agents.types import Agent
 from coding_assistant.agents.execution import create_start_message
+from coding_assistant.agents.types import Agent
 from coding_assistant.config import Config
+from coding_assistant.tools.tools import FeedbackTool, OrchestratorTool
 
 TEST_MODEL = "gemini/gemini-2.5-flash"
 
@@ -18,7 +18,7 @@ def create_test_config() -> Config:
         enable_feedback_agent=True,
         enable_user_feedback=False,
         instructions=None,
-        sandbox_directories=[],
+        sandbox_directories=["/tmp"],
         mcp_servers=[],
         shorten_conversation_at_tokens=200_000,
         enable_ask_user=False,
