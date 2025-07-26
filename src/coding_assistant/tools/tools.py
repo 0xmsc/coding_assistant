@@ -134,7 +134,6 @@ class OrchestratorTool(Tool):
             orchestrator_agent,
             self._agent_callbacks,
             self._config.shorten_conversation_at_tokens,
-            self._config.print_chunks,
         )
         self.summary = output.summary
         self.history = orchestrator_agent.history
@@ -214,7 +213,6 @@ class AgentTool(Tool):
             agent,
             self._agent_callbacks,
             self._config.shorten_conversation_at_tokens,
-            self._config.print_chunks,
         )
         return TextResult(content=output.result)
 
@@ -389,7 +387,6 @@ class FeedbackTool(Tool):
             feedback_agent,
             self._agent_callbacks,
             self._config.shorten_conversation_at_tokens,
-            self._config.print_chunks,
         )
         return TextResult(content=output.result)
 
@@ -434,7 +431,7 @@ class ShortenConversation(Tool):
         return "shorten_conversation"
 
     def description(self) -> str:
-        return "Give the framework a short, concise summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. Additionally, you should include the next steps you had planned. This tool should only be called when the client tells you to call it."
+        return "Give the framework a summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. Additionally, you should include the next steps you had planned. This tool should only be called when the client tells you to call it."
 
     def parameters(self) -> dict:
         return {
