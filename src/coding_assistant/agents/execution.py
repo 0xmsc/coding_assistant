@@ -209,7 +209,7 @@ async def run_agent_loop(
         feedback = await agent.feedback_function(agent)
         if feedback:
             formatted_feedback = FEEDBACK_TEMPLATE.format(
-                feedback=textwrap.indent(feedback, "  "),
+                feedback=textwrap.indent(feedback, "> "),
             )
             append_user_message(agent.history, agent_callbacks, agent.name, formatted_feedback)
 
