@@ -20,7 +20,7 @@ class Completion:
 async def complete(
     messages: list[dict],
     model: str,
-    tools: list = [],
+    tools: list,
     print_chunks: bool,
 ):
     try:
