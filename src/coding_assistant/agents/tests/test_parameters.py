@@ -284,10 +284,7 @@ class TestFormatValueByType:
     def test_array_type(self):
         assert _format_value_by_type(["a", "b"], "array", "test") == "- a\n- b"
         assert _format_value_by_type([1, 2, 3], "array", "test") == "- 1\n- 2\n- 3"
-
-    def test_array_type_wrong_input(self):
-        with pytest.raises(RuntimeError, match="Expected array for parameter 'test'"):
-            _format_value_by_type("not_an_array", "array", "test")
+        assert _format_value_by_type(["- a", "b"], "array", "test") == "- a\n- b"
 
     def test_boolean_type(self):
         assert _format_value_by_type(True, "boolean", "test") == "True"

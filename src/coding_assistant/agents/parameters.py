@@ -61,9 +61,14 @@ def _format_value_by_type(value, param_type: str, param_name: str) -> str:
     if param_type == "string":
         return str(value)
     elif param_type == "array":
-        if not isinstance(value, (list, tuple)):
-            raise RuntimeError(f"Expected array for parameter '{param_name}', got {type(value).__name__}")
-        return textwrap.indent("\n".join(str(item) for item in value), "- ")
+        formatted_items = []
+        for item in value:
+            item_str = str(item)
+            if item_str.startswith("- "):
+                formatted_items.append(item_str)
+            else:
+                formatted_items.append(f"- {item_str}")
+        return "\n".join(formatted_items)
     elif param_type == "boolean":
         return str(value)
     elif param_type in ("integer", "number"):
