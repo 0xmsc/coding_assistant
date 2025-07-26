@@ -282,6 +282,10 @@ class ExecuteShellCommandTool(Tool):
                     "type": "string",
                     "description": "The shell command to execute.",
                 },
+                "timeout": {
+                    "type": "integer",
+                    "description": "The timeout for the command in seconds.",
+                },
             },
             "required": ["command"],
         }
@@ -290,8 +294,15 @@ class ExecuteShellCommandTool(Tool):
         assert "command" in parameters
 
         command = parameters["command"]
+        timeout = parameters.get("timeout", 60)
         args = ["bash", "-c", command]
-        result = await asyncio.to_thread(subprocess.run, args, capture_output=True, text=True)
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(subprocess.run, args, capture_output=True, text=True),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            return TextResult(content=f"Command timed out after {timeout} seconds")
 
         if result.returncode != 0:
             return TextResult(
