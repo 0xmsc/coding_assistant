@@ -94,11 +94,11 @@ class RichCallbacks(AgentCallbacks):
         )
 
     def on_agent_end(self, agent_name: str, result: str, summary: str):
+        quoted_result = textwrap.indent(result, "> ", lambda _: True)
+        quoted_summary = textwrap.indent(summary, "> ", lambda _: True)
         print(
             Panel(
-                Markdown(
-                    f"Result\n\n{textwrap.indent(result, '> ', lambda _: True)}\n\nSummary\n\n{textwrap.indent(summary, '> ', lambda _: True)}"
-                ),
+                Markdown(f"Result\n\n{quoted_result}\n\nSummary\n\n{quoted_summary}"),
                 title=f"Agent {agent_name} result",
                 border_style="red",
             ),
