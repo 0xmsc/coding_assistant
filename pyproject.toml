@@ -31,6 +31,7 @@ line-length = 120
 
 [project.scripts]
 coding-assistant = "coding_assistant.main:main"
+sandbox = "coding_assistant.sandbox:main"
 
 [build-system]
 requires = ["hatchling"]
