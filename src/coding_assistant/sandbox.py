@@ -1,4 +1,6 @@
 import logging
+import subprocess
+import sys
 from pathlib import Path
 from typing import List
 
@@ -54,3 +56,48 @@ def sandbox(readable_directories: list[Path], writable_directories: list[Path]):
         rs.allow(directory, rules=FSAccess.all())
 
     rs.apply()
+
+
+def main():
+    """Main function for CLI usage of sandbox."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run a command in a sandboxed environment with restricted filesystem access"
+    )
+    parser.add_argument(
+        "--readable-directories",
+        type=str,
+        nargs="*",
+        default=[],
+        help="Directories that should be readable (space-separated paths)",
+    )
+    parser.add_argument(
+        "--writable-directories",
+        type=str,
+        nargs="*",
+        default=[],
+        help="Directories that should be writable (space-separated paths)",
+    )
+    parser.add_argument(
+        "command",
+        nargs="+",
+        help="Command and arguments to execute in the sandbox",
+    )
+
+    args = parser.parse_args()
+
+    # Convert string paths to Path objects
+    readable_dirs = [Path(d).resolve() for d in args.readable_directories]
+    writable_dirs = [Path(d).resolve() for d in args.writable_directories]
+
+    # Apply sandbox
+    sandbox(readable_directories=readable_dirs, writable_directories=writable_dirs)
+
+    # Execute the command
+    result = subprocess.run(args.command, capture_output=False)
+    sys.exit(result.returncode)
+
+
+if __name__ == "__main__":
+    main()
