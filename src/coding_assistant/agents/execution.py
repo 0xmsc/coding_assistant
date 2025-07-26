@@ -6,11 +6,11 @@ import textwrap
 from opentelemetry import trace
 
 from coding_assistant.agents.callbacks import AgentCallbacks
-from coding_assistant.agents.history import append_tool_message, append_user_message, append_assistant_message
-from coding_assistant.agents.types import Agent, AgentOutput, TextResult, FinishTaskResult, ShortenConversationResult
+from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
 from coding_assistant.agents.parameters import format_parameters
+from coding_assistant.agents.types import Agent, AgentOutput, FinishTaskResult, ShortenConversationResult, TextResult
+from coding_assistant.llm.adapters import execute_tool_call, get_tools
 from coding_assistant.llm.model import complete
-from coding_assistant.llm.adapters import get_tools, execute_tool_call
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -115,9 +115,7 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
 
 
 @tracer.start_as_current_span("do_single_step")
-async def do_single_step(
-    agent: Agent, agent_callbacks: AgentCallbacks, shorten_conversation_at_tokens: int, print_chunks: bool
-):
+async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_conversation_at_tokens: int):
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
     if not any(tool.name() == "finish_task" for tool in agent.tools):
@@ -138,7 +136,10 @@ async def do_single_step(
 
     # Do one completion step
     completion = await complete(
-        agent.history, model=agent.model, tools=tools, print_chunks=print_chunks
+        agent.history,
+        model=agent.model,
+        tools=tools,
+        callbacks=agent_callbacks,
     )
     message = completion.message
 
@@ -180,7 +181,6 @@ async def run_agent_loop(
     agent: Agent,
     agent_callbacks: AgentCallbacks,
     shorten_conversation_at_tokens: int,
-    print_chunks: bool,
 ) -> AgentOutput:
     if agent.output:
         raise RuntimeError("Agent already has a result or summary.")
@@ -205,7 +205,6 @@ async def run_agent_loop(
                 agent,
                 agent_callbacks,
                 shorten_conversation_at_tokens,
-                print_chunks,
             )
 
         trace.get_current_span().set_attribute("agent.result", agent.output.result)

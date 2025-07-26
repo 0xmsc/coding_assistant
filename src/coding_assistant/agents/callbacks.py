@@ -1,8 +1,8 @@
 """Callback interfaces for agent interactions."""
 
+import json
 from abc import ABC, abstractmethod
 from pprint import pformat
-import json
 
 from rich import print
 from rich.panel import Panel
@@ -37,6 +37,11 @@ class AgentCallbacks(ABC):
         """Handle messages with role: tool."""
         pass
 
+    @abstractmethod
+    def on_llm_chunk(self, chunk: str):
+        """Handle LLM chunks."""
+        pass
+
 
 class NullCallbacks(AgentCallbacks):
     """Null object implementation that does nothing."""
@@ -54,6 +59,9 @@ class NullCallbacks(AgentCallbacks):
         pass
 
     def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
+        pass
+
+    def on_llm_chunk(self, chunk: str):
         pass
 
 
@@ -104,3 +112,6 @@ class RichCallbacks(AgentCallbacks):
                 border_style="yellow",
             ),
         )
+
+    def on_llm_chunk(self, chunk: str):
+        print(chunk, end="", flush=True)
