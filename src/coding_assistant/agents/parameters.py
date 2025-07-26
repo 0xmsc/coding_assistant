@@ -29,7 +29,7 @@ def fill_parameters(
             raise RuntimeError(f"Could not determine type for parameter '{name}': {schema}")
 
         # Convert value to string representation
-        value = _format_value_by_type(parameter_values[name], param_type, name)
+        value = _format_value_by_type(parameter_values[name], name)
 
         parameters.append(
             Parameter(
@@ -56,11 +56,11 @@ def _extract_type_from_schema(schema: dict) -> str | None:
     return None
 
 
-def _format_value_by_type(value, param_type: str, param_name: str) -> str:
+def _format_value_by_type(value, param_name: str) -> str:
     """Format a parameter value according to its type."""
-    if param_type == "string":
-        return str(value)
-    elif param_type == "array":
+    if isinstance(value, str):
+        return value
+    elif isinstance(value, list):
         formatted_items = []
         for item in value:
             item_str = str(item)
@@ -69,12 +69,12 @@ def _format_value_by_type(value, param_type: str, param_name: str) -> str:
             else:
                 formatted_items.append(f"- {item_str}")
         return "\n".join(formatted_items)
-    elif param_type == "boolean":
+    elif isinstance(value, bool):
         return str(value)
-    elif param_type in ("integer", "number"):
+    elif isinstance(value, (int, float)):
         return str(value)
     else:
-        raise RuntimeError(f"Unsupported parameter type '{param_type}' for parameter '{param_name}'")
+        raise RuntimeError(f"Unsupported parameter type for parameter '{param_name}'")
 
 
 def format_parameters(parameters: list[Parameter]) -> str:

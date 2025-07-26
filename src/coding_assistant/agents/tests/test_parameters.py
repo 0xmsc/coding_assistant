@@ -181,7 +181,7 @@ class TestFillParameters:
         }
         values = {"weird_field": {"key": "value"}}
         
-        with pytest.raises(RuntimeError, match="Unsupported parameter type 'object'"):
+        with pytest.raises(RuntimeError, match="Unsupported parameter type for parameter 'weird_field'"):
             fill_parameters(schema, values)
 
     def test_no_type_determinable(self):
@@ -278,24 +278,24 @@ class TestExtractTypeFromSchema:
 
 class TestFormatValueByType:
     def test_string_type(self):
-        assert _format_value_by_type("hello", "string", "test") == "hello"
-        assert _format_value_by_type(123, "string", "test") == "123"
+        assert _format_value_by_type("hello", "test") == "hello"
+        assert _format_value_by_type("123", "test") == "123"
 
     def test_array_type(self):
-        assert _format_value_by_type(["a", "b"], "array", "test") == "- a\n- b"
-        assert _format_value_by_type([1, 2, 3], "array", "test") == "- 1\n- 2\n- 3"
-        assert _format_value_by_type(["- a", "b"], "array", "test") == "- a\n- b"
+        assert _format_value_by_type(["a", "b"], "test") == "- a\n- b"
+        assert _format_value_by_type([1, 2, 3], "test") == "- 1\n- 2\n- 3"
+        assert _format_value_by_type(["- a", "b"], "test") == "- a\n- b"
 
     def test_boolean_type(self):
-        assert _format_value_by_type(True, "boolean", "test") == "True"
-        assert _format_value_by_type(False, "boolean", "test") == "False"
+        assert _format_value_by_type(True, "test") == "True"
+        assert _format_value_by_type(False, "test") == "False"
 
     def test_integer_type(self):
-        assert _format_value_by_type(42, "integer", "test") == "42"
+        assert _format_value_by_type(42, "test") == "42"
 
     def test_number_type(self):
-        assert _format_value_by_type(3.14, "number", "test") == "3.14"
+        assert _format_value_by_type(3.14, "test") == "3.14"
 
     def test_unsupported_type(self):
-        with pytest.raises(RuntimeError, match="Unsupported parameter type 'object'"):
-            _format_value_by_type({}, "object", "test")
+        with pytest.raises(RuntimeError, match="Unsupported parameter type for parameter 'test'"):
+            _format_value_by_type({}, "test")
