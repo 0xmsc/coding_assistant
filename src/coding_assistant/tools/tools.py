@@ -130,14 +130,16 @@ class OrchestratorTool(Tool):
             ),
         )
 
-        output = await run_agent_loop(
-            orchestrator_agent,
-            self._agent_callbacks,
-            self._config.shorten_conversation_at_tokens,
-        )
-        self.summary = output.summary
-        self.history = orchestrator_agent.history
-        return TextResult(content=output.result)
+        try:
+            output = await run_agent_loop(
+                orchestrator_agent,
+                self._agent_callbacks,
+                self._config.shorten_conversation_at_tokens,
+            )
+            self.summary = output.summary
+            return TextResult(content=output.result)
+        finally:
+            self.history = orchestrator_agent.history
 
 
 class AgentTool(Tool):
