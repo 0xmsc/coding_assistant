@@ -1,10 +1,28 @@
 import multiprocessing
 import subprocess
 from pathlib import Path
+from enum import Enum
 
 import pytest
 
 from coding_assistant.sandbox import sandbox
+
+# Use spawn instead of fork to avoid deprecation warnings with multi-threaded pytest
+multiprocessing.set_start_method("spawn", force=True)
+
+
+class TestResult(Enum):
+    SUCCESS = "success"
+    ERROR = "error"
+
+
+def _multiprocessing_wrapper(queue, func, *args):
+    """Wrapper function for multiprocessing - needs to be at module level for pickling."""
+    try:
+        func(*args)
+        queue.put((TestResult.SUCCESS, None))
+    except Exception as e:
+        queue.put((TestResult.ERROR, str(e)))
 
 
 def _run_in_sandbox(test_func, *args):
@@ -12,22 +30,14 @@ def _run_in_sandbox(test_func, *args):
     Run a test function in a separate process to avoid sandbox affecting pytest cleanup.
     Returns True if the test passed, False if it failed.
     """
-
-    def wrapper(queue, func, *args):
-        try:
-            func(*args)
-            queue.put(("success", None))
-        except Exception as e:
-            queue.put(("error", str(e)))
-
     queue = multiprocessing.Queue()
-    process = multiprocessing.Process(target=wrapper, args=(queue, test_func, *args))
+    process = multiprocessing.Process(target=_multiprocessing_wrapper, args=(queue, test_func, *args))
     process.start()
     process.join()
 
     if not queue.empty():
         result_type, message = queue.get()
-        if result_type == "success":
+        if result_type == TestResult.SUCCESS:
             return True
         else:
             print(f"Child process failed: {message}")
