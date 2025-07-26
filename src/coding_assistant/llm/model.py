@@ -21,7 +21,7 @@ async def complete(
     messages: list[dict],
     model: str,
     tools: list = [],
-    print_chunks: bool = True,
+    print_chunks: bool,
 ):
     try:
         response = await litellm.acompletion(
