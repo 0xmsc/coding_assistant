@@ -9,3 +9,7 @@ hello-world:
 commit:
     ./run.fish \
     --task "Review the uncommited changes and commit them, if they're okay. You can also create multiple commits if you want to."
+
+review:
+    ./run.fish \
+    --task "Review changes in the current branch like a senior engineer would do. Stop if there are uncommitted changes, or the branch cannot be diffed against master. If you find issues, ask the client if you should fix them. If you fix something, commit the changes and continue reviewing."
