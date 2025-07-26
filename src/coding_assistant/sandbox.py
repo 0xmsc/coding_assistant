@@ -19,7 +19,7 @@ def _get_read_only_file_rule():
     return FSAccess.READ_FILE
 
 
-def sandbox(directories: list[Path]):
+def sandbox(readable_directories: list[Path], writable_directories: list[Path]):
     rs = Ruleset()
 
     # System directories
@@ -43,7 +43,12 @@ def sandbox(directories: list[Path]):
     rs.allow(Path("~/.cfg").expanduser(), rules=_get_read_only_rule())
 
     # Allow each directory passed in the directories list
-    for directory in directories:
+    for directory in readable_directories:
+        if not directory.exists():
+            raise FileNotFoundError(f"Directory {directory} does not exist.")
+        rs.allow(directory, rules=_get_read_only_rule())
+
+    for directory in writable_directories:
         if not directory.exists():
             raise FileNotFoundError(f"Directory {directory} does not exist.")
         rs.allow(directory, rules=FSAccess.all())

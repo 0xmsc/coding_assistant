@@ -78,9 +78,15 @@ def parse_args():
     )
     parser.add_argument("--instructions", type=str, help="Custom instructions for the agent.")
     parser.add_argument(
-        "--sandbox-directories",
+        "--readable-sandbox-directories",
         nargs="*",
         default=["/tmp"],
+        help="Additional directories to include in the sandbox.",
+    )
+    parser.add_argument(
+        "--writable-sandbox-directories",
+        nargs="*",
+        default=[],
         help="Additional directories to include in the sandbox.",
     )
     parser.add_argument(
@@ -142,7 +148,8 @@ def create_config_from_args(args) -> Config:
         enable_feedback_agent=args.feedback_agent,
         enable_user_feedback=args.user_feedback,
         instructions=args.instructions,
-        sandbox_directories=[Path(d).expanduser() for d in args.sandbox_directories],
+        readable_sandbox_directories=[Path(d).expanduser() for d in args.readable_sandbox_directories],
+        writable_sandbox_directories=[Path(d).expanduser() for d in args.writable_sandbox_directories],
         mcp_servers=mcp_servers,
         shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
         enable_ask_user=args.ask_user,
@@ -237,13 +244,14 @@ async def _main(args):
 
     if args.sandbox:
         logger.info(f"Sandboxing is enabled.")
-        sandbox_directories = [
+        readable_sandbox_directories = [
             working_directory,
             venv_directory,
         ]
-        sandbox_directories.extend(config.sandbox_directories)
-        logger.info(f"Sandbox directories: {sandbox_directories}")
-        sandbox(directories=sandbox_directories)
+        readable_sandbox_directories.extend(config.readable_sandbox_directories)
+        writable_sandbox_directories = config.writable_sandbox_directories
+        logger.info(f"Sandbox directories: {readable_sandbox_directories}")
+        sandbox(readable_directories=readable_sandbox_directories, writable_directories=writable_sandbox_directories)
     else:
         logger.warning("Sandboxing is disabled")
 
