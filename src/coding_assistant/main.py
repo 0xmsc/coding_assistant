@@ -114,6 +114,13 @@ def parse_args():
         help="Print chunks from the model stream.",
     )
 
+    parser.add_argument(
+        "--wait-for-debugger",
+        action=BooleanOptionalAction,
+        default=False,
+        help="Wait for a debugger to attach.",
+    )
+
     return parser.parse_args()
 
 
@@ -195,8 +202,7 @@ async def run_orchestrator_agent(
     return result
 
 
-async def _main():
-    args = parse_args()
+async def _main(args):
     setup_tracing(args)
 
     config = create_config_from_args(args)
@@ -267,9 +273,12 @@ async def _main():
 
 
 def main():
-    # debugpy.listen(1234)
-    # debugpy.wait_for_client()
-    asyncio.run(_main())
+    args = parse_args()
+    if args.wait_for_debugger:
+        logger.info("Waiting for debugger to attach on port 1234")
+        debugpy.listen(1234)
+        debugpy.wait_for_client()
+    asyncio.run(_main(args))
 
 
 if __name__ == "__main__":
