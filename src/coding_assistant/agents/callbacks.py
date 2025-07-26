@@ -38,7 +38,7 @@ class AgentCallbacks(ABC):
         pass
 
     @abstractmethod
-    def on_llm_chunk(self, chunk: str):
+    def on_chunk(self, chunk: str):
         """Handle LLM chunks."""
         pass
 
@@ -113,5 +113,5 @@ class RichCallbacks(AgentCallbacks):
             ),
         )
 
-    def on_llm_chunk(self, chunk: str):
+    def on_chunk(self, chunk: str):
         print(chunk, end="", flush=True)
