@@ -42,7 +42,6 @@ class AgentCallbacks(ABC):
         """Handle LLM chunks."""
         pass
 
-
     @abstractmethod
     def on_chunks_end(self):
         """Handle end of LLM chunks."""
