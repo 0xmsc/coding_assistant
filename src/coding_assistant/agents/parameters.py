@@ -74,9 +74,9 @@ def _format_value_by_type(value, param_type: str, param_name: str) -> str:
 
 def format_parameters(parameters: list[Parameter]) -> str:
     PARAMETER_TEMPLATE = """
-Name: {name}
-Description: {description}
-Value: {value}
+- Name: {name}
+  - Description: {description}
+  - Value: {value}
 """.strip()
     parameter_descriptions = []
 
@@ -84,7 +84,7 @@ Value: {value}
         value_str = parameter.value
 
         if "\n" in value_str:
-            value_str = "\n" + textwrap.indent(value_str, "  ")
+            value_str = "\n" + textwrap.indent(value_str, "    ")
 
         parameter_descriptions.append(
             PARAMETER_TEMPLATE.format(

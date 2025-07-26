@@ -1,6 +1,7 @@
 import dataclasses
 import json
 import logging
+import sys
 import textwrap
 
 from opentelemetry import trace
@@ -50,8 +51,8 @@ def create_start_message(agent: Agent) -> str:
     parameters_str = format_parameters(agent.parameters)
     return START_MESSAGE_TEMPLATE.format(
         name=agent.name,
-        description=textwrap.indent(agent.description, "  "),
-        parameters=textwrap.indent(parameters_str, "  "),
+        description=textwrap.indent(agent.description, "> "),
+        parameters=parameters_str,
     )
 
 
