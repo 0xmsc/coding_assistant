@@ -80,7 +80,7 @@ def parse_args():
     parser.add_argument(
         "--readable-sandbox-directories",
         nargs="*",
-        default=["/tmp"],
+        default=[],
         help="Additional directories to include in the sandbox.",
     )
     parser.add_argument(
