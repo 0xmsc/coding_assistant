@@ -44,6 +44,8 @@ async def complete(
 
             chunks.append(chunk)
 
+        callbacks.on_chunks_end()
+
         completion = litellm.stream_chunk_builder(chunks)
         return Completion(
             message=completion["choices"][0]["message"],
