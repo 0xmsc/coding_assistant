@@ -43,6 +43,12 @@ class AgentCallbacks(ABC):
         pass
 
 
+    @abstractmethod
+    def on_chunks_end(self):
+        """Handle end of LLM chunks."""
+        pass
+
+
 class NullCallbacks(AgentCallbacks):
     """Null object implementation that does nothing."""
 
@@ -61,7 +67,10 @@ class NullCallbacks(AgentCallbacks):
     def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
         pass
 
-    def on_llm_chunk(self, chunk: str):
+    def on_chunk(self, chunk: str):
+        pass
+
+    def on_chunks_end(self):
         pass
 
 
@@ -115,3 +124,6 @@ class RichCallbacks(AgentCallbacks):
 
     def on_chunk(self, chunk: str):
         print(chunk, end="", flush=True)
+
+    def on_chunks_end(self):
+        print()
