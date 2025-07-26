@@ -7,6 +7,7 @@ from pprint import pformat
 from rich import print
 from rich.panel import Panel
 from rich.pretty import Pretty
+from rich.markdown import Markdown
 
 
 class AgentCallbacks(ABC):
@@ -97,9 +98,10 @@ class RichCallbacks(AgentCallbacks):
         )
 
     def on_user_message(self, agent_name: str, content: str):
+        print(content)
         print(
             Panel(
-                content,
+                Markdown(content),
                 title=f"Agent {agent_name} user",
                 border_style="blue",
             ),
@@ -108,7 +110,7 @@ class RichCallbacks(AgentCallbacks):
     def on_assistant_message(self, agent_name: str, content: str):
         print(
             Panel(
-                content,
+                Markdown(content),
                 title=f"Agent {agent_name} assistant",
                 border_style="green",
             ),
