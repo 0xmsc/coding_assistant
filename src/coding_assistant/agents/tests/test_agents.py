@@ -7,7 +7,7 @@ from coding_assistant.agents.types import Agent
 from coding_assistant.agents.execution import create_start_message
 from coding_assistant.config import Config
 
-TEST_MODEL = "gemini/gemini-2.5-pro"
+TEST_MODEL = "gemini/gemini-2.5-flash"
 
 
 def create_test_config() -> Config:
