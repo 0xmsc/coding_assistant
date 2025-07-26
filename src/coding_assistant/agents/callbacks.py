@@ -127,7 +127,7 @@ class RichCallbacks(AgentCallbacks):
             # Arguments
             Padding(Pretty(arguments, expand_all=True, indent_size=2), (1, 0, 0, 0)),
             # Result
-            Padding(Markdown(f"Result:\n```\n{result}\n```"), (1, 0, 0, 0)),
+            Padding(Markdown(f"```\n{result}\n```"), (1, 0, 0, 0)),
         )
         print(
             Panel(
