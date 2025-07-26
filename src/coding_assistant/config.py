@@ -1,19 +1,16 @@
-from dataclasses import dataclass, field
+from pydantic import BaseModel, Field
 from pathlib import Path
 from typing import List
 
 
-@dataclass
-class MCPServerConfig:
-    """Configuration for an MCP server."""
+class MCPServerConfig(BaseModel):
     name: str
     command: str
-    args: List[str] = field(default_factory=list)
-    env: List[str] = field(default_factory=list)  # List of env var keys to pass through
+    args: List[str]
+    env: List[str]
 
 
-@dataclass
-class Config:
+class Config(BaseModel):
     model: str
     expert_model: str
     enable_feedback_agent: bool
@@ -24,6 +21,3 @@ class Config:
     shorten_conversation_at_tokens: int
     enable_ask_user: bool
     print_chunks: bool
-
-
-

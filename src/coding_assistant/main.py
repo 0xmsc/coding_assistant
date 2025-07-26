@@ -117,13 +117,6 @@ def parse_args():
 
 
 def create_config_from_args(args) -> Config:
-    sandbox_dirs = [Path(d) for d in args.sandbox_directories]
-
-    # Expand user directories
-    for i, directory in enumerate(sandbox_dirs):
-        sandbox_dirs[i] = directory.expanduser()
-
-    # Parse MCP server configurations from JSON strings
     mcp_servers = []
     for mcp_config_json in args.mcp_servers:
         config_dict = json.loads(mcp_config_json)
@@ -141,7 +134,7 @@ def create_config_from_args(args) -> Config:
         enable_feedback_agent=args.feedback_agent,
         enable_user_feedback=args.user_feedback,
         instructions=args.instructions,
-        sandbox_directories=sandbox_dirs,
+        sandbox_directories=[Path(d).expanduser() for d in args.sandbox_directories],
         mcp_servers=mcp_servers,
         shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
         enable_ask_user=args.ask_user,
@@ -164,34 +157,6 @@ def setup_tracing(args):
     tracerProvider.add_span_processor(processor)
     trace.set_tracer_provider(tracerProvider)
     logger.info(f"Tracing successfully enabled on endpoint {TRACE_ENDPOINT}.")
-
-
-def get_additional_sandbox_directories(config: Config, working_directory: Path, venv_directory: Path):
-    sandbox_directories = [
-        working_directory,
-        venv_directory,
-    ]
-
-    sandbox_directories.extend(config.sandbox_directories)
-
-    return sandbox_directories
-
-
-def get_resume_history(args, working_directory):
-    if args.resume_file:
-        if not args.resume_file.exists():
-            raise FileNotFoundError(f"Resume file {args.resume_file} does not exist.")
-        logger.info(f"Resuming session from file: {args.resume_file}")
-        return load_orchestrator_history(args.resume_file)
-    elif args.resume:
-        latest_history_file = get_latest_orchestrator_history_file(working_directory)
-        if not latest_history_file:
-            raise FileNotFoundError(
-                f"No latest orchestrator history file found in {working_directory}/.coding_assistant/history."
-            )
-        logger.info(f"Resuming session from latest saved agent history: {latest_history_file}")
-        return load_orchestrator_history(latest_history_file)
-    return None
 
 
 async def run_orchestrator_agent(
@@ -242,15 +207,34 @@ async def _main():
     trim_orchestrator_history(working_directory)
     conversation_summaries = get_conversation_summaries(working_directory)
 
+    if args.resume_file:
+        if not args.resume_file.exists():
+            raise FileNotFoundError(f"Resume file {args.resume_file} does not exist.")
+        logger.info(f"Resuming session from file: {args.resume_file}")
+        resume_history = load_orchestrator_history(args.resume_file)
+    elif args.resume:
+        latest_history_file = get_latest_orchestrator_history_file(working_directory)
+        if not latest_history_file:
+            raise FileNotFoundError(
+                f"No latest orchestrator history file found in {working_directory}/.coding_assistant/history."
+            )
+        logger.info(f"Resuming session from latest saved agent history: {latest_history_file}")
+        resume_history = load_orchestrator_history(latest_history_file)
+    else:
+        resume_history = None
+
     instructions = get_instructions(working_directory, config)
-    resume_history = get_resume_history(args, working_directory)
 
     venv_directory = Path(os.environ["VIRTUAL_ENV"])
     logger.info(f"Using virtual environment directory: {venv_directory}")
 
     if args.sandbox:
         logger.info(f"Sandboxing is enabled.")
-        sandbox_directories = get_additional_sandbox_directories(config, working_directory, venv_directory)
+        sandbox_directories = [
+            working_directory,
+            venv_directory,
+        ]
+        sandbox_directories.extend(config.sandbox_directories)
         logger.info(f"Sandbox directories: {sandbox_directories}")
         sandbox(directories=sandbox_directories)
     else:
