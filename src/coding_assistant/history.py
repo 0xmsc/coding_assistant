@@ -53,12 +53,31 @@ def get_orchestrator_history_dir(working_directory: Path) -> Path:
     return history_dir
 
 
+def _fix_invalid_history(history: list) -> list:
+    """
+    Fixes an invalid history by removing trailing assistant messages with tool_calls
+    that are not followed by a tool message.
+    """
+    if not history:
+        return []
+
+    fixed_history = list(history)
+    while fixed_history:
+        last_message = fixed_history[-1]
+        if last_message["role"] == "assistant" and "tool_calls" in last_message:
+            fixed_history.pop()
+        else:
+            break
+    return fixed_history
+
+
 def save_orchestrator_history(working_directory: Path, agent_history: list):
     """Save orchestrator agent history for crash recovery as a new file. Only saves agent_history."""
     history_dir = get_orchestrator_history_dir(working_directory)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     history_file = history_dir / f"history_{timestamp}.json"
-    history_file.write_text(json.dumps(agent_history, indent=2))
+    fixed_history = _fix_invalid_history(agent_history)
+    history_file.write_text(json.dumps(fixed_history, indent=2))
 
     logger.info(f"Saved orchestrator history for {working_directory} to {history_file}.")
 
