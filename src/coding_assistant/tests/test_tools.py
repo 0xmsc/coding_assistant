@@ -14,34 +14,34 @@ async def test_execute_shell_command_tool_timeout():
 
 
 @pytest.mark.asyncio
-@patch("rich.prompt.Prompt.ask")
+@patch("rich.prompt.Confirm.ask")
 async def test_execute_shell_command_tool_confirmation_yes(mock_ask):
-    mock_ask.return_value = "y"
+    mock_ask.return_value = True
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
     result = await tool.execute({"command": "echo 'Hello'"})
     assert result.content == "Hello\n"
 
 
 @pytest.mark.asyncio
-@patch("rich.prompt.Prompt.ask")
+@patch("rich.prompt.Confirm.ask")
 async def test_execute_shell_command_tool_confirmation_yes_with_whitespace(mock_ask):
-    mock_ask.return_value = "n"
+    mock_ask.return_value = False
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
     result = await tool.execute({"command": "  echo 'Hello'"})
     assert "denied" in result.content.lower()
 
 
 @pytest.mark.asyncio
-@patch("rich.prompt.Prompt.ask")
+@patch("rich.prompt.Confirm.ask")
 async def test_execute_shell_command_tool_confirmation_no(mock_ask):
-    mock_ask.return_value = "n"
+    mock_ask.return_value = False
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
     result = await tool.execute({"command": "echo 'Hello'"})
     assert "denied" in result.content.lower()
 
 
 @pytest.mark.asyncio
-@patch("rich.prompt.Prompt.ask")
+@patch("rich.prompt.Confirm.ask")
 async def test_execute_shell_command_tool_no_match(mock_ask):
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["ls"])
     result = await tool.execute({"command": "echo 'Hello'"})

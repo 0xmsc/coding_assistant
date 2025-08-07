@@ -6,7 +6,7 @@ import textwrap
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
-from rich.prompt import Prompt
+from rich.prompt import Confirm, Prompt
 
 from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
 from coding_assistant.agents.execution import run_agent_loop
@@ -277,9 +277,9 @@ class ExecuteShellCommandTool(Tool):
 
         for pattern in self._shell_confirmation_patterns:
             if re.search(pattern, command):
-                question = f"Run `{command}`? (y/N)"
-                answer = await asyncio.to_thread(Prompt.ask, question)
-                if answer.lower() != "y":
+                question = f"Run `{command}`?"
+                answer = await asyncio.to_thread(Confirm.ask, question)
+                if not answer:
                     return TextResult(content="Command execution denied.")
                 break
 
