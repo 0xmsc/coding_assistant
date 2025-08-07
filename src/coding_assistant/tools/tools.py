@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import subprocess
 import textwrap
 from typing import Optional, List
@@ -281,7 +282,7 @@ class ExecuteShellCommandTool(Tool):
         timeout = parameters.get("timeout", 60)
 
         for pattern in self.ask_shell_confirmation_patterns:
-            if pattern in command:
+            if re.search(pattern, command):
                 question = f"Do you want to execute the following command? `{command}`"
                 default_answer = "y/N"
                 answer = await asyncio.to_thread(Prompt.ask, question, default=default_answer)
