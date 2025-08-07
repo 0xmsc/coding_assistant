@@ -14,26 +14,26 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from rich.panel import Panel
 from rich import print as rich_print
 from rich.console import Console
-from rich.table import Table
 from rich.logging import RichHandler
+from rich.panel import Panel
+from rich.table import Table
 
-from coding_assistant.tools.tools import OrchestratorTool
+from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks, RichCallbacks
+from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
     get_conversation_summaries,
     get_latest_orchestrator_history_file,
+    load_orchestrator_history,
     save_conversation_summary,
     save_orchestrator_history,
-    load_orchestrator_history,
     trim_orchestrator_history,
 )
-from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, print_mcp_tools
-from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks, RichCallbacks
+from coding_assistant.tools.tools import OrchestratorTool
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
 logger = logging.getLogger("coding_assistant")
@@ -132,7 +132,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--ask-shell-confirmation",
+        "--shell-confirmation-pattern",
         nargs="*",
         default=[],
         help="Ask for confirmation before executing a shell command that matches any of the given patterns.",
@@ -156,7 +156,7 @@ def create_config_from_args(args) -> Config:
         enable_user_feedback=args.user_feedback,
         shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
         enable_ask_user=args.ask_user,
-        ask_shell_confirmation_patterns=args.ask_shell_confirmation,
+        shell_confirmation_patterns=args.shell_confirmation_pattern,
     )
 
 
@@ -268,11 +268,7 @@ async def _main(args):
     else:
         logger.warning("Sandboxing is disabled")
 
-
-
-    mcp_server_configs = [
-        MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers
-    ]
+    mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
     async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
