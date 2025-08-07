@@ -3,7 +3,7 @@ import logging
 import re
 import subprocess
 import textwrap
-from typing import Optional, List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 from rich.prompt import Prompt
@@ -122,9 +122,7 @@ class OrchestratorTool(AgentToolBase):
             tools=[
                 AgentTool(self._config, self._mcp_servers, self._agent_callbacks),
                 ask_client_tool,
-                ExecuteShellCommandTool(
-                    self._config.ask_shell_confirmation_patterns
-                ),
+                ExecuteShellCommandTool(self._config.ask_shell_confirmation_patterns),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
@@ -193,9 +191,7 @@ class AgentTool(AgentToolBase):
             ),
             mcp_servers=self._mcp_servers,
             tools=[
-                ExecuteShellCommandTool(
-                    self._config.ask_shell_confirmation_patterns
-                ),
+                ExecuteShellCommandTool(self._config.ask_shell_confirmation_patterns),
                 ask_client_tool,
                 FinishTaskTool(),
                 ShortenConversation(),
@@ -278,7 +274,7 @@ class ExecuteShellCommandTool(Tool):
     async def execute(self, parameters: dict) -> TextResult:
         assert "command" in parameters
 
-        command = parameters["command"]
+        command = parameters["command"].strip()
         timeout = parameters.get("timeout", 60)
 
         for pattern in self.ask_shell_confirmation_patterns:
@@ -347,9 +343,7 @@ class FeedbackTool(AgentToolBase):
             ),
             mcp_servers=self._mcp_servers,
             tools=[
-                ExecuteShellCommandTool(
-                    self._config.ask_shell_confirmation_patterns
-                ),
+                ExecuteShellCommandTool(self._config.ask_shell_confirmation_patterns),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
