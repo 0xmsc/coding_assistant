@@ -122,7 +122,7 @@ class OrchestratorTool(AgentToolBase):
             tools=[
                 AgentTool(self._config, self._mcp_servers, self._agent_callbacks),
                 ask_client_tool,
-                ExecuteShellCommandTool(self._config.ask_shell_confirmation_patterns),
+                ExecuteShellCommandTool(self._config.shell_confirmation_patterns),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
@@ -191,7 +191,7 @@ class AgentTool(AgentToolBase):
             ),
             mcp_servers=self._mcp_servers,
             tools=[
-                ExecuteShellCommandTool(self._config.ask_shell_confirmation_patterns),
+                ExecuteShellCommandTool(self._config.shell_confirmation_patterns),
                 ask_client_tool,
                 FinishTaskTool(),
                 ShortenConversation(),
@@ -251,9 +251,9 @@ class ExecuteShellCommandSchema(BaseModel):
 class ExecuteShellCommandTool(Tool):
     def __init__(
         self,
-        ask_shell_confirmation_patterns: List[str] = [],
+        shell_confirmation_patterns: List[str] = [],
     ):
-        self._ask_shell_confirmation_patterns = ask_shell_confirmation_patterns
+        self._shell_confirmation_patterns = shell_confirmation_patterns
 
     def name(self) -> str:
         return "execute_shell_command"
@@ -277,9 +277,9 @@ class ExecuteShellCommandTool(Tool):
         command = parameters["command"].strip()
         timeout = parameters.get("timeout", 60)
 
-        for pattern in self._ask_shell_confirmation_patterns:
+        for pattern in self._shell_confirmation_patterns:
             if re.search(pattern, command):
-                question = f"`{command}` matches `{pattern}`. Run? (y/N)"
+                question = f"Run `{command}`? (y/N)"
                 answer = await asyncio.to_thread(Prompt.ask, question)
                 if answer.lower() != "y":
                     return TextResult(content="Command execution denied.")
@@ -342,7 +342,7 @@ class FeedbackTool(AgentToolBase):
             ),
             mcp_servers=self._mcp_servers,
             tools=[
-                ExecuteShellCommandTool(self._config.ask_shell_confirmation_patterns),
+                ExecuteShellCommandTool(self._config.shell_confirmation_patterns),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
