@@ -108,6 +108,7 @@ class OrchestratorTool(AgentToolBase):
         return LaunchOrchestratorAgentSchema.model_json_schema()
 
     async def execute(self, parameters: dict) -> TextResult:
+        ask_client_tool = AskClientTool(self._config.enable_ask_user)
         orchestrator_agent = Agent(
             name="Orchestrator",
             history=self._history or [],
@@ -119,8 +120,10 @@ class OrchestratorTool(AgentToolBase):
             mcp_servers=self._mcp_servers,
             tools=[
                 AgentTool(self._config, self._mcp_servers, self._agent_callbacks),
-                AskClientTool(self._config.enable_ask_user),
-                ExecuteShellCommandTool(),
+                ask_client_tool,
+                ExecuteShellCommandTool(
+                    self._config.ask_shell_confirmation_patterns, ask_client_tool
+                ),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
@@ -179,6 +182,7 @@ class AgentTool(AgentToolBase):
         return self._config.model
 
     async def execute(self, parameters: dict) -> TextResult:
+        ask_client_tool = AskClientTool(self._config.enable_ask_user)
         agent = Agent(
             name="Agent",
             description=self.description(),
@@ -188,8 +192,10 @@ class AgentTool(AgentToolBase):
             ),
             mcp_servers=self._mcp_servers,
             tools=[
-                ExecuteShellCommandTool(),
-                AskClientTool(self._config.enable_ask_user),
+                ExecuteShellCommandTool(
+                    self._config.ask_shell_confirmation_patterns, ask_client_tool
+                ),
+                ask_client_tool,
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
@@ -246,8 +252,13 @@ class ExecuteShellCommandSchema(BaseModel):
 
 
 class ExecuteShellCommandTool(Tool):
-    def __init__(self):
-        pass
+    def __init__(
+        self,
+        ask_shell_confirmation_patterns: Optional[List[str]] = None,
+        ask_client_tool: Optional[AskClientTool] = None,
+    ):
+        self.ask_shell_confirmation_patterns = ask_shell_confirmation_patterns or []
+        self.ask_client_tool = ask_client_tool
 
     def name(self) -> str:
         return "execute_shell_command"
@@ -270,6 +281,20 @@ class ExecuteShellCommandTool(Tool):
 
         command = parameters["command"]
         timeout = parameters.get("timeout", 60)
+
+        for pattern in self.ask_shell_confirmation_patterns:
+            if pattern in command:
+                if self.ask_client_tool:
+                    response = await self.ask_client_tool.execute(
+                        {
+                            "question": f"Do you want to execute the following command? `{command}`",
+                            "default_answer": "y/N",
+                        }
+                    )
+                    if response.content.lower() != "y":
+                        return TextResult(content="Command execution denied.")
+                break
+
         try:
             process = await asyncio.create_subprocess_shell(
                 command,
@@ -327,7 +352,9 @@ class FeedbackTool(AgentToolBase):
             ),
             mcp_servers=self._mcp_servers,
             tools=[
-                ExecuteShellCommandTool(),
+                ExecuteShellCommandTool(
+                    self._config.ask_shell_confirmation_patterns
+                ),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
