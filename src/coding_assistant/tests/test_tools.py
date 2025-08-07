@@ -15,10 +15,7 @@ async def test_execute_shell_command_tool_timeout():
 @patch("rich.prompt.Prompt.ask")
 async def test_execute_shell_command_tool_confirmation_yes(mock_ask):
     mock_ask.return_value = "y"
-    ask_client_tool = AskClientTool(enabled=True)
-    tool = ExecuteShellCommandTool(
-        ask_shell_confirmation_patterns=["rm"], ask_client_tool=ask_client_tool
-    )
+    tool = ExecuteShellCommandTool(ask_shell_confirmation_patterns=["rm"])
     result = await tool.execute({"command": "rm -rf /"})
     assert "denied" not in result.content.lower()
 
@@ -27,10 +24,7 @@ async def test_execute_shell_command_tool_confirmation_yes(mock_ask):
 @patch("rich.prompt.Prompt.ask")
 async def test_execute_shell_command_tool_confirmation_no(mock_ask):
     mock_ask.return_value = "n"
-    ask_client_tool = AskClientTool(enabled=True)
-    tool = ExecuteShellCommandTool(
-        ask_shell_confirmation_patterns=["rm"], ask_client_tool=ask_client_tool
-    )
+    tool = ExecuteShellCommandTool(ask_shell_confirmation_patterns=["rm"])
     result = await tool.execute({"command": "rm -rf /"})
     assert "denied" in result.content.lower()
 
