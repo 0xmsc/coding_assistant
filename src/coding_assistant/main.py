@@ -21,7 +21,7 @@ from rich.table import Table
 from rich.logging import RichHandler
 
 from coding_assistant.tools.tools import OrchestratorTool
-from coding_assistant.cache import (
+from coding_assistant.history import (
     get_conversation_summaries,
     get_latest_orchestrator_history_file,
     save_conversation_summary,
@@ -76,7 +76,18 @@ def parse_args():
         default=True,
         help="Whether the agent can ask the user questions.",
     )
-    parser.add_argument("--instructions", type=str, help="Custom instructions for the agent.")
+    parser.add_argument(
+        "--plan",
+        action=BooleanOptionalAction,
+        default=False,
+        help="Enable planning mode for the orchestrator agent.",
+    )
+    parser.add_argument(
+        "--instructions",
+        nargs="*",
+        default=[],
+        help="Custom instructions for the agent. Can be specified multiple times.",
+    )
     parser.add_argument(
         "--readable-sandbox-directories",
         nargs="*",
@@ -147,10 +158,6 @@ def create_config_from_args(args) -> Config:
         expert_model=args.expert_model,
         enable_feedback_agent=args.feedback_agent,
         enable_user_feedback=args.user_feedback,
-        instructions=args.instructions,
-        readable_sandbox_directories=[Path(d).expanduser() for d in args.readable_sandbox_directories],
-        writable_sandbox_directories=[Path(d).expanduser() for d in args.writable_sandbox_directories],
-        mcp_servers=mcp_servers,
         shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
         enable_ask_user=args.ask_user,
         print_chunks=args.print_chunks,
@@ -237,7 +244,11 @@ async def _main(args):
     else:
         resume_history = None
 
-    instructions = get_instructions(working_directory, config)
+    instructions = get_instructions(
+        working_directory=working_directory,
+        user_instructions=args.instructions,
+        plan=args.plan,
+    )
 
     venv_directory = Path(os.environ["VIRTUAL_ENV"])
     logger.info(f"Using virtual environment directory: {venv_directory}")
@@ -246,13 +257,13 @@ async def _main(args):
         logger.info(f"Sandboxing is enabled.")
 
         readable_sandbox_directories = [
-            *config.readable_sandbox_directories,
+            *[Path(d).resolve() for d in args.readable_sandbox_directories],
             venv_directory,
         ]
         logger.info(f"Readable sandbox directories: {readable_sandbox_directories}")
 
         writable_sandbox_directories = [
-            *config.writable_sandbox_directories,
+            *[Path(d).resolve() for d in args.writable_sandbox_directories],
             working_directory,
         ]
         logger.info(f"Writable sandbox directories: {writable_sandbox_directories}")
@@ -261,7 +272,9 @@ async def _main(args):
     else:
         logger.warning("Sandboxing is disabled")
 
-    mcp_server_configs = config.mcp_servers
+
+
+    mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
     async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
