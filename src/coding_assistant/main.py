@@ -142,17 +142,6 @@ def parse_args():
 
 
 def create_config_from_args(args) -> Config:
-    mcp_servers = []
-    for mcp_config_json in args.mcp_servers:
-        config_dict = json.loads(mcp_config_json)
-        mcp_server_config = MCPServerConfig(
-            name=config_dict["name"],
-            command=config_dict["command"],
-            args=config_dict.get("args", []),
-            env=config_dict.get("env", []),
-        )
-        mcp_servers.append(mcp_server_config)
-
     return Config(
         model=args.model,
         expert_model=args.expert_model,
@@ -273,7 +262,9 @@ async def _main(args):
 
 
 
-    mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
+    mcp_server_configs = [
+        MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers
+    ]
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
     async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
