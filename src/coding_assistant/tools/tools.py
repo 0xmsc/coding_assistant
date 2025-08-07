@@ -297,7 +297,9 @@ class LaunchFeedbackAgentSchema(BaseModel):
     parameters: str = Field(description="The parameters the agent was given for the task.")
     result: str = Field(description="The result of the agent.")
     summary: str | None = Field(default=None, description="A summary of the conversation with the client.")
-    feedback: str | None = Field(default=None, description="The feedback provided to the agent during the work on the task.")
+    feedback: str | None = Field(
+        default=None, description="The feedback provided to the agent during the work on the task."
+    )
 
 
 class FeedbackTool(AgentToolBase):
