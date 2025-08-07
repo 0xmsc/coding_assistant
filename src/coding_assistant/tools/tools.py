@@ -109,7 +109,6 @@ class OrchestratorTool(AgentToolBase):
         return LaunchOrchestratorAgentSchema.model_json_schema()
 
     async def execute(self, parameters: dict) -> TextResult:
-        ask_client_tool = AskClientTool(self._config.enable_ask_user)
         orchestrator_agent = Agent(
             name="Orchestrator",
             history=self._history or [],
@@ -121,7 +120,7 @@ class OrchestratorTool(AgentToolBase):
             mcp_servers=self._mcp_servers,
             tools=[
                 AgentTool(self._config, self._mcp_servers, self._agent_callbacks),
-                ask_client_tool,
+                AskClientTool(self._config.enable_ask_user),
                 ExecuteShellCommandTool(self._config.shell_confirmation_patterns),
                 FinishTaskTool(),
                 ShortenConversation(),
@@ -181,7 +180,6 @@ class AgentTool(AgentToolBase):
         return self._config.model
 
     async def execute(self, parameters: dict) -> TextResult:
-        ask_client_tool = AskClientTool(self._config.enable_ask_user)
         agent = Agent(
             name="Agent",
             description=self.description(),
@@ -192,7 +190,7 @@ class AgentTool(AgentToolBase):
             mcp_servers=self._mcp_servers,
             tools=[
                 ExecuteShellCommandTool(self._config.shell_confirmation_patterns),
-                ask_client_tool,
+                AskClientTool(self._config.enable_ask_user),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
