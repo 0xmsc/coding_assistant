@@ -49,11 +49,21 @@ def create_start_message(agent: Agent) -> str:
     Uses formatting helpers from coding_assistant.agents.utils.
     """
     parameters_str = format_parameters(agent.parameters)
-    return START_MESSAGE_TEMPLATE.format(
-        name=agent.name,
-        description=textwrap.indent(agent.description, "> "),
-        parameters=parameters_str,
-    )
+    return f"""
+You are an agent named `{agent.name}`.
+
+## Task
+
+Your client has been given the following description of your work and capabilities: 
+
+> {agent.description}
+
+## Parameters
+
+Your client has provided the following parameters for your task:
+
+{parameters_str}
+""".strip()
 
 
 def _handle_finish_task_result(result: FinishTaskResult, agent: Agent):
@@ -208,9 +218,14 @@ async def run_agent_loop(
 
         feedback = await agent.feedback_function(agent)
         if feedback:
-            formatted_feedback = FEEDBACK_TEMPLATE.format(
-                feedback=textwrap.indent(feedback, "> "),
-            )
+            formatted_feedback = f"""
+Your client has provided the following feedback on your work:
+
+> {feedback}
+
+Please rework your result to address the feedback.
+Afterwards, call the `finish_task` tool again to signal that you are done.
+""".strip()
             append_user_message(agent.history, agent_callbacks, agent.name, formatted_feedback)
 
             # Clear output so agent continues working
