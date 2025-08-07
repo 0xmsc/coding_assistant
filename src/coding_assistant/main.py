@@ -160,7 +160,6 @@ def create_config_from_args(args) -> Config:
         enable_user_feedback=args.user_feedback,
         shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
         enable_ask_user=args.ask_user,
-        print_chunks=args.print_chunks,
     )
 
 
