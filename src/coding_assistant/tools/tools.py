@@ -122,7 +122,7 @@ class OrchestratorTool(AgentToolBase):
                 AgentTool(self._config, self._mcp_servers, self._agent_callbacks),
                 ask_client_tool,
                 ExecuteShellCommandTool(
-                    self._config.ask_shell_confirmation_patterns, ask_client_tool
+                    self._config.ask_shell_confirmation_patterns
                 ),
                 FinishTaskTool(),
                 ShortenConversation(),
@@ -193,7 +193,7 @@ class AgentTool(AgentToolBase):
             mcp_servers=self._mcp_servers,
             tools=[
                 ExecuteShellCommandTool(
-                    self._config.ask_shell_confirmation_patterns, ask_client_tool
+                    self._config.ask_shell_confirmation_patterns
                 ),
                 ask_client_tool,
                 FinishTaskTool(),
@@ -255,10 +255,8 @@ class ExecuteShellCommandTool(Tool):
     def __init__(
         self,
         ask_shell_confirmation_patterns: Optional[List[str]] = None,
-        ask_client_tool: Optional[AskClientTool] = None,
     ):
         self.ask_shell_confirmation_patterns = ask_shell_confirmation_patterns or []
-        self.ask_client_tool = ask_client_tool
 
     def name(self) -> str:
         return "execute_shell_command"
@@ -284,15 +282,11 @@ class ExecuteShellCommandTool(Tool):
 
         for pattern in self.ask_shell_confirmation_patterns:
             if pattern in command:
-                if self.ask_client_tool:
-                    response = await self.ask_client_tool.execute(
-                        {
-                            "question": f"Do you want to execute the following command? `{command}`",
-                            "default_answer": "y/N",
-                        }
-                    )
-                    if response.content.lower() != "y":
-                        return TextResult(content="Command execution denied.")
+                question = f"Do you want to execute the following command? `{command}`"
+                default_answer = "y/N"
+                answer = await asyncio.to_thread(Prompt.ask, question, default=default_answer)
+                if answer.lower() != "y":
+                    return TextResult(content="Command execution denied.")
                 break
 
         try:
