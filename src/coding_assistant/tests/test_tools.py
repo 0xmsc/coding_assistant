@@ -1,7 +1,9 @@
+from unittest.mock import patch
+
 import pytest
+
 from coding_assistant.config import Config
 from coding_assistant.tools.tools import AskClientTool, ExecuteShellCommandTool
-from unittest.mock import patch
 
 
 @pytest.mark.asyncio
@@ -15,46 +17,47 @@ async def test_execute_shell_command_tool_timeout():
 @patch("rich.prompt.Prompt.ask")
 async def test_execute_shell_command_tool_confirmation_yes(mock_ask):
     mock_ask.return_value = "y"
-    tool = ExecuteShellCommandTool(ask_shell_confirmation_patterns=[r"rm"])
-    result = await tool.execute({"command": "rm -rf /"})
-    assert "denied" not in result.content.lower()
+    tool = ExecuteShellCommandTool(ask_shell_confirmation_patterns=["echo"])
+    result = await tool.execute({"command": "echo 'Hello'"})
+    assert result.content == "Hello\n"
 
 
 @pytest.mark.asyncio
 @patch("rich.prompt.Prompt.ask")
 async def test_execute_shell_command_tool_confirmation_yes_with_whitespace(mock_ask):
-    mock_ask.return_value = "y"
-    tool = ExecuteShellCommandTool(ask_shell_confirmation_patterns=[r"rm"])
-    result = await tool.execute({"command": "  rm -rf /"})
-    assert "denied" not in result.content.lower()
+    mock_ask.return_value = "n"
+    tool = ExecuteShellCommandTool(ask_shell_confirmation_patterns=["echo"])
+    result = await tool.execute({"command": "  echo 'Hello'"})
+    assert "denied" in result.content.lower()
 
 
 @pytest.mark.asyncio
 @patch("rich.prompt.Prompt.ask")
 async def test_execute_shell_command_tool_confirmation_no(mock_ask):
     mock_ask.return_value = "n"
-    tool = ExecuteShellCommandTool(ask_shell_confirmation_patterns=[r"rm"])
-    result = await tool.execute({"command": "rm -rf /"})
+    tool = ExecuteShellCommandTool(ask_shell_confirmation_patterns=["echo"])
+    result = await tool.execute({"command": "echo 'Hello'"})
     assert "denied" in result.content.lower()
 
 
 @pytest.mark.asyncio
 @patch("rich.prompt.Prompt.ask")
 async def test_execute_shell_command_tool_no_match(mock_ask):
-    tool = ExecuteShellCommandTool(ask_shell_confirmation_patterns=[r"rm"])
-    result = await tool.execute({"command": "ls -l"})
-    assert "denied" not in result.content.lower()
+    tool = ExecuteShellCommandTool(ask_shell_confirmation_patterns=["ls"])
+    result = await tool.execute({"command": "echo 'Hello'"})
+    assert result.content == "Hello\n"
     mock_ask.assert_not_called()
 
 
 @pytest.mark.asyncio
-@patch('rich.prompt.Prompt.ask')
+@patch("rich.prompt.Prompt.ask")
 async def test_ask_client_tool_enabled(mock_ask):
     mock_ask.return_value = "yes"
     tool = AskClientTool(enabled=True)
     result = await tool.execute({"question": "Do you want to proceed?", "default_answer": "no"})
     assert result.content == "yes"
     mock_ask.assert_called_once_with("Do you want to proceed?", default="no")
+
 
 @pytest.mark.asyncio
 async def test_ask_client_tool_disabled():
