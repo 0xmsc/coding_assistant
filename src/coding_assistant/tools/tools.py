@@ -249,9 +249,9 @@ class ExecuteShellCommandSchema(BaseModel):
 class ExecuteShellCommandTool(Tool):
     def __init__(
         self,
-        shell_confirmation_patterns: List[str] = [],
+        shell_confirmation_patterns: Optional[List[str]] = None,
     ):
-        self._shell_confirmation_patterns = shell_confirmation_patterns
+        self._shell_confirmation_patterns = shell_confirmation_patterns or []
 
     def name(self) -> str:
         return "execute_shell_command"
