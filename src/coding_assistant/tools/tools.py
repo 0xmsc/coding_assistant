@@ -270,25 +270,26 @@ class ExecuteShellCommandTool(Tool):
 
         command = parameters["command"]
         timeout = parameters.get("timeout", 60)
-        args = ["bash", "-c", command]
         try:
-            result = await asyncio.wait_for(
-                asyncio.to_thread(subprocess.run, args, capture_output=True, text=True),
-                timeout=timeout,
+            process = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
             return TextResult(content=f"Command timed out after {timeout} seconds")
 
-        if result.returncode != 0:
+        if process.returncode != 0:
             return TextResult(
                 content=(
-                    f"Command failed with error code {result.returncode}\n"
-                    f"stdout: {result.stdout}\n"
-                    f"stderr: {result.stderr}"
+                    f"Command failed with error code {process.returncode}\n"
+                    f"stdout: {stdout.decode()}\n"
+                    f"stderr: {stderr.decode()}"
                 )
             )
 
-        return TextResult(content=result.stdout)
+        return TextResult(content=stdout.decode())
 
 
 class LaunchFeedbackAgentSchema(BaseModel):
