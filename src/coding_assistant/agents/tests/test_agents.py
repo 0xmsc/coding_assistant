@@ -18,13 +18,9 @@ def create_test_config() -> Config:
         expert_model=TEST_MODEL,
         enable_feedback_agent=True,
         enable_user_feedback=False,
-        instructions=None,
-        readable_sandbox_directories=[],
-        writable_sandbox_directories=[],
-        mcp_servers=[],
         shorten_conversation_at_tokens=200_000,
         enable_ask_user=False,
-        print_chunks=False,
+        shell_confirmation_patterns=[],
     )
 
 
@@ -121,3 +117,21 @@ async def test_orchestrator_tool_instructions():
         }
     )
     assert result.content == "Servus, World!"
+
+
+@pytest.mark.asyncio
+async def test_shell_confirmation():
+    config = create_test_config()
+    config.shell_confirmation_patterns = ["^echo"]
+    tool = OrchestratorTool(config=config)
+    parameters = {"task": "Execute shell command 'echo Hello World' and verbatim output the result."}
+
+    with patch("rich.prompt.Confirm.ask", return_value=True) as p:
+        result = await tool.execute(parameters=parameters)
+        p.assert_called_once()
+        assert result.content == "Hello World\n"
+
+    with patch("rich.prompt.Confirm.ask", return_value=False) as p:
+        result = await tool.execute(parameters=parameters)
+        p.assert_called_once()
+        assert "Command execution denied." in result.content

@@ -11,7 +11,7 @@ from coding_assistant.sandbox import sandbox
 multiprocessing.set_start_method("spawn", force=True)
 
 
-class TestResult(Enum):
+class ProcessResult(Enum):
     SUCCESS = "success"
     ERROR = "error"
 
@@ -20,9 +20,9 @@ def _multiprocessing_wrapper(queue, func, *args):
     """Wrapper function for multiprocessing - needs to be at module level for pickling."""
     try:
         func(*args)
-        queue.put((TestResult.SUCCESS, None))
+        queue.put((ProcessResult.SUCCESS, None))
     except Exception as e:
-        queue.put((TestResult.ERROR, str(e)))
+        queue.put((ProcessResult.ERROR, str(e)))
 
 
 def _run_in_sandbox(test_func, *args):
@@ -37,7 +37,7 @@ def _run_in_sandbox(test_func, *args):
 
     if not queue.empty():
         result_type, message = queue.get()
-        if result_type == TestResult.SUCCESS:
+        if result_type == ProcessResult.SUCCESS:
             return True
         else:
             print(f"Child process failed: {message}")
