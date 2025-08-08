@@ -28,7 +28,7 @@ async def test_execute_shell_command_tool_confirmation_yes_with_whitespace(mock_
     mock_ask.return_value = False
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
     result = await tool.execute({"command": "  echo 'Hello'"})
-    assert "denied" in result.content.lower()
+    assert result.content == "Command execution denied."
 
 
 @pytest.mark.asyncio
@@ -37,7 +37,7 @@ async def test_execute_shell_command_tool_confirmation_no(mock_ask):
     mock_ask.return_value = False
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
     result = await tool.execute({"command": "echo 'Hello'"})
-    assert "denied" in result.content.lower()
+    assert result.content == "Command execution denied."
 
 
 @pytest.mark.asyncio
@@ -63,4 +63,7 @@ async def test_ask_client_tool_enabled(mock_ask):
 async def test_ask_client_tool_disabled():
     tool = AskClientTool(enabled=False)
     result = await tool.execute({"question": "Do you want to proceed?", "default_answer": "no"})
-    assert "disabled" in result.content.lower()
+    assert (
+        result.content
+        == "Client input is disabled for this session. Please continue as if the client had given the most sensible answer to your question."
+    )
