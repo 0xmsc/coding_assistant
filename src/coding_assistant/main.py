@@ -86,7 +86,7 @@ def parse_args():
         "--instructions",
         nargs="*",
         default=[],
-        help="Custom instructions for the agent. Can be specified multiple times.",
+        help="Custom instructions for the agent.",
     )
     parser.add_argument(
         "--readable-sandbox-directories",
@@ -132,7 +132,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--shell-confirmation-pattern",
+        "--shell-confirmation-patterns",
         nargs="*",
         default=[],
         help="Ask for confirmation before executing a shell command that matches any of the given patterns.",
@@ -156,7 +156,7 @@ def create_config_from_args(args) -> Config:
         enable_user_feedback=args.user_feedback,
         shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
         enable_ask_user=args.ask_user,
-        shell_confirmation_patterns=args.shell_confirmation_pattern,
+        shell_confirmation_patterns=args.shell_confirmation_patterns,
     )
 
 
