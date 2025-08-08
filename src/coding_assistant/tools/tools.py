@@ -283,6 +283,8 @@ class ExecuteShellCommandTool(Tool):
                     return TextResult(content="Command execution denied.")
                 break
 
+        logger.info(f"Executing shell command: `{command}`")
+
         try:
             process = await asyncio.create_subprocess_shell(
                 command,
