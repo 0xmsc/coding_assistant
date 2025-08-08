@@ -243,7 +243,7 @@ class AskClientTool(Tool):
 
 class ExecuteShellCommandSchema(BaseModel):
     command: str = Field(description="The shell command to execute.")
-    timeout: int = Field(60, description="The timeout for the command in seconds.")
+    timeout: int | None = Field(default=None, description="The timeout for the command in seconds.")
 
 
 class ExecuteShellCommandTool(Tool):
@@ -273,7 +273,7 @@ class ExecuteShellCommandTool(Tool):
         assert "command" in parameters
 
         command = parameters["command"].strip()
-        timeout = parameters.get("timeout", 60)
+        timeout = parameters.get("timeout", 10)
 
         for pattern in self._shell_confirmation_patterns:
             if re.search(pattern, command):
@@ -291,7 +291,7 @@ class ExecuteShellCommandTool(Tool):
             )
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
-            return TextResult(content=f"Command timed out after {timeout} seconds")
+            return TextResult(content=f"Command timed out after {timeout} seconds.")
 
         if process.returncode != 0:
             return TextResult(
