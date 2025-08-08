@@ -31,6 +31,7 @@ async def complete(
             tools=tools,
             model=model,
             stream=True,
+            reasoning_effort="high",
         )
 
         chunks = []
