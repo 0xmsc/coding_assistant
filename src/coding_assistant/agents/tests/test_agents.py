@@ -120,7 +120,7 @@ async def test_orchestrator_tool_instructions():
 
 
 @pytest.mark.asyncio
-async def test_shell_confirmation():
+async def test_shell_confirmation_positive():
     config = create_test_config()
     config.shell_confirmation_patterns = ["^echo"]
     tool = OrchestratorTool(config=config)
@@ -131,7 +131,15 @@ async def test_shell_confirmation():
         p.assert_called_once()
         assert result.content == "Hello World\n"
 
+
+@pytest.mark.asyncio
+async def test_shell_confirmation_negative():
+    config = create_test_config()
+    config.shell_confirmation_patterns = ["^echo"]
+    tool = OrchestratorTool(config=config)
+    parameters = {"task": "Execute shell command 'echo Hello World' and verbatim output the result."}
+
     with patch("rich.prompt.Confirm.ask", return_value=False) as p:
         result = await tool.execute(parameters=parameters)
         p.assert_called_once()
-        assert "Command execution denied." in result.content
+        assert result.content == "Command execution denied."
