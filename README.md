@@ -4,12 +4,13 @@
 
 ## Key Features
 
--   **Agent Orchestration**: The Orchestrator agent coordinates tasks by delegating work to specialized sub-agents.
--   **Resume Functionality**: Resume work from a previous session.
--   **Project-Specific Caching**: Conversation history is cached within a `.coding_assistant` directory in your project.
--   **Flexible CLI**: Launch, control, and interact with agents from the command line.
--   **MCP Server Integration**: Native support for MCP server toolchains (filesystem, fetch/web search, git, Tavily, etc).
--   **Sandbox Security**: Landlock-based filesystem sandbox for secure task execution.
+- **Agent Orchestration**: The Orchestrator agent coordinates tasks by delegating work to specialized sub-agents.
+- **Resume Functionality**: Resume work from a previous session.
+- **Project-Specific Caching**: Conversation history is cached within a `.coding_assistant` directory in your project.
+- **Flexible CLI**: Launch, control, and interact with agents from the command line.
+- **MCP Server Integration**: Native support for MCP server toolchains (filesystem, fetch/web search, git, Tavily, etc).
+- **Sandbox Security**: Landlock-based filesystem sandbox for secure task execution.
+- **Shell Command Confirmation**: Prompts for user confirmation before executing potentially harmful shell commands.
 
 ## Installation
 
