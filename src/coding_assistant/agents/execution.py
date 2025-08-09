@@ -6,7 +6,7 @@ import sys
 import textwrap
 
 from opentelemetry import trace
-from rich.prompt import Prompt
+from prompt_toolkit import prompt
 
 from coding_assistant.agents.callbacks import AgentCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
@@ -211,7 +211,7 @@ async def run_agent_loop(
             if interruptible_section.was_interrupted:
                 logger.info(f"Agent '{agent.name}' was interrupted during execution.")
 
-                feedback = await asyncio.to_thread(Prompt.ask, "Feedback")
+                feedback = await asyncio.to_thread(prompt, "Feedback: ")
                 formatted_feedback = FEEDBACK_TEMPLATE.format(
                     feedback=textwrap.indent(feedback, "> "),
                 )

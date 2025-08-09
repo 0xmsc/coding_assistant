@@ -340,7 +340,7 @@ requires-dist = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
-    { name = "prompt-toolkit", specifier = ">=3.0.51" },
+    { name = "prompt-toolkit" },
     { name = "pydantic" },
     { name = "pytest" },
     { name = "pytest-asyncio" },

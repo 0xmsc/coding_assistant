@@ -6,7 +6,8 @@ import textwrap
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
-from rich.prompt import Confirm, Prompt
+from prompt_toolkit import PromptSession, prompt
+from prompt_toolkit.shortcuts import create_confirm_session
 
 from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
 from coding_assistant.agents.execution import run_agent_loop
@@ -51,7 +52,7 @@ async def _get_feedback(
         feedback = agent_feedback_result.content
 
     if enable_user_feedback:
-        feedback = await asyncio.to_thread(Prompt.ask, f"Feedback for {agent.name}", default=feedback)
+        feedback = await PromptSession().prompt_async(f"Feedback for {agent.name}: ", default=feedback)
 
     return feedback if feedback != "Ok" else None
 
@@ -230,8 +231,11 @@ class AskClientTool(Tool):
             )
 
         question = parameters["question"]
+        question = question + ":" if not question.endswith("?") else question
+        question = question + " "
+
         default_answer = parameters.get("default_answer")
-        answer = await asyncio.to_thread(Prompt.ask, question, default=default_answer)
+        answer = await PromptSession().prompt_async(question, default=default_answer or "")
         return TextResult(content=str(answer))
 
 
@@ -265,7 +269,7 @@ class ExecuteShellCommandTool(Tool):
         for pattern in self._shell_confirmation_patterns:
             if re.match(pattern, command):
                 question = f"Execute `{command}`?"
-                answer = await asyncio.to_thread(Confirm.ask, question)
+                answer = await create_confirm_session(question).prompt_async()
                 if not answer:
                     return TextResult(content="Command execution denied.")
                 break

@@ -1,9 +1,10 @@
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from coding_assistant.config import Config
-from coding_assistant.tools.tools import AskClientTool, ExecuteShellCommandTool
+from coding_assistant.tools.tools import AskClientTool, ExecuteShellCommandTool, _get_feedback
+from coding_assistant.agents.types import Agent, AgentOutput
 
 
 @pytest.mark.asyncio
@@ -14,49 +15,61 @@ async def test_execute_shell_command_tool_timeout():
 
 
 @pytest.mark.asyncio
-@patch("rich.prompt.Confirm.ask")
-async def test_execute_shell_command_tool_confirmation_yes(mock_ask):
-    mock_ask.return_value = True
+@patch("coding_assistant.tools.tools.create_confirm_session")
+async def test_execute_shell_command_tool_confirmation_yes(mock_create_confirm):
+    mock_session = AsyncMock()
+    mock_session.prompt_async.return_value = True
+    mock_create_confirm.return_value = mock_session
+
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
     result = await tool.execute({"command": "echo 'Hello'"})
     assert result.content == "Hello\n"
 
 
 @pytest.mark.asyncio
-@patch("rich.prompt.Confirm.ask")
-async def test_execute_shell_command_tool_confirmation_yes_with_whitespace(mock_ask):
-    mock_ask.return_value = False
+@patch("coding_assistant.tools.tools.create_confirm_session")
+async def test_execute_shell_command_tool_confirmation_yes_with_whitespace(mock_create_confirm):
+    mock_session = AsyncMock()
+    mock_session.prompt_async.return_value = False
+    mock_create_confirm.return_value = mock_session
+
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
     result = await tool.execute({"command": "  echo 'Hello'"})
     assert result.content == "Command execution denied."
 
 
 @pytest.mark.asyncio
-@patch("rich.prompt.Confirm.ask")
-async def test_execute_shell_command_tool_confirmation_no(mock_ask):
-    mock_ask.return_value = False
+@patch("coding_assistant.tools.tools.create_confirm_session")
+async def test_execute_shell_command_tool_confirmation_no(mock_create_confirm):
+    mock_session = AsyncMock()
+    mock_session.prompt_async.return_value = False
+    mock_create_confirm.return_value = mock_session
+
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
     result = await tool.execute({"command": "echo 'Hello'"})
     assert result.content == "Command execution denied."
 
 
 @pytest.mark.asyncio
-@patch("rich.prompt.Confirm.ask")
-async def test_execute_shell_command_tool_no_match(mock_ask):
+@patch("coding_assistant.tools.tools.create_confirm_session")
+async def test_execute_shell_command_tool_no_match(mock_create_confirm):
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["ls"])
     result = await tool.execute({"command": "echo 'Hello'"})
     assert result.content == "Hello\n"
-    mock_ask.assert_not_called()
+    mock_create_confirm.assert_not_called()
 
 
 @pytest.mark.asyncio
-@patch("rich.prompt.Prompt.ask")
-async def test_ask_client_tool_enabled(mock_ask):
-    mock_ask.return_value = "yes"
+@patch("coding_assistant.tools.tools.PromptSession")
+async def test_ask_client_tool_enabled(mock_prompt_session_class):
+    mock_session = AsyncMock()
+    mock_session.prompt_async.return_value = "yes"
+    mock_prompt_session_class.return_value = mock_session
+    
     tool = AskClientTool(enabled=True)
     result = await tool.execute({"question": "Do you want to proceed?", "default_answer": "no"})
     assert result.content == "yes"
-    mock_ask.assert_called_once_with("Do you want to proceed?", default="no")
+    mock_session.prompt_async.assert_called_once_with("Do you want to proceed? ", default="no")
 
 
 @pytest.mark.asyncio
