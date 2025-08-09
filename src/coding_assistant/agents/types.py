@@ -25,7 +25,6 @@ class FinishTaskResult(ToolResult):
 
     result: str
     summary: str
-    feedback: str | None = None
 
 
 @dataclass
@@ -53,7 +52,6 @@ class Tool(ABC):
 class AgentOutput:
     result: str
     summary: str
-    feedback: str | None
 
 
 @dataclass

@@ -75,12 +75,13 @@ async def test_feedback_tool_after_feedback():
             "description": "The agent will only give correct answers",
             "parameters": "What is 2 + 2?",
             "result": "5",
-            "feedback": "The client made a mistake while asking the question, he meant 'what is 2 + 3?'. He wanted me to give an answer to the updated question.",
+            "summary": "I calculated the result of '2 + 3'. I did not calculate the answer to the original question since the client gave me the feedback that he made a mistake while asking the question. What he wanted to ask was 'what is 2 + 3?'. He confirmed that he wants me to give an answer to the updated question.",
         }
     )
     assert result.content == "Ok"
 
 
+@pytest.mark.long
 @pytest.mark.asyncio
 async def test_orchestrator_tool():
     config = create_test_config()
@@ -89,6 +90,7 @@ async def test_orchestrator_tool():
     assert result.content == "Hello, World!"
 
 
+@pytest.mark.long
 @pytest.mark.asyncio
 async def test_orchestrator_tool_resume():
     config = create_test_config()
@@ -104,6 +106,7 @@ async def test_orchestrator_tool_resume():
     assert result.content == "Hallo, Welt!"
 
 
+@pytest.mark.long
 @pytest.mark.asyncio
 async def test_orchestrator_tool_instructions():
     config = create_test_config()

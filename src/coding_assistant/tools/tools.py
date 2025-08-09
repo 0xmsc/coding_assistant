@@ -28,8 +28,6 @@ async def _get_feedback(
     agent: Agent,
     config: Config,
     mcp_servers: list,
-    ask_user_for_feedback: bool,
-    ask_agent_for_feedback: bool,
     agent_callbacks: Optional[AgentCallbacks] = None,
 ) -> str | None:
     if not agent.output:
@@ -37,7 +35,7 @@ async def _get_feedback(
 
     feedback = "Ok"
 
-    if ask_agent_for_feedback:
+    if config.enable_feedback_agent:
         feedback_tool = FeedbackTool(config, mcp_servers, agent_callbacks)
         formatted_parameters = textwrap.indent(format_parameters(agent.parameters), "  ")
         agent_feedback_result = await feedback_tool.execute(
@@ -46,34 +44,14 @@ async def _get_feedback(
                 "parameters": "\n" + formatted_parameters,
                 "result": agent.output.result,
                 "summary": agent.output.summary,
-                "feedback": agent.output.feedback,
             }
         )
         feedback = agent_feedback_result.content
 
-    if ask_user_for_feedback:
+    if config.enable_user_feedback:
         feedback = await asyncio.to_thread(Prompt.ask, f"Feedback for {agent.name}", default=feedback)
 
     return feedback if feedback != "Ok" else None
-
-
-class AgentToolBase(Tool):
-    def __init__(
-        self,
-        config: Config,
-        mcp_servers: list | None = None,
-        agent_callbacks: Optional[AgentCallbacks] = None,
-    ):
-        self._config = config
-        self._mcp_servers = mcp_servers or []
-        self._agent_callbacks = agent_callbacks or NullCallbacks()
-
-    async def _run_agent(self, agent: Agent) -> AgentOutput:
-        return await run_agent_loop(
-            agent,
-            self._agent_callbacks,
-            self._config.shorten_conversation_at_tokens,
-        )
 
 
 class LaunchOrchestratorAgentSchema(BaseModel):
@@ -88,7 +66,7 @@ class LaunchOrchestratorAgentSchema(BaseModel):
     )
 
 
-class OrchestratorTool(AgentToolBase):
+class OrchestratorTool(Tool):
     def __init__(
         self,
         config: Config,
@@ -96,8 +74,11 @@ class OrchestratorTool(AgentToolBase):
         history: list | None = None,
         agent_callbacks: Optional[AgentCallbacks] = None,
     ):
-        super().__init__(config, mcp_servers, agent_callbacks)
+        super().__init__()
+        self._config = config
+        self._mcp_servers = mcp_servers or []
         self._history = history
+        self._agent_callbacks = agent_callbacks or NullCallbacks()
 
     def name(self) -> str:
         return "launch_orchestrator_agent"
@@ -130,14 +111,16 @@ class OrchestratorTool(AgentToolBase):
                 agent,
                 self._config,
                 self._mcp_servers,
-                ask_user_for_feedback=self._config.enable_user_feedback,
-                ask_agent_for_feedback=self._config.enable_feedback_agent,
                 agent_callbacks=self._agent_callbacks,
             ),
         )
 
         try:
-            output = await self._run_agent(orchestrator_agent)
+            output = await run_agent_loop(
+                orchestrator_agent,
+                self._agent_callbacks,
+                self._config.shorten_conversation_at_tokens,
+            )
             self.summary = output.summary
             return TextResult(content=output.result)
         finally:
@@ -159,11 +142,14 @@ class LaunchAgentSchema(BaseModel):
     )
 
 
-class AgentTool(AgentToolBase):
+class AgentTool(Tool):
     def __init__(
         self, config: Config, mcp_servers: list | None = None, agent_callbacks: Optional[AgentCallbacks] = None
     ):
-        super().__init__(config, mcp_servers, agent_callbacks)
+        super().__init__()
+        self._config = config
+        self._mcp_servers = mcp_servers or []
+        self._agent_callbacks = agent_callbacks or NullCallbacks()
 
     def name(self) -> str:
         return "launch_agent"
@@ -199,13 +185,15 @@ class AgentTool(AgentToolBase):
                 agent,
                 self._config,
                 self._mcp_servers,
-                ask_user_for_feedback=self._config.enable_user_feedback,
-                ask_agent_for_feedback=self._config.enable_feedback_agent,
                 agent_callbacks=self._agent_callbacks,
             ),
         )
 
-        output = await self._run_agent(agent)
+        output = await run_agent_loop(
+            agent,
+            self._agent_callbacks,
+            self._config.shorten_conversation_at_tokens,
+        )
         return TextResult(content=output.result)
 
 
@@ -273,11 +261,11 @@ class ExecuteShellCommandTool(Tool):
         assert "command" in parameters
 
         command = parameters["command"].strip()
-        timeout = parameters.get("timeout", 10)
+        timeout = parameters.get("timeout", 30)
 
         for pattern in self._shell_confirmation_patterns:
-            if re.search(pattern, command):
-                question = f"Run `{command}`?"
+            if re.match(pattern, command):
+                question = f"Execute `{command}`?"
                 answer = await asyncio.to_thread(Confirm.ask, question)
                 if not answer:
                     return TextResult(content="Command execution denied.")
@@ -312,16 +300,16 @@ class LaunchFeedbackAgentSchema(BaseModel):
     parameters: str = Field(description="The parameters the agent was given for the task.")
     result: str = Field(description="The result of the agent.")
     summary: str | None = Field(default=None, description="A summary of the conversation with the client.")
-    feedback: str | None = Field(
-        default=None, description="The feedback provided to the agent during the work on the task."
-    )
 
 
-class FeedbackTool(AgentToolBase):
+class FeedbackTool(Tool):
     def __init__(
         self, config: Config, mcp_servers: list | None = None, agent_callbacks: Optional[AgentCallbacks] = None
     ):
-        super().__init__(config, mcp_servers, agent_callbacks)
+        super().__init__()
+        self._config = config
+        self._mcp_servers = mcp_servers or []
+        self._agent_callbacks = agent_callbacks or NullCallbacks()
 
     def name(self) -> str:
         return "launch_feedback_agent"
@@ -351,13 +339,15 @@ class FeedbackTool(AgentToolBase):
                 agent,
                 self._config,
                 self._mcp_servers,
-                ask_user_for_feedback=False,
-                ask_agent_for_feedback=False,
                 agent_callbacks=self._agent_callbacks,
             ),
         )
 
-        output = await self._run_agent(feedback_agent)
+        output = await run_agent_loop(
+            feedback_agent,
+            self._agent_callbacks,
+            self._config.shorten_conversation_at_tokens,
+        )
         return TextResult(content=output.result)
 
 
@@ -366,11 +356,7 @@ class FinishTaskSchema(BaseModel):
         description="The result of the work on the task. The work of the agent is evaluated based on this result."
     )
     summary: str = Field(
-        description="A concise summary of the conversation the agent and the client had. There should be enough context such that the work could be continued based on this summary.",
-    )
-    feedback: str | None = Field(
-        default=None,
-        description="A summary of the feedback given by the client to the agent during the task. This can both be questions that were answered by the client, or feedback. It needs to be clear from this parameter why the result might not fit to initial task description.",
+        description="A concise summary of the conversation the agent and the client had. There should be enough context such that the work could be continued based on this summary. It should be able to evaluate your result using only your input parameters and this summary. That means that you need to include all of the user feedback you worked into your result.",
     )
 
 
@@ -388,7 +374,6 @@ class FinishTaskTool(Tool):
         return FinishTaskResult(
             result=parameters["result"],
             summary=parameters["summary"],
-            feedback=parameters.get("feedback"),
         )
 
 

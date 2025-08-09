@@ -60,7 +60,6 @@ def _handle_finish_task_result(result: FinishTaskResult, agent: Agent):
     agent.output = AgentOutput(
         result=result.result,
         summary=result.summary,
-        feedback=result.feedback,
     )
     return "Agent output set."
 
