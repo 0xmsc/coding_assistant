@@ -168,6 +168,9 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_
 
     if hasattr(message, "reasoning_content") and message.reasoning_content:
         trace.get_current_span().set_attribute("completion.reasoning_content", message.reasoning_content)
+        agent_callbacks.on_assistant_reasoning(agent.name, message.reasoning_content)
+
+        # We delete reasoning so we don't store it in the history, and hence do not send it to the LLM again.
         del message.reasoning_content
 
     append_assistant_message(agent.history, agent_callbacks, agent.name, message)
