@@ -28,6 +28,8 @@ async def _get_feedback(
     agent: Agent,
     config: Config,
     mcp_servers: list,
+    enable_feedback_agent: bool,
+    enable_user_feedback: bool,
     agent_callbacks: Optional[AgentCallbacks] = None,
 ) -> str | None:
     if not agent.output:
@@ -35,7 +37,7 @@ async def _get_feedback(
 
     feedback = "Ok"
 
-    if config.enable_feedback_agent:
+    if enable_feedback_agent:
         feedback_tool = FeedbackTool(config, mcp_servers, agent_callbacks)
         formatted_parameters = textwrap.indent(format_parameters(agent.parameters), "  ")
         agent_feedback_result = await feedback_tool.execute(
@@ -48,7 +50,7 @@ async def _get_feedback(
         )
         feedback = agent_feedback_result.content
 
-    if config.enable_user_feedback:
+    if enable_user_feedback:
         feedback = await asyncio.to_thread(Prompt.ask, f"Feedback for {agent.name}", default=feedback)
 
     return feedback if feedback != "Ok" else None
@@ -108,9 +110,11 @@ class OrchestratorTool(Tool):
             ],
             model=self._config.expert_model,
             feedback_function=lambda agent: _get_feedback(
-                agent,
-                self._config,
-                self._mcp_servers,
+                agent=agent,
+                config=self._config,
+                mcp_servers=self._mcp_servers,
+                enable_feedback_agent=self._config.enable_feedback_agent,
+                enable_user_feedback=self._config.enable_user_feedback,
                 agent_callbacks=self._agent_callbacks,
             ),
         )
@@ -182,9 +186,11 @@ class AgentTool(Tool):
             ],
             model=self.get_model(parameters),
             feedback_function=lambda agent: _get_feedback(
-                agent,
-                self._config,
-                self._mcp_servers,
+                agent=agent,
+                config=self._config,
+                mcp_servers=self._mcp_servers,
+                enable_feedback_agent=self._config.enable_feedback_agent,
+                enable_user_feedback=self._config.enable_user_feedback,
                 agent_callbacks=self._agent_callbacks,
             ),
         )
@@ -336,9 +342,11 @@ class FeedbackTool(Tool):
             ],
             model=self._config.model,
             feedback_function=lambda agent: _get_feedback(
-                agent,
-                self._config,
-                self._mcp_servers,
+                agent=agent,
+                config=self._config,
+                mcp_servers=self._mcp_servers,
+                enable_feedback_agent=False,
+                enable_user_feedback=False,
                 agent_callbacks=self._agent_callbacks,
             ),
         )
