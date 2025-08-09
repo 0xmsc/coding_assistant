@@ -39,6 +39,11 @@ class AgentCallbacks(ABC):
         pass
 
     @abstractmethod
+    def on_assistant_reasoning(self, agent_name: str, content: str):
+        """Handle reasoning content from assistant."""
+        pass
+
+    @abstractmethod
     def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
         """Handle messages with role: tool."""
         pass
@@ -67,6 +72,9 @@ class NullCallbacks(AgentCallbacks):
         pass
 
     def on_assistant_message(self, agent_name: str, content: str):
+        pass
+
+    def on_assistant_reasoning(self, agent_name: str, content: str):
         pass
 
     def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
@@ -119,6 +127,15 @@ class RichCallbacks(AgentCallbacks):
                 Markdown(content),
                 title=f"Agent {agent_name} assistant",
                 border_style="green",
+            ),
+        )
+
+    def on_assistant_reasoning(self, agent_name: str, content: str):
+        print(
+            Panel(
+                Markdown(content),
+                title=f"Agent {agent_name} reasoning",
+                border_style="cyan",
             ),
         )
 
