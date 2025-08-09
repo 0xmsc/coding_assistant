@@ -88,8 +88,9 @@ class NullCallbacks(AgentCallbacks):
 
 
 class RichCallbacks(AgentCallbacks):
-    def __init__(self, print_chunks: bool = True):
+    def __init__(self, print_chunks: bool = True, print_reasoning: bool = True):
         self.print_chunks = print_chunks
+        self.print_reasoning = print_reasoning
 
     def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
         status = "resuming" if is_resuming else "starting"
@@ -131,13 +132,14 @@ class RichCallbacks(AgentCallbacks):
         )
 
     def on_assistant_reasoning(self, agent_name: str, content: str):
-        print(
-            Panel(
-                Markdown(content),
-                title=f"Agent {agent_name} reasoning",
-                border_style="cyan",
-            ),
-        )
+        if self.print_reasoning:
+            print(
+                Panel(
+                    Markdown(content),
+                    title=f"Agent {agent_name} reasoning",
+                    border_style="cyan",
+                ),
+            )
 
     def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
         render_group = Group(

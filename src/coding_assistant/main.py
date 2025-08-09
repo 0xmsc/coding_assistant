@@ -132,6 +132,13 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--print-reasoning",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Print reasoning from the model.",
+    )
+
+    parser.add_argument(
         "--shell-confirmation-patterns",
         nargs="*",
         default=[],
@@ -281,7 +288,10 @@ async def _main(args):
         if not args.task:
             raise ValueError("Task must be provided. Use --task to specify the task for the orchestrator agent.")
 
-        agent_callbacks = RichCallbacks(print_chunks=args.print_chunks)
+        agent_callbacks = RichCallbacks(
+            print_chunks=args.print_chunks,
+            print_reasoning=args.print_reasoning,
+        )
 
         await run_orchestrator_agent(
             task=args.task,
