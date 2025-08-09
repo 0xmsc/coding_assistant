@@ -214,6 +214,8 @@ async def run_orchestrator_agent(
 
 
 async def _main(args):
+    logger.info(f"Starting Coding Assistant with arguments {args}")
+
     setup_tracing(args)
 
     config = create_config_from_args(args)
