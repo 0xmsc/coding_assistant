@@ -251,14 +251,7 @@ class ExecuteShellCommandTool(Tool):
         return "execute_shell_command"
 
     def description(self) -> str:
-        return (
-            "Execute a shell command and return the output. The command will be executed in bash. Examples for commands are:\n"
-            "- `eza` or `ls` for listing files in a directory\n"
-            "- `git` for running git commands\n"
-            "- `fd` or `find` for searching files\n"
-            "- `rg` or `grep` for searching text in files\n"
-            "- `gh` for interfacing with GitHub\n"
-        )
+        return "Execute a shell command and return the output. The command will be executed in bash."
 
     def parameters(self) -> dict:
         return ExecuteShellCommandSchema.model_json_schema()
