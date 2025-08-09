@@ -23,6 +23,7 @@ dependencies = [
     "pydantic",
     "debugpy",
     "pytest-timeout",
+    "prompt-toolkit",
 ]
 
 [tool.black]
