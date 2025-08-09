@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import json
 import logging
@@ -5,9 +6,11 @@ import sys
 import textwrap
 
 from opentelemetry import trace
+from rich.prompt import Prompt
 
 from coding_assistant.agents.callbacks import AgentCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
+from coding_assistant.agents.interrupts import InterruptibleSection
 from coding_assistant.agents.parameters import format_parameters
 from coding_assistant.agents.types import Agent, AgentOutput, FinishTaskResult, ShortenConversationResult, TextResult
 from coding_assistant.llm.adapters import execute_tool_call, get_tools
@@ -199,7 +202,17 @@ async def run_agent_loop(
 
     while True:
         while not agent.output:
-            await do_single_step(agent, agent_callbacks, shorten_conversation_at_tokens)
+            with InterruptibleSection() as interruptible_section:
+                await do_single_step(agent, agent_callbacks, shorten_conversation_at_tokens)
+
+            if interruptible_section.was_interrupted:
+                logger.info(f"Agent '{agent.name}' was interrupted during execution.")
+
+                feedback = await asyncio.to_thread(Prompt.ask, "Feedback")
+                formatted_feedback = FEEDBACK_TEMPLATE.format(
+                    feedback=textwrap.indent(feedback, "> "),
+                )
+                append_user_message(agent.history, agent_callbacks, agent.name, formatted_feedback)
 
         trace.get_current_span().set_attribute("agent.result", agent.output.result)
         trace.get_current_span().set_attribute("agent.summary", agent.output.summary)
