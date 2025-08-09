@@ -8,6 +8,7 @@ license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "litellm",
+    "litellm[proxy]",
     "mcp[cli]",
     "opentelemetry-api",
     "opentelemetry-exporter-otlp-proto-http",
@@ -20,7 +21,8 @@ dependencies = [
     "landlock",
     "beeprint",
     "pydantic",
-    "debugpy>=1.8.15",
+    "debugpy",
+    "pytest-timeout",
 ]
 
 [tool.black]
