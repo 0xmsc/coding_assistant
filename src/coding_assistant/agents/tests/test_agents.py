@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -134,9 +134,12 @@ def _create_confirmation_orchestrator():
 async def test_shell_confirmation_positive():
     tool, parameters = _create_confirmation_orchestrator()
 
-    with patch("rich.prompt.Confirm.ask", return_value=True) as p:
+    with patch("coding_assistant.tools.tools.create_confirm_session") as mock_create_confirm:
+        mock_session = AsyncMock()
+        mock_session.prompt_async.return_value = True
+        mock_create_confirm.return_value = mock_session
+        
         result = await tool.execute(parameters=parameters)
-        p.assert_called_once()
         assert result.content.strip() == "Hello World"
 
 
@@ -144,7 +147,10 @@ async def test_shell_confirmation_positive():
 async def test_shell_confirmation_negative():
     tool, parameters = _create_confirmation_orchestrator()
 
-    with patch("rich.prompt.Confirm.ask", return_value=False) as p:
+    with patch("coding_assistant.tools.tools.create_confirm_session") as mock_create_confirm:
+        mock_session = AsyncMock()
+        mock_session.prompt_async.return_value = False
+        mock_create_confirm.return_value = mock_session
+        
         result = await tool.execute(parameters=parameters)
-        p.assert_called_once()
         assert result.content.strip() == "Command execution denied."
