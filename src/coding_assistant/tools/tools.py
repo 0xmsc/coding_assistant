@@ -8,7 +8,6 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 from prompt_toolkit import PromptSession, prompt
 from prompt_toolkit.shortcuts import create_confirm_session
-from prompt_toolkit.styles import Style
 
 from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
 from coding_assistant.agents.execution import run_agent_loop
