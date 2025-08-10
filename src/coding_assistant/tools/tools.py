@@ -232,8 +232,6 @@ class AskClientTool(Tool):
             )
 
         question = parameters["question"]
-        question = question + ":" if not question.endswith("?") else question
-
         default_answer = parameters.get("default_answer")
 
         print(question)
