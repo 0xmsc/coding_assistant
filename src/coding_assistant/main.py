@@ -130,21 +130,18 @@ def parse_args():
         default=False,
         help="Print chunks from the model stream.",
     )
-
     parser.add_argument(
         "--print-reasoning",
         action=BooleanOptionalAction,
         default=True,
         help="Print reasoning from the model.",
     )
-
     parser.add_argument(
         "--shell-confirmation-patterns",
         nargs="*",
         default=[],
         help="Ask for confirmation before executing a shell command that matches any of the given patterns.",
     )
-
     parser.add_argument(
         "--wait-for-debugger",
         action=BooleanOptionalAction,
