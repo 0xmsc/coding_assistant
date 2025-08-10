@@ -65,11 +65,11 @@ async def test_ask_client_tool_enabled(mock_prompt_session_class):
     mock_session = AsyncMock()
     mock_session.prompt_async.return_value = "yes"
     mock_prompt_session_class.return_value = mock_session
-    
+
     tool = AskClientTool(enabled=True)
     result = await tool.execute({"question": "Do you want to proceed?", "default_answer": "no"})
     assert result.content == "yes"
-    mock_session.prompt_async.assert_called_once_with("Do you want to proceed? ", default="no")
+    mock_session.prompt_async.assert_called_once_with("> ", default="no")
 
 
 @pytest.mark.asyncio

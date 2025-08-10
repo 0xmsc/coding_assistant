@@ -267,7 +267,7 @@ class ExecuteShellCommandTool(Tool):
         timeout = parameters.get("timeout", 30)
 
         for pattern in self._shell_confirmation_patterns:
-            if re.match(pattern, command):
+            if re.search(pattern, command):
                 question = f"Execute `{command}`?"
                 answer = await create_confirm_session(question).prompt_async()
                 if not answer:
