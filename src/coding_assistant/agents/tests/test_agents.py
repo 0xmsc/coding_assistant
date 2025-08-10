@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from coding_assistant.agents.execution import create_start_message
 from coding_assistant.agents.types import Agent
 from coding_assistant.config import Config
 from coding_assistant.tools.tools import FeedbackTool, OrchestratorTool

@@ -46,11 +46,7 @@ Afterwards, call the `finish_task` tool again to signal that you are done.
 """.strip()
 
 
-def create_start_message(agent: Agent) -> str:
-    """
-    Compose the canonical agent start message, including all provided parameters in readable format.
-    Uses formatting helpers from coding_assistant.agents.utils.
-    """
+def _create_start_message(agent: Agent) -> str:
     parameters_str = format_parameters(agent.parameters)
     return START_MESSAGE_TEMPLATE.format(
         name=agent.name,
@@ -70,7 +66,7 @@ def _handle_finish_task_result(result: FinishTaskResult, agent: Agent):
 def _handle_shorten_conversation_result(
     result: ShortenConversationResult, agent: Agent, agent_callbacks: AgentCallbacks
 ):
-    start_message = create_start_message(agent)
+    start_message = _create_start_message(agent)
     agent.history = []
     append_user_message(
         agent.history,
@@ -117,38 +113,15 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
     )
 
 
-def _validate_agent_tools(agent: Agent):
+@tracer.start_as_current_span("do_single_step")
+async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_conversation_at_tokens: int):
+    trace.get_current_span().set_attribute("agent.name", agent.name)
+    
+    # Validate agent tools
     if not any(tool.name() == "finish_task" for tool in agent.tools):
         raise RuntimeError("Agent needs to have a `finish_task` tool in order to run a step.")
     if not any(tool.name() == "shorten_conversation" for tool in agent.tools):
         raise RuntimeError("Agent needs to have a `shorten_conversation` tool in order to run a step.")
-
-
-def _handle_no_tool_calls(agent: Agent, agent_callbacks: AgentCallbacks):
-    append_user_message(
-        agent.history,
-        agent_callbacks,
-        agent.name,
-        "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
-    )
-
-
-def _check_conversation_length(
-    agent: Agent, agent_callbacks: AgentCallbacks, tokens: int, shorten_conversation_at_tokens: int
-):
-    if tokens > shorten_conversation_at_tokens:
-        append_user_message(
-            agent.history,
-            agent_callbacks,
-            agent.name,
-            "Your conversation history has grown too large. Please summarize it by using the `shorten_conversation` tool.",
-        )
-
-
-@tracer.start_as_current_span("do_single_step")
-async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_conversation_at_tokens: int):
-    trace.get_current_span().set_attribute("agent.name", agent.name)
-    _validate_agent_tools(agent)
 
     tools = await get_tools(agent.tools, agent.mcp_servers)
     trace.get_current_span().set_attribute("agent.tools", json.dumps(tools))
@@ -179,9 +152,21 @@ async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_
         for tool_call in message.tool_calls:
             await handle_tool_call(tool_call, agent, agent_callbacks)
     else:
-        _handle_no_tool_calls(agent, agent_callbacks)
+        append_user_message(
+            agent.history,
+            agent_callbacks,
+            agent.name,
+            "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
+        )
 
-    _check_conversation_length(agent, agent_callbacks, completion.tokens, shorten_conversation_at_tokens)
+    # Check conversation length and request shortening if needed
+    if completion.tokens > shorten_conversation_at_tokens:
+        append_user_message(
+            agent.history,
+            agent_callbacks,
+            agent.name,
+            "Your conversation history has grown too large. Please summarize it by using the `shorten_conversation` tool.",
+        )
 
     return message
 
@@ -199,7 +184,7 @@ async def run_agent_loop(
     parameters_json = json.dumps([dataclasses.asdict(p) for p in agent.parameters])
     trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
 
-    start_message = create_start_message(agent)
+    start_message = _create_start_message(agent)
     agent_callbacks.on_agent_start(agent.name, agent.model, is_resuming=bool(agent.history))
     append_user_message(agent.history, agent_callbacks, agent.name, start_message)
 
