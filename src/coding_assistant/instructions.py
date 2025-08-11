@@ -20,6 +20,7 @@ INSTRUCTIONS = """
     - `fd` or `find` for searching files
     - `rg` or `grep` for searching text in files
     - `gh` for interfacing with GitHub
+    - `pwd` to get the project root
 """.strip()
 
 PLANNING_INSTRUCTIONS = """
