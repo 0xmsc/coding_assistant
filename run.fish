@@ -6,7 +6,7 @@ uv --project (dirname (status filename)) run coding-assistant \
     --readable-sandbox-directories /mnt/wsl ~/.ssh \
     --writable-sandbox-directories /tmp /dev/shm \
     --mcp-servers \
-        '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{working_directory}"]}' \
+        '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/"]}' \
         '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}' \
         '{"name": "tavily", "command": "npx", "args": ["-y", "tavily-mcp"], "env": ["TAVILY_API_KEY"]}' \
     $argv
