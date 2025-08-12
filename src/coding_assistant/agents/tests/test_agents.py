@@ -158,10 +158,10 @@ async def test_shell_confirmation_negative():
 
 def _create_tool_confirmation_orchestrator():
     config = create_test_config()
-    config.tool_confirmation_patterns = ["^launch_agent"]
+    config.tool_confirmation_patterns = ["^execute_shell_command"]
     tool = OrchestratorTool(config=config)
     parameters = {
-        "task": "Launch an agent to say 'Hello, World!'. If the tool execution is denied, output 'Tool execution denied.'",
+        "task": "Use the execute_shell_command to echo 'Hello, World!'. If the tool execution is denied, output 'Tool execution denied.'",
     }
     return tool, parameters
 
