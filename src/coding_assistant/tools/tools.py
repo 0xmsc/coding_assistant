@@ -111,6 +111,7 @@ class OrchestratorTool(Tool):
                 ShortenConversation(),
             ],
             model=self._config.expert_model,
+            tool_confirmation_patterns=self._config.tool_confirmation_patterns,
             feedback_function=lambda agent: _get_feedback(
                 agent=agent,
                 config=self._config,
@@ -187,6 +188,7 @@ class AgentTool(Tool):
                 ShortenConversation(),
             ],
             model=self.get_model(parameters),
+            tool_confirmation_patterns=self._config.tool_confirmation_patterns,
             feedback_function=lambda agent: _get_feedback(
                 agent=agent,
                 config=self._config,
@@ -338,6 +340,7 @@ class FeedbackTool(Tool):
                 ShortenConversation(),
             ],
             model=self._config.model,
+            tool_confirmation_patterns=self._config.tool_confirmation_patterns,
             feedback_function=lambda agent: _get_feedback(
                 agent=agent,
                 config=self._config,

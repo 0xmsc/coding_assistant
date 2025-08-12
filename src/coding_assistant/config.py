@@ -18,3 +18,4 @@ class Config(BaseModel):
     shorten_conversation_at_tokens: int
     enable_ask_user: bool
     shell_confirmation_patterns: List[str]
+    tool_confirmation_patterns: List[str]

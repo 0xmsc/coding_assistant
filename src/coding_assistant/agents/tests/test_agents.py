@@ -20,6 +20,7 @@ def create_test_config() -> Config:
         shorten_conversation_at_tokens=200_000,
         enable_ask_user=False,
         shell_confirmation_patterns=[],
+        tool_confirmation_patterns=[],
     )
 
 
@@ -153,3 +154,40 @@ async def test_shell_confirmation_negative():
         
         result = await tool.execute(parameters=parameters)
         assert result.content.strip() == "Command execution denied."
+
+
+def _create_tool_confirmation_orchestrator():
+    config = create_test_config()
+    config.tool_confirmation_patterns = ["^launch_agent"]
+    tool = OrchestratorTool(config=config)
+    parameters = {
+        "task": "Launch an agent to say 'Hello, World!'. If the tool execution is denied, output 'Tool execution denied.'",
+    }
+    return tool, parameters
+
+
+@pytest.mark.asyncio
+async def test_tool_confirmation_positive():
+    tool, parameters = _create_tool_confirmation_orchestrator()
+
+    with patch("coding_assistant.agents.execution.create_confirm_session") as mock_create_confirm:
+        mock_session = AsyncMock()
+        mock_session.prompt_async.return_value = True
+        mock_create_confirm.return_value = mock_session
+        
+        result = await tool.execute(parameters=parameters)
+        assert result.content.strip() == "Hello, World!"
+
+
+@pytest.mark.asyncio
+async def test_tool_confirmation_negative():
+    tool, parameters = _create_tool_confirmation_orchestrator()
+
+    with patch("coding_assistant.agents.execution.create_confirm_session") as mock_create_confirm:
+        mock_session = AsyncMock()
+        mock_session.prompt_async.return_value = False
+        mock_create_confirm.return_value = mock_session
+        
+        result = await tool.execute(parameters=parameters)
+        assert result.content.strip() == "Tool execution denied."
+
