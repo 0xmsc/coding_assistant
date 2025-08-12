@@ -143,6 +143,12 @@ def parse_args():
         help="Ask for confirmation before executing a shell command that matches any of the given patterns.",
     )
     parser.add_argument(
+        "--tool-confirmation-patterns",
+        nargs="*",
+        default=[],
+        help="Ask for confirmation before executing a tool that matches any of the given patterns.",
+    )
+    parser.add_argument(
         "--wait-for-debugger",
         action=BooleanOptionalAction,
         default=False,
@@ -161,6 +167,7 @@ def create_config_from_args(args) -> Config:
         shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
         enable_ask_user=args.ask_user,
         shell_confirmation_patterns=args.shell_confirmation_patterns,
+        tool_confirmation_patterns=args.tool_confirmation_patterns,
     )
 
 

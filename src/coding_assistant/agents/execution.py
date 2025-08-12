@@ -8,6 +8,9 @@ import textwrap
 from opentelemetry import trace
 from prompt_toolkit import prompt
 
+from prompt_toolkit.shortcuts import create_confirm_session
+import re
+
 from coding_assistant.agents.callbacks import AgentCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
 from coding_assistant.agents.interrupts import InterruptibleSection
@@ -87,6 +90,22 @@ def _handle_shorten_conversation_result(
 async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallbacks):
     function_name = tool_call.function.name
     function_args = json.loads(tool_call.function.arguments or "{}")
+
+    for pattern in agent.tool_confirmation_patterns:
+        if re.search(pattern, function_name):
+            question = f"Execute tool `{function_name}` with arguments `{function_args}`?"
+            answer = await create_confirm_session(question).prompt_async()
+            if not answer:
+                append_tool_message(
+                    agent.history,
+                    agent_callbacks,
+                    agent.name,
+                    tool_call.id,
+                    function_name,
+                    function_args,
+                    "Tool execution denied.",
+                )
+                return
 
     trace.get_current_span().set_attribute("function.name", function_name)
     trace.get_current_span().set_attribute("function.args", tool_call.function.arguments)
