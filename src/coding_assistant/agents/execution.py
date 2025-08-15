@@ -110,7 +110,14 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
     trace.get_current_span().set_attribute("function.name", function_name)
     trace.get_current_span().set_attribute("function.args", tool_call.function.arguments)
 
-    function_call_result = await execute_tool_call(function_name, function_args, agent.tools, agent.mcp_servers)
+    try:
+        function_call_result = await execute_tool_call(function_name, function_args, agent.tools, agent.mcp_servers)
+    except ValueError as e:
+        # `ValueError` indicates that the tool was not found.
+        append_tool_message(
+            agent.history, agent_callbacks, agent.name, tool_call.id, function_name, function_args, str(e)
+        )
+        return
 
     assert function_call_result is not None, f"Function {function_name} not implemented"
     trace.get_current_span().set_attribute("function.result", str(function_call_result))

@@ -39,7 +39,7 @@ async def get_tools(tools: list[Tool], mcp_servers: list[MCPServer]) -> list[dic
     # Add tools from the tools list
     for tool in tools:
         if tool.name().startswith("mcp_"):
-            raise RuntimeError("Tools cannot start with mcp_")
+            raise ValueError("Tools cannot start with mcp_")
 
         result.append(
             {
@@ -97,5 +97,4 @@ async def execute_tool_call(function_name: str, function_args: dict, tools: list
         for tool in tools:
             if tool.name() == function_name:
                 return await tool.execute(function_args)
-        
-        raise RuntimeError(f"Tool {function_name} not found in agent tools.")
+        raise ValueError(f"Tool {function_name} not found in agent tools.")
