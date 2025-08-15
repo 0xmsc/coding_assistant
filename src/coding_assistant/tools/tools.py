@@ -5,9 +5,9 @@ import subprocess
 import textwrap
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
 from prompt_toolkit import PromptSession, prompt
 from prompt_toolkit.shortcuts import create_confirm_session
+from pydantic import BaseModel, Field
 
 from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
 from coding_assistant.agents.execution import run_agent_loop
@@ -112,7 +112,6 @@ class OrchestratorTool(Tool):
             ],
             model=self._config.expert_model,
             tool_confirmation_patterns=self._config.tool_confirmation_patterns,
-            no_truncate_tools=self._config.no_truncate_tools,
             feedback_function=lambda agent: _get_feedback(
                 agent=agent,
                 config=self._config,
@@ -128,6 +127,7 @@ class OrchestratorTool(Tool):
                 orchestrator_agent,
                 self._agent_callbacks,
                 self._config.shorten_conversation_at_tokens,
+                self._config.no_truncate_tools,
             )
             self.summary = output.summary
             return TextResult(content=output.result)
@@ -190,7 +190,6 @@ class AgentTool(Tool):
             ],
             model=self.get_model(parameters),
             tool_confirmation_patterns=self._config.tool_confirmation_patterns,
-            no_truncate_tools=self._config.no_truncate_tools,
             feedback_function=lambda agent: _get_feedback(
                 agent=agent,
                 config=self._config,
@@ -205,6 +204,7 @@ class AgentTool(Tool):
             agent,
             self._agent_callbacks,
             self._config.shorten_conversation_at_tokens,
+            self._config.no_truncate_tools,
         )
         return TextResult(content=output.result)
 

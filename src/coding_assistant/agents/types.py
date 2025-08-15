@@ -69,7 +69,6 @@ class Agent:
     tools: list[Tool] = field(default_factory=list)
     mcp_servers: list[MCPServer] = field(default_factory=list)
     tool_confirmation_patterns: list[str] = field(default_factory=list)
-    no_truncate_tools: list[str] = field(default_factory=list)
 
     history: list = field(default_factory=list)
     output: AgentOutput | None = None
