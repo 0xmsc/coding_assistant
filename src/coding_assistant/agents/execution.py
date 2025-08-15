@@ -65,6 +65,12 @@ def _handle_finish_task_result(result: FinishTaskResult, agent: Agent):
     return "Agent output set."
 
 
+def _handle_text_result(result: TextResult, agent: Agent, function_name: str) -> str:
+    if any(re.search(pattern, function_name) for pattern in agent.no_truncate_tools) or len(result.content) <= 50_000:
+        return result.content
+    return "System error: Tool call result too long."
+
+
 def _handle_shorten_conversation_result(
     result: ShortenConversationResult, agent: Agent, agent_callbacks: AgentCallbacks
 ):
@@ -130,12 +136,7 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
     result_handlers = {
         FinishTaskResult: lambda r: _handle_finish_task_result(r, agent),
         ShortenConversationResult: lambda r: _handle_shorten_conversation_result(r, agent, agent_callbacks),
-        TextResult: (
-            lambda r: r.content
-            if any(re.search(pattern, function_name) for pattern in agent.no_truncate_tools)
-            or len(r.content) <= 50_000
-            else "System error: Tool call result too long."
-        ),
+        TextResult: lambda r: _handle_text_result(r, agent, function_name),
     }
 
     handler = result_handlers.get(type(function_call_result))
