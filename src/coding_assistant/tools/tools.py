@@ -357,6 +357,7 @@ class FeedbackTool(Tool):
             feedback_agent,
             self._agent_callbacks,
             self._config.shorten_conversation_at_tokens,
+            self._config.no_truncate_tools,
         )
         return TextResult(content=output.result)
 

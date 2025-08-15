@@ -21,6 +21,7 @@ def create_test_config() -> Config:
         enable_ask_user=False,
         shell_confirmation_patterns=[],
         tool_confirmation_patterns=[],
+        no_truncate_tools=set(),
     )
 
 
@@ -138,7 +139,7 @@ async def test_shell_confirmation_positive():
         mock_session = AsyncMock()
         mock_session.prompt_async.return_value = True
         mock_create_confirm.return_value = mock_session
-        
+
         result = await tool.execute(parameters=parameters)
         assert result.content.strip() == "Hello World"
 
@@ -151,7 +152,7 @@ async def test_shell_confirmation_negative():
         mock_session = AsyncMock()
         mock_session.prompt_async.return_value = False
         mock_create_confirm.return_value = mock_session
-        
+
         result = await tool.execute(parameters=parameters)
         assert result.content.strip() == "Command execution denied."
 
@@ -174,7 +175,7 @@ async def test_tool_confirmation_positive():
         mock_session = AsyncMock()
         mock_session.prompt_async.return_value = True
         mock_create_confirm.return_value = mock_session
-        
+
         result = await tool.execute(parameters=parameters)
         assert result.content.strip() == "Hello, World!"
 
@@ -187,7 +188,6 @@ async def test_tool_confirmation_negative():
         mock_session = AsyncMock()
         mock_session.prompt_async.return_value = False
         mock_create_confirm.return_value = mock_session
-        
+
         result = await tool.execute(parameters=parameters)
         assert result.content.strip() == "Tool execution denied."
-

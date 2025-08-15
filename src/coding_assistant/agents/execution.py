@@ -66,9 +66,9 @@ def _handle_finish_task_result(result: FinishTaskResult, agent: Agent):
 
 
 def _handle_text_result(result: TextResult, function_name: str, no_truncate_tools: set[str]) -> str:
-    if any(re.search(pattern, function_name) for pattern in no_truncate_tools) or len(result.content) <= 50_000:
-        return result.content
-    return "System error: Tool call result too long."
+    if len(result.content) >= 50_000 and not any(re.search(pattern, function_name) for pattern in no_truncate_tools):
+        return "System error: Tool call result too long. Please use a tool or arguments that return shorter results."
+    return result.content
 
 
 def _handle_shorten_conversation_result(
