@@ -2,14 +2,13 @@ import asyncio
 import dataclasses
 import json
 import logging
+import re
 import sys
 import textwrap
 
 from opentelemetry import trace
 from prompt_toolkit import prompt
-
 from prompt_toolkit.shortcuts import create_confirm_session
-import re
 
 from coding_assistant.agents.callbacks import AgentCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
@@ -115,7 +114,13 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
     except ValueError as e:
         # `ValueError` indicates that the tool was not found.
         append_tool_message(
-            agent.history, agent_callbacks, agent.name, tool_call.id, function_name, function_args, str(e)
+            agent.history,
+            agent_callbacks,
+            agent.name,
+            tool_call.id,
+            function_name,
+            function_args,
+            f"Error executing tool: {e}",
         )
         return
 
@@ -125,7 +130,12 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
     result_handlers = {
         FinishTaskResult: lambda r: _handle_finish_task_result(r, agent),
         ShortenConversationResult: lambda r: _handle_shorten_conversation_result(r, agent, agent_callbacks),
-        TextResult: lambda r: r.content if len(r.content) <= 50_000 else "System error: Tool call result too long.",
+        TextResult: (
+            lambda r: r.content
+            if any(re.search(pattern, function_name) for pattern in agent.no_truncate_tools)
+            or len(r.content) <= 50_000
+            else "System error: Tool call result too long."
+        ),
     }
 
     handler = result_handlers.get(type(function_call_result))
@@ -142,7 +152,7 @@ async def handle_tool_call(tool_call, agent: Agent, agent_callbacks: AgentCallba
 @tracer.start_as_current_span("do_single_step")
 async def do_single_step(agent: Agent, agent_callbacks: AgentCallbacks, shorten_conversation_at_tokens: int):
     trace.get_current_span().set_attribute("agent.name", agent.name)
-    
+
     # Validate agent tools
     if not any(tool.name() == "finish_task" for tool in agent.tools):
         raise RuntimeError("Agent needs to have a `finish_task` tool in order to run a step.")

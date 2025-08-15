@@ -19,3 +19,4 @@ class Config(BaseModel):
     enable_ask_user: bool
     shell_confirmation_patterns: List[str]
     tool_confirmation_patterns: List[str]
+    no_truncate_tools: List[str] = Field(default_factory=list)
