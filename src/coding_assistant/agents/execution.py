@@ -141,7 +141,7 @@ async def handle_tool_call(
     result_handlers = {
         FinishTaskResult: lambda r: _handle_finish_task_result(r, agent),
         ShortenConversationResult: lambda r: _handle_shorten_conversation_result(r, agent, agent_callbacks),
-        TextResult: lambda r: _handle_text_result(r, no_truncate_tools, function_name),
+        TextResult: lambda r: _handle_text_result(r, function_name, no_truncate_tools),
     }
 
     handler = result_handlers.get(type(function_call_result))
