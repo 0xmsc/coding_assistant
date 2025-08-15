@@ -3,14 +3,16 @@ import json
 import logging
 import os
 import sys
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
+from argparse import (ArgumentDefaultsHelpFormatter, ArgumentParser,
+                      BooleanOptionalAction)
 from pathlib import Path
 from typing import Optional
 
 import debugpy
 import requests
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import \
+    OTLPSpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -20,19 +22,19 @@ from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 
-from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks, RichCallbacks
+from coding_assistant.agents.callbacks import (AgentCallbacks, NullCallbacks,
+                                               RichCallbacks)
 from coding_assistant.config import Config, MCPServerConfig
-from coding_assistant.history import (
-    get_conversation_summaries,
-    get_latest_orchestrator_history_file,
-    load_orchestrator_history,
-    save_conversation_summary,
-    save_orchestrator_history,
-    trim_orchestrator_history,
-)
+from coding_assistant.history import (get_conversation_summaries,
+                                      get_latest_orchestrator_history_file,
+                                      load_orchestrator_history,
+                                      save_conversation_summary,
+                                      save_orchestrator_history,
+                                      trim_orchestrator_history)
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
-from coding_assistant.tools.mcp import get_mcp_servers_from_config, print_mcp_tools
+from coding_assistant.tools.mcp import (get_mcp_servers_from_config,
+                                        print_mcp_tools)
 from coding_assistant.tools.tools import OrchestratorTool
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
@@ -159,7 +161,7 @@ def parse_args():
         nargs="*",
         default=[],
         help="Do not truncate the output of tools that match any of the given regular expression patterns.",
-    ))
+    )
 
     return parser.parse_args()
 
@@ -174,7 +176,7 @@ def create_config_from_args(args) -> Config:
         enable_ask_user=args.ask_user,
         shell_confirmation_patterns=args.shell_confirmation_patterns,
         tool_confirmation_patterns=args.tool_confirmation_patterns,
-        no_truncate_tools=args.no_truncate_tools,
+        no_truncate_tools=set(args.no_truncate_tools),
     ))
 
 

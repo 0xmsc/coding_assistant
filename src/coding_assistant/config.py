@@ -1,13 +1,13 @@
-from pydantic import BaseModel, Field
 from pathlib import Path
-from typing import List
+
+from pydantic import BaseModel, Field
 
 
 class MCPServerConfig(BaseModel):
     name: str
     command: str
-    args: List[str]
-    env: List[str] = Field(default_factory=list)
+    args: list[str]
+    env: list[str] = Field(default_factory=list)
 
 
 class Config(BaseModel):
@@ -17,6 +17,6 @@ class Config(BaseModel):
     enable_user_feedback: bool
     shorten_conversation_at_tokens: int
     enable_ask_user: bool
-    shell_confirmation_patterns: List[str]
-    tool_confirmation_patterns: List[str]
-    no_truncate_tools: List[str] = Field(default_factory=list)
+    shell_confirmation_patterns: list[str]
+    tool_confirmation_patterns: list[str]
+    no_truncate_tools: set[str] = Field(default_factory=list)
