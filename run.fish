@@ -1,7 +1,7 @@
 #!/usr/bin/env fish
 
 uv --project (dirname (status filename)) run coding-assistant \
-    --model "gemini/gemini-2.5-flash" \
+    --model "gemini/gemini-2.5-pro" \
     --expert-model "gemini/gemini-2.5-pro" \
     --readable-sandbox-directories /mnt/wsl ~/.ssh \
     --writable-sandbox-directories /tmp /dev/shm ~/.serena \
