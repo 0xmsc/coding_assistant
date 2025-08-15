@@ -112,6 +112,7 @@ class OrchestratorTool(Tool):
             ],
             model=self._config.expert_model,
             tool_confirmation_patterns=self._config.tool_confirmation_patterns,
+            no_truncate_tools=self._config.no_truncate_tools,
             feedback_function=lambda agent: _get_feedback(
                 agent=agent,
                 config=self._config,
@@ -189,6 +190,7 @@ class AgentTool(Tool):
             ],
             model=self.get_model(parameters),
             tool_confirmation_patterns=self._config.tool_confirmation_patterns,
+            no_truncate_tools=self._config.no_truncate_tools,
             feedback_function=lambda agent: _get_feedback(
                 agent=agent,
                 config=self._config,
