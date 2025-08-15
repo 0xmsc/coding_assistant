@@ -65,7 +65,7 @@ def _handle_finish_task_result(result: FinishTaskResult, agent: Agent):
     return "Agent output set."
 
 
-def _handle_text_result(result: TextResult, agent: Agent, function_name: str, no_truncate_tools: set[str]) -> str:
+def _handle_text_result(result: TextResult, function_name: str, no_truncate_tools: set[str]) -> str:
     if any(re.search(pattern, function_name) for pattern in no_truncate_tools) or len(result.content) <= 50_000:
         return result.content
     return "System error: Tool call result too long."
