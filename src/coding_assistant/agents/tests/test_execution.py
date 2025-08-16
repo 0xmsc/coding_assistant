@@ -2,6 +2,7 @@ import pytest
 
 from coding_assistant.agents.callbacks import NullCallbacks
 from coding_assistant.agents.execution import handle_tool_call
+from coding_assistant.agents.tests.test_run_loop_slices import FakeFunction
 from coding_assistant.agents.types import Agent, TextResult, Tool
 
 
@@ -19,7 +20,7 @@ class FakeBigOutputTool(Tool):
         return TextResult(content="X" * 60_000)
 
 
-from coding_assistant.agents.tests._helpers import FakeFunction as TestFunction, FakeToolCall as TestToolCall
+from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall
 
 
 @pytest.mark.asyncio
@@ -36,7 +37,7 @@ async def test_no_truncate_blocks_large_output_by_default():
         history=[],
     )
 
-    tool_call = TestToolCall(id="1", function=TestFunction(name="fake_tool.big_output", arguments="{}"))
+    tool_call = FakeToolCall(id="1", function=FakeFunction(name="fake_tool.big_output", arguments="{}"))
     await handle_tool_call(tool_call, agent, NullCallbacks(), no_truncate_tools=set())
 
     assert agent.history, "Expected a tool message to be appended to history"
@@ -60,7 +61,7 @@ async def test_no_truncate_allows_large_output_for_matching_tools():
         history=[],
     )
 
-    tool_call = TestToolCall(id="1", function=TestFunction(name="fake_tool.big_output", arguments="{}"))
+    tool_call = FakeToolCall(id="1", function=FakeFunction(name="fake_tool.big_output", arguments="{}"))
     await handle_tool_call(tool_call, agent, NullCallbacks(), no_truncate_tools={r"^fake_tool\.big_"})
 
     assert agent.history, "Expected a tool message to be appended to history"

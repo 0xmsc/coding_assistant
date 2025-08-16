@@ -8,7 +8,7 @@ from coding_assistant.agents.types import Agent, TextResult
 from coding_assistant.llm.model import Completion
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
 
-from coding_assistant.agents.tests._helpers import FakeFunction, FakeToolCall
+from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall
 
 
 class FakeMessage:
