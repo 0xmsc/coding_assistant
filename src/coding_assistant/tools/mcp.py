@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 class MCPServer:
     name: str
     session: ClientSession
+    instructions: str | None
 
 
 def get_default_env():
@@ -37,8 +38,12 @@ async def _get_mcp_server(
 
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield MCPServer(name=name, session=session)
+            initialize_result = await session.initialize()
+            yield MCPServer(
+                name=name,
+                session=session,
+                instructions=initialize_result.instructions,
+            )
 
 
 @asynccontextmanager
