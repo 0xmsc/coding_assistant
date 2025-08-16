@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from coding_assistant.config import Config
-from coding_assistant.tools.tools import OrchestratorTool
+from coding_assistant.tools.tools import FeedbackTool, OrchestratorTool
 
 TEST_MODEL = "openai/gpt-5-mini"
 
@@ -21,6 +21,67 @@ def create_test_config() -> Config:
         tool_confirmation_patterns=[],
         no_truncate_tools=set(),
     )
+
+
+@pytest.mark.slow
+@pytest.mark.asyncio
+async def test_feedback_tool_execute_ok():
+    config = create_test_config()
+    tool = FeedbackTool(config=config)
+    result = await tool.execute(
+        parameters={
+            "description": "The agent will only give correct answers",
+            "parameters": "What is 2 + 2?",
+            "result": "4",
+        }
+    )
+    assert result.content == "Ok"
+
+
+@pytest.mark.slow
+@pytest.mark.asyncio
+async def test_feedback_tool_execute_wrong():
+    config = create_test_config()
+    tool = FeedbackTool(config=config)
+    result = await tool.execute(
+        parameters={
+            "description": "The agent will only give correct answers",
+            "parameters": "What is 2 + 2?",
+            "result": "5",
+        }
+    )
+    assert result.content != "Ok"
+
+
+@pytest.mark.slow
+@pytest.mark.asyncio
+async def test_feedback_tool_execute_no_result():
+    config = create_test_config()
+    tool = FeedbackTool(config=config)
+    result = await tool.execute(
+        parameters={
+            "description": "The agent will only give correct answers",
+            "parameters": "What is 2 + 2?",
+            "result": "I calculated the result of 2 + 2 and gave it to the user.",
+        }
+    )
+    assert result.content != "Ok"
+
+
+@pytest.mark.slow
+@pytest.mark.asyncio
+async def test_feedback_tool_after_feedback():
+    config = create_test_config()
+    tool = FeedbackTool(config=config)
+    result = await tool.execute(
+        parameters={
+            "description": "The agent will only give correct answers",
+            "parameters": "What is 2 + 2?",
+            "result": "5",
+            "summary": "I calculated the result of '2 + 3'. I did not calculate the answer to the original question since the client gave me the feedback that he made a mistake while asking the question. What he wanted to ask was 'what is 2 + 3?'. He confirmed that he wants me to give an answer to the updated question.",
+        }
+    )
+    assert result.content == "Ok"
 
 
 @pytest.mark.slow
