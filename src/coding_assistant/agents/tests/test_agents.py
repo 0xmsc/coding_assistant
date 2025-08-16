@@ -236,7 +236,6 @@ async def test_no_truncate_blocks_large_output_by_default():
     )
 
     tool_call = _ToolCall(id="1", function=_Fn(name="fake_tool.big_output", arguments="{}"))
-
     await handle_tool_call(tool_call, agent, NullCallbacks(), no_truncate_tools=set())
 
     assert agent.history, "Expected a tool message to be appended to history"
@@ -261,7 +260,6 @@ async def test_no_truncate_allows_large_output_for_matching_tools():
     )
 
     tool_call = _ToolCall(id="1", function=_Fn(name="fake_tool.big_output", arguments="{}"))
-
     await handle_tool_call(tool_call, agent, NullCallbacks(), no_truncate_tools={r"^fake_tool\.big_"})
 
     assert agent.history, "Expected a tool message to be appended to history"
