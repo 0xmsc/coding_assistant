@@ -1,8 +1,5 @@
-import os
 from pathlib import Path
 from typing import List
-
-from coding_assistant.config import Config
 
 INSTRUCTIONS = """
 - Do not initialize a new git repository, unless your client explicitly requests it.
