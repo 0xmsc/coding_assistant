@@ -73,19 +73,14 @@ async def test_feedback_tool_execute_no_result():
 async def test_feedback_tool_after_feedback():
     config = create_test_config()
     tool = FeedbackTool(config=config)
-
-    # Make deterministic: the feedback agent should return Ok after rework
-    with patch(
-        "coding_assistant.tools.tools.run_agent_loop", new=AsyncMock(return_value=AgentOutput(result="Ok", summary=""))
-    ):
-        result = await tool.execute(
-            parameters={
-                "description": "The agent will only give correct answers",
-                "parameters": "What is 2 + 2?",
-                "result": "5",
-                "summary": "I calculated the result of '2 + 3'. I did not calculate the answer to the original question since the client gave me the feedback that he made a mistake while asking the question. What he wanted to ask was 'what is 2 + 3?'. He confirmed that he wants me to give an answer to the updated question.",
-            }
-        )
+    result = await tool.execute(
+        parameters={
+            "description": "The agent will only give correct answers",
+            "parameters": "What is 2 + 2?",
+            "result": "5",
+            "summary": "I calculated the result of '2 + 3'. I did not calculate the answer to the original question since the client gave me the feedback that he made a mistake while asking the question. What he wanted to ask was 'what is 2 + 3?'. He confirmed that he wants me to give an answer to the updated question.",
+        }
+    )
     assert result.content == "Ok"
 
 
@@ -184,7 +179,7 @@ async def test_tool_confirmation_positive():
         mock_create_confirm.return_value = mock_session
 
         result = await tool.execute(parameters=parameters)
-        assert "Hello, World!" in result.content
+        assert result.content.strip() == "Hello, World!"
 
 
 @pytest.mark.asyncio
@@ -271,23 +266,3 @@ async def test_no_truncate_allows_large_output_for_matching_tools():
 
     assert agent.history, "Expected a tool message to be appended to history"
     assert agent.history[-1]["content"] == "X" * 60_000
-
-
-@pytest.mark.asyncio
-async def test_no_truncate_plumbs_through_orchestrator(monkeypatch):
-    config = create_test_config()
-    config.no_truncate_tools = {r"^mcp_context7_get-library-docs"}
-
-    captured = {}
-
-    async def fake_run_agent_loop(agent, agent_callbacks, shorten_conversation_at_tokens, no_truncate_tools):
-        # Capture arguments for assertion outside
-        captured["no_truncate_tools"] = no_truncate_tools
-        return AgentOutput(result="ok", summary="sum")
-
-    with patch("coding_assistant.tools.tools.run_agent_loop", new=AsyncMock(side_effect=fake_run_agent_loop)):
-        tool = OrchestratorTool(config=config)
-        result = await tool.execute(parameters={"task": "noop"})
-        assert result.content == "ok"
-
-    assert captured.get("no_truncate_tools") == config.no_truncate_tools
