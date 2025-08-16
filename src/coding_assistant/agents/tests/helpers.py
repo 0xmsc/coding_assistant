@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
+from coding_assistant.agents.parameters import Parameter
 from coding_assistant.agents.types import Agent, Tool
+from coding_assistant.tools.mcp import MCPServer
 
 
 @dataclass
@@ -24,12 +26,12 @@ async def no_feedback(_: Agent):
 def make_test_agent(
     *,
     name: str = "TestAgent",
-    model: str = "fake",
-    description: str = "",
-    parameters: Sequence[dict] | None = None,
+    model: str = "TestMode",
+    description: str = "TestDescription",
+    parameters: Sequence[Parameter] | None = None,
     feedback_function=no_feedback,
     tools: Iterable[Tool] | None = None,
-    mcp_servers: list[dict] | None = None,
+    mcp_servers: list[MCPServer] | None = None,
     tool_confirmation_patterns: list[str] | None = None,
     history: list[dict] | None = None,
 ) -> Agent:
