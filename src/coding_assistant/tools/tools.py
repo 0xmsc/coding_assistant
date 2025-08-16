@@ -1,7 +1,7 @@
 import asyncio
+import json
 import logging
 import re
-import subprocess
 import textwrap
 from typing import List, Optional
 
@@ -290,16 +290,16 @@ class ExecuteShellCommandTool(Tool):
         except asyncio.TimeoutError:
             return TextResult(content=f"Command timed out after {timeout} seconds.")
 
-        if process.returncode != 0:
-            return TextResult(
-                content=(
-                    f"Command failed with error code {process.returncode}\n"
-                    f"stdout: {stdout.decode()}\n"
-                    f"stderr: {stderr.decode()}"
-                )
+        return TextResult(
+            content=json.dumps(
+                {
+                    "stdout": stdout.decode(),
+                    "stderr": stderr.decode(),
+                    "returncode": process.returncode,
+                },
+                indent=2,
             )
-
-        return TextResult(content=stdout.decode())
+        )
 
 
 class LaunchFeedbackAgentSchema(BaseModel):

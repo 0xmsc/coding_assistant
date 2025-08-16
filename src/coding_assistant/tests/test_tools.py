@@ -1,10 +1,11 @@
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from coding_assistant.agents.types import Agent, AgentOutput
 from coding_assistant.config import Config
 from coding_assistant.tools.tools import AskClientTool, ExecuteShellCommandTool, _get_feedback
-from coding_assistant.agents.types import Agent, AgentOutput
 
 
 @pytest.mark.asyncio
@@ -23,7 +24,9 @@ async def test_execute_shell_command_tool_confirmation_yes(mock_create_confirm):
 
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
     result = await tool.execute({"command": "echo 'Hello'"})
-    assert result.content == "Hello\n"
+
+    expected = {"stdout": "Hello\n", "stderr": "", "returncode": 0}
+    assert json.loads(result.content) == expected
 
 
 @pytest.mark.asyncio
@@ -55,7 +58,10 @@ async def test_execute_shell_command_tool_confirmation_no(mock_create_confirm):
 async def test_execute_shell_command_tool_no_match(mock_create_confirm):
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["ls"])
     result = await tool.execute({"command": "echo 'Hello'"})
-    assert result.content == "Hello\n"
+
+    expected = {"stdout": "Hello\n", "stderr": "", "returncode": 0}
+    assert json.loads(result.content) == expected
+
     mock_create_confirm.assert_not_called()
 
 
