@@ -19,16 +19,7 @@ class FakeBigOutputTool(Tool):
         return TextResult(content="X" * 60_000)
 
 
-class TestFunction:
-    def __init__(self, name: str, arguments: str = "{}"):
-        self.name = name
-        self.arguments = arguments
-
-
-class TestToolCall:
-    def __init__(self, id: str, function: TestFunction):
-        self.id = id
-        self.function = function
+from coding_assistant.agents.tests._helpers import FakeFunction as TestFunction, FakeToolCall as TestToolCall
 
 
 @pytest.mark.asyncio

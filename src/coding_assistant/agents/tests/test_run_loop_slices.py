@@ -8,16 +8,7 @@ from coding_assistant.llm.model import Completion
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
 
 
-class FakeFunction:
-    def __init__(self, name: str, arguments: str = "{}"):
-        self.name = name
-        self.arguments = arguments
-
-
-class FakeToolCall:
-    def __init__(self, id: str, function: FakeFunction):
-        self.id = id
-        self.function = function
+from coding_assistant.agents.tests._helpers import FakeFunction, FakeToolCall
 
 
 class FakeMessage:

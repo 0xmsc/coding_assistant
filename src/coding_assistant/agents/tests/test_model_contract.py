@@ -1,4 +1,5 @@
 import json
+
 import pytest
 
 from coding_assistant.agents.callbacks import NullCallbacks
@@ -7,17 +8,7 @@ from coding_assistant.agents.types import Agent, TextResult
 from coding_assistant.llm.model import Completion
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
 
-
-class FakeFunction:
-    def __init__(self, name: str, arguments: str = "{}"):
-        self.name = name
-        self.arguments = arguments
-
-
-class FakeToolCall:
-    def __init__(self, id: str, function: FakeFunction):
-        self.id = id
-        self.function = function
+from coding_assistant.agents.tests._helpers import FakeFunction, FakeToolCall
 
 
 class FakeMessage:
@@ -99,6 +90,4 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold(monkeypatch
 
     assert msg.content == "hi"
     # The last user message should be the shorten instruction
-    assert any(
-        h.get("role") == "user" and "summarize" in h.get("content", "") for h in agent.history
-    )
+    assert any(h.get("role") == "user" and "summarize" in h.get("content", "") for h in agent.history)
