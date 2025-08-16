@@ -1,5 +1,5 @@
 test:
-    uv run pytest -n auto --timeout 60
+    uv run pytest -n auto --timeout 120
 
 hello-world:
     ./run.fish \

@@ -128,7 +128,7 @@ def _create_confirmation_orchestrator():
     config.shell_confirmation_patterns = ["^echo"]
     tool = OrchestratorTool(config=config)
     parameters = {
-        "task": "Execute shell command 'echo Hello World' and verbatim output the stdout output. If the command execution is denied, output 'Command execution denied.'",
+        "task": "Execute shell command 'echo Hello World' and verbatim output stdout. If the command execution is denied, output 'Command execution denied.'",
     }
     return tool, parameters
 
@@ -164,7 +164,7 @@ def _create_tool_confirmation_orchestrator():
     config.tool_confirmation_patterns = ["^execute_shell_command"]
     tool = OrchestratorTool(config=config)
     parameters = {
-        "task": "Use the execute_shell_command to echo 'Hello, World!'. If the tool execution is denied, output 'Tool execution denied.'",
+        "task": "Use the execute_shell_command to echo 'Hello, World!' and verbatim output stdout. If the tool execution is denied, output 'Tool execution denied.'",
     }
     return tool, parameters
 
