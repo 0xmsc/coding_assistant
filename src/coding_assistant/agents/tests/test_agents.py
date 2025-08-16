@@ -9,7 +9,7 @@ from coding_assistant.agents.types import Agent, AgentOutput, TextResult, Tool
 from coding_assistant.config import Config
 from coding_assistant.tools.tools import FeedbackTool, OrchestratorTool
 
-TEST_MODEL = "openai/gpt-5-nano"
+TEST_MODEL = "openai/gpt-5-mini"
 
 
 def create_test_config() -> Config:
