@@ -8,7 +8,7 @@ from coding_assistant.llm.model import Completion
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
 
 
-from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall, no_feedback
+from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall, no_feedback, make_test_agent
 
 
 class FakeMessage:
@@ -94,17 +94,7 @@ async def test_tool_selection_then_finish(monkeypatch):
 
     fake_tool = FakeEchoTool()
 
-    agent = Agent(
-        name="TestAgent",
-        model="fake",
-        description="",
-        parameters=[],
-        feedback_function=no_feedback,
-        tools=[fake_tool, FinishTaskTool(), ShortenConversation()],
-        mcp_servers=[],
-        tool_confirmation_patterns=[],
-        history=[],
-    )
+    agent = make_test_agent(tools=[fake_tool, FinishTaskTool(), ShortenConversation()])
 
     output = await run_agent_loop(
         agent,
@@ -142,17 +132,7 @@ async def test_unknown_tool_error_then_finish(monkeypatch):
     )
 
 
-    agent = Agent(
-        name="TestAgent",
-        model="fake",
-        description="",
-        parameters=[],
-        feedback_function=no_feedback,
-        tools=[FinishTaskTool(), ShortenConversation()],
-        mcp_servers=[],
-        tool_confirmation_patterns=[],
-        history=[],
-    )
+    agent = make_test_agent(tools=[FinishTaskTool(), ShortenConversation()])
 
     output = await run_agent_loop(
         agent,
@@ -190,17 +170,7 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
     )
 
 
-    agent = Agent(
-        name="TestAgent",
-        model="fake",
-        description="",
-        parameters=[],
-        feedback_function=no_feedback,
-        tools=[FinishTaskTool(), ShortenConversation()],
-        mcp_servers=[],
-        tool_confirmation_patterns=[],
-        history=[],
-    )
+    agent = make_test_agent(tools=[FinishTaskTool(), ShortenConversation()])
 
     output = await run_agent_loop(
         agent,

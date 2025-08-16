@@ -3,6 +3,7 @@ import pytest
 from coding_assistant.agents.callbacks import NullCallbacks
 from coding_assistant.agents.execution import handle_tool_call
 from coding_assistant.agents.types import Agent, TextResult, Tool
+from coding_assistant.agents.tests.helpers import make_test_agent
 
 
 class FakeBigOutputTool(Tool):
@@ -24,17 +25,7 @@ from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall, no
 
 @pytest.mark.asyncio
 async def test_no_truncate_blocks_large_output_by_default():
-    agent = Agent(
-        name="TestAgent",
-        model="TestModel",
-        description="",
-        parameters=[],
-        feedback_function=no_feedback,
-        tools=[FakeBigOutputTool()],
-        mcp_servers=[],
-        tool_confirmation_patterns=[],
-        history=[],
-    )
+    agent = make_test_agent(model="TestModel", tools=[FakeBigOutputTool()])
 
     tool_call = FakeToolCall(id="1", function=FakeFunction(name="fake_tool.big_output", arguments="{}"))
     await handle_tool_call(tool_call, agent, NullCallbacks(), no_truncate_tools=set())
@@ -48,17 +39,7 @@ async def test_no_truncate_blocks_large_output_by_default():
 
 @pytest.mark.asyncio
 async def test_no_truncate_allows_large_output_for_matching_tools():
-    agent = Agent(
-        name="TestAgent",
-        model="TestModel",
-        description="",
-        parameters=[],
-        feedback_function=no_feedback,
-        tools=[FakeBigOutputTool()],
-        mcp_servers=[],
-        tool_confirmation_patterns=[],
-        history=[],
-    )
+    agent = make_test_agent(model="TestModel", tools=[FakeBigOutputTool()])
 
     tool_call = FakeToolCall(id="1", function=FakeFunction(name="fake_tool.big_output", arguments="{}"))
     await handle_tool_call(tool_call, agent, NullCallbacks(), no_truncate_tools={r"^fake_tool\.big_"})
