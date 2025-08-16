@@ -7,7 +7,7 @@ from coding_assistant.agents.types import Agent
 from coding_assistant.config import Config
 from coding_assistant.tools.tools import FeedbackTool, OrchestratorTool
 
-TEST_MODEL = "gemini/gemini-2.5-flash"
+TEST_MODEL = "openai/gpt-5-nano"
 
 
 def create_test_config() -> Config:

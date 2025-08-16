@@ -1,8 +1,8 @@
 #!/usr/bin/env fish
 
 uv --project (dirname (status filename)) run coding-assistant \
-    --model "gemini/gemini-2.5-pro" \
-    --expert-model "gemini/gemini-2.5-pro" \
+    --model "openai/gpt-5" \
+    --expert-model "openai/gpt-5" \
     --readable-sandbox-directories /mnt/wsl ~/.ssh \
     --writable-sandbox-directories /tmp /dev/shm \
     --no-truncate-tools "^mcp_context7_get-library-docs" \
