@@ -4,8 +4,6 @@ from coding_assistant.agents.callbacks import NullCallbacks
 from coding_assistant.agents.execution import handle_tool_call
 from coding_assistant.agents.types import Agent, TextResult, Tool
 
-TEST_MODEL = "openai/gpt-5-mini"
-
 
 class FakeBigOutputTool(Tool):
     def name(self) -> str:
@@ -37,7 +35,7 @@ class TestToolCall:
 async def test_no_truncate_blocks_large_output_by_default():
     agent = Agent(
         name="TestAgent",
-        model=TEST_MODEL,
+        model="TestModel",
         description="",
         parameters=[],
         feedback_function=lambda agent: None,
@@ -61,7 +59,7 @@ async def test_no_truncate_blocks_large_output_by_default():
 async def test_no_truncate_allows_large_output_for_matching_tools():
     agent = Agent(
         name="TestAgent",
-        model=TEST_MODEL,
+        model="TestModel",
         description="",
         parameters=[],
         feedback_function=lambda agent: None,
