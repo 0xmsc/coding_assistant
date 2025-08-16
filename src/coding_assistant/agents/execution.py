@@ -38,6 +38,12 @@ Your client has provided the following parameters for your task:
 {parameters}
 """.strip()
 
+MCP_INSTRUCTIONS_TEMPLATE = """
+## MCP server `{name}` instructions
+
+{instructions}
+"""
+
 FEEDBACK_TEMPLATE = """
 Your client has provided the following feedback on your work:
 
@@ -50,11 +56,20 @@ Afterwards, call the `finish_task` tool again to signal that you are done.
 
 def _create_start_message(agent: Agent) -> str:
     parameters_str = format_parameters(agent.parameters)
-    return START_MESSAGE_TEMPLATE.format(
+    message = START_MESSAGE_TEMPLATE.format(
         name=agent.name,
         description=textwrap.indent(agent.description, "> "),
         parameters=parameters_str,
     )
+
+    for server in agent.mcp_servers:
+        if server.instructions:
+            message += "\n\n" + MCP_INSTRUCTIONS_TEMPLATE.format(
+                name=server.name,
+                instructions=server.instructions,
+            )
+
+    return message
 
 
 def _handle_finish_task_result(result: FinishTaskResult, agent: Agent):
