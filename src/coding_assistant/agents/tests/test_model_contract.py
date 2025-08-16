@@ -8,7 +8,7 @@ from coding_assistant.agents.types import Agent, TextResult
 from coding_assistant.llm.model import Completion
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
 
-from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall
+from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall, no_feedback
 
 
 class FakeMessage:
@@ -65,15 +65,13 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold(monkeypatch
     completer = FakeCompleter(fake_message, tokens=999999)
     monkeypatch.setattr("coding_assistant.agents.execution.complete", completer, raising=True)
 
-    async def _no_feedback(_: Agent):
-        return None
 
     agent = Agent(
         name="A",
         model="fake",
         description="",
         parameters=[],
-        feedback_function=_no_feedback,
+        feedback_function=no_feedback,
         tools=[DummyTool(), FinishTaskTool(), ShortenConversation()],
         mcp_servers=[],
         tool_confirmation_patterns=[],

@@ -2,7 +2,6 @@ import pytest
 
 from coding_assistant.agents.callbacks import NullCallbacks
 from coding_assistant.agents.execution import handle_tool_call
-from coding_assistant.agents.tests.test_run_loop_slices import FakeFunction
 from coding_assistant.agents.types import Agent, TextResult, Tool
 
 
@@ -20,7 +19,7 @@ class FakeBigOutputTool(Tool):
         return TextResult(content="X" * 60_000)
 
 
-from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall
+from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall, no_feedback
 
 
 @pytest.mark.asyncio
@@ -30,7 +29,7 @@ async def test_no_truncate_blocks_large_output_by_default():
         model="TestModel",
         description="",
         parameters=[],
-        feedback_function=lambda agent: None,
+        feedback_function=no_feedback,
         tools=[FakeBigOutputTool()],
         mcp_servers=[],
         tool_confirmation_patterns=[],
@@ -54,7 +53,7 @@ async def test_no_truncate_allows_large_output_for_matching_tools():
         model="TestModel",
         description="",
         parameters=[],
-        feedback_function=lambda agent: None,
+        feedback_function=no_feedback,
         tools=[FakeBigOutputTool()],
         mcp_servers=[],
         tool_confirmation_patterns=[],

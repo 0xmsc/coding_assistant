@@ -8,7 +8,7 @@ from coding_assistant.llm.model import Completion
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
 
 
-from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall
+from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall, no_feedback
 
 
 class FakeMessage:
@@ -93,15 +93,13 @@ async def test_tool_selection_then_finish(monkeypatch):
     )
 
     fake_tool = FakeEchoTool()
-    async def _no_feedback(_: Agent):
-        return None
 
     agent = Agent(
         name="TestAgent",
         model="fake",
         description="",
         parameters=[],
-        feedback_function=_no_feedback,
+        feedback_function=no_feedback,
         tools=[fake_tool, FinishTaskTool(), ShortenConversation()],
         mcp_servers=[],
         tool_confirmation_patterns=[],
@@ -143,15 +141,13 @@ async def test_unknown_tool_error_then_finish(monkeypatch):
         raising=True,
     )
 
-    async def _no_feedback(_: Agent):
-        return None
 
     agent = Agent(
         name="TestAgent",
         model="fake",
         description="",
         parameters=[],
-        feedback_function=_no_feedback,
+        feedback_function=no_feedback,
         tools=[FinishTaskTool(), ShortenConversation()],
         mcp_servers=[],
         tool_confirmation_patterns=[],
@@ -193,15 +189,13 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
         raising=True,
     )
 
-    async def _no_feedback(_: Agent):
-        return None
 
     agent = Agent(
         name="TestAgent",
         model="fake",
         description="",
         parameters=[],
-        feedback_function=_no_feedback,
+        feedback_function=no_feedback,
         tools=[FinishTaskTool(), ShortenConversation()],
         mcp_servers=[],
         tool_confirmation_patterns=[],

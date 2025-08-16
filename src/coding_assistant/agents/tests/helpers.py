@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from coding_assistant.agents.types import Agent
 
 
 @dataclass
@@ -11,3 +12,8 @@ class FakeFunction:
 class FakeToolCall:
     id: str
     function: FakeFunction
+
+
+async def no_feedback(_: Agent):
+    """A feedback function that returns no feedback (used in tests)."""
+    return None
