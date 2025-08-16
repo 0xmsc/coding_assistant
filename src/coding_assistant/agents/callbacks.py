@@ -152,14 +152,13 @@ class RichCallbacks(AgentCallbacks):
         if tool_name == "execute_shell_command":
             data = json.loads(result)
 
-            result = ""
-            result += f"RC: {data['returncode']}"
+            result = f"RC: {data['returncode']}"
 
             if data["stderr"]:
-                result += f"\n\n###### stderr\n\n```\n{data['stderr']}\n```"
+                result += f"\n\nstderr\n\n```\n{data['stderr']}\n```"
 
             if data["stdout"]:
-                result += f"\n\n###### stdout\n\n```\n{data['stdout']}\n```"
+                result += f"\n\nstdout\n\n```\n{data['stdout']}\n```"
 
             return Markdown(result)
 
