@@ -66,9 +66,9 @@ class Agent:
     # If it returns a string, it will be given to the agent as feedback.
     feedback_function: Callable
 
-    tools: list[Tool] = field(default_factory=list)
-    mcp_servers: list[MCPServer] = field(default_factory=list)
-    tool_confirmation_patterns: list[str] = field(default_factory=list)
+    tools: list[Tool]
+    mcp_servers: list[MCPServer]
+    tool_confirmation_patterns: list[str]
 
     history: list = field(default_factory=list)
     output: AgentOutput | None = None
