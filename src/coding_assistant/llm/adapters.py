@@ -35,7 +35,7 @@ async def get_tools(tools: list[Tool], mcp_servers: list[MCPServer]) -> list[dic
         List of tool definitions in LiteLLM format
     """
     result = []
-    
+
     # Add tools from the tools list
     for tool in tools:
         if tool.name().startswith("mcp_"):
@@ -54,22 +54,23 @@ async def get_tools(tools: list[Tool], mcp_servers: list[MCPServer]) -> list[dic
     
     # Add tools from MCP servers
     for server in mcp_servers:
-        for _, tool_list in await server.session.list_tools():
-            for mcp_tool in tool_list or []:
-                tool_id = f"mcp_{server.name}_{mcp_tool.name}"
+        tools_response = await server.session.list_tools()
+        server_tools = getattr(tools_response, "tools", [])
+        for mcp_tool in server_tools or []:
+            tool_id = f"mcp_{server.name}_{mcp_tool.name}"
 
-                fix_input_schema(mcp_tool.inputSchema)
+            fix_input_schema(mcp_tool.inputSchema)
 
-                result.append(
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": tool_id,
-                            "description": mcp_tool.description,
-                            "parameters": mcp_tool.inputSchema,
-                        },
-                    }
-                )
+            result.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool_id,
+                        "description": mcp_tool.description,
+                        "parameters": mcp_tool.inputSchema,
+                    },
+                }
+            )
     
     return result
 
