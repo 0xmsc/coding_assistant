@@ -2,7 +2,7 @@ import pytest
 
 from coding_assistant.agents.tests.helpers import make_ui_mock
 from coding_assistant.config import Config
-from coding_assistant.tools.tools import FeedbackTool, OrchestratorTool
+from coding_assistant.tools.tools import OrchestratorTool
 from coding_assistant.agents.callbacks import NullCallbacks
 from coding_assistant.ui import NullUI
 
@@ -16,7 +16,6 @@ def create_test_config() -> Config:
     return Config(
         model=TEST_MODEL,
         expert_model=TEST_MODEL,
-        enable_feedback_agent=True,
         enable_user_feedback=False,
         shorten_conversation_at_tokens=200_000,
         enable_ask_user=False,
@@ -24,67 +23,6 @@ def create_test_config() -> Config:
         tool_confirmation_patterns=[],
         no_truncate_tools=set(),
     )
-
-
-@pytest.mark.slow
-@pytest.mark.asyncio
-async def test_feedback_tool_execute_ok():
-    config = create_test_config()
-    tool = FeedbackTool(config=config, mcp_servers=[], agent_callbacks=NullCallbacks(), ui=NullUI())
-    result = await tool.execute(
-        parameters={
-            "description": "The agent will only give correct answers",
-            "parameters": "What is 2 + 2?",
-            "result": "4",
-        }
-    )
-    assert result.content == "Ok"
-
-
-@pytest.mark.slow
-@pytest.mark.asyncio
-async def test_feedback_tool_execute_wrong():
-    config = create_test_config()
-    tool = FeedbackTool(config=config, mcp_servers=[], agent_callbacks=NullCallbacks(), ui=NullUI())
-    result = await tool.execute(
-        parameters={
-            "description": "The agent will only give correct answers",
-            "parameters": "What is 2 + 2?",
-            "result": "5",
-        }
-    )
-    assert result.content != "Ok"
-
-
-@pytest.mark.slow
-@pytest.mark.asyncio
-async def test_feedback_tool_execute_no_result():
-    config = create_test_config()
-    tool = FeedbackTool(config=config, mcp_servers=[], agent_callbacks=NullCallbacks(), ui=NullUI())
-    result = await tool.execute(
-        parameters={
-            "description": "The agent will only give correct answers",
-            "parameters": "What is 2 + 2?",
-            "result": "I calculated the result of 2 + 2 and gave it to the user.",
-        }
-    )
-    assert result.content != "Ok"
-
-
-@pytest.mark.slow
-@pytest.mark.asyncio
-async def test_feedback_tool_after_feedback():
-    config = create_test_config()
-    tool = FeedbackTool(config=config, mcp_servers=[], agent_callbacks=NullCallbacks(), ui=NullUI())
-    result = await tool.execute(
-        parameters={
-            "description": "The agent will only give correct answers",
-            "parameters": "What is 2 + 2?",
-            "result": "5",
-            "summary": "I calculated the result of '2 + 3'. I did not calculate the answer to the original question since the client gave me the feedback that he made a mistake while asking the question. What he wanted to ask was 'what is 2 + 3?'. He confirmed that he wants me to give an answer to the updated question.",
-        }
-    )
-    assert result.content == "Ok"
 
 
 @pytest.mark.slow
@@ -105,7 +43,9 @@ async def test_orchestrator_tool_resume():
     result = await first.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result.content == "Hello, World!"
 
-    second = OrchestratorTool(config=config, mcp_servers=[], history=first.history, agent_callbacks=NullCallbacks(), ui=NullUI())
+    second = OrchestratorTool(
+        config=config, mcp_servers=[], history=first.history, agent_callbacks=NullCallbacks(), ui=NullUI()
+    )
     result = await second.execute(
         parameters={"task": "Re-do your previous task, just translate your output to German."}
     )
@@ -128,7 +68,6 @@ async def test_orchestrator_tool_instructions():
 
 def _create_confirmation_orchestrator(confirm_value: bool):
     config = create_test_config()
-    config.enable_feedback_agent = False
     config.shell_confirmation_patterns = ["^echo"]
 
     ui = make_ui_mock(
@@ -161,7 +100,6 @@ async def test_shell_confirmation_negative():
 
 def _create_tool_confirmation_orchestrator(confirm_value: bool):
     config = create_test_config()
-    config.enable_feedback_agent = False
     config.tool_confirmation_patterns = ["^execute_shell_command"]
 
     ui = make_ui_mock(

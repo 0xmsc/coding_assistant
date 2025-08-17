@@ -4,6 +4,7 @@ from typing import List
 INSTRUCTIONS = """
 - Do not initialize a new git repository, unless your client explicitly requests it.
 - Do not commit any changes to the git repository, unless your client explicitly requests it.
+- Do not switch branches before asking the user.
 - Do not run anything interactively, e.g. `git rebase -i`.
 - When you have made a change to a project, ask the user if you should commit the changes.
 - Do not install any software on the users computer before asking.

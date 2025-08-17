@@ -11,7 +11,6 @@ from coding_assistant.agents.tests.helpers import (
     FakeToolCall,
     make_test_agent,
     make_ui_mock,
-    no_feedback,
 )
 from coding_assistant.agents.types import Agent, TextResult, Tool
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
@@ -61,6 +60,7 @@ async def test_tool_selection_then_finish():
         NullCallbacks(),
         shorten_conversation_at_tokens=200_000,
         no_truncate_tools=set(),
+        enable_user_feedback=False,
         completer=completer,
         ui=make_ui_mock(),
     )
@@ -134,6 +134,7 @@ async def test_unknown_tool_error_then_finish(monkeypatch):
         NullCallbacks(),
         shorten_conversation_at_tokens=200_000,
         no_truncate_tools=set(),
+        enable_user_feedback=False,
         completer=completer,
         ui=make_ui_mock(),
     )
@@ -202,6 +203,7 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
         NullCallbacks(),
         shorten_conversation_at_tokens=200_000,
         no_truncate_tools=set(),
+        enable_user_feedback=False,
         completer=completer,
         ui=make_ui_mock(),
     )
@@ -235,3 +237,96 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
         },
     ]
     assert output.result == "r"
+
+
+@pytest.mark.asyncio
+async def test_feedback_loop_then_finish():
+    finish_call_1 = FakeToolCall(
+        "1",
+        FakeFunction(
+            "finish_task",
+            json.dumps({"result": "first", "summary": "s1"}),
+        ),
+    )
+
+    finish_call_2 = FakeToolCall(
+        "2",
+        FakeFunction(
+            "finish_task",
+            json.dumps({"result": "second", "summary": "s2"}),
+        ),
+    )
+
+    completer = FakeCompleter(
+        [
+            FakeMessage(tool_calls=[finish_call_1]),
+            FakeMessage(tool_calls=[finish_call_2]),
+        ]
+    )
+
+    agent = make_test_agent(tools=[FinishTaskTool(), ShortenConversation()])
+
+    output = await run_agent_loop(
+        agent,
+        NullCallbacks(),
+        shorten_conversation_at_tokens=200_000,
+        no_truncate_tools=set(),
+        enable_user_feedback=True,
+        completer=completer,
+        ui=make_ui_mock(
+            ask_sequence=[(f"Feedback for {agent.name}", "Please improve"), (f"Feedback for {agent.name}", "Ok")]
+        ),
+    )
+
+    assert output.result == "second"
+    assert output.summary == "s2"
+
+    expected_feedback_text = (
+        "Your client has provided the following feedback on your work:\n\n"
+        "> Please improve\n\n"
+        "Please rework your result to address the feedback.\n"
+        "Afterwards, call the `finish_task` tool again to signal that you are done."
+    )
+
+    assert agent.history[1:] == [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "1",
+                    "function": {
+                        "name": "finish_task",
+                        "arguments": '{"result": "first", "summary": "s1"}',
+                    },
+                }
+            ],
+        },
+        {
+            "tool_call_id": "1",
+            "role": "tool",
+            "name": "finish_task",
+            "content": "Agent output set.",
+        },
+        {
+            "role": "user",
+            "content": expected_feedback_text,
+        },
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "2",
+                    "function": {
+                        "name": "finish_task",
+                        "arguments": '{"result": "second", "summary": "s2"}',
+                    },
+                }
+            ],
+        },
+        {
+            "tool_call_id": "2",
+            "role": "tool",
+            "name": "finish_task",
+            "content": "Agent output set.",
+        },
+    ]

@@ -2,7 +2,7 @@ import pytest
 
 from coding_assistant.agents.callbacks import NullCallbacks
 from coding_assistant.agents.execution import handle_tool_call
-from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall, make_test_agent, make_ui_mock, no_feedback
+from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall, make_test_agent, make_ui_mock
 from coding_assistant.agents.types import Agent, TextResult, Tool
 
 

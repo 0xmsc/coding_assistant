@@ -1,4 +1,4 @@
-import asyncio
+
 import dataclasses
 import json
 import logging
@@ -251,6 +251,7 @@ async def run_agent_loop(
     *,
     completer: Completer,
     ui: UI,
+    enable_user_feedback: bool,
 ) -> AgentOutput:
     if agent.output:
         raise RuntimeError("Agent already has a result or summary.")
@@ -287,17 +288,15 @@ async def run_agent_loop(
         trace.get_current_span().set_attribute("agent.summary", agent.output.summary)
         agent_callbacks.on_agent_end(agent.name, agent.output.result, agent.output.summary)
 
-        feedback = await agent.feedback_function(agent)
-        if feedback:
-            formatted_feedback = FEEDBACK_TEMPLATE.format(
-                feedback=textwrap.indent(feedback, "> "),
-            )
-            append_user_message(agent.history, agent_callbacks, agent.name, formatted_feedback)
+        feedback: str = "Ok"
+        if enable_user_feedback:
+            feedback = await ui.ask(f"Feedback for {agent.name}", default="Ok")
 
-            # Clear output so agent continues working
-            agent.output = None
+        if feedback != "Ok":
+            formatted_feedback = FEEDBACK_TEMPLATE.format(feedback=textwrap.indent(feedback, "> "))
+            append_user_message(agent.history, agent_callbacks, agent.name, formatted_feedback)
+            agent.output = None  # continue loop
         else:
-            # No feedback - we're done
             break
 
     return agent.output
