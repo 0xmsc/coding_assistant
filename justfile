@@ -3,7 +3,7 @@ test:
 
 hello-world:
     ./run.fish \
-      --no-user-feedback --no-feedback-agent \
+    --no-user-feedback \
       --task "Say 'Hello World'"
 
 commit:

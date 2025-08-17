@@ -13,7 +13,6 @@ class MCPServerConfig(BaseModel):
 class Config(BaseModel):
     model: str
     expert_model: str
-    enable_feedback_agent: bool
     enable_user_feedback: bool
     shorten_conversation_at_tokens: int
     enable_ask_user: bool

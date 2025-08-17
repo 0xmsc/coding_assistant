@@ -2,14 +2,13 @@ import asyncio
 import json
 import logging
 import re
-import textwrap
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
+from coding_assistant.agents.callbacks import AgentCallbacks
 from coding_assistant.agents.execution import run_agent_loop
-from coding_assistant.agents.parameters import fill_parameters, format_parameters
+from coding_assistant.agents.parameters import fill_parameters
 from coding_assistant.agents.types import (
     Agent,
     AgentOutput,
@@ -20,44 +19,12 @@ from coding_assistant.agents.types import (
 )
 from coding_assistant.config import Config
 from coding_assistant.llm.model import complete
+from coding_assistant.ui import UI, NullUI
 
 logger = logging.getLogger(__name__)
 
 
-from coding_assistant.ui import UI, NullUI
-
-
-async def _get_feedback(
-    agent: Agent,
-    config: Config,
-    mcp_servers: list,
-    enable_feedback_agent: bool,
-    enable_user_feedback: bool,
-    ui: UI,
-    agent_callbacks: AgentCallbacks,
-) -> str | None:
-    if not agent.output:
-        raise ValueError("Agent has no result to provide feedback on.")
-
-    feedback = "Ok"
-
-    if enable_feedback_agent:
-        feedback_tool = FeedbackTool(config=config, mcp_servers=mcp_servers, agent_callbacks=agent_callbacks, ui=ui)
-        formatted_parameters = textwrap.indent(format_parameters(agent.parameters), "  ")
-        agent_feedback_result = await feedback_tool.execute(
-            parameters={
-                "description": agent.description,
-                "parameters": "\n" + formatted_parameters,
-                "result": agent.output.result,
-                "summary": agent.output.summary,
-            }
-        )
-        feedback = agent_feedback_result.content
-
-    if enable_user_feedback:
-        feedback = await ui.ask(f"Feedback for {agent.name}", default=feedback)
-
-    return feedback if feedback != "Ok" else None
+# Feedback is now handled directly in run_agent_loop; no helper needed here.
 
 
 class LaunchOrchestratorAgentSchema(BaseModel):
@@ -111,15 +78,6 @@ class OrchestratorTool(Tool):
             ],
             model=self._config.expert_model,
             tool_confirmation_patterns=self._config.tool_confirmation_patterns,
-            feedback_function=lambda agent: _get_feedback(
-                agent=agent,
-                config=self._config,
-                mcp_servers=self._mcp_servers,
-                enable_feedback_agent=self._config.enable_feedback_agent,
-                enable_user_feedback=self._config.enable_user_feedback,
-                agent_callbacks=self._agent_callbacks,
-                ui=self._ui,
-            ),
         )
 
         try:
@@ -128,6 +86,7 @@ class OrchestratorTool(Tool):
                 self._agent_callbacks,
                 self._config.shorten_conversation_at_tokens,
                 self._config.no_truncate_tools,
+                enable_user_feedback=self._config.enable_user_feedback,
                 completer=complete,
                 ui=self._ui,
             )
@@ -191,15 +150,6 @@ class AgentTool(Tool):
             ],
             model=self.get_model(parameters),
             tool_confirmation_patterns=self._config.tool_confirmation_patterns,
-            feedback_function=lambda agent: _get_feedback(
-                agent=agent,
-                config=self._config,
-                mcp_servers=self._mcp_servers,
-                enable_feedback_agent=self._config.enable_feedback_agent,
-                enable_user_feedback=self._config.enable_user_feedback,
-                agent_callbacks=self._agent_callbacks,
-                ui=self._ui,
-            ),
         )
 
         output = await run_agent_loop(
@@ -207,6 +157,7 @@ class AgentTool(Tool):
             self._agent_callbacks,
             self._config.shorten_conversation_at_tokens,
             self._config.no_truncate_tools,
+            enable_user_feedback=self._config.enable_user_feedback,
             completer=complete,
             ui=self._ui,
         )
@@ -306,68 +257,6 @@ class ExecuteShellCommandTool(Tool):
                 indent=2,
             )
         )
-
-
-class LaunchFeedbackAgentSchema(BaseModel):
-    description: str = Field(description="The description of the agent that was working on the task.")
-    parameters: str = Field(description="The parameters the agent was given for the task.")
-    result: str = Field(description="The result of the agent.")
-    summary: str | None = Field(default=None, description="A summary of the conversation with the client.")
-
-
-class FeedbackTool(Tool):
-    def __init__(self, config: Config, mcp_servers: list, agent_callbacks: AgentCallbacks, ui: UI):
-        super().__init__()
-        self._config = config
-        self._mcp_servers = mcp_servers
-        self._agent_callbacks = agent_callbacks
-        self._ui = ui
-
-    def name(self) -> str:
-        return "launch_feedback_agent"
-
-    def description(self) -> str:
-        return "Launch a feedback agent that provides feedback on the output of another agent. This agent evaluates whether the result is acceptable for a given description, parameters, summary and feedback. The agent will evaluate the result as if it were a paying client. The feedback agent will thoroughly review every change that is described and will look at file system, git history, etc. as it deems necessary. If the result is acceptable, the feedback agent will call `finish_task` with the result being 'Ok'. Otherwise, it will output what is wrong with the result and how it needs to be improved."
-
-    def parameters(self) -> dict:
-        return LaunchFeedbackAgentSchema.model_json_schema()
-
-    async def execute(self, parameters: dict) -> TextResult:
-        feedback_agent = Agent(
-            name="Feedback",
-            description=self.description(),
-            parameters=fill_parameters(
-                parameter_description=self.parameters(),
-                parameter_values=parameters,
-            ),
-            mcp_servers=self._mcp_servers,
-            tools=[
-                ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
-                FinishTaskTool(),
-                ShortenConversation(),
-            ],
-            model=self._config.model,
-            tool_confirmation_patterns=self._config.tool_confirmation_patterns,
-            feedback_function=lambda agent: _get_feedback(
-                agent=agent,
-                config=self._config,
-                mcp_servers=self._mcp_servers,
-                enable_feedback_agent=False,
-                enable_user_feedback=False,
-                agent_callbacks=self._agent_callbacks,
-                ui=self._ui,
-            ),
-        )
-
-        output = await run_agent_loop(
-            feedback_agent,
-            self._agent_callbacks,
-            self._config.shorten_conversation_at_tokens,
-            self._config.no_truncate_tools,
-            completer=complete,
-            ui=self._ui,
-        )
-        return TextResult(content=output.result)
 
 
 class FinishTaskSchema(BaseModel):

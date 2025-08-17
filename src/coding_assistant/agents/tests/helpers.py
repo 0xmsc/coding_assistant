@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.agents.parameters import Parameter
 from coding_assistant.agents.types import Agent, Tool
+from coding_assistant.llm.model import Completion
 from coding_assistant.tools.mcp import MCPServer
 from coding_assistant.ui import UI
-from coding_assistant.llm.model import Completion
 
 
 @dataclass
@@ -20,10 +20,6 @@ class FakeFunction:
 class FakeToolCall:
     id: str
     function: FakeFunction
-
-
-async def no_feedback(_: Agent):
-    return None
 
 
 class FakeMessage:
@@ -65,7 +61,6 @@ class FakeCompleter:
             raise action
 
         text = action.model_dump_json()
-
         toks = len(text)
         self._total_tokens += toks
 
@@ -115,7 +110,6 @@ def make_test_agent(
     model: str = "TestMode",
     description: str = "TestDescription",
     parameters: Sequence[Parameter] | None = None,
-    feedback_function=no_feedback,
     tools: Iterable[Tool] | None = None,
     mcp_servers: list[MCPServer] | None = None,
     tool_confirmation_patterns: list[str] | None = None,
@@ -126,7 +120,6 @@ def make_test_agent(
         model=model,
         description=description,
         parameters=list(parameters) if parameters is not None else [],
-        feedback_function=feedback_function,
         tools=list(tools) if tools is not None else [],
         mcp_servers=list(mcp_servers) if mcp_servers is not None else [],
         tool_confirmation_patterns=list(tool_confirmation_patterns) if tool_confirmation_patterns is not None else [],

@@ -11,7 +11,6 @@ from coding_assistant.agents.tests.helpers import (
     FakeFunction,
     make_test_agent,
     make_ui_mock,
-    no_feedback,
 )
 from coding_assistant.agents.types import Agent, TextResult, Tool
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
