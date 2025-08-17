@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.agents.parameters import Parameter
 from coding_assistant.agents.types import Agent, Tool
+from coding_assistant.llm.model import Completion
 from coding_assistant.tools.mcp import MCPServer
 from coding_assistant.ui import UI
-from coding_assistant.llm.model import Completion
 
 
 @dataclass
@@ -65,7 +65,6 @@ class FakeCompleter:
             raise action
 
         text = action.model_dump_json()
-
         toks = len(text)
         self._total_tokens += toks
 

@@ -1,11 +1,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Callable, Protocol, Awaitable
+from typing import Awaitable, Callable, Protocol
 
-from coding_assistant.agents.parameters import Parameter
-from coding_assistant.tools.mcp import MCPServer
 from coding_assistant.agents.callbacks import AgentCallbacks
+from coding_assistant.agents.parameters import Parameter
 from coding_assistant.llm.model import Completion
+from coding_assistant.tools.mcp import MCPServer
 
 
 class ToolResult(ABC):
@@ -77,13 +77,6 @@ class Agent:
 
 
 class Completer(Protocol):
-    """Async callable that produces a model completion.
-
-    Contract:
-    - inputs: conversation messages, model name, tool definitions, and callbacks
-    - output: Completion(message, tokens)
-    """
-
     def __call__(
         self,
         messages: list[dict],
@@ -91,5 +84,4 @@ class Completer(Protocol):
         model: str,
         tools: list,
         callbacks: AgentCallbacks,
-    ) -> Awaitable[Completion]:
-        ...
+    ) -> Awaitable[Completion]: ...

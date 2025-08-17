@@ -20,11 +20,9 @@ from coding_assistant.agents.types import (
 )
 from coding_assistant.config import Config
 from coding_assistant.llm.model import complete
+from coding_assistant.ui import UI, NullUI
 
 logger = logging.getLogger(__name__)
-
-
-from coding_assistant.ui import UI, NullUI
 
 
 async def _get_feedback(
