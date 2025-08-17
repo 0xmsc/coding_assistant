@@ -1,13 +1,14 @@
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import pytest
 
-from coding_assistant.agents.types import Agent
+from coding_assistant.agents.tests.helpers import make_ui_mock
 from coding_assistant.config import Config
 from coding_assistant.tools.tools import FeedbackTool, OrchestratorTool
+from coding_assistant.agents.callbacks import NullCallbacks
+from coding_assistant.ui import NullUI
 
-TEST_MODEL = "openai/gpt-5-nano"
+# This file contains integration tests using the real LLM API.
+
+TEST_MODEL = "openai/gpt-5-mini"
 
 
 def create_test_config() -> Config:
@@ -25,10 +26,11 @@ def create_test_config() -> Config:
     )
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_ok():
     config = create_test_config()
-    tool = FeedbackTool(config=config)
+    tool = FeedbackTool(config=config, mcp_servers=[], agent_callbacks=NullCallbacks(), ui=NullUI())
     result = await tool.execute(
         parameters={
             "description": "The agent will only give correct answers",
@@ -39,10 +41,11 @@ async def test_feedback_tool_execute_ok():
     assert result.content == "Ok"
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_wrong():
     config = create_test_config()
-    tool = FeedbackTool(config=config)
+    tool = FeedbackTool(config=config, mcp_servers=[], agent_callbacks=NullCallbacks(), ui=NullUI())
     result = await tool.execute(
         parameters={
             "description": "The agent will only give correct answers",
@@ -53,10 +56,11 @@ async def test_feedback_tool_execute_wrong():
     assert result.content != "Ok"
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_feedback_tool_execute_no_result():
     config = create_test_config()
-    tool = FeedbackTool(config=config)
+    tool = FeedbackTool(config=config, mcp_servers=[], agent_callbacks=NullCallbacks(), ui=NullUI())
     result = await tool.execute(
         parameters={
             "description": "The agent will only give correct answers",
@@ -67,10 +71,11 @@ async def test_feedback_tool_execute_no_result():
     assert result.content != "Ok"
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_feedback_tool_after_feedback():
     config = create_test_config()
-    tool = FeedbackTool(config=config)
+    tool = FeedbackTool(config=config, mcp_servers=[], agent_callbacks=NullCallbacks(), ui=NullUI())
     result = await tool.execute(
         parameters={
             "description": "The agent will only give correct answers",
@@ -82,36 +87,36 @@ async def test_feedback_tool_after_feedback():
     assert result.content == "Ok"
 
 
-@pytest.mark.long
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_orchestrator_tool():
     config = create_test_config()
-    tool = OrchestratorTool(config=config)
+    tool = OrchestratorTool(config=config, mcp_servers=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
     result = await tool.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result.content == "Hello, World!"
 
 
-@pytest.mark.long
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_orchestrator_tool_resume():
     config = create_test_config()
-    first = OrchestratorTool(config=config)
+    first = OrchestratorTool(config=config, mcp_servers=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
 
     result = await first.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result.content == "Hello, World!"
 
-    second = OrchestratorTool(config=config, history=first.history)
+    second = OrchestratorTool(config=config, mcp_servers=[], history=first.history, agent_callbacks=NullCallbacks(), ui=NullUI())
     result = await second.execute(
         parameters={"task": "Re-do your previous task, just translate your output to German."}
     )
     assert result.content == "Hallo, Welt!"
 
 
-@pytest.mark.long
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_orchestrator_tool_instructions():
     config = create_test_config()
-    tool = OrchestratorTool(config=config)
+    tool = OrchestratorTool(config=config, mcp_servers=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
     result = await tool.execute(
         parameters={
             "task": "Say 'Hello, World!'",
@@ -121,73 +126,70 @@ async def test_orchestrator_tool_instructions():
     assert result.content == "Servus, World!"
 
 
-def _create_confirmation_orchestrator():
+def _create_confirmation_orchestrator(confirm_value: bool):
     config = create_test_config()
+    config.enable_feedback_agent = False
     config.shell_confirmation_patterns = ["^echo"]
-    tool = OrchestratorTool(config=config)
+
+    ui = make_ui_mock(
+        confirm_sequence=[
+            ("Execute `echo Hello World`?", confirm_value),
+        ]
+    )
+    tool = OrchestratorTool(config=config, mcp_servers=[], history=None, agent_callbacks=NullCallbacks(), ui=ui)
     parameters = {
-        "task": "Execute shell command 'echo Hello World' and verbatim output the result. If the command execution is denied, output 'Command execution denied.'",
+        "task": "Execute shell command 'echo Hello World' with a timeout of 10 seconds and verbatim output stdout. If the command execution is denied, output 'Command execution denied.'",
     }
     return tool, parameters
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_shell_confirmation_positive():
-    tool, parameters = _create_confirmation_orchestrator()
-
-    with patch("coding_assistant.tools.tools.create_confirm_session") as mock_create_confirm:
-        mock_session = AsyncMock()
-        mock_session.prompt_async.return_value = True
-        mock_create_confirm.return_value = mock_session
-
-        result = await tool.execute(parameters=parameters)
-        assert result.content.strip() == "Hello World"
+    tool, parameters = _create_confirmation_orchestrator(confirm_value=True)
+    result = await tool.execute(parameters=parameters)
+    assert result.content.strip() == "Hello World"
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_shell_confirmation_negative():
-    tool, parameters = _create_confirmation_orchestrator()
-
-    with patch("coding_assistant.tools.tools.create_confirm_session") as mock_create_confirm:
-        mock_session = AsyncMock()
-        mock_session.prompt_async.return_value = False
-        mock_create_confirm.return_value = mock_session
-
-        result = await tool.execute(parameters=parameters)
-        assert result.content.strip() == "Command execution denied."
+    tool, parameters = _create_confirmation_orchestrator(confirm_value=False)
+    result = await tool.execute(parameters=parameters)
+    assert result.content.strip() == "Command execution denied."
 
 
-def _create_tool_confirmation_orchestrator():
+def _create_tool_confirmation_orchestrator(confirm_value: bool):
     config = create_test_config()
+    config.enable_feedback_agent = False
     config.tool_confirmation_patterns = ["^execute_shell_command"]
-    tool = OrchestratorTool(config=config)
+
+    ui = make_ui_mock(
+        confirm_sequence=[
+            (
+                "Execute tool `execute_shell_command` with arguments `{'command': \"echo 'Hello, World!'\", 'timeout': 10}`?",
+                confirm_value,
+            ),
+        ]
+    )
+    tool = OrchestratorTool(config=config, mcp_servers=[], history=None, agent_callbacks=NullCallbacks(), ui=ui)
     parameters = {
-        "task": "Use the execute_shell_command to echo 'Hello, World!'. If the tool execution is denied, output 'Tool execution denied.'",
+        "task": "Use the execute_shell_command to echo 'Hello, World!' with a timeout of 10 seconds and verbatim output stdout. If the tool execution is denied, output 'Tool execution denied.'",
     }
     return tool, parameters
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_tool_confirmation_positive():
-    tool, parameters = _create_tool_confirmation_orchestrator()
-
-    with patch("coding_assistant.agents.execution.create_confirm_session") as mock_create_confirm:
-        mock_session = AsyncMock()
-        mock_session.prompt_async.return_value = True
-        mock_create_confirm.return_value = mock_session
-
-        result = await tool.execute(parameters=parameters)
-        assert result.content.strip() == "Hello, World!"
+    tool, parameters = _create_tool_confirmation_orchestrator(confirm_value=True)
+    result = await tool.execute(parameters=parameters)
+    assert result.content.strip() == "Hello, World!"
 
 
+@pytest.mark.slow
 @pytest.mark.asyncio
 async def test_tool_confirmation_negative():
-    tool, parameters = _create_tool_confirmation_orchestrator()
-
-    with patch("coding_assistant.agents.execution.create_confirm_session") as mock_create_confirm:
-        mock_session = AsyncMock()
-        mock_session.prompt_async.return_value = False
-        mock_create_confirm.return_value = mock_session
-
-        result = await tool.execute(parameters=parameters)
-        assert result.content.strip() == "Tool execution denied."
+    tool, parameters = _create_tool_confirmation_orchestrator(confirm_value=False)
+    result = await tool.execute(parameters=parameters)
+    assert result.content.strip() == "Tool execution denied."
