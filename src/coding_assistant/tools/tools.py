@@ -5,8 +5,6 @@ import re
 import textwrap
 from typing import List, Optional
 
-from prompt_toolkit import PromptSession, prompt
-from prompt_toolkit.shortcuts import create_confirm_session
 from pydantic import BaseModel, Field
 
 from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
@@ -21,8 +19,12 @@ from coding_assistant.agents.types import (
     Tool,
 )
 from coding_assistant.config import Config
+from coding_assistant.llm.model import complete
 
 logger = logging.getLogger(__name__)
+
+
+from coding_assistant.ui import UI, NullUI
 
 
 async def _get_feedback(
@@ -31,7 +33,8 @@ async def _get_feedback(
     mcp_servers: list,
     enable_feedback_agent: bool,
     enable_user_feedback: bool,
-    agent_callbacks: Optional[AgentCallbacks] = None,
+    ui: UI,
+    agent_callbacks: AgentCallbacks,
 ) -> str | None:
     if not agent.output:
         raise ValueError("Agent has no result to provide feedback on.")
@@ -39,7 +42,7 @@ async def _get_feedback(
     feedback = "Ok"
 
     if enable_feedback_agent:
-        feedback_tool = FeedbackTool(config, mcp_servers, agent_callbacks)
+        feedback_tool = FeedbackTool(config=config, mcp_servers=mcp_servers, agent_callbacks=agent_callbacks, ui=ui)
         formatted_parameters = textwrap.indent(format_parameters(agent.parameters), "  ")
         agent_feedback_result = await feedback_tool.execute(
             parameters={
@@ -52,8 +55,7 @@ async def _get_feedback(
         feedback = agent_feedback_result.content
 
     if enable_user_feedback:
-        print(f"Feedback for {agent.name}")
-        feedback = await PromptSession().prompt_async("> ", default=feedback)
+        feedback = await ui.ask(f"Feedback for {agent.name}", default=feedback)
 
     return feedback if feedback != "Ok" else None
 
@@ -72,17 +74,14 @@ class LaunchOrchestratorAgentSchema(BaseModel):
 
 class OrchestratorTool(Tool):
     def __init__(
-        self,
-        config: Config,
-        mcp_servers: list | None = None,
-        history: list | None = None,
-        agent_callbacks: Optional[AgentCallbacks] = None,
+        self, config: Config, mcp_servers: list, history: list | None, agent_callbacks: AgentCallbacks, ui: UI
     ):
         super().__init__()
         self._config = config
-        self._mcp_servers = mcp_servers or []
+        self._mcp_servers = mcp_servers
         self._history = history
-        self._agent_callbacks = agent_callbacks or NullCallbacks()
+        self._agent_callbacks = agent_callbacks
+        self._ui = ui
 
     def name(self) -> str:
         return "launch_orchestrator_agent"
@@ -104,9 +103,9 @@ class OrchestratorTool(Tool):
             ),
             mcp_servers=self._mcp_servers,
             tools=[
-                AgentTool(self._config, self._mcp_servers, self._agent_callbacks),
-                AskClientTool(self._config.enable_ask_user),
-                ExecuteShellCommandTool(self._config.shell_confirmation_patterns),
+                AgentTool(self._config, self._mcp_servers, self._agent_callbacks, self._ui),
+                AskClientTool(self._config.enable_ask_user, ui=self._ui),
+                ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
@@ -119,6 +118,7 @@ class OrchestratorTool(Tool):
                 enable_feedback_agent=self._config.enable_feedback_agent,
                 enable_user_feedback=self._config.enable_user_feedback,
                 agent_callbacks=self._agent_callbacks,
+                ui=self._ui,
             ),
         )
 
@@ -128,6 +128,8 @@ class OrchestratorTool(Tool):
                 self._agent_callbacks,
                 self._config.shorten_conversation_at_tokens,
                 self._config.no_truncate_tools,
+                completer=complete,
+                ui=self._ui,
             )
             self.summary = output.summary
             return TextResult(content=output.result)
@@ -151,13 +153,12 @@ class LaunchAgentSchema(BaseModel):
 
 
 class AgentTool(Tool):
-    def __init__(
-        self, config: Config, mcp_servers: list | None = None, agent_callbacks: Optional[AgentCallbacks] = None
-    ):
+    def __init__(self, config: Config, mcp_servers: list, agent_callbacks: AgentCallbacks, ui: UI):
         super().__init__()
         self._config = config
-        self._mcp_servers = mcp_servers or []
-        self._agent_callbacks = agent_callbacks or NullCallbacks()
+        self._mcp_servers = mcp_servers
+        self._agent_callbacks = agent_callbacks
+        self._ui = ui
 
     def name(self) -> str:
         return "launch_agent"
@@ -183,8 +184,8 @@ class AgentTool(Tool):
             ),
             mcp_servers=self._mcp_servers,
             tools=[
-                ExecuteShellCommandTool(self._config.shell_confirmation_patterns),
-                AskClientTool(self._config.enable_ask_user),
+                ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
+                AskClientTool(self._config.enable_ask_user, ui=self._ui),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
@@ -197,6 +198,7 @@ class AgentTool(Tool):
                 enable_feedback_agent=self._config.enable_feedback_agent,
                 enable_user_feedback=self._config.enable_user_feedback,
                 agent_callbacks=self._agent_callbacks,
+                ui=self._ui,
             ),
         )
 
@@ -205,6 +207,8 @@ class AgentTool(Tool):
             self._agent_callbacks,
             self._config.shorten_conversation_at_tokens,
             self._config.no_truncate_tools,
+            completer=complete,
+            ui=self._ui,
         )
         return TextResult(content=output.result)
 
@@ -215,8 +219,9 @@ class AskClientSchema(BaseModel):
 
 
 class AskClientTool(Tool):
-    def __init__(self, enabled: bool):
+    def __init__(self, enabled: bool, ui: UI):
         self.enabled = enabled
+        self._ui = ui
 
     def name(self) -> str:
         return "ask_client"
@@ -238,8 +243,7 @@ class AskClientTool(Tool):
         question = parameters["question"]
         default_answer = parameters.get("default_answer")
 
-        print(question)
-        answer = await PromptSession().prompt_async("> ", default=default_answer or "")
+        answer = await self._ui.ask(question, default=default_answer or "")
         return TextResult(content=str(answer))
 
 
@@ -252,8 +256,10 @@ class ExecuteShellCommandTool(Tool):
     def __init__(
         self,
         shell_confirmation_patterns: Optional[List[str]] = None,
+        ui: UI | None = None,
     ):
         self._shell_confirmation_patterns = shell_confirmation_patterns or []
+        self._ui = ui or NullUI()
 
     def name(self) -> str:
         return "execute_shell_command"
@@ -273,7 +279,7 @@ class ExecuteShellCommandTool(Tool):
         for pattern in self._shell_confirmation_patterns:
             if re.search(pattern, command):
                 question = f"Execute `{command}`?"
-                answer = await create_confirm_session(question).prompt_async()
+                answer = await self._ui.confirm(question)
                 if not answer:
                     return TextResult(content="Command execution denied.")
                 break
@@ -310,13 +316,12 @@ class LaunchFeedbackAgentSchema(BaseModel):
 
 
 class FeedbackTool(Tool):
-    def __init__(
-        self, config: Config, mcp_servers: list | None = None, agent_callbacks: Optional[AgentCallbacks] = None
-    ):
+    def __init__(self, config: Config, mcp_servers: list, agent_callbacks: AgentCallbacks, ui: UI):
         super().__init__()
         self._config = config
-        self._mcp_servers = mcp_servers or []
-        self._agent_callbacks = agent_callbacks or NullCallbacks()
+        self._mcp_servers = mcp_servers
+        self._agent_callbacks = agent_callbacks
+        self._ui = ui
 
     def name(self) -> str:
         return "launch_feedback_agent"
@@ -337,7 +342,7 @@ class FeedbackTool(Tool):
             ),
             mcp_servers=self._mcp_servers,
             tools=[
-                ExecuteShellCommandTool(self._config.shell_confirmation_patterns),
+                ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
                 FinishTaskTool(),
                 ShortenConversation(),
             ],
@@ -350,6 +355,7 @@ class FeedbackTool(Tool):
                 enable_feedback_agent=False,
                 enable_user_feedback=False,
                 agent_callbacks=self._agent_callbacks,
+                ui=self._ui,
             ),
         )
 
@@ -358,6 +364,8 @@ class FeedbackTool(Tool):
             self._agent_callbacks,
             self._config.shorten_conversation_at_tokens,
             self._config.no_truncate_tools,
+            completer=complete,
+            ui=self._ui,
         )
         return TextResult(content=output.result)
 

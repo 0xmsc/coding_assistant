@@ -1,11 +1,10 @@
 import json
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from coding_assistant.agents.types import Agent, AgentOutput
-from coding_assistant.config import Config
-from coding_assistant.tools.tools import AskClientTool, ExecuteShellCommandTool, _get_feedback
+from coding_assistant.agents.tests.helpers import make_ui_mock
+from coding_assistant.tools.tools import AskClientTool, ExecuteShellCommandTool
+from coding_assistant.ui import NullUI
 
 
 @pytest.mark.asyncio
@@ -16,13 +15,9 @@ async def test_execute_shell_command_tool_timeout():
 
 
 @pytest.mark.asyncio
-@patch("coding_assistant.tools.tools.create_confirm_session")
-async def test_execute_shell_command_tool_confirmation_yes(mock_create_confirm):
-    mock_session = AsyncMock()
-    mock_session.prompt_async.return_value = True
-    mock_create_confirm.return_value = mock_session
-
-    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
+async def test_execute_shell_command_tool_confirmation_yes():
+    ui = make_ui_mock(confirm_sequence=[("Execute `echo 'Hello'`?", True)])
+    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"], ui=ui)
     result = await tool.execute({"command": "echo 'Hello'"})
 
     expected = {"stdout": "Hello\n", "stderr": "", "returncode": 0}
@@ -30,57 +25,43 @@ async def test_execute_shell_command_tool_confirmation_yes(mock_create_confirm):
 
 
 @pytest.mark.asyncio
-@patch("coding_assistant.tools.tools.create_confirm_session")
-async def test_execute_shell_command_tool_confirmation_yes_with_whitespace(mock_create_confirm):
-    mock_session = AsyncMock()
-    mock_session.prompt_async.return_value = False
-    mock_create_confirm.return_value = mock_session
-
-    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
+async def test_execute_shell_command_tool_confirmation_yes_with_whitespace():
+    ui = make_ui_mock(confirm_sequence=[("Execute `echo 'Hello'`?", False)])
+    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"], ui=ui)
     result = await tool.execute({"command": "  echo 'Hello'"})
     assert result.content == "Command execution denied."
 
 
 @pytest.mark.asyncio
-@patch("coding_assistant.tools.tools.create_confirm_session")
-async def test_execute_shell_command_tool_confirmation_no(mock_create_confirm):
-    mock_session = AsyncMock()
-    mock_session.prompt_async.return_value = False
-    mock_create_confirm.return_value = mock_session
-
-    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"])
+async def test_execute_shell_command_tool_confirmation_no():
+    ui = make_ui_mock(confirm_sequence=[("Execute `echo 'Hello'`?", False)])
+    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"], ui=ui)
     result = await tool.execute({"command": "echo 'Hello'"})
     assert result.content == "Command execution denied."
 
 
 @pytest.mark.asyncio
-@patch("coding_assistant.tools.tools.create_confirm_session")
-async def test_execute_shell_command_tool_no_match(mock_create_confirm):
-    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["ls"])
+async def test_execute_shell_command_tool_no_match():
+    ui = make_ui_mock()
+    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["ls"], ui=ui)
     result = await tool.execute({"command": "echo 'Hello'"})
 
     expected = {"stdout": "Hello\n", "stderr": "", "returncode": 0}
     assert json.loads(result.content) == expected
-
-    mock_create_confirm.assert_not_called()
+    ui.confirm.assert_not_called()
 
 
 @pytest.mark.asyncio
-@patch("coding_assistant.tools.tools.PromptSession")
-async def test_ask_client_tool_enabled(mock_prompt_session_class):
-    mock_session = AsyncMock()
-    mock_session.prompt_async.return_value = "yes"
-    mock_prompt_session_class.return_value = mock_session
-
-    tool = AskClientTool(enabled=True)
+async def test_ask_client_tool_enabled():
+    ui = make_ui_mock(ask_sequence=[("Do you want to proceed?", "yes")])
+    tool = AskClientTool(enabled=True, ui=ui)
     result = await tool.execute({"question": "Do you want to proceed?", "default_answer": "no"})
     assert result.content == "yes"
-    mock_session.prompt_async.assert_called_once_with("> ", default="no")
 
 
 @pytest.mark.asyncio
 async def test_ask_client_tool_disabled():
-    tool = AskClientTool(enabled=False)
+    tool = AskClientTool(enabled=False, ui=NullUI())
     result = await tool.execute({"question": "Do you want to proceed?", "default_answer": "no"})
     assert (
         result.content

@@ -3,20 +3,24 @@ import dataclasses
 import json
 import logging
 import re
-import sys
 import textwrap
 
 from opentelemetry import trace
-from prompt_toolkit import prompt
-from prompt_toolkit.shortcuts import create_confirm_session
 
 from coding_assistant.agents.callbacks import AgentCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
 from coding_assistant.agents.interrupts import InterruptibleSection
 from coding_assistant.agents.parameters import format_parameters
-from coding_assistant.agents.types import Agent, AgentOutput, FinishTaskResult, ShortenConversationResult, TextResult
+from coding_assistant.agents.types import (
+    Agent,
+    AgentOutput,
+    FinishTaskResult,
+    ShortenConversationResult,
+    TextResult,
+    Completer,
+)
 from coding_assistant.llm.adapters import execute_tool_call, get_tools
-from coding_assistant.llm.model import complete
+from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -112,6 +116,8 @@ async def handle_tool_call(
     agent: Agent,
     agent_callbacks: AgentCallbacks,
     no_truncate_tools: set[str],
+    *,
+    ui: UI,
 ):
     function_name = tool_call.function.name
     function_args = json.loads(tool_call.function.arguments or "{}")
@@ -119,7 +125,7 @@ async def handle_tool_call(
     for pattern in agent.tool_confirmation_patterns:
         if re.search(pattern, function_name):
             question = f"Execute tool `{function_name}` with arguments `{function_args}`?"
-            answer = await create_confirm_session(question).prompt_async()
+            answer = await ui.confirm(question)
             if not answer:
                 append_tool_message(
                     agent.history,
@@ -176,6 +182,9 @@ async def do_single_step(
     agent_callbacks: AgentCallbacks,
     shorten_conversation_at_tokens: int,
     no_truncate_tools: set[str],
+    *,
+    completer: Completer,
+    ui: UI,
 ):
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
@@ -192,7 +201,7 @@ async def do_single_step(
         raise RuntimeError("Agent needs to have history in order to run a step.")
     trace.get_current_span().set_attribute("agent.history", json.dumps(agent.history))
 
-    completion = await complete(
+    completion = await completer(
         agent.history,
         model=agent.model,
         tools=tools,
@@ -212,7 +221,7 @@ async def do_single_step(
 
     if message.tool_calls:
         for tool_call in message.tool_calls:
-            await handle_tool_call(tool_call, agent, agent_callbacks, no_truncate_tools)
+            await handle_tool_call(tool_call, agent, agent_callbacks, no_truncate_tools, ui=ui)
     else:
         append_user_message(
             agent.history,
@@ -239,6 +248,9 @@ async def run_agent_loop(
     agent_callbacks: AgentCallbacks,
     shorten_conversation_at_tokens: int,
     no_truncate_tools: set[str],
+    *,
+    completer: Completer,
+    ui: UI,
 ) -> AgentOutput:
     if agent.output:
         raise RuntimeError("Agent already has a result or summary.")
@@ -259,12 +271,13 @@ async def run_agent_loop(
                     agent_callbacks,
                     shorten_conversation_at_tokens,
                     no_truncate_tools,
+                    completer=completer,
+                    ui=ui,
                 )
 
             if interruptible_section.was_interrupted:
                 logger.info(f"Agent '{agent.name}' was interrupted during execution.")
-
-                feedback = await asyncio.to_thread(prompt, "Feedback: ")
+                feedback = await ui.ask("Feedback: ")
                 formatted_feedback = FEEDBACK_TEMPLATE.format(
                     feedback=textwrap.indent(feedback, "> "),
                 )

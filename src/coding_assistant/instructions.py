@@ -10,7 +10,6 @@ INSTRUCTIONS = """
 - Do not run any binary using `uvx` or `npx` without asking the user first.
 - When the user asks a question, be *very* sure before starting a web search that this is what the user wants.
 - If you output text, use markdown formatting where appropriate.
-- Prefer the internal `execute_shell_command` tool instead of the ones provided by any MCP.
 - Use shell commands for common tasks, such as:
     - `eza` or `ls` for listing files in a directory.
     - `git` for running git commands.

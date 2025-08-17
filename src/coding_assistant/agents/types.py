@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, Protocol, Awaitable
 
 from coding_assistant.agents.parameters import Parameter
 from coding_assistant.tools.mcp import MCPServer
+from coding_assistant.agents.callbacks import AgentCallbacks
+from coding_assistant.llm.model import Completion
 
 
 class ToolResult(ABC):
@@ -66,9 +68,28 @@ class Agent:
     # If it returns a string, it will be given to the agent as feedback.
     feedback_function: Callable
 
-    tools: list[Tool] = field(default_factory=list)
-    mcp_servers: list[MCPServer] = field(default_factory=list)
-    tool_confirmation_patterns: list[str] = field(default_factory=list)
+    tools: list[Tool]
+    mcp_servers: list[MCPServer]
+    tool_confirmation_patterns: list[str]
 
     history: list = field(default_factory=list)
     output: AgentOutput | None = None
+
+
+class Completer(Protocol):
+    """Async callable that produces a model completion.
+
+    Contract:
+    - inputs: conversation messages, model name, tool definitions, and callbacks
+    - output: Completion(message, tokens)
+    """
+
+    def __call__(
+        self,
+        messages: list[dict],
+        *,
+        model: str,
+        tools: list,
+        callbacks: AgentCallbacks,
+    ) -> Awaitable[Completion]:
+        ...
