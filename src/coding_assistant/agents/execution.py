@@ -1,4 +1,3 @@
-
 import dataclasses
 import json
 import logging
@@ -14,10 +13,10 @@ from coding_assistant.agents.parameters import format_parameters
 from coding_assistant.agents.types import (
     Agent,
     AgentOutput,
+    Completer,
     FinishTaskResult,
     ShortenConversationResult,
     TextResult,
-    Completer,
 )
 from coding_assistant.llm.adapters import execute_tool_call, get_tools
 from coding_assistant.ui import UI
@@ -42,12 +41,6 @@ Your client has provided the following parameters for your task:
 {parameters}
 """.strip()
 
-MCP_INSTRUCTIONS_TEMPLATE = """
-## MCP server `{name}` instructions
-
-{instructions}
-"""
-
 FEEDBACK_TEMPLATE = """
 Your client has provided the following feedback on your work:
 
@@ -65,13 +58,6 @@ def _create_start_message(agent: Agent) -> str:
         description=textwrap.indent(agent.description, "> "),
         parameters=parameters_str,
     )
-
-    for server in agent.mcp_servers:
-        if server.instructions:
-            message += "\n\n" + MCP_INSTRUCTIONS_TEMPLATE.format(
-                name=server.name,
-                instructions=server.instructions,
-            )
 
     return message
 
@@ -142,7 +128,7 @@ async def handle_tool_call(
     trace.get_current_span().set_attribute("function.args", tool_call.function.arguments)
 
     try:
-        function_call_result = await execute_tool_call(function_name, function_args, agent.tools, agent.mcp_servers)
+        function_call_result = await execute_tool_call(function_name, function_args, list(agent.tools))
     except ValueError as e:
         # `ValueError` indicates that the tool was not found.
         append_tool_message(
@@ -194,7 +180,7 @@ async def do_single_step(
     if not any(tool.name() == "shorten_conversation" for tool in agent.tools):
         raise RuntimeError("Agent needs to have a `shorten_conversation` tool in order to run a step.")
 
-    tools = await get_tools(agent.tools, agent.mcp_servers)
+    tools = await get_tools(agent.tools)
     trace.get_current_span().set_attribute("agent.tools", json.dumps(tools))
 
     if not agent.history:

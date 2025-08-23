@@ -121,7 +121,6 @@ def make_test_agent(
     description: str = "TestDescription",
     parameters: Sequence[Parameter] | None = None,
     tools: Iterable[Tool] | None = None,
-    mcp_servers: list[MCPServer] | None = None,
     tool_confirmation_patterns: list[str] | None = None,
     history: list[dict] | None = None,
 ) -> Agent:
@@ -131,7 +130,6 @@ def make_test_agent(
         description=description,
         parameters=list(parameters) if parameters is not None else [],
         tools=list(tools) if tools is not None else [],
-        mcp_servers=list(mcp_servers) if mcp_servers is not None else [],
         tool_confirmation_patterns=list(tool_confirmation_patterns) if tool_confirmation_patterns is not None else [],
         history=list(history) if history is not None else [],
     )

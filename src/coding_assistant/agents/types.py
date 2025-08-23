@@ -5,7 +5,6 @@ from typing import Awaitable, Protocol
 from coding_assistant.agents.callbacks import AgentCallbacks
 from coding_assistant.agents.parameters import Parameter
 from coding_assistant.llm.model import Completion
-from coding_assistant.tools.mcp import MCPServer
 
 
 class ToolResult(ABC):
@@ -65,7 +64,6 @@ class Agent:
     parameters: list[Parameter]
 
     tools: list[Tool]
-    mcp_servers: list[MCPServer]
     tool_confirmation_patterns: list[str]
 
     history: list = field(default_factory=list)
