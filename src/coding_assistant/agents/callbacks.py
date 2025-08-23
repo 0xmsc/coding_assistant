@@ -141,32 +141,29 @@ class RichCallbacks(AgentCallbacks):
                 ),
             )
 
-    def _is_json(self, content: str) -> bool:
+    def _try_parse_json(self, content: str):
         try:
-            json.loads(content)
-            return True
+            return json.loads(content)
         except json.JSONDecodeError:
-            return False
+            return None
 
     def _format_tool_result(self, result: str, tool_name: str):
-        if tool_name == "execute_shell_command":
-            data = json.loads(result)
+        if data := self._try_parse_json(result):
+            if tool_name == "execute_shell_command":
+                result = f"RC: {data['returncode']}"
 
-            result = f"RC: {data['returncode']}"
+                if data["stderr"]:
+                    result += f"\n\nstderr\n\n```\n{data['stderr']}\n```"
 
-            if data["stderr"]:
-                result += f"\n\nstderr\n\n```\n{data['stderr']}\n```"
+                if data["stdout"]:
+                    result += f"\n\nstdout\n\n```\n{data['stdout']}\n```"
 
-            if data["stdout"]:
-                result += f"\n\nstdout\n\n```\n{data['stdout']}\n```"
+                return Markdown(result)
 
-            return Markdown(result)
-
-        if self._is_json(result):
-            data = json.loads(result)
             return Pretty(data, expand_all=True, indent_size=2)
 
-        return Markdown(f"```\n{result}\n```")
+        else:
+            return Markdown(f"```\n{result}\n```")
 
     def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
         render_group = Group(
