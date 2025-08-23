@@ -2,6 +2,9 @@ import pytest
 
 from coding_assistant.agents.types import TextResult, Tool
 from coding_assistant.llm import adapters
+from coding_assistant.tools.mcp import MCPWrappedTool, MCPServer
+from mcp import ClientSession  # type: ignore
+from types import SimpleNamespace
 
 
 class DummyTool(Tool):
@@ -38,27 +41,12 @@ def test_fix_input_schema_removes_uri_format():
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_call_mcp_branch(monkeypatch):
-    # Patch handle_mcp_tool_call used inside adapters
-    async def _fake_handle(name, args, servers):
-        return f"called {name} with {args}"
-
-    monkeypatch.setattr(adapters, "handle_mcp_tool_call", _fake_handle)
-
-    res = await adapters.execute_tool_call(
-        "mcp_server_tool", {"a": 1}, tools=[], mcp_servers=[]
-    )
-    assert isinstance(res, TextResult)
-    assert res.content == "called mcp_server_tool with {'a': 1}"
-
-
-@pytest.mark.asyncio
 async def test_execute_tool_call_regular_tool_and_not_found():
     tool = DummyTool("echo", "ok")
 
-    res = await adapters.execute_tool_call("echo", {}, tools=[tool], mcp_servers=[])
+    res = await adapters.execute_tool_call("echo", {}, tools=[tool])
     assert isinstance(res, TextResult)
     assert res.content == "ok"
 
     with pytest.raises(ValueError, match="Tool missing not found"):
-        await adapters.execute_tool_call("missing", {}, tools=[tool], mcp_servers=[])
+        await adapters.execute_tool_call("missing", {}, tools=[tool])

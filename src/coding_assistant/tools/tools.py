@@ -41,11 +41,16 @@ class LaunchOrchestratorAgentSchema(BaseModel):
 
 class OrchestratorTool(Tool):
     def __init__(
-        self, config: Config, mcp_servers: list, history: list | None, agent_callbacks: AgentCallbacks, ui: UI
+        self,
+        config: Config,
+        tools: list[Tool],
+        history: list | None,
+        agent_callbacks: AgentCallbacks,
+        ui: UI,
     ):
         super().__init__()
         self._config = config
-        self._mcp_servers = mcp_servers
+        self._tools = tools
         self._history = history
         self._agent_callbacks = agent_callbacks
         self._ui = ui
@@ -68,9 +73,9 @@ class OrchestratorTool(Tool):
                 parameter_description=self.parameters(),
                 parameter_values=parameters,
             ),
-            mcp_servers=self._mcp_servers,
             tools=[
-                AgentTool(self._config, self._mcp_servers, self._agent_callbacks, self._ui),
+                *self._tools,
+                AgentTool(self._config, self._tools, self._agent_callbacks, self._ui),
                 AskClientTool(self._config.enable_ask_user, ui=self._ui),
                 ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
                 FinishTaskTool(),
@@ -112,10 +117,10 @@ class LaunchAgentSchema(BaseModel):
 
 
 class AgentTool(Tool):
-    def __init__(self, config: Config, mcp_servers: list, agent_callbacks: AgentCallbacks, ui: UI):
+    def __init__(self, config: Config, tools: list[Tool], agent_callbacks: AgentCallbacks, ui: UI):
         super().__init__()
         self._config = config
-        self._mcp_servers = mcp_servers
+        self._tools = tools
         self._agent_callbacks = agent_callbacks
         self._ui = ui
 
@@ -141,8 +146,8 @@ class AgentTool(Tool):
                 parameter_description=self.parameters(),
                 parameter_values=parameters,
             ),
-            mcp_servers=self._mcp_servers,
             tools=[
+                *self._tools,
                 ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
                 AskClientTool(self._config.enable_ask_user, ui=self._ui),
                 FinishTaskTool(),

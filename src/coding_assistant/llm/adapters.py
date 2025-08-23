@@ -1,13 +1,4 @@
-"""
-Adapters for converting tool structures to LiteLLM format.
-
-This module contains functions that adapt various tool representations
-(MCP servers, Tool instances) to the format expected by LiteLLM.
-"""
-
-
-from coding_assistant.agents.types import Tool, TextResult, ToolResult
-from coding_assistant.tools.mcp import MCPServer, handle_mcp_tool_call
+from coding_assistant.agents.types import Tool, ToolResult
 
 
 def fix_input_schema(input_schema: dict):
@@ -23,59 +14,26 @@ def fix_input_schema(input_schema: dict):
             prop.pop("format", None)
 
 
-async def get_tools(tools: list[Tool], mcp_servers: list[MCPServer]) -> list[dict]:
-    """
-    Convert both Tool instances and MCP server tools to LiteLLM function calling format.
-
-    Args:
-        tools: List of Tool instances
-        mcp_servers: List of MCPServer instances
-
-    Returns:
-        List of tool definitions in LiteLLM format
-    """
-    result = []
-
-    # Add tools from the tools list
+async def get_tools(tools: list[Tool]) -> list[dict]:
+    """Convert Tool instances to LiteLLM format."""
+    result: list[dict] = []
     for tool in tools:
-        if tool.name().startswith("mcp_"):
-            raise ValueError("Tools cannot start with mcp_")
-
+        params = tool.parameters()
+        fix_input_schema(params)
         result.append(
             {
                 "type": "function",
                 "function": {
                     "name": tool.name(),
                     "description": tool.description(),
-                    "parameters": tool.parameters(),
+                    "parameters": params,
                 },
             }
         )
-    
-    # Add tools from MCP servers
-    for server in mcp_servers:
-        tools_response = await server.session.list_tools()
-        server_tools = getattr(tools_response, "tools", [])
-        for mcp_tool in server_tools or []:
-            tool_id = f"mcp_{server.name}_{mcp_tool.name}"
-
-            fix_input_schema(mcp_tool.inputSchema)
-
-            result.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": tool_id,
-                        "description": mcp_tool.description,
-                        "parameters": mcp_tool.inputSchema,
-                    },
-                }
-            )
-    
     return result
 
 
-async def execute_tool_call(function_name: str, function_args: dict, tools: list[Tool], mcp_servers: list[MCPServer]) -> ToolResult:
+async def execute_tool_call(function_name: str, function_args: dict, tools: list[Tool]) -> ToolResult:
     """
     Execute a tool call, handling both regular tools and MCP server tools.
 
@@ -91,11 +49,7 @@ async def execute_tool_call(function_name: str, function_args: dict, tools: list
     Raises:
         ValueError: If a regular tool is not found
     """
-    if function_name.startswith("mcp_"):
-        content = await handle_mcp_tool_call(function_name, function_args, mcp_servers)
-        return TextResult(content=content)
-    else:
-        for tool in tools:
-            if tool.name() == function_name:
-                return await tool.execute(function_args)
-        raise ValueError(f"Tool {function_name} not found in agent tools.")
+    for tool in tools:
+        if tool.name() == function_name:
+            return await tool.execute(function_args)
+    raise ValueError(f"Tool {function_name} not found in agent tools.")

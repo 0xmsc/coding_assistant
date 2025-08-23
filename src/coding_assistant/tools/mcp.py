@@ -3,13 +3,14 @@ import os
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, Dict, List, Set
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from rich.console import Console
 from rich.table import Table
 
+from coding_assistant.agents.types import TextResult, Tool
 from coding_assistant.config import MCPServerConfig
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,55 @@ class MCPServer:
     name: str
     session: ClientSession
     instructions: str | None
+
+
+def _fix_input_schema(input_schema: dict):
+    """Normalize input schema (e.g. remove unsupported formats)."""
+    if not input_schema:
+        return
+    for prop in input_schema.get("properties", {}).values():
+        if prop.get("format") == "uri":
+            prop.pop("format", None)
+
+
+class MCPWrappedTool(Tool):
+    def __init__(self, session: ClientSession, server_name: str, function_name: str, description: str, schema: dict):
+        self._session = session
+        self._server_name = server_name
+        self._function_name = function_name
+        self._description = description
+        self._schema = schema
+        _fix_input_schema(self._schema)
+
+    def name(self) -> str:
+        return f"mcp_{self._server_name}_{self._function_name}"
+
+    def description(self) -> str:
+        return self._description
+
+    def parameters(self) -> dict:
+        return self._schema
+
+    async def execute(self, parameters) -> TextResult:
+        result = await self._session.call_tool(self._function_name, parameters)
+        return TextResult(content=result.content)
+
+
+async def get_mcp_wrapped_tools(mcp_servers: list[MCPServer]) -> list[Tool]:
+    wrapped: List = []
+    for server in mcp_servers:
+        tools_response = await server.session.list_tools()
+        for remote_tool in getattr(tools_response, "tools"):
+            wrapped.append(
+                MCPWrappedTool(
+                    session=server.session,
+                    server_name=server.name,
+                    function_name=remote_tool.name,
+                    description=remote_tool.description,
+                    schema=remote_tool.inputSchema,
+                )
+            )
+    return wrapped
 
 
 def get_default_env():

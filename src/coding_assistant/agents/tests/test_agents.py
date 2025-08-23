@@ -29,7 +29,7 @@ def create_test_config() -> Config:
 @pytest.mark.asyncio
 async def test_orchestrator_tool():
     config = create_test_config()
-    tool = OrchestratorTool(config=config, mcp_servers=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
+    tool = OrchestratorTool(config=config, tools=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
     result = await tool.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result.content == "Hello, World!"
 
@@ -38,14 +38,12 @@ async def test_orchestrator_tool():
 @pytest.mark.asyncio
 async def test_orchestrator_tool_resume():
     config = create_test_config()
-    first = OrchestratorTool(config=config, mcp_servers=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
+    first = OrchestratorTool(config=config, tools=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
 
     result = await first.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result.content == "Hello, World!"
 
-    second = OrchestratorTool(
-        config=config, mcp_servers=[], history=first.history, agent_callbacks=NullCallbacks(), ui=NullUI()
-    )
+    second = OrchestratorTool(config=config, tools=[], history=first.history, agent_callbacks=NullCallbacks(), ui=NullUI())
     result = await second.execute(
         parameters={"task": "Re-do your previous task, just translate your output to German."}
     )
@@ -56,7 +54,7 @@ async def test_orchestrator_tool_resume():
 @pytest.mark.asyncio
 async def test_orchestrator_tool_instructions():
     config = create_test_config()
-    tool = OrchestratorTool(config=config, mcp_servers=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
+    tool = OrchestratorTool(config=config, tools=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
     result = await tool.execute(
         parameters={
             "task": "Say 'Hello, World!'",
@@ -75,7 +73,7 @@ def _create_confirmation_orchestrator(confirm_value: bool):
             ("Execute `echo Hello World`?", confirm_value),
         ]
     )
-    tool = OrchestratorTool(config=config, mcp_servers=[], history=None, agent_callbacks=NullCallbacks(), ui=ui)
+    tool = OrchestratorTool(config=config, tools=[], history=None, agent_callbacks=NullCallbacks(), ui=ui)
     parameters = {
         "task": "Execute shell command 'echo Hello World' with a timeout of 10 seconds and verbatim output stdout. If the command execution is denied, output 'Command execution denied.'",
     }
@@ -110,7 +108,7 @@ def _create_tool_confirmation_orchestrator(confirm_value: bool):
             ),
         ]
     )
-    tool = OrchestratorTool(config=config, mcp_servers=[], history=None, agent_callbacks=NullCallbacks(), ui=ui)
+    tool = OrchestratorTool(config=config, tools=[], history=None, agent_callbacks=NullCallbacks(), ui=ui)
     parameters = {
         "task": "Use the execute_shell_command to echo 'Hello, World!' with a timeout of 10 seconds and verbatim output stdout. If the tool execution is denied, output 'Tool execution denied.'",
     }
