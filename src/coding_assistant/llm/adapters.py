@@ -34,21 +34,6 @@ async def get_tools(tools: list[Tool]) -> list[dict]:
 
 
 async def execute_tool_call(function_name: str, function_args: dict, tools: list[Tool]) -> ToolResult:
-    """
-    Execute a tool call, handling both regular tools and MCP server tools.
-
-    Args:
-        function_name: Name of the function to call
-        function_args: Arguments to pass to the function
-        tools: List of available Tool instances
-        mcp_servers: List of available MCP servers
-
-    Returns:
-        ToolResult from the executed tool
-
-    Raises:
-        ValueError: If a regular tool is not found
-    """
     for tool in tools:
         if tool.name() == function_name:
             return await tool.execute(function_args)

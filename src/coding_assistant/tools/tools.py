@@ -6,7 +6,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.agents.callbacks import AgentCallbacks
+from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
 from coding_assistant.agents.execution import run_agent_loop
 from coding_assistant.agents.parameters import fill_parameters
 from coding_assistant.agents.types import (
@@ -19,7 +19,7 @@ from coding_assistant.agents.types import (
 )
 from coding_assistant.config import Config
 from coding_assistant.llm.model import complete
-from coding_assistant.ui import UI, NullUI
+from coding_assistant.ui import UI, DefaultAnswerUI, NullUI
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class OrchestratorTool(Tool):
         return "launch_orchestrator_agent"
 
     def description(self) -> str:
-        return "Launch an orchestrator agent to accomplish a given task. The agent can delegate tasks to other agents where it sees fit. For bigger tasks, the orchestrator agent will make a plan with multiple milestones to tackle the task and ask the user whether it is okay to proceed with the plan."
+        return "Launch an orchestrator agent to accomplish a given task."
 
     def parameters(self) -> dict:
         return LaunchOrchestratorAgentSchema.model_json_schema()
@@ -74,12 +74,12 @@ class OrchestratorTool(Tool):
                 parameter_values=parameters,
             ),
             tools=[
-                *self._tools,
-                AgentTool(self._config, self._tools, self._agent_callbacks, self._ui),
-                AskClientTool(self._config.enable_ask_user, ui=self._ui),
-                ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
                 FinishTaskTool(),
                 ShortenConversation(),
+                AgentTool(self._config, self._tools, DefaultAnswerUI(), NullCallbacks()),
+                AskClientTool(self._config.enable_ask_user, ui=self._ui),
+                ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
+                *self._tools,
             ],
             model=self._config.expert_model,
             tool_confirmation_patterns=self._config.tool_confirmation_patterns,
@@ -89,11 +89,12 @@ class OrchestratorTool(Tool):
             output = await run_agent_loop(
                 orchestrator_agent,
                 self._agent_callbacks,
-                self._config.shorten_conversation_at_tokens,
-                self._config.no_truncate_tools,
+                shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
+                no_truncate_tools=self._config.no_truncate_tools,
                 enable_user_feedback=self._config.enable_user_feedback,
                 completer=complete,
                 ui=self._ui,
+                is_interruptible=True,
             )
             self.summary = output.summary
             return TextResult(content=output.result)
@@ -117,18 +118,18 @@ class LaunchAgentSchema(BaseModel):
 
 
 class AgentTool(Tool):
-    def __init__(self, config: Config, tools: list[Tool], agent_callbacks: AgentCallbacks, ui: UI):
+    def __init__(self, config: Config, tools: list[Tool], ui: UI, agent_callbacks: AgentCallbacks):
         super().__init__()
         self._config = config
         self._tools = tools
-        self._agent_callbacks = agent_callbacks
         self._ui = ui
+        self._agent_callbacks = agent_callbacks
 
     def name(self) -> str:
         return "launch_agent"
 
     def description(self) -> str:
-        return "Launch a sub-agent to work on a given task. Examples for tasks are researching a topic or question, or developing a feature according to an implementation plan. The agent will refuse to accept any tasks that are not clearly defined and miss context. It needs to be clear what to do and how to do it using **only** the information given in the task description."
+        return "Launch a sub-agent to work on a given task. The agent will refuse to accept any task that is not clearly defined and misses context. It needs to be clear what to do using **only** the information given in the task description."
 
     def parameters(self) -> dict:
         return LaunchAgentSchema.model_json_schema()
@@ -147,25 +148,26 @@ class AgentTool(Tool):
                 parameter_values=parameters,
             ),
             tools=[
-                *self._tools,
-                ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
-                AskClientTool(self._config.enable_ask_user, ui=self._ui),
                 FinishTaskTool(),
                 ShortenConversation(),
+                ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
+                *self._tools,
             ],
             model=self.get_model(parameters),
             tool_confirmation_patterns=self._config.tool_confirmation_patterns,
         )
 
         output = await run_agent_loop(
-            agent,
-            self._agent_callbacks,
-            self._config.shorten_conversation_at_tokens,
-            self._config.no_truncate_tools,
-            enable_user_feedback=self._config.enable_user_feedback,
+            agent=agent,
+            agent_callbacks=self._agent_callbacks,
+            shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
+            no_truncate_tools=self._config.no_truncate_tools,
+            enable_user_feedback=False,
             completer=complete,
+            is_interruptible=False,
             ui=self._ui,
         )
+
         return TextResult(content=output.result)
 
 

@@ -1,14 +1,16 @@
+import asyncio
 import dataclasses
 import json
 import logging
 import re
 import textwrap
+from json import JSONDecodeError
 
 from opentelemetry import trace
 
 from coding_assistant.agents.callbacks import AgentCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
-from coding_assistant.agents.interrupts import InterruptibleSection
+from coding_assistant.agents.interrupts import InterruptibleSection, NonInterruptibleSection
 from coding_assistant.agents.parameters import format_parameters
 from coding_assistant.agents.types import (
     Agent,
@@ -106,7 +108,21 @@ async def handle_tool_call(
     ui: UI,
 ):
     function_name = tool_call.function.name
-    function_args = json.loads(tool_call.function.arguments or "{}")
+
+    args_str = tool_call.function.arguments or "{}"
+    try:
+        function_args = json.loads(args_str)
+    except (JSONDecodeError, TypeError) as e:
+        append_tool_message(
+            agent.history,
+            agent_callbacks,
+            agent.name,
+            tool_call.id,
+            function_name,
+            args_str,
+            f"Error: Tool call arguments {args_str} are not valid JSON: {e}",
+        )
+        return
 
     for pattern in agent.tool_confirmation_patterns:
         if re.search(pattern, function_name):
@@ -125,12 +141,13 @@ async def handle_tool_call(
                 return
 
     trace.get_current_span().set_attribute("function.name", function_name)
-    trace.get_current_span().set_attribute("function.args", tool_call.function.arguments)
+    trace.get_current_span().set_attribute("function.args", args_str)
+
+    agent_callbacks.on_tool_start(agent.name, function_name, function_args)
 
     try:
         function_call_result = await execute_tool_call(function_name, function_args, list(agent.tools))
     except ValueError as e:
-        # `ValueError` indicates that the tool was not found.
         append_tool_message(
             agent.history,
             agent_callbacks,
@@ -151,15 +168,58 @@ async def handle_tool_call(
         TextResult: lambda r: _handle_text_result(r, function_name, no_truncate_tools),
     }
 
-    handler = result_handlers.get(type(function_call_result))
-    if handler:
-        tool_return_summary = handler(function_call_result)
-    else:
-        raise TypeError(f"Unknown tool result type: {type(function_call_result)}")
+    tool_return_summary = result_handlers[type(function_call_result)](function_call_result)
 
     append_tool_message(
-        agent.history, agent_callbacks, agent.name, tool_call.id, function_name, function_args, tool_return_summary
+        agent.history,
+        agent_callbacks,
+        agent.name,
+        tool_call.id,
+        function_name,
+        function_args,
+        tool_return_summary,
     )
+
+
+@tracer.start_as_current_span("handle_tool_calls")
+async def handle_tool_calls(
+    message,
+    agent: Agent,
+    agent_callbacks: AgentCallbacks,
+    no_truncate_tools: set[str],
+    *,
+    ui: UI,
+):
+    tool_calls = message.tool_calls
+    trace.get_current_span().set_attribute("message.tool_calls", tool_calls)
+
+    if not tool_calls:
+        append_user_message(
+            agent.history,
+            agent_callbacks,
+            agent.name,
+            "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
+        )
+        return
+
+    aws = []
+    for tool_call in tool_calls:
+        task = asyncio.create_task(
+            handle_tool_call(tool_call, agent, agent_callbacks, no_truncate_tools, ui=ui),
+            name=f"{tool_call.function.name} ({tool_call.id})",
+        )
+        aws.append(task)
+
+    while True:
+        done, pending = await asyncio.wait(aws, return_when=asyncio.FIRST_COMPLETED, timeout=0.2)
+
+        # await the task, which will throw any exceptions stored in the future.
+        for task in done:
+            await task
+
+        agent_callbacks.on_tools_progress([t.get_name() for t in pending])
+        if not pending:
+            break
 
 
 @tracer.start_as_current_span("do_single_step")
@@ -204,17 +264,7 @@ async def do_single_step(
         del message.reasoning_content
 
     append_assistant_message(agent.history, agent_callbacks, agent.name, message)
-
-    if message.tool_calls:
-        for tool_call in message.tool_calls:
-            await handle_tool_call(tool_call, agent, agent_callbacks, no_truncate_tools, ui=ui)
-    else:
-        append_user_message(
-            agent.history,
-            agent_callbacks,
-            agent.name,
-            "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
-        )
+    await handle_tool_calls(message, agent, agent_callbacks, no_truncate_tools, ui=ui)
 
     # Check conversation length and request shortening if needed
     if completion.tokens > shorten_conversation_at_tokens:
@@ -232,12 +282,13 @@ async def do_single_step(
 async def run_agent_loop(
     agent: Agent,
     agent_callbacks: AgentCallbacks,
-    shorten_conversation_at_tokens: int,
-    no_truncate_tools: set[str],
     *,
     completer: Completer,
     ui: UI,
-    enable_user_feedback: bool,
+    shorten_conversation_at_tokens: int = 200_000,
+    no_truncate_tools: set[str] = set(),
+    enable_user_feedback: bool = False,
+    is_interruptible: bool = False,
 ) -> AgentOutput:
     if agent.output:
         raise RuntimeError("Agent already has a result or summary.")
@@ -252,7 +303,8 @@ async def run_agent_loop(
 
     while True:
         while not agent.output:
-            with InterruptibleSection() as interruptible_section:
+            section_cls = InterruptibleSection if is_interruptible else NonInterruptibleSection
+            with section_cls() as interruptible_section:
                 await do_single_step(
                     agent,
                     agent_callbacks,
