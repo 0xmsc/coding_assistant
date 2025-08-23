@@ -23,10 +23,18 @@ class FakeToolCall:
 
 
 class FakeMessage:
-    def __init__(self, content: str | None = None, tool_calls: list[FakeToolCall] | None = None):
+    def __init__(
+        self,
+        content: str | None = None,
+        tool_calls: list[FakeToolCall] | None = None,
+        reasoning_content: str | None = None,
+    ):
         self.role = "assistant"
         self.content = content
         self.tool_calls = tool_calls or []
+        # Optional field used to simulate models that return separate reasoning content
+        if reasoning_content is not None:
+            self.reasoning_content = reasoning_content
 
     def model_dump(self):
         data: dict[str, object] = {"role": self.role}
@@ -40,6 +48,8 @@ class FakeMessage:
                 }
                 for tc in self.tool_calls
             ]
+        if hasattr(self, "reasoning_content"):
+            data["reasoning_content"] = getattr(self, "reasoning_content")
         return data
 
     def model_dump_json(self):
