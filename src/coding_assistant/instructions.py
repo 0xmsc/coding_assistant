@@ -18,6 +18,12 @@ INSTRUCTIONS = """
     - `rg` or `grep` for searching text in files.
     - `gh` for interfacing with GitHub.
     - `pwd` to get the project root.
+- Make use of sub-agents.
+    - Do not read lots of files, if you want to know something about the codebase, launch a sub-agent.
+    - When possible, launch multiple sub-agents in parallel to speed up your work.
+    - You are responsible for the work of the sub-agents. Review it before showing it to the client.
+- For big tasks, create a plan with multiple steps.
+    - Ask the user for feedback on the plan before implementing it.
 """.strip()
 
 PLANNING_INSTRUCTIONS = """
