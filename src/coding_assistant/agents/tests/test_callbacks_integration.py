@@ -73,29 +73,3 @@ async def test_on_tool_message_called_with_arguments_and_result():
     assert found, "Expected on_tool_message to be called with echo arguments and result"
 
 
-@pytest.mark.asyncio
-async def test_on_tool_start_called_before_execution():
-    callbacks = Mock()
-    call = FakeToolCall("1", FakeFunction("echo", json.dumps({"text": "hello"})))
-    finish = FakeToolCall("2", FakeFunction("finish_task", json.dumps({"result": "ok", "summary": "s"})))
-    completer = FakeCompleter([FakeMessage(tool_calls=[call]), FakeMessage(tool_calls=[finish])])
-    agent = make_test_agent(tools=[EchoTool(), FinishTaskTool(), ShortenConversation()])
-
-    await run_agent_loop(
-        agent,
-        callbacks,
-        shorten_conversation_at_tokens=200_000,
-        no_truncate_tools=set(),
-        enable_user_feedback=False,
-        completer=completer,
-        ui=make_ui_mock(),
-    )
-
-    # Expect at least one call with (agent.name, "echo", {"text": "hello"})
-    found = False
-    for call_args in callbacks.on_tool_start.call_args_list:
-        args = call_args[0]
-        if len(args) == 3 and args[0] == agent.name and args[1] == "echo" and args[2] == {"text": "hello"}:
-            found = True
-            break
-    assert found, "Expected on_tool_start to be called with echo arguments"

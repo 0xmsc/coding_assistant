@@ -8,12 +8,10 @@ from pprint import pformat
 from rich import print
 from rich.console import Group
 from rich.json import JSON
-from rich.live import Live
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.panel import Panel
 from rich.pretty import Pretty
-from rich.status import Status
 from rich.text import Text
 
 
@@ -51,16 +49,6 @@ class AgentCallbacks(ABC):
         pass
 
     @abstractmethod
-    def on_tool_start(self, agent_name: str, tool_name: str, arguments: dict):
-        """Called right before a tool is executed."""
-        pass
-
-    @abstractmethod
-    def on_tools_progress(self, pending_tool_names: list[str]):
-        """Progress update with list of currently running (pending) tool names."""
-        pass
-
-    @abstractmethod
     def on_chunk(self, chunk: str):
         """Handle LLM chunks."""
         pass
@@ -92,12 +80,6 @@ class NullCallbacks(AgentCallbacks):
     def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
         pass
 
-    def on_tool_start(self, agent_name: str, tool_name: str, arguments: dict):
-        pass
-
-    def on_tools_progress(self, pending_tool_names: list[str]):
-        pass
-
     def on_chunk(self, chunk: str):
         pass
 
@@ -109,7 +91,6 @@ class RichCallbacks(AgentCallbacks):
     def __init__(self, print_chunks: bool = True, print_reasoning: bool = True):
         self._print_chunks = print_chunks
         self._print_reasoning = print_reasoning
-        self._live: Live | None = None
 
     def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
         status = "resuming" if is_resuming else "starting"
@@ -198,19 +179,6 @@ class RichCallbacks(AgentCallbacks):
             ),
         )
 
-    def on_tool_start(self, agent_name: str, tool_name: str, arguments: dict):
-        render_group = Group(
-            Markdown(f"Name: `{tool_name}`"),
-            Padding(Pretty(arguments, expand_all=True, indent_size=2), (1, 0, 0, 0)),
-        )
-        print(
-            Panel(
-                render_group,
-                title=f"Agent {agent_name} tool start",
-                border_style="yellow",
-            ),
-        )
-
     def on_chunk(self, chunk: str):
         if self._print_chunks:
             print(chunk, end="", flush=True)
@@ -218,28 +186,3 @@ class RichCallbacks(AgentCallbacks):
     def on_chunks_end(self):
         if self._print_chunks:
             print()
-
-    def on_tools_progress(self, pending_tool_names: list[str]):
-        _handle_tool_progress = False
-
-        if not _handle_tool_progress:
-            return
-
-        if pending_tool_names:
-            if not self._live:
-                self._live = Live(
-                    Group(*[Status(name) for name in pending_tool_names]),
-                    auto_refresh=False,
-                    transient=True,
-                )
-                self._live.start()
-            else:
-                g: Group = self._live.renderable
-                self._live.update(
-                    Group(*[status for status in g.renderables if status.status in pending_tool_names]),
-                    refresh=True,
-                )
-        else:
-            if self._live:
-                self._live.stop()
-            self._live = None
