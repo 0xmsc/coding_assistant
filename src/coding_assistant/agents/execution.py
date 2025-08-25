@@ -112,14 +112,14 @@ async def handle_tool_call(
     args_str = tool_call.function.arguments or "{}"
     try:
         function_args = json.loads(args_str)
-    except (JSONDecodeError, TypeError) as e:
+    except JSONDecodeError as e:
         append_tool_message(
             agent.history,
             agent_callbacks,
             agent.name,
             tool_call.id,
             function_name,
-            args_str,
+            dict(),
             f"Error: Tool call arguments {args_str} are not valid JSON: {e}",
         )
         return
@@ -141,12 +141,12 @@ async def handle_tool_call(
                 return
 
     trace.get_current_span().set_attribute("function.name", function_name)
-    trace.get_current_span().set_attribute("function.args", args_str)
+    trace.get_current_span().set_attribute("function.args", json.dumps(function_args))
 
-    agent_callbacks.on_tool_start(agent.name, function_name, function_args)
+    logger.info(f"[{tool_call.id}] [{agent.name}] Calling tool '{function_name}' with arguments {function_args}")
 
     try:
-        function_call_result = await execute_tool_call(function_name, function_args, list(agent.tools))
+        function_call_result = await execute_tool_call(function_name, function_args, agent.tools)
     except ValueError as e:
         append_tool_message(
             agent.history,
@@ -159,7 +159,6 @@ async def handle_tool_call(
         )
         return
 
-    assert function_call_result is not None, f"Function {function_name} not implemented"
     trace.get_current_span().set_attribute("function.result", str(function_call_result))
 
     result_handlers = {
@@ -217,7 +216,6 @@ async def handle_tool_calls(
         for task in done:
             await task
 
-        agent_callbacks.on_tools_progress([t.get_name() for t in pending])
         if not pending:
             break
 
