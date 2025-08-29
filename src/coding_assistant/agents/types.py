@@ -62,9 +62,7 @@ class Agent:
 
     description: str
     parameters: list[Parameter]
-
     tools: list[Tool]
-    tool_confirmation_patterns: list[str]
 
     history: list = field(default_factory=list)
     output: AgentOutput | None = None

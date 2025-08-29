@@ -38,7 +38,7 @@ async def test_shorten_conversation_resets_history():
         ),
     )
 
-    await handle_tool_call(tool_call, agent, callbacks, no_truncate_tools=set(), ui=make_ui_mock())
+    await handle_tool_call(tool_call, agent, callbacks, no_truncate_tools=set(), tool_confirmation_patterns=[], ui=make_ui_mock())
 
     # History should be reset to a fresh start message + summary message, followed by the tool result message
     assert len(agent.history) >= 3
@@ -79,6 +79,7 @@ async def test_shorten_conversation_resets_history():
         no_truncate_tools=set(),
         completer=completer,
         ui=make_ui_mock(),
+        tool_confirmation_patterns=[],
     )
 
     # Verify the assistant tool call and finish result were appended after the reset messages
