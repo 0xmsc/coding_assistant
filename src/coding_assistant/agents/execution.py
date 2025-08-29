@@ -104,6 +104,7 @@ async def handle_tool_call(
     agent: Agent,
     agent_callbacks: AgentCallbacks,
     no_truncate_tools: set[str],
+    tool_confirmation_patterns: list[str],
     *,
     ui: UI,
 ):
@@ -124,7 +125,7 @@ async def handle_tool_call(
         )
         return
 
-    for pattern in agent.tool_confirmation_patterns:
+    for pattern in tool_confirmation_patterns:
         if re.search(pattern, function_name):
             question = f"Execute tool `{function_name}` with arguments `{function_args}`?"
             answer = await ui.confirm(question)
@@ -186,6 +187,7 @@ async def handle_tool_calls(
     agent: Agent,
     agent_callbacks: AgentCallbacks,
     no_truncate_tools: set[str],
+    tool_confirmation_patterns: list[str],
     *,
     ui: UI,
 ):
@@ -204,7 +206,14 @@ async def handle_tool_calls(
     aws = []
     for tool_call in tool_calls:
         task = asyncio.create_task(
-            handle_tool_call(tool_call, agent, agent_callbacks, no_truncate_tools, ui=ui),
+            handle_tool_call(
+                tool_call,
+                agent,
+                agent_callbacks,
+                no_truncate_tools,
+                tool_confirmation_patterns,
+                ui=ui,
+            ),
             name=f"{tool_call.function.name} ({tool_call.id})",
         )
         aws.append(task)
@@ -229,6 +238,7 @@ async def do_single_step(
     *,
     completer: Completer,
     ui: UI,
+    tool_confirmation_patterns: list[str],
 ):
     trace.get_current_span().set_attribute("agent.name", agent.name)
 
@@ -262,7 +272,14 @@ async def do_single_step(
         del message.reasoning_content
 
     append_assistant_message(agent.history, agent_callbacks, agent.name, message)
-    await handle_tool_calls(message, agent, agent_callbacks, no_truncate_tools, ui=ui)
+    await handle_tool_calls(
+        message,
+        agent,
+        agent_callbacks,
+        no_truncate_tools,
+        tool_confirmation_patterns,
+        ui=ui,
+    )
 
     # Check conversation length and request shortening if needed
     if completion.tokens > shorten_conversation_at_tokens:
@@ -285,6 +302,7 @@ async def run_agent_loop(
     ui: UI,
     shorten_conversation_at_tokens: int = 200_000,
     no_truncate_tools: set[str] = set(),
+    tool_confirmation_patterns: list[str] = [],
     enable_user_feedback: bool = False,
     is_interruptible: bool = False,
 ) -> AgentOutput:
@@ -310,6 +328,7 @@ async def run_agent_loop(
                     no_truncate_tools,
                     completer=completer,
                     ui=ui,
+                    tool_confirmation_patterns=tool_confirmation_patterns,
                 )
 
             if interruptible_section.was_interrupted:

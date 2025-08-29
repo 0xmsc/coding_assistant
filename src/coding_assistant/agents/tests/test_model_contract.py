@@ -49,6 +49,7 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
         no_truncate_tools=set(),
         completer=completer,
         ui=make_ui_mock(),
+        tool_confirmation_patterns=[],
     )
 
     assert msg.content == fake_message.content
@@ -106,6 +107,7 @@ async def test_reasoning_is_forwarded_and_not_stored():
         no_truncate_tools=set(),
         completer=completer,
         ui=make_ui_mock(),
+        tool_confirmation_patterns=[],
     )
 
     # Assert reasoning was forwarded via callback
@@ -134,6 +136,7 @@ async def test_requires_finish_tool():
             no_truncate_tools=set(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
             ui=make_ui_mock(),
+            tool_confirmation_patterns=[],
         )
 
 
@@ -152,6 +155,7 @@ async def test_requires_shorten_tool():
             no_truncate_tools=set(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
             ui=make_ui_mock(),
+            tool_confirmation_patterns=[],
         )
 
 
@@ -167,4 +171,5 @@ async def test_requires_non_empty_history():
             no_truncate_tools=set(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
             ui=make_ui_mock(),
+            tool_confirmation_patterns=[],
         )

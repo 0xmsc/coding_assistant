@@ -82,7 +82,6 @@ class OrchestratorTool(Tool):
                 *self._tools,
             ],
             model=self._config.expert_model,
-            tool_confirmation_patterns=self._config.tool_confirmation_patterns,
         )
 
         try:
@@ -91,6 +90,7 @@ class OrchestratorTool(Tool):
                 self._agent_callbacks,
                 shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
                 no_truncate_tools=self._config.no_truncate_tools,
+                tool_confirmation_patterns=self._config.tool_confirmation_patterns,
                 enable_user_feedback=self._config.enable_user_feedback,
                 completer=complete,
                 ui=self._ui,
@@ -154,7 +154,6 @@ class AgentTool(Tool):
                 *self._tools,
             ],
             model=self.get_model(parameters),
-            tool_confirmation_patterns=self._config.tool_confirmation_patterns,
         )
 
         output = await run_agent_loop(
@@ -162,6 +161,7 @@ class AgentTool(Tool):
             agent_callbacks=self._agent_callbacks,
             shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
             no_truncate_tools=self._config.no_truncate_tools,
+            tool_confirmation_patterns=self._config.tool_confirmation_patterns,
             enable_user_feedback=False,
             completer=complete,
             is_interruptible=False,
