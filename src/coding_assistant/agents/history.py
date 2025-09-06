@@ -7,7 +7,7 @@ def append_tool_message(
     agent_name: str,
     tool_call_id: str,
     function_name: str,
-    function_args: dict,
+    function_args: dict | None,
     function_call_result: str,
 ):
     callbacks.on_tool_message(

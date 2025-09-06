@@ -150,12 +150,6 @@ def parse_args():
         default=False,
         help="Wait for a debugger to attach.",
     )
-    parser.add_argument(
-        "--no-truncate-tools",
-        nargs="*",
-        default=[],
-        help="Do not truncate the output of tools that match any of the given regular expression patterns.",
-    )
 
     return parser.parse_args()
 
@@ -169,7 +163,6 @@ def create_config_from_args(args) -> Config:
         enable_ask_user=args.ask_user,
         shell_confirmation_patterns=args.shell_confirmation_patterns,
         tool_confirmation_patterns=args.tool_confirmation_patterns,
-        no_truncate_tools=set(args.no_truncate_tools),
     )
 
 

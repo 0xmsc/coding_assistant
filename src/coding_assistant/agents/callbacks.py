@@ -4,6 +4,7 @@ import json
 import textwrap
 from abc import ABC, abstractmethod
 from pprint import pformat
+from typing import Any
 
 from rich import print
 from rich.console import Group
@@ -44,7 +45,7 @@ class AgentCallbacks(ABC):
         pass
 
     @abstractmethod
-    def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
+    def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict | None, result: str):
         """Handle messages with role: tool."""
         pass
 
@@ -77,7 +78,7 @@ class NullCallbacks(AgentCallbacks):
     def on_assistant_reasoning(self, agent_name: str, content: str):
         pass
 
-    def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
+    def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict | None, result: str):
         pass
 
     def on_chunk(self, chunk: str):
@@ -149,28 +150,19 @@ class RichCallbacks(AgentCallbacks):
 
     def _format_tool_result(self, result: str, tool_name: str):
         if data := self._try_parse_json(result):
-            if tool_name == "execute_shell_command":
-                result = f"RC: {data['returncode']}"
-
-                if data["stderr"]:
-                    result += f"\n\nstderr\n\n```\n{data['stderr']}\n```"
-
-                if data["stdout"]:
-                    result += f"\n\nstdout\n\n```\n{data['stdout']}\n```"
-
-                return Markdown(result)
-
             return Pretty(data, expand_all=True, indent_size=2)
-
         else:
             return Markdown(f"```\n{result}\n```")
 
-    def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict, result: str):
-        render_group = Group(
-            Markdown(f"Name: `{tool_name}`"),
-            Padding(Pretty(arguments, expand_all=True, indent_size=2), (1, 0, 0, 0)),
-            Padding(self._format_tool_result(result, tool_name), (1, 0, 0, 0)),
-        )
+    def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict | None, result: str):
+        parts: list[Any] = [Markdown(f"Name: `{tool_name}`")]
+
+        if arguments is not None:
+            parts.append(Padding(Pretty(arguments, expand_all=True, indent_size=2), (1, 0, 0, 0)))
+
+        parts.append(Padding(self._format_tool_result(result, tool_name), (1, 0, 0, 0)))
+
+        render_group = Group(*parts)
         print(
             Panel(
                 render_group,

@@ -21,7 +21,6 @@ def create_test_config() -> Config:
         enable_ask_user=False,
         shell_confirmation_patterns=[],
         tool_confirmation_patterns=[],
-        no_truncate_tools=set(),
     )
 
 
