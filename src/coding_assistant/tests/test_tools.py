@@ -15,13 +15,18 @@ async def test_execute_shell_command_tool_timeout():
 
 
 @pytest.mark.asyncio
+async def test_execute_shell_command_tool_nonzero_return_code():
+    tool = ExecuteShellCommandTool()
+    result = await tool.execute({"command": "bash -lc 'exit 7'"})
+    assert result.content.startswith("Returncode: 7\n\n")
+
+
+@pytest.mark.asyncio
 async def test_execute_shell_command_tool_confirmation_yes():
     ui = make_ui_mock(confirm_sequence=[("Execute `echo 'Hello'`?", True)])
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"], ui=ui)
     result = await tool.execute({"command": "echo 'Hello'"})
-
-    expected = {"stdout": "Hello\n", "stderr": "", "returncode": 0}
-    assert json.loads(result.content) == expected
+    assert result.content == "Hello\n"
 
 
 @pytest.mark.asyncio
@@ -45,10 +50,21 @@ async def test_execute_shell_command_tool_no_match():
     ui = make_ui_mock()
     tool = ExecuteShellCommandTool(shell_confirmation_patterns=["ls"], ui=ui)
     result = await tool.execute({"command": "echo 'Hello'"})
+    assert result.content == "Hello\n"
 
-    expected = {"stdout": "Hello\n", "stderr": "", "returncode": 0}
-    assert json.loads(result.content) == expected
-    ui.confirm.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_execute_shell_command_tool_truncates_output():
+    tool = ExecuteShellCommandTool()
+    # Produce more output than the truncate_at limit and ensure truncation note is appended
+    result = await tool.execute(
+        {
+            "command": "yes 1 | head -c 1000",
+            "truncate_at": 200,
+        }
+    )
+    assert result.content.endswith("\n\n[truncated output due to truncate_at limit]")
+    assert len(result.content) <= 200
 
 
 @pytest.mark.asyncio

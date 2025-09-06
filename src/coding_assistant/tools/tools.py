@@ -24,9 +24,6 @@ from coding_assistant.ui import UI, DefaultAnswerUI, NullUI
 logger = logging.getLogger(__name__)
 
 
-# Feedback is now handled directly in run_agent_loop; no helper needed here.
-
-
 class LaunchOrchestratorAgentSchema(BaseModel):
     task: str = Field(description="The task to assign to the orchestrator agent.")
     summaries: List[str] = Field(
@@ -89,7 +86,6 @@ class OrchestratorTool(Tool):
                 orchestrator_agent,
                 self._agent_callbacks,
                 shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
-                no_truncate_tools=self._config.no_truncate_tools,
                 tool_confirmation_patterns=self._config.tool_confirmation_patterns,
                 enable_user_feedback=self._config.enable_user_feedback,
                 completer=complete,
@@ -160,7 +156,6 @@ class AgentTool(Tool):
             agent=agent,
             agent_callbacks=self._agent_callbacks,
             shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
-            no_truncate_tools=self._config.no_truncate_tools,
             tool_confirmation_patterns=self._config.tool_confirmation_patterns,
             enable_user_feedback=False,
             completer=complete,
@@ -207,7 +202,14 @@ class AskClientTool(Tool):
 
 class ExecuteShellCommandSchema(BaseModel):
     command: str = Field(description="The shell command to execute.")
-    timeout: int | None = Field(default=None, description="The timeout for the command in seconds.")
+    timeout: int | None = Field(
+        default=None,
+        description="The timeout for the command in seconds.",
+    )
+    truncate_at: int | None = Field(
+        default=None,
+        description="Maximum number of characters to return in stdout/stderr combined. If output exceeds this, it will be truncated and a note will be appended.",
+    )
 
 
 class ExecuteShellCommandTool(Tool):
@@ -233,6 +235,7 @@ class ExecuteShellCommandTool(Tool):
 
         command = parameters["command"].strip()
         timeout = parameters.get("timeout", 30)
+        truncate_at = parameters.get("truncate_at", 50_000)
 
         for pattern in self._shell_confirmation_patterns:
             if re.search(pattern, command):
@@ -248,22 +251,23 @@ class ExecuteShellCommandTool(Tool):
             process = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
             )
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
         except asyncio.TimeoutError:
             return TextResult(content=f"Command timed out after {timeout} seconds.")
 
-        return TextResult(
-            content=json.dumps(
-                {
-                    "stdout": stdout.decode(),
-                    "stderr": stderr.decode(),
-                    "returncode": process.returncode,
-                },
-                indent=2,
-            )
-        )
+        if process.returncode != 0:
+            result = f"Returncode: {process.returncode}\n\n{stdout.decode()}"
+        else:
+            result = stdout.decode()
+
+        if truncate_at is not None and len(result) > truncate_at:
+            truncated = result[: max(0, truncate_at - 200)]
+            note = "\n\n[truncated output due to truncate_at limit]"
+            result = truncated + note
+
+        return TextResult(content=result)
 
 
 class FinishTaskSchema(BaseModel):
@@ -271,7 +275,7 @@ class FinishTaskSchema(BaseModel):
         description="The result of the work on the task. The work of the agent is evaluated based on this result."
     )
     summary: str = Field(
-        description="A concise summary of the conversation the agent and the client had. There should be enough context such that the work could be continued based on this summary. It should be able to evaluate your result using only your input parameters and this summary. That means that you need to include all of the user feedback you worked into your result.",
+        description="A concise summary of the conversation the agent and the client had. There should be enough context such that the work could be continued based on this summary. It should be possible to evaluate your result using only your input parameters and this summary. That means that you need to include all of the user feedback you worked into your result.",
     )
 
 

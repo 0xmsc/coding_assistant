@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncGenerator, Dict, List, Set
 
-from mcp import ClientSession, StdioServerParameters
 import mcp
+from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from rich.console import Console
 from rich.table import Table
@@ -117,7 +117,10 @@ async def get_mcp_servers_from_config(
 
         for server_config in config_servers:
             # Format all arguments with available variables
-            format_vars = {"working_directory": str(working_directory)}
+            format_vars = {
+                "working_directory": str(working_directory),
+                "home_directory": str(Path.home()),
+            }
             args = [arg.format(**format_vars) for arg in server_config.args]
 
             # Merge environment variables with current environment and server-specific env

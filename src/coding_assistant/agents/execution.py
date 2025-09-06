@@ -72,9 +72,7 @@ def _handle_finish_task_result(result: FinishTaskResult, agent: Agent):
     return "Agent output set."
 
 
-def _handle_text_result(result: TextResult, function_name: str, no_truncate_tools: set[str]) -> str:
-    if len(result.content) >= 50_000 and not any(re.search(pattern, function_name) for pattern in no_truncate_tools):
-        return "System error: Tool call result too long. Please use a tool or arguments that return shorter results."
+def _handle_text_result(result: TextResult) -> str:
     return result.content
 
 
@@ -103,7 +101,6 @@ async def handle_tool_call(
     tool_call,
     agent: Agent,
     agent_callbacks: AgentCallbacks,
-    no_truncate_tools: set[str],
     tool_confirmation_patterns: list[str],
     *,
     ui: UI,
@@ -114,13 +111,16 @@ async def handle_tool_call(
     try:
         function_args = json.loads(args_str)
     except JSONDecodeError as e:
+        logger.error(
+            f"[{agent.name}] [{tool_call.id}] Failed to parse tool '{function_name}' arguments as JSON: {e} | raw: {args_str}"
+        )
         append_tool_message(
             agent.history,
             agent_callbacks,
             agent.name,
             tool_call.id,
             function_name,
-            dict(),
+            None,
             f"Error: Tool call arguments {args_str} are not valid JSON: {e}",
         )
         return
@@ -165,7 +165,7 @@ async def handle_tool_call(
     result_handlers = {
         FinishTaskResult: lambda r: _handle_finish_task_result(r, agent),
         ShortenConversationResult: lambda r: _handle_shorten_conversation_result(r, agent, agent_callbacks),
-        TextResult: lambda r: _handle_text_result(r, function_name, no_truncate_tools),
+        TextResult: lambda r: _handle_text_result(r),
     }
 
     tool_return_summary = result_handlers[type(function_call_result)](function_call_result)
@@ -186,7 +186,6 @@ async def handle_tool_calls(
     message,
     agent: Agent,
     agent_callbacks: AgentCallbacks,
-    no_truncate_tools: set[str],
     tool_confirmation_patterns: list[str],
     *,
     ui: UI,
@@ -210,7 +209,6 @@ async def handle_tool_calls(
                 tool_call,
                 agent,
                 agent_callbacks,
-                no_truncate_tools,
                 tool_confirmation_patterns,
                 ui=ui,
             ),
@@ -234,7 +232,6 @@ async def do_single_step(
     agent: Agent,
     agent_callbacks: AgentCallbacks,
     shorten_conversation_at_tokens: int,
-    no_truncate_tools: set[str],
     *,
     completer: Completer,
     ui: UI,
@@ -276,7 +273,6 @@ async def do_single_step(
         message,
         agent,
         agent_callbacks,
-        no_truncate_tools,
         tool_confirmation_patterns,
         ui=ui,
     )
@@ -301,7 +297,6 @@ async def run_agent_loop(
     completer: Completer,
     ui: UI,
     shorten_conversation_at_tokens: int = 200_000,
-    no_truncate_tools: set[str] = set(),
     tool_confirmation_patterns: list[str] = [],
     enable_user_feedback: bool = False,
     is_interruptible: bool = False,
@@ -325,7 +320,6 @@ async def run_agent_loop(
                     agent,
                     agent_callbacks,
                     shorten_conversation_at_tokens,
-                    no_truncate_tools,
                     completer=completer,
                     ui=ui,
                     tool_confirmation_patterns=tool_confirmation_patterns,
@@ -343,12 +337,12 @@ async def run_agent_loop(
         trace.get_current_span().set_attribute("agent.summary", agent.output.summary)
         agent_callbacks.on_agent_end(agent.name, agent.output.result, agent.output.summary)
 
-        feedback: str = "Ok"
+        user_feedback: str = "Ok"
         if enable_user_feedback:
-            feedback = await ui.ask(f"Feedback for {agent.name}", default="Ok")
+            user_feedback = await ui.ask(f"Feedback for {agent.name}", default="Ok")
 
-        if feedback != "Ok":
-            formatted_feedback = FEEDBACK_TEMPLATE.format(feedback=textwrap.indent(feedback, "> "))
+        if user_feedback != "Ok":
+            formatted_feedback = FEEDBACK_TEMPLATE.format(feedback=textwrap.indent(user_feedback, "> "))
             append_user_message(agent.history, agent_callbacks, agent.name, formatted_feedback)
             agent.output = None  # continue loop
         else:
