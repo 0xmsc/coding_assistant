@@ -49,23 +49,34 @@ class Tool(ABC):
     async def execute(self, parameters) -> ToolResult: ...
 
 
+# Immutable description of an agent
+@dataclass(frozen=True)
+class AgentDescription:
+    name: str
+    model: str
+    parameters: list[Parameter]
+    tools: list[Tool]
+
+
+# Final output of an agent run
 @dataclass
 class AgentOutput:
     result: str
     summary: str
 
 
+# Mutable state for an agent's execution
 @dataclass
-class Agent:
-    name: str
-    model: str
-
-    description: str
-    parameters: list[Parameter]
-    tools: list[Tool]
-
+class AgentState:
     history: list = field(default_factory=list)
     output: AgentOutput | None = None
+
+
+# Combines the immutable description with the mutable state of an agent
+@dataclass
+class AgentContext:
+    desc: AgentDescription
+    state: AgentState
 
 
 class Completer(Protocol):
