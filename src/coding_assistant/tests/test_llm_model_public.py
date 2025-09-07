@@ -83,3 +83,40 @@ async def test_complete_error_path_logs_and_raises(monkeypatch):
     cb = _CB()
     with pytest.raises(Boom):
         await llm_model.complete(messages=[{"role": "user", "content": "x"}], model="m", tools=[], callbacks=cb)
+
+
+@pytest.mark.asyncio
+async def test_complete_parses_reasoning_effort_from_model_string(monkeypatch):
+    captured = {}
+
+    # Fake streaming completion that also asserts incoming args
+    async def fake_acompletion(**kwargs):
+        # capture for assertion outside
+        captured.update(kwargs)
+        async def agen():
+            yield {"choices": [{"delta": {"content": "A"}}]}
+            yield {"choices": [{"delta": {"content": "B"}}]}
+        return agen()
+
+    def fake_stream_chunk_builder(chunks):
+        class _Msg:
+            def __init__(self):
+                self.content = "AB"
+            def model_dump(self):
+                return {"role": "assistant", "content": self.content}
+        return {"choices": [{"message": _Msg()}], "usage": {"total_tokens": 2}}
+
+    monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
+    monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
+
+    cb = _CB()
+    comp = await llm_model.complete(messages=[], model="openai/gpt-5 (low)", tools=[], callbacks=cb)
+
+    # Ensure model and reasoning_effort were parsed and forwarded
+    assert captured.get("model") == "openai/gpt-5"
+    assert captured.get("reasoning_effort") == "low"
+
+    # And content still streamed
+    assert cb.chunks == ["A", "B"]
+    assert comp.tokens == 2
+    assert comp.message.content == "AB"
