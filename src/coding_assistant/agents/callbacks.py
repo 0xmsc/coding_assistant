@@ -148,7 +148,7 @@ class RichCallbacks(AgentCallbacks):
         except json.JSONDecodeError:
             return None
 
-    def _format_tool_result(self, result: str, tool_name: str):
+    def _format_tool_result(self, result: str):
         if data := self._try_parse_json(result):
             return Pretty(data, expand_all=True, indent_size=2)
         else:
@@ -160,7 +160,7 @@ class RichCallbacks(AgentCallbacks):
         if arguments is not None:
             parts.append(Padding(Pretty(arguments, expand_all=True, indent_size=2), (1, 0, 0, 0)))
 
-        parts.append(Padding(self._format_tool_result(result, tool_name), (1, 0, 0, 0)))
+        parts.append(Padding(self._format_tool_result(result), (1, 0, 0, 0)))
 
         render_group = Group(*parts)
         print(

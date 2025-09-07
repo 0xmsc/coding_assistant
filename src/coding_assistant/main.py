@@ -5,7 +5,6 @@ import os
 import sys
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
 from pathlib import Path
-from typing import Optional
 
 import debugpy
 import requests

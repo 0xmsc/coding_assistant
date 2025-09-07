@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 import logging
-from typing import Optional
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.shortcuts import create_confirm_session
@@ -10,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class UI(ABC):
     @abstractmethod
-    async def ask(self, prompt_text: str, default: Optional[str] = None) -> str:
+    async def ask(self, prompt_text: str, default: str | None = None) -> str:
         pass
 
     @abstractmethod
@@ -19,7 +18,7 @@ class UI(ABC):
 
 
 class PromptToolkitUI(UI):
-    async def ask(self, prompt_text: str, default: Optional[str] = None) -> str:
+    async def ask(self, prompt_text: str, default: str | None = None) -> str:
         print(prompt_text)
         return await PromptSession().prompt_async("> ", default=default or "")
 
@@ -28,7 +27,7 @@ class PromptToolkitUI(UI):
 
 
 class DefaultAnswerUI(UI):
-    async def ask(self, prompt_text: str, default: Optional[str] = None) -> str:
+    async def ask(self, prompt_text: str, default: str | None = None) -> str:
         logger.info(f"Skipping user input for prompt: {prompt_text}")
         return default or "UI is not available."
 
@@ -38,7 +37,7 @@ class DefaultAnswerUI(UI):
 
 
 class NullUI(UI):
-    async def ask(self, prompt_text: str, default: Optional[str] = None) -> str:
+    async def ask(self, prompt_text: str, default: str | None = None) -> str:
         raise RuntimeError("No UI available")
 
     async def confirm(self, prompt_text: str) -> bool:

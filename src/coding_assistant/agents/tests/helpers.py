@@ -13,13 +13,21 @@ from coding_assistant.ui import UI
 @dataclass
 class FakeFunction:
     name: str
-    arguments: str = "{}"
+    arguments: str
 
 
 @dataclass
 class FakeToolCall:
     id: str
     function: FakeFunction
+
+    def model_dump_json(self) -> str:
+        return json.dumps(
+            {
+                "id": self.id,
+                "function": {"name": self.function.name, "arguments": self.function.arguments},
+            }
+        )
 
 
 class FakeMessage:
