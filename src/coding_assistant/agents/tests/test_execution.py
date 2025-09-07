@@ -2,8 +2,8 @@ import pytest
 
 from coding_assistant.agents.callbacks import NullCallbacks
 from coding_assistant.agents.execution import do_single_step, handle_tool_call, handle_tool_calls
-from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall, make_test_agent, make_ui_mock
-from coding_assistant.agents.types import Agent, TextResult, Tool, ToolResult
+from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall, make_test_agent, make_test_context, make_ui_mock
+from coding_assistant.agents.types import AgentDescription, AgentState, AgentContext, TextResult, Tool, ToolResult
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
 import asyncio, time
 
@@ -29,9 +29,10 @@ class FakeConfirmTool(Tool):
 @pytest.mark.asyncio
 async def test_tool_confirmation_denied_and_allowed():
     tool = FakeConfirmTool()
-    agent = make_test_agent(
+    desc, state = make_test_agent(
         tools=[tool],
     )
+    ctx = AgentContext(desc=desc, state=state)
 
     # Arguments will be parsed and shown as a Python dict in the confirm prompt
     args_json = '{"cmd": "echo 123"}'
@@ -41,10 +42,10 @@ async def test_tool_confirmation_denied_and_allowed():
 
     # First: denied
     call1 = FakeToolCall(id="1", function=FakeFunction(name="execute_shell_command", arguments=args_json))
-    await handle_tool_call(call1, agent, NullCallbacks(), tool_confirmation_patterns=[r"^execute_shell_command"], ui=ui)
+    await handle_tool_call(call1, ctx, NullCallbacks(), tool_confirmation_patterns=[r"^execute_shell_command"], ui=ui)
 
     assert tool.calls == []  # should not run
-    assert agent.history[-1] == {
+    assert state.history[-1] == {
         "tool_call_id": "1",
         "role": "tool",
         "name": "execute_shell_command",
@@ -53,10 +54,10 @@ async def test_tool_confirmation_denied_and_allowed():
 
     # Second: allowed
     call2 = FakeToolCall(id="2", function=FakeFunction(name="execute_shell_command", arguments=args_json))
-    await handle_tool_call(call2, agent, NullCallbacks(), tool_confirmation_patterns=[r"^execute_shell_command"], ui=ui)
+    await handle_tool_call(call2, ctx, NullCallbacks(), tool_confirmation_patterns=[r"^execute_shell_command"], ui=ui)
 
     assert tool.calls == [{"cmd": "echo 123"}]
-    assert agent.history[-1] == {
+    assert state.history[-1] == {
         "tool_call_id": "2",
         "role": "tool",
         "name": "execute_shell_command",
@@ -82,10 +83,11 @@ async def test_unknown_result_type_raises():
         async def execute(self, parameters: dict) -> ToolResult:
             return WeirdResult()
 
-    agent = make_test_agent(model="TestModel", tools=[WeirdTool()])
+    desc, state = make_test_agent(model="TestModel", tools=[WeirdTool()])
+    ctx = AgentContext(desc=desc, state=state)
     tool_call = FakeToolCall(id="1", function=FakeFunction(name="weird", arguments="{}"))
     with pytest.raises(KeyError, match=r"WeirdResult"):
-        await handle_tool_call(tool_call, agent, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
+        await handle_tool_call(tool_call, ctx, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
 
 
 class ParallelSlowTool(Tool):
@@ -118,7 +120,8 @@ async def test_multiple_tool_calls_are_parallel():
     t1 = ParallelSlowTool("slow.one", delay, events)
     t2 = ParallelSlowTool("slow.two", delay, events)
 
-    agent = make_test_agent(tools=[t1, t2])
+    desc, state = make_test_agent(tools=[t1, t2])
+    ctx = AgentContext(desc=desc, state=state)
 
     from coding_assistant.agents.tests.helpers import FakeMessage  # local import to avoid circulars
 
@@ -130,13 +133,14 @@ async def test_multiple_tool_calls_are_parallel():
     )
 
     start = time.monotonic()
-    await handle_tool_call(msg.tool_calls[0], agent, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
-    await handle_tool_call(msg.tool_calls[1], agent, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
+    await handle_tool_call(msg.tool_calls[0], ctx, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
+    await handle_tool_call(msg.tool_calls[1], ctx, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
     # Above would be sequential; now test real parallel variant using handle_tool_calls
-    agent = make_test_agent(tools=[t1, t2])  # reset agent history
+    desc, state = make_test_agent(tools=[t1, t2])  # reset agent history
+    ctx = AgentContext(desc=desc, state=state)
     events.clear()
     start = time.monotonic()
-    await handle_tool_calls(msg, agent, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
+    await handle_tool_calls(msg, ctx, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
     elapsed = time.monotonic() - start
 
     # Assert total runtime significantly less than sequential (~0.4s)
@@ -153,6 +157,6 @@ async def test_multiple_tool_calls_are_parallel():
     )
 
     # History should contain two tool messages (order may be any); validate both present
-    tool_messages = [m for m in agent.history if m.get("role") == "tool"]
+    tool_messages = [m for m in state.history if m.get("role") == "tool"]
     names = sorted(m["name"] for m in tool_messages)
     assert names == ["slow.one", "slow.two"], f"Unexpected tool messages: {tool_messages}"

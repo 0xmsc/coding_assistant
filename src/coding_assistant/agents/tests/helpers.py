@@ -4,7 +4,7 @@ from typing import Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.agents.parameters import Parameter
-from coding_assistant.agents.types import Agent, Tool
+from coding_assistant.agents.types import AgentDescription, AgentState, AgentContext, Tool
 from coding_assistant.llm.model import Completion
 from coding_assistant.tools.mcp import MCPServer
 from coding_assistant.ui import UI
@@ -126,16 +126,32 @@ def make_test_agent(
     *,
     name: str = "TestAgent",
     model: str = "TestMode",
-    description: str = "TestDescription",
     parameters: Sequence[Parameter] | None = None,
     tools: Iterable[Tool] | None = None,
     history: list[dict] | None = None,
-) -> Agent:
-    return Agent(
+):
+    desc = AgentDescription(
         name=name,
         model=model,
-        description=description,
         parameters=list(parameters) if parameters is not None else [],
         tools=list(tools) if tools is not None else [],
-        history=list(history) if history is not None else [],
     )
+    state = AgentState(history=list(history) if history is not None else [])
+    return desc, state
+
+def make_test_context(
+    *,
+    name: str = "TestAgent",
+    model: str = "TestMode",
+    parameters: Sequence[Parameter] | None = None,
+    tools: Iterable[Tool] | None = None,
+    history: list[dict] | None = None,
+) -> AgentContext:
+    desc, state = make_test_agent(
+        name=name,
+        model=model,
+        parameters=parameters,
+        tools=tools,
+        history=history,
+    )
+    return AgentContext(desc=desc, state=state)

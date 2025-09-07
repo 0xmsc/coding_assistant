@@ -7,10 +7,11 @@ from pydantic import BaseModel, Field
 
 from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
 from coding_assistant.agents.execution import run_agent_loop
-from coding_assistant.agents.parameters import fill_parameters
+from coding_assistant.agents.parameters import Parameter, fill_parameters
 from coding_assistant.agents.types import (
-    Agent,
-    AgentOutput,
+    AgentContext,
+    AgentDescription,
+    AgentState,
     FinishTaskResult,
     ShortenConversationResult,
     TextResult,
@@ -61,14 +62,23 @@ class OrchestratorTool(Tool):
         return LaunchOrchestratorAgentSchema.model_json_schema()
 
     async def execute(self, parameters: dict) -> TextResult:
-        orchestrator_agent = Agent(
-            name="Orchestrator",
-            history=self._history or [],
-            description=self.description(),
-            parameters=fill_parameters(
+        # Compose parameters with the tool description as a dedicated entry
+        params = [
+            Parameter(
+                name="description",
+                description="The description of the agent's work and capabilities.",
+                value=self.description(),
+            ),
+            *fill_parameters(
                 parameter_description=self.parameters(),
                 parameter_values=parameters,
             ),
+        ]
+
+        desc = AgentDescription(
+            name="Orchestrator",
+            model=self._config.expert_model,
+            parameters=params,
             tools=[
                 FinishTaskTool(),
                 ShortenConversation(),
@@ -77,12 +87,13 @@ class OrchestratorTool(Tool):
                 ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
                 *self._tools,
             ],
-            model=self._config.expert_model,
         )
+        state = AgentState(history=self._history or [])
 
         try:
-            output = await run_agent_loop(
-                orchestrator_agent,
+            ctx = AgentContext(desc=desc, state=state)
+            await run_agent_loop(
+                ctx,
                 self._agent_callbacks,
                 shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
                 tool_confirmation_patterns=self._config.tool_confirmation_patterns,
@@ -91,10 +102,11 @@ class OrchestratorTool(Tool):
                 ui=self._ui,
                 is_interruptible=True,
             )
-            self.summary = output.summary
-            return TextResult(content=output.result)
+            assert state.output is not None, "Agent did not produce output"
+            self.summary = state.output.summary
+            return TextResult(content=state.output.result)
         finally:
-            self.history = orchestrator_agent.history
+            self.history = state.history
 
 
 class LaunchAgentSchema(BaseModel):
@@ -135,24 +147,34 @@ class AgentTool(Tool):
         return self._config.model
 
     async def execute(self, parameters: dict) -> TextResult:
-        agent = Agent(
-            name="Agent",
-            description=self.description(),
-            parameters=fill_parameters(
+        params = [
+            Parameter(
+                name="description",
+                description="The description of the agent's work and capabilities.",
+                value=self.description(),
+            ),
+            *fill_parameters(
                 parameter_description=self.parameters(),
                 parameter_values=parameters,
             ),
+        ]
+
+        desc = AgentDescription(
+            name="Agent",
+            model=self.get_model(parameters),
+            parameters=params,
             tools=[
                 FinishTaskTool(),
                 ShortenConversation(),
                 ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
                 *self._tools,
             ],
-            model=self.get_model(parameters),
         )
+        state = AgentState()
+        ctx = AgentContext(desc=desc, state=state)
 
-        output = await run_agent_loop(
-            agent=agent,
+        await run_agent_loop(
+            ctx,
             agent_callbacks=self._agent_callbacks,
             shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
             tool_confirmation_patterns=self._config.tool_confirmation_patterns,
@@ -161,8 +183,8 @@ class AgentTool(Tool):
             is_interruptible=False,
             ui=self._ui,
         )
-
-        return TextResult(content=output.result)
+        assert state.output is not None, "Agent did not produce output"
+        return TextResult(content=state.output.result)
 
 
 class AskClientSchema(BaseModel):
@@ -274,7 +296,7 @@ class FinishTaskSchema(BaseModel):
         description="The result of the work on the task. The work of the agent is evaluated based on this result."
     )
     summary: str = Field(
-        description="A concise summary of the conversation the agent and the client had. There should be enough context such that the work could be continued based on this summary. It should be possible to evaluate your result using only your input parameters and this summary. That means that you need to include all of the user feedback you worked into your result.",
+        description="A concise summary of the conversation the agent and the client had. The summary should be a single paragraph. There should be enough context such that the work could be continued based on this summary. It should be possible to evaluate your result using only your input parameters and this summary. That means that you need to include all of the user feedback you worked into your result.",
     )
 
 
