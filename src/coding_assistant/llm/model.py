@@ -1,6 +1,9 @@
+import functools
 import logging
 import os
+import re
 from dataclasses import dataclass
+from typing import Literal
 
 import litellm
 
@@ -19,6 +22,25 @@ class Completion:
     tokens: int
 
 
+@functools.cache
+def _parse_model_and_reasoning(
+    model: str,
+) -> tuple[str, Literal["low", "medium", "high"] | None]:
+    s = model.strip()
+    m = re.match(r"^(.+?) \(([^)]*)\)$", s)
+
+    if not m:
+        return s, None
+
+    base = m.group(1).strip()
+    effort = m.group(2).strip().lower()
+
+    if effort not in ("low", "medium", "high"):
+        raise ValueError(f"Invalid reasoning effort level {effort} in {model}")
+
+    return base, effort
+
+
 async def complete(
     messages: list[dict],
     model: str,
@@ -26,12 +48,14 @@ async def complete(
     callbacks: AgentCallbacks,
 ):
     try:
+        model, reasoning_effort = _parse_model_and_reasoning(model)
+
         response = await litellm.acompletion(
             messages=messages,
             tools=tools,
             model=model,
             stream=True,
-            reasoning_effort="high",
+            reasoning_effort=reasoning_effort,
         )
 
         chunks = []
