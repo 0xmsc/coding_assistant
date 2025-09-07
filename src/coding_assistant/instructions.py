@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import List
 
 INSTRUCTIONS = """
 - Do not initialize a new git repository, unless your client explicitly requests it.
@@ -44,7 +43,7 @@ PLANNING_INSTRUCTIONS = """
 """.strip()
 
 
-def get_instructions(working_directory: Path, plan: bool, user_instructions: List[str]) -> str:
+def get_instructions(working_directory: Path, plan: bool, user_instructions: list[str]) -> str:
     instructions = INSTRUCTIONS.strip()
 
     if plan:

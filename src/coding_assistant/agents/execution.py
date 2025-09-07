@@ -191,8 +191,6 @@ async def handle_tool_calls(
     ui: UI,
 ):
     tool_calls = message.tool_calls
-    trace.get_current_span().set_attribute("message.tool_calls", tool_calls)
-
     if not tool_calls:
         append_user_message(
             agent.history,
@@ -201,6 +199,8 @@ async def handle_tool_calls(
             "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
         )
         return
+
+    trace.get_current_span().set_attribute("message.tool_calls", [x.model_dump_json() for x in tool_calls])
 
     aws = []
     for tool_call in tool_calls:

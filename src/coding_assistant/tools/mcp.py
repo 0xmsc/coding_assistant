@@ -3,7 +3,7 @@ import os
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncGenerator, Dict, List, Set
+from typing import AsyncGenerator
 
 import mcp
 from mcp import ClientSession, StdioServerParameters
@@ -64,7 +64,7 @@ class MCPWrappedTool(Tool):
 
 
 async def get_mcp_wrapped_tools(mcp_servers: list[MCPServer]) -> list[Tool]:
-    wrapped: List = []
+    wrapped: list[Tool] = []
     for server in mcp_servers:
         tools_response = await server.session.list_tools()
         for remote_tool in getattr(tools_response, "tools"):
@@ -89,7 +89,7 @@ def get_default_env():
 
 @asynccontextmanager
 async def _get_mcp_server(
-    name: str, command: str, args: List[str], env: dict[str, str] | None = None
+    name: str, command: str, args: list[str], env: dict[str, str] | None = None
 ) -> AsyncGenerator[MCPServer, None]:
     logger.info(f"Starting MCP server '{name}' with command '{command}', args '{' '.join(args)}' and env: '{env}'")
     params = StdioServerParameters(command=command, args=args, env=env)
@@ -106,14 +106,14 @@ async def _get_mcp_server(
 
 @asynccontextmanager
 async def get_mcp_servers_from_config(
-    config_servers: List[MCPServerConfig], working_directory: Path
-) -> AsyncGenerator[List[MCPServer], None]:
+    config_servers: list[MCPServerConfig], working_directory: Path
+) -> AsyncGenerator[list[MCPServer], None]:
     """Create MCP servers from configuration objects."""
     if not working_directory.exists():
         raise ValueError(f"Working directory {working_directory} does not exist.")
 
     async with AsyncExitStack() as stack:
-        servers: List[MCPServer] = []
+        servers: list[MCPServer] = []
 
         for server_config in config_servers:
             # Format all arguments with available variables

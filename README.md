@@ -75,15 +75,15 @@ uv run coding-assistant \
   --task "Say 'Hello World'" \
   --model "gpt-5" \
   --expert-model "gpt-5" \
-  --mcp-servers '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.7.29", "/"]}' \
-  --mcp-servers '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch@2025.4.7"]}' \
-  --mcp-servers '{"name": "context7", "command": "npx", "args": ["-y", "@upstash/context7-mcp@1.0.14"], "env": []}' \
-  --mcp-servers '{"name": "tavily", "command": "npx", "args": ["-y", "tavily-mcp@0.2.9"], "env": ["TAVILY_API_KEY"]}'
+  --mcp-servers '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
+  --mcp-servers '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}' \
+  --mcp-servers '{"name": "context7", "command": "npx", "args": ["-y", "@upstash/context7-mcp"], "env": []}' \
+  --mcp-servers '{"name": "tavily", "command": "npx", "args": ["-y", "tavily-mcp"], "env": ["TAVILY_API_KEY"]}'
 ```
 
 Notes:
 - Model names are routed via LiteLLM. Use any provider/model you have keys for; set the corresponding API key env vars.
-- The `--mcp-servers` values are JSON strings; see below for details.
+- The `--mcp-servers` values are JSON strings; arguments support variable substitution for `{home_directory}` and `{working_directory}`.
 
 ## Usage Highlights
 
@@ -95,7 +95,6 @@ Notes:
 - `--print-chunks`/`--print-reasoning` Control live stream and reasoning display in the TUI.
 - `--shell-confirmation-patterns` Ask for confirmation before running matching shell commands.
 - `--tool-confirmation-patterns` Ask for confirmation before running matching tools.
-- `--no-truncate-tools` List of regex patterns for tools whose output should not be truncated.
 - `--wait-for-debugger` Wait for a debugger (debugpy) to attach on port 1234.
 
 Run `coding-assistant --help` to see all options.
@@ -113,10 +112,10 @@ Pass MCP servers with repeated `--mcp-servers` flags as JSON strings:
 ```
 
 The `run.fish` script includes these examples:
-- filesystem: `@modelcontextprotocol/server-filesystem@2025.7.29`
-- fetch: `mcp-server-fetch@2025.4.7` (via `uvx`)
-- context7: `@upstash/context7-mcp@1.0.14`
-- tavily: `tavily-mcp@0.2.9` (needs `TAVILY_API_KEY`)
+- filesystem: `@modelcontextprotocol/server-filesystem`
+- fetch: `mcp-server-fetch` (via `uvx`)
+- context7: `@upstash/context7-mcp`
+- tavily: `tavily-mcp` (needs `TAVILY_API_KEY`)
 
 You can print discovered tools from running MCP servers:
 
@@ -141,6 +140,13 @@ Use these flags to widen access if needed when working across multiple directori
 ## Tracing (optional)
 
 If `--trace-endpoint` is reachable (default `http://localhost:4318/v1/traces`), OTLP traces are exported using the HTTP exporter. If unreachable, tracing is disabled automatically.
+
+## Shell command execution behavior
+
+The `execute_shell_command` tool:
+- Merges stderr into stdout and returns plain text (no JSON envelope).
+- Prefixes output with `Returncode: N` only when the command exits non-zero.
+- Supports `truncate_at` to limit the combined output size and appends a note when truncation occurs.
 
 ## Development
 

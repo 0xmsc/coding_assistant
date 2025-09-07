@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import re
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class LaunchOrchestratorAgentSchema(BaseModel):
     task: str = Field(description="The task to assign to the orchestrator agent.")
-    summaries: List[str] = Field(
+    summaries: list[str] = Field(
         default_factory=list,
         description="The past conversation summaries of the client and the agent.",
     )
@@ -215,7 +214,7 @@ class ExecuteShellCommandSchema(BaseModel):
 class ExecuteShellCommandTool(Tool):
     def __init__(
         self,
-        shell_confirmation_patterns: Optional[List[str]] = None,
+        shell_confirmation_patterns: list[str] | None = None,
         ui: UI | None = None,
     ):
         self._shell_confirmation_patterns = shell_confirmation_patterns or []
@@ -262,9 +261,9 @@ class ExecuteShellCommandTool(Tool):
         else:
             result = stdout.decode()
 
-        if truncate_at is not None and len(result) > truncate_at:
-            truncated = result[: max(0, truncate_at - 200)]
+        if len(result) > truncate_at:
             note = "\n\n[truncated output due to truncate_at limit]"
+            truncated = result[: max(0, truncate_at - len(note))]
             result = truncated + note
 
         return TextResult(content=result)
