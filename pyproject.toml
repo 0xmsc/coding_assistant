@@ -44,3 +44,4 @@ build-backend = "hatchling.build"
 markers = [
     "slow: marks tests as slow",
 ]
+addopts = "--ignore=packages/coding_assistant_mcp/src/coding_assistant_mcp/tests"

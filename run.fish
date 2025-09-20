@@ -1,11 +1,16 @@
 #!/usr/bin/env fish
 
-uv --project (dirname (status filename)) run coding-assistant \
+# Derive project directory once and reuse
+set project_dir (dirname (status filename))
+set mcp_project_dir $project_dir/packages/coding_assistant_mcp
+
+uv --project $project_dir run coding-assistant \
     --model "openai/gpt-5 (medium)" \
     --expert-model "openai/gpt-5 (high)" \
     --readable-sandbox-directories /mnt/wsl ~/.ssh \
-    --writable-sandbox-directories /tmp /dev/shm \
+    --writable-sandbox-directories $project_dir /tmp /dev/shm \
     --mcp-servers \
+        (printf '{"name": "coding_assistant_mcp", "command": "uv", "args": ["--project", "%s", "run", "coding-assistant-mcp"], "env": []}' "$mcp_project_dir") \
         '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
         '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}' \
         '{"name": "context7", "command": "npx", "args": ["-y", "@upstash/context7-mcp"], "env": []}' \

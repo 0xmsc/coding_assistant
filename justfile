@@ -1,5 +1,6 @@
 test:
     uv run pytest -n auto -m "not slow"
+    uv run --directory packages/coding_assistant_mcp pytest
 
 hello-world:
     ./run.fish \
@@ -17,4 +18,3 @@ review:
 pr:
     ./run.fish \
     --task "Create a PR with the \`gh\` tool. Create a proper PR title and description."
-
