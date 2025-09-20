@@ -1,0 +1,17 @@
+[project]
+name = "coding_assistant_mcp"
+version = "0.1.0"
+description = "MCP server for coding-assistant"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp",
+    "pytest",
+    "pytest-asyncio",
+]
+
+[project.scripts]
+coding-assistant-mcp = "coding_assistant_mcp.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
