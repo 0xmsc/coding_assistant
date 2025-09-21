@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Annotated
+
 from fastmcp import FastMCP
 
 
@@ -11,6 +11,7 @@ class Todo:
     id: int
     description: str
     completed: bool = False
+    result: Optional[str] = None
 
 
 class TodoManager:
@@ -24,20 +25,25 @@ class TodoManager:
         self._next_id += 1
         return todo
 
-    def complete(self, task_id: int) -> Todo | None:
+    def complete(self, task_id: int, result: str | None = None) -> Todo | None:
         todo = self._todos.get(task_id)
         if todo:
             todo.completed = True
+            if result is not None:
+                todo.result = result
             return todo
         return None
 
-    def format(
-        self,
-    ) -> str:
+    def format(self) -> str:
         lines: list[str] = []
         for t in self._todos.values():
             box = "x" if t.completed else " "
-            lines.append(f"- [{box}] {t.id}: {t.description}")
+
+            if t.result:
+                lines.append(f"- [{box}] {t.id}: {t.description} -> {t.result}")
+            else:
+                lines.append(f"- [{box}] {t.id}: {t.description}")
+
         return "\n".join(lines)
 
 
@@ -52,40 +58,51 @@ def get_manager() -> TodoManager:
 
 
 def reset_state() -> None:
-    """Reset TODO state."""
     global _MANAGER
     _MANAGER = None
 
 
-def add(descriptions: list[str]) -> str:
-    """Add one or more TODO items. Accepts a string or a list of strings."""
+def add(descriptions: Annotated[list[str], "List of non-empty TODO description strings"]) -> str:
+    """Add one or more TODO items and return the updated list.
+
+    Raises:
+        ValueError: If any provided description is empty.
+    """
+
     manager = get_manager()
     for desc in descriptions:
         if not desc:
             raise ValueError("Description must not be empty.")
-        todo = manager.add(desc)
+        manager.add(desc)
     return manager.format()
 
 
 def list_todos() -> str:
-    """List all TODO items (or only pending), rendered as a markdown task list."""
+    """Return all TODO items as a markdown task list."""
     return get_manager().format()
 
 
-def complete(task_id: int) -> str:
-    """Mark a TODO item as completed by its ID, then show remaining items as a markdown task list."""
+def complete(
+    task_id: Annotated[int, "ID of the TODO to mark complete"],
+    result: Annotated[str | None, "Optional result text (one line) to attach"] = None,
+) -> str:
+    """Mark a task complete and return a completion message plus the full list."""
     manager = get_manager()
 
-    result = ""
-    if todo := manager.complete(task_id):
-        result += f"Completed TODO {task_id}: {todo.description}\n"
+    output = ""
+    if todo := manager.complete(task_id, result=result):
+        output += f"Completed TODO {task_id}: {todo.description}"
+        if result:
+            output += f" with result: {result}\n"
+        else:
+            output += "\n"
     else:
-        result += f"TODO {task_id} not found\n"
+        output += f"TODO {task_id} not found\n"
 
-    result += "\n"
-    result += manager.format()
+    output += "\n"
+    output += manager.format()
 
-    return result
+    return output
 
 
 todo_server = FastMCP()

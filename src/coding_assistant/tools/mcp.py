@@ -10,6 +10,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from rich.console import Console
 from rich.table import Table
+from rich.pretty import Pretty
 
 from coding_assistant.agents.types import TextResult, Tool
 from coding_assistant.config import MCPServerConfig
@@ -184,7 +185,6 @@ async def print_mcp_tools(mcp_servers):
             name = tool.name
             description = tool.description
             parameters = tool.inputSchema
-            parameters_str = ", ".join(parameters.get("properties", {}).keys()) if parameters else "None"
-            table.add_row(server.name, name, description, parameters_str)
+            table.add_row(server.name, name, description, Pretty(parameters, expand_all=True, indent_size=2))
 
     console.print(table)

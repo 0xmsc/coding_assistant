@@ -34,6 +34,20 @@ def test_complete():
     assert "- [ ] 2: Write docs" in text
 
 
+def test_complete_with_result():
+    add(["Run benchmarks"])
+    add(["Prepare release notes"])
+    res = complete(1, result="Throughput +12% vs baseline")
+
+    lines = res.splitlines()
+    # Output should include completion message with result inline
+    assert lines[0] == "Completed TODO 1: Run benchmarks with result: Throughput +12% vs baseline"
+    # Listing shows the result inline with an arrow now
+    listing = list_todos()
+    assert "- [x] 1: Run benchmarks -> Throughput +12% vs baseline" in listing
+    assert "- [ ] 2: Prepare release notes" in listing
+
+
 def test_complete_invalid():
     # No tasks yet
     res = complete(1)
@@ -53,3 +67,15 @@ def test_add_multiple_and_invalid():
     # Empty description should raise
     with pytest.raises(ValueError):
         add([""])
+
+
+def test_complete_ignores_empty_result():
+    add(["Do something"])
+    res = complete(1, result="")  # empty result should be ignored
+    # Completion line should not show 'with result:' when empty
+    first_line = res.splitlines()[0]
+    assert first_line == "Completed TODO 1: Do something"
+    listing = list_todos()
+    # List line should not have arrow because result ignored
+    assert "- [x] 1: Do something ->" not in listing
+    assert "- [x] 1: Do something" in listing

@@ -1,8 +1,13 @@
 #!/usr/bin/env fish
 
-# Derive project directory once and reuse
 set project_dir (dirname (status filename))
 set mcp_project_dir $project_dir/packages/coding_assistant_mcp
+set mcp_json_config (printf '{"name": "coding_assistant_mcp", "command": "uv", "args": ["--project", "%s", "run", "coding-assistant-mcp"], "env": []}' "$mcp_project_dir")
+
+echo \
+"Running in $project_dir
+MCP in $mcp_project_dir
+MCP config: $mcp_json_config"
 
 uv --project $project_dir run coding-assistant \
     --model "openai/gpt-5 (medium)" \
@@ -10,7 +15,7 @@ uv --project $project_dir run coding-assistant \
     --readable-sandbox-directories /mnt/wsl ~/.ssh \
     --writable-sandbox-directories $project_dir /tmp /dev/shm \
     --mcp-servers \
-        (printf '{"name": "coding_assistant_mcp", "command": "uv", "args": ["--project", "%s", "run", "coding-assistant-mcp"], "env": []}' "$mcp_project_dir") \
+        $mcp_json_config \
         '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
         '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}' \
         '{"name": "context7", "command": "npx", "args": ["-y", "@upstash/context7-mcp"], "env": []}' \

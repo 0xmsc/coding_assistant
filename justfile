@@ -9,7 +9,7 @@ hello-world:
 
 commit:
     ./run.fish \
-    --task "Review the uncommited changes and commit them, if they're okay. You can also create multiple commits if you want to."
+    --task "Review the uncommited changes and commit them, if they're okay. You can also create multiple commits if you want to. You do not necessarily have to run the tests."
 
 review:
     ./run.fish \
