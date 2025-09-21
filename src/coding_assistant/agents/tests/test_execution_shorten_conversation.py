@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from coding_assistant.agents.callbacks import NullCallbacks
+from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.callbacks import ConfirmationToolCallbacks
 from coding_assistant.agents.execution import do_single_step, handle_tool_call
 from coding_assistant.agents.tests.helpers import (
     FakeFunction,
@@ -28,7 +29,7 @@ async def test_shorten_conversation_resets_history():
         ],
     )
 
-    callbacks = NullCallbacks()
+    callbacks = NullProgressCallbacks()
 
     # Invoke shorten_conversation tool directly
     summary_text = "This is the summary of prior conversation."
@@ -41,7 +42,7 @@ async def test_shorten_conversation_resets_history():
     )
 
     ctx = AgentContext(desc=desc, state=state)
-    await handle_tool_call(tool_call, ctx, callbacks, tool_confirmation_patterns=[], ui=make_ui_mock())
+    await handle_tool_call(tool_call, ctx, callbacks, tool_callbacks=NullToolCallbacks(), ui=make_ui_mock())
 
     # History should be reset to a fresh start message + summary message, followed by the tool result message
     assert len(state.history) >= 3
@@ -81,7 +82,7 @@ async def test_shorten_conversation_resets_history():
         shorten_conversation_at_tokens=200_000,
         completer=completer,
         ui=make_ui_mock(),
-        tool_confirmation_patterns=[],
+        tool_callbacks=NullToolCallbacks(),
     )
 
     # Verify the assistant tool call and finish result were appended after the reset messages

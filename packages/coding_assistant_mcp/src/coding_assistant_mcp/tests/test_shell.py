@@ -1,6 +1,6 @@
 import pytest
 
-from coding_assistant_mcp.shell import execute, set_shell_confirmation_patterns
+from coding_assistant_mcp.shell import execute
 
 
 @pytest.mark.asyncio
@@ -43,31 +43,6 @@ async def test_shell_execute_nonzero_with_stderr_content():
 
 
 @pytest.mark.asyncio
-async def test_shell_execute_requires_confirmation_yes(monkeypatch):
-    set_shell_confirmation_patterns([r"^echo "])  # matches
-
-    async def yes(_command: str) -> bool:
-        return True
-
-    monkeypatch.setattr("coding_assistant_mcp.shell._ask_confirmation", yes)
-    out = await execute(command="echo hello")
-    assert out == "hello\n"
-
-
-@pytest.mark.asyncio
-async def test_shell_execute_requires_confirmation_no(monkeypatch):
-    set_shell_confirmation_patterns([r"^echo "])  # matches
-
-    async def no(_command: str) -> bool:
-        return False
-
-    monkeypatch.setattr("coding_assistant_mcp.shell._ask_confirmation", no)
-    out = await execute(command="echo hello")
-    assert out == "Command execution denied."
-
-
-@pytest.mark.asyncio
-async def test_shell_execute_no_match_no_confirmation_needed():
-    set_shell_confirmation_patterns([r"^echo foo"])
+async def test_shell_execute_echo():
     out = await execute(command="echo bar")
     assert out == "bar\n"

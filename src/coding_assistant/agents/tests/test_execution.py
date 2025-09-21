@@ -1,8 +1,15 @@
 import pytest
 
-from coding_assistant.agents.callbacks import NullCallbacks
+from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.callbacks import ConfirmationToolCallbacks
 from coding_assistant.agents.execution import do_single_step, handle_tool_call, handle_tool_calls
-from coding_assistant.agents.tests.helpers import FakeFunction, FakeToolCall, make_test_agent, make_test_context, make_ui_mock
+from coding_assistant.agents.tests.helpers import (
+    FakeFunction,
+    FakeToolCall,
+    make_test_agent,
+    make_test_context,
+    make_ui_mock,
+)
 from coding_assistant.agents.types import AgentDescription, AgentState, AgentContext, TextResult, Tool, ToolResult
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
 import asyncio, time
@@ -42,7 +49,15 @@ async def test_tool_confirmation_denied_and_allowed():
 
     # First: denied
     call1 = FakeToolCall(id="1", function=FakeFunction(name="execute_shell_command", arguments=args_json))
-    await handle_tool_call(call1, ctx, NullCallbacks(), tool_confirmation_patterns=[r"^execute_shell_command"], ui=ui)
+    await handle_tool_call(
+        call1,
+        ctx,
+        NullProgressCallbacks(),
+        tool_callbacks=ConfirmationToolCallbacks(
+            tool_confirmation_patterns=[r"^execute_shell_command"], shell_confirmation_patterns=[]
+        ),
+        ui=ui,
+    )
 
     assert tool.calls == []  # should not run
     assert state.history[-1] == {
@@ -54,7 +69,15 @@ async def test_tool_confirmation_denied_and_allowed():
 
     # Second: allowed
     call2 = FakeToolCall(id="2", function=FakeFunction(name="execute_shell_command", arguments=args_json))
-    await handle_tool_call(call2, ctx, NullCallbacks(), tool_confirmation_patterns=[r"^execute_shell_command"], ui=ui)
+    await handle_tool_call(
+        call2,
+        ctx,
+        NullProgressCallbacks(),
+        tool_callbacks=ConfirmationToolCallbacks(
+            tool_confirmation_patterns=[r"^execute_shell_command"], shell_confirmation_patterns=[]
+        ),
+        ui=ui,
+    )
 
     assert tool.calls == [{"cmd": "echo 123"}]
     assert state.history[-1] == {
@@ -87,7 +110,9 @@ async def test_unknown_result_type_raises():
     ctx = AgentContext(desc=desc, state=state)
     tool_call = FakeToolCall(id="1", function=FakeFunction(name="weird", arguments="{}"))
     with pytest.raises(KeyError, match=r"WeirdResult"):
-        await handle_tool_call(tool_call, ctx, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
+        await handle_tool_call(
+            tool_call, ctx, NullProgressCallbacks(), tool_callbacks=NullToolCallbacks(), ui=make_ui_mock()
+        )
 
 
 class ParallelSlowTool(Tool):
@@ -111,6 +136,199 @@ class ParallelSlowTool(Tool):
         self._events.append(("end", self._name, time.monotonic()))
         return TextResult(content=f"done: {self._name}")
 
+    from coding_assistant.agents.callbacks import AgentToolCallbacks
+    from coding_assistant.agents.types import FinishTaskResult
+
+    # --- New high-value tests for callback & error coverage ---
+
+    @pytest.mark.asyncio
+    async def test_tool_call_malformed_arguments_records_error():
+        # Tool name can be anything; malformed JSON should short-circuit before execution attempt
+        desc, state = make_test_agent()
+        ctx = AgentContext(desc=desc, state=state)
+        bad_args = "{bad"  # invalid JSON
+        call = FakeToolCall(id="bad1", function=FakeFunction(name="bad_tool", arguments=bad_args))
+
+        await handle_tool_call(
+            call,
+            ctx,
+            NullProgressCallbacks(),
+            tool_callbacks=NullToolCallbacks(),
+            ui=make_ui_mock(),
+        )
+
+        assert state.history, "Expected an error tool message appended to history"
+        msg = state.history[-1]
+        assert msg["role"] == "tool"
+        assert msg["name"] == "bad_tool"
+        assert msg["tool_call_id"] == "bad1"
+        assert msg["content"].startswith("Error: Tool call arguments {bad are not valid JSON:"), msg["content"]
+
+    @pytest.mark.asyncio
+    async def test_tool_execution_value_error_records_error():
+        class ErrorTool(Tool):
+            def __init__(self):
+                self.executed = False
+
+            def name(self) -> str:
+                return "err_tool"
+
+            def description(self) -> str:
+                return "raises"
+
+            def parameters(self) -> dict:
+                return {}
+
+            async def execute(self, parameters: dict) -> TextResult:
+                self.executed = True
+                raise ValueError("boom")
+
+        tool = ErrorTool()
+        desc, state = make_test_agent(tools=[tool])
+        ctx = AgentContext(desc=desc, state=state)
+        call = FakeToolCall(id="e1", function=FakeFunction(name="err_tool", arguments="{}"))
+
+        await handle_tool_call(
+            call,
+            ctx,
+            NullProgressCallbacks(),
+            tool_callbacks=NullToolCallbacks(),
+            ui=make_ui_mock(),
+        )
+
+        # Tool execute should have been invoked (setting executed True) then error captured
+        assert tool.executed is True
+        msg = state.history[-1]
+        assert msg["role"] == "tool"
+        assert msg["name"] == "err_tool"
+        assert msg["content"] == "Error executing tool: boom"
+
+    @pytest.mark.asyncio
+    async def test_shell_tool_confirmation_denied_and_allowed():
+        # Simulate the special shell tool name used by confirmation logic
+        class FakeShellTool(Tool):
+            def __init__(self):
+                self.calls: list[dict] = []
+
+            def name(self) -> str:
+                return "mcp_coding_assistant_mcp_shell_execute"
+
+            def description(self) -> str:
+                return "shell"
+
+            def parameters(self) -> dict:
+                return {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}
+
+            async def execute(self, parameters: dict) -> TextResult:
+                self.calls.append(parameters)
+                return TextResult(content=f"ran shell: {parameters['command']}")
+
+        tool = FakeShellTool()
+        desc, state = make_test_agent(tools=[tool])
+        ctx = AgentContext(desc=desc, state=state)
+
+        command = "rm -rf /tmp"
+        args_json = '{"command": "rm -rf /tmp"}'
+        expected_prompt = f"Execute shell command `{command}` for tool `mcp_coding_assistant_mcp_shell_execute`?"
+        ui = make_ui_mock(confirm_sequence=[(expected_prompt, False), (expected_prompt, True)])
+
+        # First denied
+        call1 = FakeToolCall("s1", FakeFunction("mcp_coding_assistant_mcp_shell_execute", args_json))
+        from coding_assistant.callbacks import ConfirmationToolCallbacks  # local import to avoid circular
+
+        await handle_tool_call(
+            call1,
+            ctx,
+            NullProgressCallbacks(),
+            tool_callbacks=ConfirmationToolCallbacks(
+                shell_confirmation_patterns=[r"rm -rf"], tool_confirmation_patterns=[]
+            ),
+            ui=ui,
+        )
+        assert tool.calls == []
+        assert state.history[-1] == {
+            "tool_call_id": "s1",
+            "role": "tool",
+            "name": "mcp_coding_assistant_mcp_shell_execute",
+            "content": "Shell command execution denied.",
+        }
+
+        # Then allowed
+        call2 = FakeToolCall("s2", FakeFunction("mcp_coding_assistant_mcp_shell_execute", args_json))
+        await handle_tool_call(
+            call2,
+            ctx,
+            NullProgressCallbacks(),
+            tool_callbacks=ConfirmationToolCallbacks(
+                shell_confirmation_patterns=[r"rm -rf"], tool_confirmation_patterns=[]
+            ),
+            ui=ui,
+        )
+        assert tool.calls == [{"command": command}]
+        assert state.history[-1] == {
+            "tool_call_id": "s2",
+            "role": "tool",
+            "name": "mcp_coding_assistant_mcp_shell_execute",
+            "content": f"ran shell: {command}",
+        }
+
+    @pytest.mark.asyncio
+    async def test_before_tool_execution_can_return_finish_task_result():
+        # Callback should fabricate a FinishTaskResult and prevent underlying tool execution
+        class RecordingFinishTaskTool(Tool):
+            def __init__(self):
+                self.executed = False
+
+            def name(self) -> str:
+                return "finish_task"
+
+            def description(self) -> str:
+                return "finish"
+
+            def parameters(self) -> dict:
+                return {
+                    "type": "object",
+                    "properties": {"result": {"type": "string"}, "summary": {"type": "string"}},
+                    "required": ["result", "summary"],
+                }
+
+            async def execute(self, parameters: dict) -> TextResult:
+                self.executed = True
+                return TextResult(content="should not run")
+
+        finish_tool = RecordingFinishTaskTool()
+        desc, state = make_test_agent(tools=[finish_tool])
+        ctx = AgentContext(desc=desc, state=state)
+
+        class FabricatingCallbacks(AgentToolCallbacks):  # type: ignore[misc]
+            async def before_tool_execution(self, agent_name, tool_call_id, tool_name, arguments, *, ui):  # type: ignore[override]
+                if tool_name == "finish_task":
+                    return FinishTaskResult(result="R", summary="S")
+                return None
+
+        call = FakeToolCall("f1", FakeFunction("finish_task", '{"result": "ignored", "summary": "ignored"}'))
+        await handle_tool_call(
+            call,
+            ctx,
+            NullProgressCallbacks(),
+            tool_callbacks=FabricatingCallbacks(),
+            ui=make_ui_mock(),
+        )
+
+        # Underlying tool not executed
+        assert finish_tool.executed is False
+        # Agent output set
+        assert state.output is not None
+        assert state.output.result == "R"
+        assert state.output.summary == "S"
+        # History appended with fabricated summary message
+        assert state.history[-1] == {
+            "tool_call_id": "f1",
+            "role": "tool",
+            "name": "finish_task",
+            "content": "Agent output set.",
+        }
+
 
 @pytest.mark.asyncio
 async def test_multiple_tool_calls_are_parallel():
@@ -133,14 +351,18 @@ async def test_multiple_tool_calls_are_parallel():
     )
 
     start = time.monotonic()
-    await handle_tool_call(msg.tool_calls[0], ctx, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
-    await handle_tool_call(msg.tool_calls[1], ctx, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
+    await handle_tool_call(
+        msg.tool_calls[0], ctx, NullProgressCallbacks(), tool_callbacks=NullToolCallbacks(), ui=make_ui_mock()
+    )
+    await handle_tool_call(
+        msg.tool_calls[1], ctx, NullProgressCallbacks(), tool_callbacks=NullToolCallbacks(), ui=make_ui_mock()
+    )
     # Above would be sequential; now test real parallel variant using handle_tool_calls
     desc, state = make_test_agent(tools=[t1, t2])  # reset agent history
     ctx = AgentContext(desc=desc, state=state)
     events.clear()
     start = time.monotonic()
-    await handle_tool_calls(msg, ctx, NullCallbacks(), tool_confirmation_patterns=[], ui=make_ui_mock())
+    await handle_tool_calls(msg, ctx, NullProgressCallbacks(), tool_callbacks=NullToolCallbacks(), ui=make_ui_mock())
     elapsed = time.monotonic() - start
 
     # Assert total runtime significantly less than sequential (~0.4s)

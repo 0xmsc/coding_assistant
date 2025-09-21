@@ -19,7 +19,11 @@ from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 
-from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks, RichCallbacks
+from coding_assistant.agents.callbacks import (
+    AgentProgressCallbacks,
+    NullProgressCallbacks,
+)
+from coding_assistant.callbacks import RichAgentProgressCallbacks, ConfirmationToolCallbacks
 from coding_assistant.agents.types import Tool
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
@@ -138,6 +142,12 @@ def parse_args():
         help="Ask for confirmation before executing a tool that matches any of the given patterns.",
     )
     parser.add_argument(
+        "--shell-confirmation-patterns",
+        nargs="*",
+        default=[],
+        help="Regex patterns that require confirmation before executing shell commands",
+    )
+    parser.add_argument(
         "--wait-for-debugger",
         action=BooleanOptionalAction,
         default=False,
@@ -154,7 +164,6 @@ def create_config_from_args(args) -> Config:
         enable_user_feedback=args.user_feedback,
         shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
         enable_ask_user=args.ask_user,
-        tool_confirmation_patterns=args.tool_confirmation_patterns,
     )
 
 
@@ -183,7 +192,8 @@ async def run_orchestrator_agent(
     conversation_summaries: list[str],
     instructions: str | None,
     working_directory: Path,
-    agent_callbacks: AgentCallbacks,
+    agent_callbacks: AgentProgressCallbacks,
+    tool_callbacks: ConfirmationToolCallbacks,
 ):
     with tracer.start_as_current_span("run_root_agent"):
         tool = OrchestratorTool(
@@ -192,6 +202,7 @@ async def run_orchestrator_agent(
             history=history,
             agent_callbacks=agent_callbacks,
             ui=PromptToolkitUI(),
+            tool_callbacks=tool_callbacks,
         )
         orchestrator_params = {
             "task": task,
@@ -282,9 +293,14 @@ async def _main(args):
         if not args.task:
             raise ValueError("Task must be provided. Use --task to specify the task for the orchestrator agent.")
 
-        agent_callbacks = RichCallbacks(
+        agent_callbacks = RichAgentProgressCallbacks(
             print_chunks=args.print_chunks,
             print_reasoning=args.print_reasoning,
+        )
+
+        tool_callbacks = ConfirmationToolCallbacks(
+            tool_confirmation_patterns=args.tool_confirmation_patterns,
+            shell_confirmation_patterns=args.shell_confirmation_patterns,
         )
 
         await run_orchestrator_agent(
@@ -296,6 +312,7 @@ async def _main(args):
             instructions=instructions,
             working_directory=working_directory,
             agent_callbacks=agent_callbacks,
+            tool_callbacks=tool_callbacks,
         )
 
 

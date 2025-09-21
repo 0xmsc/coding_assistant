@@ -7,7 +7,7 @@ from typing import Literal
 
 import litellm
 
-from coding_assistant.agents.callbacks import AgentCallbacks
+from coding_assistant.agents.callbacks import AgentProgressCallbacks
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ async def complete(
     messages: list[dict],
     model: str,
     tools: list,
-    callbacks: AgentCallbacks,
+    callbacks: AgentProgressCallbacks,
 ):
     try:
         model, reasoning_effort = _parse_model_and_reasoning(model)

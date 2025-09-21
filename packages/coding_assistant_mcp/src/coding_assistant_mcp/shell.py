@@ -1,26 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import re
 from typing import Annotated
-
-from prompt_toolkit.shortcuts import create_confirm_session
 
 from fastmcp import FastMCP
 
 shell_server = FastMCP()
-
-_SHELL_CONFIRMATION_PATTERNS: list[str] = []
-
-
-async def _ask_confirmation(command: str) -> bool:
-    prompt_text = f"Execute `{command}`?"
-    return await create_confirm_session(prompt_text).prompt_async()
-
-
-def set_shell_confirmation_patterns(patterns: list[str]) -> None:
-    global _SHELL_CONFIRMATION_PATTERNS
-    _SHELL_CONFIRMATION_PATTERNS = patterns
 
 
 async def execute(
@@ -28,23 +13,8 @@ async def execute(
     timeout: Annotated[int, "The timeout for the command in seconds."] = 30,
     truncate_at: Annotated[int, "Maximum number of characters to return in stdout/stderr combined."] = 50_000,
 ) -> str:
-    """Execute a shell command using bash and return combined stdout/stderr.
-
-    If the command matches any configured confirmation pattern, the user is
-    prompted (using prompt_toolkit) to confirm execution (y/yes to proceed).
-    """
+    """Execute a shell command using bash and return combined stdout/stderr."""
     command = command.strip()
-
-    matched_pattern: str | None = None
-    for pattern in _SHELL_CONFIRMATION_PATTERNS:
-        if re.search(pattern, command):
-            matched_pattern = pattern
-            break
-
-    if matched_pattern:
-        confirmed = await _ask_confirmation(command)
-        if not confirmed:
-            return "Command execution denied."
 
     try:
         proc = await asyncio.create_subprocess_exec(
