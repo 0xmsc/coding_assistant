@@ -19,12 +19,9 @@ from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 
-from coding_assistant.agents.callbacks import (
-    AgentProgressCallbacks,
-    NullProgressCallbacks,
-)
-from coding_assistant.callbacks import RichAgentProgressCallbacks, ConfirmationToolCallbacks
+from coding_assistant.agents.callbacks import AgentProgressCallbacks, NullProgressCallbacks
 from coding_assistant.agents.types import Tool
+from coding_assistant.callbacks import ConfirmationToolCallbacks, RichAgentProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
     get_conversation_summaries,
@@ -36,7 +33,7 @@ from coding_assistant.history import (
 )
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
-from coding_assistant.tools.mcp import get_mcp_servers_from_config, print_mcp_tools, get_mcp_wrapped_tools
+from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
 from coding_assistant.tools.tools import OrchestratorTool
 from coding_assistant.ui import PromptToolkitUI
 
