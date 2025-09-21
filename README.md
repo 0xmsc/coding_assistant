@@ -107,7 +107,7 @@ Pass MCP servers with repeated `--mcp-servers` flags as JSON strings:
 {
   "name": "filesystem",
   "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-filesystem@2025.7.29", "/"]
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]
 }
 ```
 
@@ -143,7 +143,7 @@ If `--trace-endpoint` is reachable (default `http://localhost:4318/v1/traces`), 
 
 ## Shell command execution behavior
 
-The `execute_shell_command` tool:
+The MCP shell tool `shell_execute` (fully qualified in this project as `mcp_coding_assistant_mcp_shell_execute`):
 - Merges stderr into stdout and returns plain text (no JSON envelope).
 - Prefixes output with `Returncode: N` only when the command exits non-zero.
 - Supports `truncate_at` to limit the combined output size and appends a note when truncation occurs.
