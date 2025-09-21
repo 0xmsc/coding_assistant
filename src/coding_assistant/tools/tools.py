@@ -84,7 +84,6 @@ class OrchestratorTool(Tool):
                 ShortenConversation(),
                 AgentTool(self._config, self._tools, DefaultAnswerUI(), NullCallbacks()),
                 AskClientTool(self._config.enable_ask_user, ui=self._ui),
-                ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
                 *self._tools,
             ],
         )
@@ -166,7 +165,6 @@ class AgentTool(Tool):
             tools=[
                 FinishTaskTool(),
                 ShortenConversation(),
-                ExecuteShellCommandTool(self._config.shell_confirmation_patterns, ui=self._ui),
                 *self._tools,
             ],
         )
@@ -219,78 +217,6 @@ class AskClientTool(Tool):
 
         answer = await self._ui.ask(question, default=default_answer or "")
         return TextResult(content=str(answer))
-
-
-class ExecuteShellCommandSchema(BaseModel):
-    command: str = Field(description="The shell command to execute.")
-    timeout: int | None = Field(
-        default=None,
-        description="The timeout for the command in seconds.",
-    )
-    truncate_at: int | None = Field(
-        default=None,
-        description="Maximum number of characters to return in stdout/stderr combined. If output exceeds this, it will be truncated and a note will be appended.",
-    )
-
-
-class ExecuteShellCommandTool(Tool):
-    def __init__(
-        self,
-        shell_confirmation_patterns: list[str] | None = None,
-        ui: UI | None = None,
-    ):
-        self._shell_confirmation_patterns = shell_confirmation_patterns or []
-        self._ui = ui or NullUI()
-
-    def name(self) -> str:
-        return "execute_shell_command"
-
-    def description(self) -> str:
-        return "Execute a shell command in bash (-c) and return the combined stdout/stderr. Do not run bash yourself, i.e. do not use 'bash -c' or 'bash -lc' in your command."
-
-    def parameters(self) -> dict:
-        return ExecuteShellCommandSchema.model_json_schema()
-
-    async def execute(self, parameters: dict) -> TextResult:
-        assert "command" in parameters
-
-        command = parameters["command"].strip()
-        timeout = parameters.get("timeout", 30)
-        truncate_at = parameters.get("truncate_at", 50_000)
-
-        for pattern in self._shell_confirmation_patterns:
-            if re.search(pattern, command):
-                question = f"Execute `{command}`?"
-                answer = await self._ui.confirm(question)
-                if not answer:
-                    return TextResult(content="Command execution denied.")
-                break
-
-        logger.info(f"Executing shell command: `{command}`")
-
-        try:
-            process = await asyncio.create_subprocess_exec(
-                "bash",
-                "-c",
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout)
-        except asyncio.TimeoutError:
-            return TextResult(content=f"Command timed out after {timeout} seconds.")
-
-        if process.returncode != 0:
-            result = f"Returncode: {process.returncode}\n\n{stdout.decode()}"
-        else:
-            result = stdout.decode()
-
-        if len(result) > truncate_at:
-            note = "\n\n[truncated output due to truncate_at limit]"
-            truncated = result[: max(0, truncate_at - len(note))]
-            result = truncated + note
-
-        return TextResult(content=result)
 
 
 class FinishTaskSchema(BaseModel):
