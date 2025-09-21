@@ -246,7 +246,7 @@ class ExecuteShellCommandTool(Tool):
         return "execute_shell_command"
 
     def description(self) -> str:
-        return "Execute a shell command and return the output. The command will be executed in bash."
+        return "Execute a shell command in bash (-c) and return the combined stdout/stderr. Do not run bash yourself, i.e. do not use 'bash -c' or 'bash -lc' in your command."
 
     def parameters(self) -> dict:
         return ExecuteShellCommandSchema.model_json_schema()
@@ -269,7 +269,9 @@ class ExecuteShellCommandTool(Tool):
         logger.info(f"Executing shell command: `{command}`")
 
         try:
-            process = await asyncio.create_subprocess_shell(
+            process = await asyncio.create_subprocess_exec(
+                "bash",
+                "-c",
                 command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
@@ -305,7 +307,7 @@ class FinishTaskTool(Tool):
         return "finish_task"
 
     def description(self) -> str:
-        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop."
+        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop. This tool shall not be called when there are still open questions for the client."
 
     def parameters(self) -> dict:
         return FinishTaskSchema.model_json_schema()

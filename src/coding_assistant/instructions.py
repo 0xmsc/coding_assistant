@@ -20,13 +20,11 @@ INSTRUCTIONS = """
     - `rg` or `grep` for searching text in files.
     - `gh` for interfacing with GitHub.
     - `pwd` to get the project root.
-- Make use of sub-agents.
-    - Do not read lots of files, if you want to know something about the codebase, launch a sub-agent.
+- Make use of sub-agents to reduce your context size.
+    - If you expect to read lots of files to gather information, launch a sub-agent.
     - When possible, launch multiple sub-agents in parallel to speed up your work.
-    - It is *very* important to pass all necessary context to the sub-agent, they do **not** have access to your conversation history with the client. The only thing they see is the parameters you pass to them.
+    - It is very important to pass all necessary context to the sub-agent, they do not have access to your conversation history with the client. The only thing they see is the parameters you pass to them.
     - You are responsible for the work of the sub-agents. Review it before showing it to the client.
-- For big tasks, create a plan with multiple steps.
-    - Ask the user for feedback on the plan before implementing it.
 """.strip()
 
 PLANNING_INSTRUCTIONS = """
