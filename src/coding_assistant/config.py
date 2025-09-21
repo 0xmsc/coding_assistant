@@ -16,5 +16,4 @@ class Config(BaseModel):
     enable_user_feedback: bool
     shorten_conversation_at_tokens: int
     enable_ask_user: bool
-    shell_confirmation_patterns: list[str]
     tool_confirmation_patterns: list[str]

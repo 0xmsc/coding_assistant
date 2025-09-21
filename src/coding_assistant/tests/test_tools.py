@@ -3,68 +3,8 @@ import json
 import pytest
 
 from coding_assistant.agents.tests.helpers import make_ui_mock
-from coding_assistant.tools.tools import AskClientTool, ExecuteShellCommandTool
+from coding_assistant.tools.tools import AskClientTool
 from coding_assistant.ui import NullUI
-
-
-@pytest.mark.asyncio
-async def test_execute_shell_command_tool_timeout():
-    tool = ExecuteShellCommandTool()
-    result = await tool.execute({"command": "sleep 2", "timeout": 1})
-    assert "timed out" in result.content
-
-
-@pytest.mark.asyncio
-async def test_execute_shell_command_tool_nonzero_return_code():
-    tool = ExecuteShellCommandTool()
-    result = await tool.execute({"command": "bash -lc 'exit 7'"})
-    assert result.content.startswith("Returncode: 7\n\n")
-
-
-@pytest.mark.asyncio
-async def test_execute_shell_command_tool_confirmation_yes():
-    ui = make_ui_mock(confirm_sequence=[("Execute `echo 'Hello'`?", True)])
-    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"], ui=ui)
-    result = await tool.execute({"command": "echo 'Hello'"})
-    assert result.content == "Hello\n"
-
-
-@pytest.mark.asyncio
-async def test_execute_shell_command_tool_confirmation_yes_with_whitespace():
-    ui = make_ui_mock(confirm_sequence=[("Execute `echo 'Hello'`?", False)])
-    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"], ui=ui)
-    result = await tool.execute({"command": "  echo 'Hello'"})
-    assert result.content == "Command execution denied."
-
-
-@pytest.mark.asyncio
-async def test_execute_shell_command_tool_confirmation_no():
-    ui = make_ui_mock(confirm_sequence=[("Execute `echo 'Hello'`?", False)])
-    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["echo"], ui=ui)
-    result = await tool.execute({"command": "echo 'Hello'"})
-    assert result.content == "Command execution denied."
-
-
-@pytest.mark.asyncio
-async def test_execute_shell_command_tool_no_match():
-    ui = make_ui_mock()
-    tool = ExecuteShellCommandTool(shell_confirmation_patterns=["ls"], ui=ui)
-    result = await tool.execute({"command": "echo 'Hello'"})
-    assert result.content == "Hello\n"
-
-
-@pytest.mark.asyncio
-async def test_execute_shell_command_tool_truncates_output():
-    tool = ExecuteShellCommandTool()
-    # Produce more output than the truncate_at limit and ensure truncation note is appended
-    result = await tool.execute(
-        {
-            "command": "yes 1 | head -c 1000",
-            "truncate_at": 200,
-        }
-    )
-    assert result.content.endswith("\n\n[truncated output due to truncate_at limit]")
-    assert len(result.content) <= 200
 
 
 @pytest.mark.asyncio
