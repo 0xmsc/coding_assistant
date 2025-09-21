@@ -5,7 +5,12 @@ import re
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.agents.callbacks import AgentCallbacks, NullCallbacks
+from coding_assistant.agents.callbacks import (
+    AgentProgressCallbacks,
+    AgentToolCallbacks,
+    NullProgressCallbacks,
+    NullToolCallbacks,
+)
 from coding_assistant.agents.execution import run_agent_loop
 from coding_assistant.agents.parameters import Parameter, fill_parameters
 from coding_assistant.agents.types import (
@@ -42,8 +47,9 @@ class OrchestratorTool(Tool):
         config: Config,
         tools: list[Tool],
         history: list | None,
-        agent_callbacks: AgentCallbacks,
+        agent_callbacks: AgentProgressCallbacks,
         ui: UI,
+        tool_callbacks: AgentToolCallbacks,
     ):
         super().__init__()
         self._config = config
@@ -51,6 +57,7 @@ class OrchestratorTool(Tool):
         self._history = history
         self._agent_callbacks = agent_callbacks
         self._ui = ui
+        self._tool_callbacks = tool_callbacks
 
     def name(self) -> str:
         return "launch_orchestrator_agent"
@@ -82,7 +89,13 @@ class OrchestratorTool(Tool):
             tools=[
                 FinishTaskTool(),
                 ShortenConversation(),
-                AgentTool(self._config, self._tools, DefaultAnswerUI(), NullCallbacks()),
+                AgentTool(
+                    self._config,
+                    self._tools,
+                    DefaultAnswerUI(),
+                    NullProgressCallbacks(),
+                    self._tool_callbacks,
+                ),
                 AskClientTool(self._config.enable_ask_user, ui=self._ui),
                 *self._tools,
             ],
@@ -93,9 +106,9 @@ class OrchestratorTool(Tool):
             ctx = AgentContext(desc=desc, state=state)
             await run_agent_loop(
                 ctx,
-                self._agent_callbacks,
+                agent_callbacks=self._agent_callbacks,
+                tool_callbacks=self._tool_callbacks,
                 shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
-                tool_confirmation_patterns=self._config.tool_confirmation_patterns,
                 enable_user_feedback=self._config.enable_user_feedback,
                 completer=complete,
                 ui=self._ui,
@@ -124,12 +137,20 @@ class LaunchAgentSchema(BaseModel):
 
 
 class AgentTool(Tool):
-    def __init__(self, config: Config, tools: list[Tool], ui: UI, agent_callbacks: AgentCallbacks):
+    def __init__(
+        self,
+        config: Config,
+        tools: list[Tool],
+        ui: UI,
+        agent_callbacks: AgentProgressCallbacks,
+        tool_callbacks: AgentToolCallbacks,
+    ):
         super().__init__()
         self._config = config
         self._tools = tools
         self._ui = ui
         self._agent_callbacks = agent_callbacks
+        self._tool_callbacks = tool_callbacks
 
     def name(self) -> str:
         return "launch_agent"
@@ -174,8 +195,8 @@ class AgentTool(Tool):
         await run_agent_loop(
             ctx,
             agent_callbacks=self._agent_callbacks,
+            tool_callbacks=self._tool_callbacks,
             shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
-            tool_confirmation_patterns=self._config.tool_confirmation_patterns,
             enable_user_feedback=False,
             completer=complete,
             is_interruptible=False,

@@ -7,7 +7,6 @@ dependencies = [
     "fastmcp",
     "pytest",
     "pytest-asyncio",
-    "prompt-toolkit",
 ]
 
 [project.scripts]

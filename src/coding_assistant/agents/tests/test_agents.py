@@ -3,7 +3,7 @@ import pytest
 from coding_assistant.agents.tests.helpers import make_ui_mock
 from coding_assistant.config import Config
 from coding_assistant.tools.tools import OrchestratorTool
-from coding_assistant.agents.callbacks import NullCallbacks
+from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.ui import NullUI
 
 # This file contains integration tests using the real LLM API.
@@ -19,8 +19,6 @@ def create_test_config() -> Config:
         enable_user_feedback=False,
         shorten_conversation_at_tokens=200_000,
         enable_ask_user=False,
-        shell_confirmation_patterns=[],
-        tool_confirmation_patterns=[],
     )
 
 
@@ -28,7 +26,14 @@ def create_test_config() -> Config:
 @pytest.mark.asyncio
 async def test_orchestrator_tool():
     config = create_test_config()
-    tool = OrchestratorTool(config=config, tools=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
+    tool = OrchestratorTool(
+        config=config,
+        tools=[],
+        history=None,
+        agent_callbacks=NullProgressCallbacks(),
+        ui=NullUI(),
+        tool_callbacks=NullToolCallbacks(),
+    )
     result = await tool.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result.content == "Hello, World!"
 
@@ -37,12 +42,26 @@ async def test_orchestrator_tool():
 @pytest.mark.asyncio
 async def test_orchestrator_tool_resume():
     config = create_test_config()
-    first = OrchestratorTool(config=config, tools=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
+    first = OrchestratorTool(
+        config=config,
+        tools=[],
+        history=None,
+        agent_callbacks=NullProgressCallbacks(),
+        ui=NullUI(),
+        tool_callbacks=NullToolCallbacks(),
+    )
 
     result = await first.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result.content == "Hello, World!"
 
-    second = OrchestratorTool(config=config, tools=[], history=first.history, agent_callbacks=NullCallbacks(), ui=NullUI())
+    second = OrchestratorTool(
+        config=config,
+        tools=[],
+        history=first.history,
+        agent_callbacks=NullProgressCallbacks(),
+        ui=NullUI(),
+        tool_callbacks=NullToolCallbacks(),
+    )
     result = await second.execute(
         parameters={"task": "Re-do your previous task, just translate your output to German."}
     )
@@ -53,7 +72,14 @@ async def test_orchestrator_tool_resume():
 @pytest.mark.asyncio
 async def test_orchestrator_tool_instructions():
     config = create_test_config()
-    tool = OrchestratorTool(config=config, tools=[], history=None, agent_callbacks=NullCallbacks(), ui=NullUI())
+    tool = OrchestratorTool(
+        config=config,
+        tools=[],
+        history=None,
+        agent_callbacks=NullProgressCallbacks(),
+        ui=NullUI(),
+        tool_callbacks=NullToolCallbacks(),
+    )
     result = await tool.execute(
         parameters={
             "task": "Say 'Hello, World!'",
@@ -61,5 +87,3 @@ async def test_orchestrator_tool_instructions():
         }
     )
     assert result.content == "Servus, World!"
-
-

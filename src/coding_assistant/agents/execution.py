@@ -8,7 +8,7 @@ from json import JSONDecodeError
 
 from opentelemetry import trace
 
-from coding_assistant.agents.callbacks import AgentCallbacks
+from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks, NullToolCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
 from coding_assistant.agents.interrupts import InterruptibleSection, NonInterruptibleSection
 from coding_assistant.agents.parameters import format_parameters
@@ -69,7 +69,10 @@ def _handle_text_result(result: TextResult) -> str:
 
 
 def _handle_shorten_conversation_result(
-    result: ShortenConversationResult, desc: AgentDescription, state: AgentState, agent_callbacks: AgentCallbacks
+    result: ShortenConversationResult,
+    desc: AgentDescription,
+    state: AgentState,
+    agent_callbacks: AgentProgressCallbacks,
 ):
     start_message = _create_start_message(desc)
     state.history = []
@@ -92,8 +95,8 @@ def _handle_shorten_conversation_result(
 async def handle_tool_call(
     tool_call,
     ctx: AgentContext,
-    agent_callbacks: AgentCallbacks,
-    tool_confirmation_patterns: list[str],
+    agent_callbacks: AgentProgressCallbacks,
+    tool_callbacks: AgentToolCallbacks,
     *,
     ui: UI,
 ):
@@ -122,29 +125,23 @@ async def handle_tool_call(
         )
         return
 
-    for pattern in tool_confirmation_patterns:
-        if re.search(pattern, function_name):
-            question = f"Execute tool `{function_name}` with arguments `{function_args}`?"
-            answer = await ui.confirm(question)
-            if not answer:
-                append_tool_message(
-                    state.history,
-                    agent_callbacks,
-                    desc.name,
-                    tool_call.id,
-                    function_name,
-                    function_args,
-                    "Tool execution denied.",
-                )
-                return
-
     trace.get_current_span().set_attribute("function.name", function_name)
     trace.get_current_span().set_attribute("function.args", json.dumps(function_args))
 
     logger.info(f"[{tool_call.id}] [{desc.name}] Calling tool '{function_name}' with arguments {function_args}")
 
     try:
-        function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
+        if callback_result := await tool_callbacks.before_tool_execution(
+            desc.name,
+            tool_call.id,
+            function_name,
+            function_args,
+            ui=ui,
+        ):
+            logger.info(f"[{tool_call.id}] [{desc.name}] Tool '{function_name}' execution was prevented via callback.")
+            function_call_result = callback_result
+        else:
+            function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
     except ValueError as e:
         append_tool_message(
             state.history,
@@ -182,8 +179,8 @@ async def handle_tool_call(
 async def handle_tool_calls(
     message,
     ctx: AgentContext,
-    agent_callbacks: AgentCallbacks,
-    tool_confirmation_patterns: list[str],
+    agent_callbacks: AgentProgressCallbacks,
+    tool_callbacks: AgentToolCallbacks,
     *,
     ui: UI,
 ):
@@ -208,7 +205,7 @@ async def handle_tool_calls(
                 tool_call,
                 ctx,
                 agent_callbacks,
-                tool_confirmation_patterns,
+                tool_callbacks,
                 ui=ui,
             ),
             name=f"{tool_call.function.name} ({tool_call.id})",
@@ -229,12 +226,12 @@ async def handle_tool_calls(
 @tracer.start_as_current_span("do_single_step")
 async def do_single_step(
     ctx: AgentContext,
-    agent_callbacks: AgentCallbacks,
+    agent_callbacks: AgentProgressCallbacks,
     shorten_conversation_at_tokens: int,
     *,
     completer: Completer,
     ui: UI,
-    tool_confirmation_patterns: list[str],
+    tool_callbacks: AgentToolCallbacks,
 ):
     desc = ctx.desc
     state = ctx.state
@@ -274,7 +271,7 @@ async def do_single_step(
         message,
         ctx,
         agent_callbacks,
-        tool_confirmation_patterns,
+        tool_callbacks,
         ui=ui,
     )
 
@@ -293,12 +290,12 @@ async def do_single_step(
 @tracer.start_as_current_span("run_agent_loop")
 async def run_agent_loop(
     ctx: AgentContext,
-    agent_callbacks: AgentCallbacks,
     *,
+    agent_callbacks: AgentProgressCallbacks,
+    tool_callbacks: AgentToolCallbacks,
     completer: Completer,
     ui: UI,
     shorten_conversation_at_tokens: int = 200_000,
-    tool_confirmation_patterns: list[str] = [],
     enable_user_feedback: bool = False,
     is_interruptible: bool = False,
 ):
@@ -326,7 +323,7 @@ async def run_agent_loop(
                     shorten_conversation_at_tokens,
                     completer=completer,
                     ui=ui,
-                    tool_confirmation_patterns=tool_confirmation_patterns,
+                    tool_callbacks=tool_callbacks,
                 )
 
             if interruptible_section.was_interrupted:
