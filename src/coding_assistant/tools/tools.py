@@ -12,7 +12,7 @@ from coding_assistant.agents.callbacks import (
     NullToolCallbacks,
 )
 from coding_assistant.agents.execution import run_agent_loop
-from coding_assistant.agents.parameters import Parameter, fill_parameters
+from coding_assistant.agents.parameters import Parameter, parameters_from_model
 from coding_assistant.agents.types import (
     AgentContext,
     AgentDescription,
@@ -70,16 +70,14 @@ class OrchestratorTool(Tool):
 
     async def execute(self, parameters: dict) -> TextResult:
         # Compose parameters with the tool description as a dedicated entry
+        validated = LaunchOrchestratorAgentSchema.model_validate(parameters)
         params = [
             Parameter(
                 name="description",
                 description="The description of the agent's work and capabilities.",
                 value=self.description(),
             ),
-            *fill_parameters(
-                parameter_description=self.parameters(),
-                parameter_values=parameters,
-            ),
+            *parameters_from_model(validated),
         ]
 
         desc = AgentDescription(
@@ -167,16 +165,14 @@ class AgentTool(Tool):
         return self._config.model
 
     async def execute(self, parameters: dict) -> TextResult:
+        validated = LaunchAgentSchema.model_validate(parameters)
         params = [
             Parameter(
                 name="description",
                 description="The description of the agent's work and capabilities.",
                 value=self.description(),
             ),
-            *fill_parameters(
-                parameter_description=self.parameters(),
-                parameter_values=parameters,
-            ),
+            *parameters_from_model(validated),
         ]
 
         desc = AgentDescription(

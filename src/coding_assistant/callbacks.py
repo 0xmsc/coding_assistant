@@ -105,9 +105,12 @@ class RichAgentProgressCallbacks(AgentProgressCallbacks):
         except json.JSONDecodeError:
             return None
 
-    def _format_tool_result(self, result: str):
+    def _format_tool_result(self, tool_name: str, result: str):
         if data := self._try_parse_json(result):
             return Pretty(data, expand_all=True, indent_size=2)
+        # TODO: Avoid hard-coding tool-name prefixes to decide how to render tool results.
+        elif tool_name.startswith("mcp_coding_assistant_mcp_todo_"):
+            return Markdown(result)
         else:
             return Markdown(f"```\n{result}\n```")
 
@@ -117,7 +120,7 @@ class RichAgentProgressCallbacks(AgentProgressCallbacks):
         if arguments is not None:
             parts.append(Padding(Pretty(arguments, expand_all=True, indent_size=2), (1, 0, 0, 0)))
 
-        parts.append(Padding(self._format_tool_result(result), (1, 0, 0, 0)))
+        parts.append(Padding(self._format_tool_result(tool_name, result), (1, 0, 0, 0)))
 
         render_group = Group(*parts)
         print(
