@@ -1,80 +1,65 @@
 import textwrap
 from dataclasses import dataclass
+from typing import Any
+
+from pydantic import BaseModel
 
 
 @dataclass
 class Parameter:
+    """Simple serialisable representation of a validated parameter.
+
+    We intentionally keep this a lightweight dataclass rather than re-using the
+    underlying Pydantic model instance so that the rest of the agent code stays
+    decoupled from Pydantic specifics (and to keep prompts clean / explicit).
+    """
+
     name: str
     description: str
     value: str
 
 
-def fill_parameters(
-    parameter_description: dict,
-    parameter_values: dict,
-) -> list[Parameter]:
-    parameters = []
-    required = set(parameter_description.get("required", []))
+def parameters_from_model(model: BaseModel) -> list[Parameter]:
+    """Create a list of Parameter objects from a validated Pydantic model instance.
 
-    for name, schema in parameter_description["properties"].items():
-        # Skip missing optional parameters
-        if name not in parameter_values or parameter_values[name] is None:
-            if name in required:
-                raise RuntimeError(f"Required parameter '{name}' is missing")
+    Rules:
+    - Skip fields whose value is ``None``
+    - Lists are rendered as bullet lists (``- item``) preserving existing ``- `` prefix.
+    - Primitive values (str / int / float / bool) are stringified.
+    - Any other value types raise a RuntimeError
+    """
+
+    params: list[Parameter] = []
+    data = model.model_dump()
+    for name, field in model.__class__.model_fields.items():
+        value: Any | None = data.get(name)
+
+        if value is None:
             continue
 
-        # Determine parameter type from schema
-        param_type = _extract_type_from_schema(schema)
-        if not param_type:
-            raise RuntimeError(f"Could not determine type for parameter '{name}': {schema}")
+        if isinstance(value, list):
+            rendered_items: list[str] = []
+            for item in value:
+                item_str = str(item)
+                rendered_items.append(item_str if item_str.startswith("- ") else f"- {item_str}")
+            value_str = "\n".join(rendered_items)
+        elif isinstance(value, (str, int, float, bool)):
+            value_str = str(value)
+        else:
+            raise RuntimeError(f"Unsupported parameter type for parameter '{name}'")
 
-        # Convert value to string representation
-        value = _format_value_by_type(parameter_values[name], name)
+        if not field.description:
+            raise RuntimeError(f"Parameter '{name}' is missing a description.")
 
-        parameters.append(
+        params.append(
             Parameter(
                 name=name,
-                description=schema.get("description", ""),
-                value=value,
+                description=field.description,
+                value=value_str,
             )
         )
 
-    return parameters
-
-
-def _extract_type_from_schema(schema: dict) -> str | None:
-    """Extract the parameter type from a JSON schema."""
-    if "type" in schema:
-        return schema["type"]
-
-    if "anyOf" in schema:
-        # Find the first non-null type in anyOf
-        for type_option in schema["anyOf"]:
-            if type_option.get("type") not in (None, "null"):
-                return type_option.get("type")
-
-    return None
-
-
-def _format_value_by_type(value, param_name: str) -> str:
-    """Format a parameter value according to its type."""
-    if isinstance(value, str):
-        return value
-    elif isinstance(value, list):
-        formatted_items = []
-        for item in value:
-            item_str = str(item)
-            if item_str.startswith("- "):
-                formatted_items.append(item_str)
-            else:
-                formatted_items.append(f"- {item_str}")
-        return "\n".join(formatted_items)
-    elif isinstance(value, bool):
-        return str(value)
-    elif isinstance(value, (int, float)):
-        return str(value)
-    else:
-        raise RuntimeError(f"Unsupported parameter type for parameter '{param_name}'")
+    return params
 
 
 def format_parameters(parameters: list[Parameter]) -> str:
@@ -83,20 +68,16 @@ def format_parameters(parameters: list[Parameter]) -> str:
   - Description: {description}
   - Value: {value}
 """.strip()
-    parameter_descriptions = []
-
+    parts: list[str] = []
     for parameter in parameters:
         value_str = parameter.value
-
         if "\n" in value_str:
             value_str = "\n" + textwrap.indent(value_str, "    ")
-
-        parameter_descriptions.append(
+        parts.append(
             PARAMETER_TEMPLATE.format(
                 name=parameter.name,
                 description=parameter.description,
                 value=value_str,
             )
         )
-
-    return "\n\n".join(parameter_descriptions)
+    return "\n\n".join(parts)
