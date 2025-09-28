@@ -20,7 +20,7 @@ INSTRUCTIONS = """
 ## Repository
 
 - Do not initialize a new git repository, unless your client explicitly requests it.
-- Do not commit any changes to the git repository, unless your client explicitly requests it.
+- Do not commit changes without asking the user first.
 - When you have made a change to a project, ask the user if you should commit the changes.
 - Do not switch branches before asking the user.
 
