@@ -52,3 +52,21 @@ def test_format_parameters_multiline_list():
     assert "- two" in output
 
 
+def test_format_parameters_list_item_with_multiline_string_indentation():
+    multi = "first line of item\nsecond line continues"
+    model = ExampleSchema(name="Eve", active=True, hobbies=[multi])
+    params = parameters_from_model(model)
+    output = format_parameters(params)
+
+    expected_snippet = "\n  - Value:\n    - first line of item\n      second line continues"
+    assert expected_snippet in output
+
+
+def test_format_parameters_list_item_preserves_prefixed_bullet_and_indents_continuation():
+    pre_bulleted = "- already bulleted first line\ncontinuation line"
+    model = ExampleSchema(name="Zoe", active=False, hobbies=[pre_bulleted])
+    params = parameters_from_model(model)
+    output = format_parameters(params)
+
+    expected_snippet = "\n  - Value:\n    - already bulleted first line\n      continuation line"
+    assert expected_snippet in output

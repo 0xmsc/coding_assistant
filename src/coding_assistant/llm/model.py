@@ -68,11 +68,15 @@ async def complete(
                 content = chunk["choices"][0]["delta"]["content"]
                 callbacks.on_chunk(content)
 
+            # Drop created_at so that `ChunkProcessor` does not sort according to it. It seems buggy and seems to create out-of-order chunks.
+            chunk._hidden_params.pop("created_at", None)
+
             chunks.append(chunk)
 
         callbacks.on_chunks_end()
 
         completion = litellm.stream_chunk_builder(chunks)
+
         return Completion(
             message=completion["choices"][0]["message"],
             tokens=completion["usage"]["total_tokens"],

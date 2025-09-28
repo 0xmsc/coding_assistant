@@ -121,7 +121,7 @@ async def handle_tool_call(
             tool_call.id,
             function_name,
             None,
-            f"Error: Tool call arguments {args_str} are not valid JSON: {e}",
+            f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}",
         )
         return
 
