@@ -37,13 +37,29 @@ class _CB(AgentProgressCallbacks):
         self.end = True
 
 
+class _Chunk:
+    """Minimal shim to mimic a litellm streaming chunk.
+
+    Behaves like a mapping for item access (e.g., chunk["choices"]) and
+    exposes a `_hidden_params` dict so production code can safely mutate it.
+    """
+
+    def __init__(self, data: dict):
+        self._data = data
+        # include created_at to verify it's safe to pop
+        self._hidden_params = {"created_at": 0}
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+
 @pytest.mark.asyncio
 async def test_complete_streaming_happy_path(monkeypatch):
     # Build a fake async generator that yields chunks with delta.content
     async def fake_acompletion(**kwargs):
         async def agen():
-            yield {"choices": [{"delta": {"content": "Hello"}}]}
-            yield {"choices": [{"delta": {"content": " world"}}]}
+            yield _Chunk({"choices": [{"delta": {"content": "Hello"}}]})
+            yield _Chunk({"choices": [{"delta": {"content": " world"}}]})
 
         return agen()
 
@@ -98,8 +114,8 @@ async def test_complete_parses_reasoning_effort_from_model_string(monkeypatch):
         captured.update(kwargs)
 
         async def agen():
-            yield {"choices": [{"delta": {"content": "A"}}]}
-            yield {"choices": [{"delta": {"content": "B"}}]}
+            yield _Chunk({"choices": [{"delta": {"content": "A"}}]})
+            yield _Chunk({"choices": [{"delta": {"content": "B"}}]})
 
         return agen()
 
