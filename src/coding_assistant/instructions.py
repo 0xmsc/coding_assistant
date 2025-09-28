@@ -34,7 +34,7 @@ INSTRUCTIONS = """
 """.strip()
 
 PLANNING_INSTRUCTIONS = """
-## Planning mode
+# Planning mode
 
 - You are in planning mode.
 - Create a plan for the task at hand in close collaboration with the client.
