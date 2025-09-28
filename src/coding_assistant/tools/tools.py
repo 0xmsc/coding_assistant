@@ -1,7 +1,4 @@
-import asyncio
-import json
 import logging
-import re
 
 from pydantic import BaseModel, Field
 
@@ -9,7 +6,6 @@ from coding_assistant.agents.callbacks import (
     AgentProgressCallbacks,
     AgentToolCallbacks,
     NullProgressCallbacks,
-    NullToolCallbacks,
 )
 from coding_assistant.agents.execution import run_agent_loop
 from coding_assistant.agents.parameters import Parameter, parameters_from_model
@@ -24,7 +20,7 @@ from coding_assistant.agents.types import (
 )
 from coding_assistant.config import Config
 from coding_assistant.llm.model import complete
-from coding_assistant.ui import UI, DefaultAnswerUI, NullUI
+from coding_assistant.ui import UI, DefaultAnswerUI
 
 logger = logging.getLogger(__name__)
 

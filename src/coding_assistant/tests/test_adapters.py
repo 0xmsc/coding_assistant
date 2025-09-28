@@ -2,9 +2,6 @@ import pytest
 
 from coding_assistant.agents.types import TextResult, Tool
 from coding_assistant.llm import adapters
-from coding_assistant.tools.mcp import MCPWrappedTool, MCPServer
-from mcp import ClientSession  # type: ignore
-from types import SimpleNamespace
 
 
 class DummyTool(Tool):

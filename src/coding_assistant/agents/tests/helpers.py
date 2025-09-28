@@ -1,12 +1,11 @@
 import json
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import Iterable, Sequence, Any, cast
 from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.agents.parameters import Parameter
 from coding_assistant.agents.types import AgentDescription, AgentState, AgentContext, Tool
 from coding_assistant.llm.model import Completion
-from coding_assistant.tools.mcp import MCPServer
 from coding_assistant.ui import UI
 
 
@@ -36,7 +35,7 @@ class FakeMessage:
         content: str | None = None,
         tool_calls: list[FakeToolCall] | None = None,
         reasoning_content: str | None = None,
-    ):
+    ) -> None:
         self.role = "assistant"
         self.content = content
         self.tool_calls = tool_calls or []
@@ -44,7 +43,7 @@ class FakeMessage:
         if reasoning_content is not None:
             self.reasoning_content = reasoning_content
 
-    def model_dump(self):
+    def model_dump(self) -> dict[str, object]:
         data: dict[str, object] = {"role": self.role}
         if self.content is not None:
             data["content"] = self.content
@@ -60,16 +59,16 @@ class FakeMessage:
             data["reasoning_content"] = getattr(self, "reasoning_content")
         return data
 
-    def model_dump_json(self):
+    def model_dump_json(self) -> str:
         return json.dumps(self.model_dump())
 
 
 class FakeCompleter:
-    def __init__(self, script):
-        self.script = list(script)
+    def __init__(self, script: Iterable[FakeMessage | Exception]) -> None:
+        self.script: list[FakeMessage | Exception] = list(script)
         self._total_tokens = 0
 
-    async def __call__(self, messages, *, model, tools, callbacks):
+    async def __call__(self, messages, *, model, tools, callbacks) -> Completion:
         if not self.script:
             raise AssertionError("FakeCompleter script exhausted")
 
@@ -82,7 +81,8 @@ class FakeCompleter:
         toks = len(text)
         self._total_tokens += toks
 
-        return Completion(message=action, tokens=self._total_tokens)
+        # Cast to Any since tests use FakeMessage to stand in for the model's message type
+        return Completion(message=cast(Any, action), tokens=self._total_tokens)
 
 
 def make_ui_mock(
@@ -107,9 +107,9 @@ def make_ui_mock(
         assert confirm_seq is not None, "UI.confirm was called but no confirm_sequence was provided"
         assert len(confirm_seq) > 0, "UI.confirm was called more times than expected"
         expected_prompt, value = confirm_seq.pop(0)
-        assert (
-            prompt_text == expected_prompt
-        ), f"Unexpected confirm prompt. Expected: {expected_prompt}, got: {prompt_text}"
+        assert prompt_text == expected_prompt, (
+            f"Unexpected confirm prompt. Expected: {expected_prompt}, got: {prompt_text}"
+        )
         return bool(value)
 
     ui.ask = AsyncMock(side_effect=_ask)
@@ -129,7 +129,7 @@ def make_test_agent(
     parameters: Sequence[Parameter] | None = None,
     tools: Iterable[Tool] | None = None,
     history: list[dict] | None = None,
-):
+) -> tuple[AgentDescription, AgentState]:
     desc = AgentDescription(
         name=name,
         model=model,

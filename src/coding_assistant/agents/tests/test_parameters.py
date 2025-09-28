@@ -11,7 +11,7 @@ class ExampleSchema(BaseModel):
     active: bool = Field(description="Active status")
 
 
-def test_parameters_from_model_basic_and_optional_skip():
+def test_parameters_from_model_basic_and_optional_skip() -> None:
     model = ExampleSchema(name="Alice", active=True)  # age omitted, hobbies default empty
     params = parameters_from_model(model)
     names = [p.name for p in params]
@@ -21,14 +21,14 @@ def test_parameters_from_model_basic_and_optional_skip():
     assert hobbies_param.value == ""  # join of []
 
 
-def test_parameters_from_model_list_rendering():
+def test_parameters_from_model_list_rendering() -> None:
     model = ExampleSchema(name="Alice", active=False, hobbies=["reading", "- preformatted"])
     params = parameters_from_model(model)
     hobbies_value = next(p for p in params if p.name == "hobbies").value
     assert hobbies_value.splitlines() == ["- reading", "- preformatted"]
 
 
-def test_parameters_from_model_unsupported_type():
+def test_parameters_from_model_unsupported_type() -> None:
     class Bad(BaseModel):
         data: dict = Field(description="Unsupported")
 
@@ -37,13 +37,13 @@ def test_parameters_from_model_unsupported_type():
         parameters_from_model(bad)
 
 
-def test_parameters_from_model_validation_error():
+def test_parameters_from_model_validation_error() -> None:
     # Missing required field 'name'
     with pytest.raises(ValidationError):
         ExampleSchema(active=True)  # type: ignore
 
 
-def test_format_parameters_multiline_list():
+def test_format_parameters_multiline_list() -> None:
     model = ExampleSchema(name="Bob", active=True, hobbies=["one", "two"])
     params = parameters_from_model(model)
     output = format_parameters(params)
@@ -52,7 +52,7 @@ def test_format_parameters_multiline_list():
     assert "- two" in output
 
 
-def test_format_parameters_list_item_with_multiline_string_indentation():
+def test_format_parameters_list_item_with_multiline_string_indentation() -> None:
     multi = "first line of item\nsecond line continues"
     model = ExampleSchema(name="Eve", active=True, hobbies=[multi])
     params = parameters_from_model(model)
@@ -62,7 +62,7 @@ def test_format_parameters_list_item_with_multiline_string_indentation():
     assert expected_snippet in output
 
 
-def test_format_parameters_list_item_preserves_prefixed_bullet_and_indents_continuation():
+def test_format_parameters_list_item_preserves_prefixed_bullet_and_indents_continuation() -> None:
     pre_bulleted = "- already bulleted first line\ncontinuation line"
     model = ExampleSchema(name="Zoe", active=False, hobbies=[pre_bulleted])
     params = parameters_from_model(model)

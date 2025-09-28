@@ -31,7 +31,7 @@ class TodoManager:
 
     def add(
         self,
-        descriptions: Annotated[list[str], "List of non-empty TODO description strings"],
+        descriptions: Annotated[list[str], "List of (non-empty) TODO description strings"],
     ) -> str:
         """Add TODO items and return the updated list."""
         for desc in descriptions:

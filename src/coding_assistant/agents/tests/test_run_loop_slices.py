@@ -12,7 +12,7 @@ from coding_assistant.agents.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.agents.types import AgentDescription, AgentState, AgentContext, TextResult, Tool, AgentOutput
+from coding_assistant.agents.types import AgentContext, TextResult, Tool, AgentOutput
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
 
 
@@ -344,7 +344,7 @@ async def test_interrupt_feedback_injected_and_loop_continues(monkeypatch):
             ]
         )
 
-        agent = make_test_agent(tools=[FinishTaskTool(), ShortenConversation()])
+        desc, state = make_test_agent(tools=[FinishTaskTool(), ShortenConversation()])
 
         await run_agent_loop(
             AgentContext(desc=desc, state=state),

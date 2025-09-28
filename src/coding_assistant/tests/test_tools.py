@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from coding_assistant.agents.tests.helpers import make_ui_mock

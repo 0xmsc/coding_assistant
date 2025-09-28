@@ -1,12 +1,8 @@
-import asyncio
 import logging
-import os
 import signal
 import sys
-import threading
-import traceback
 from types import FrameType
-from typing import Optional, Union, Any
+from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 

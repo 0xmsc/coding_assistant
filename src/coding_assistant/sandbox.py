@@ -3,7 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from landlock import FSAccess, Ruleset
+from landlock import FSAccess, Ruleset  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 

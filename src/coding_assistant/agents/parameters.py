@@ -48,7 +48,9 @@ def parameters_from_model(model: BaseModel) -> list[Parameter]:
                     first_bulleted = first if first.startswith("- ") else f"- {first}"
                     # Continuation lines are indented under the bullet text
                     continuation = [f"  {ln}" for ln in lines[1:]]
-                    rendered_items.append("\n".join([first_bulleted, *continuation]) if continuation else first_bulleted)
+                    rendered_items.append(
+                        "\n".join([first_bulleted, *continuation]) if continuation else first_bulleted
+                    )
                 else:
                     rendered_items.append(item_str if item_str.startswith("- ") else f"- {item_str}")
             value_str = "\n".join(rendered_items)
