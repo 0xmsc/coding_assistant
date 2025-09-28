@@ -223,7 +223,7 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
         },
         {
             "role": "user",
-            "content": "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_user` tool. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
+            "content": "I detected a step from you without any tool calls. This is not allowed. If you want to ask the client something, please use the `ask_client` tool. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
         },
         {
             "role": "assistant",
