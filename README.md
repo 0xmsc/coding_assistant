@@ -6,7 +6,7 @@ Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automa
 
 - Orchestrator agent that delegates to sub-agents and tools
 - Resumable sessions and conversation summaries stored per-project
-- MCP Server integration out of the box (filesystem, fetch, context7, tavily examples)
+- MCP Server integration out of the box (built-in Coding Assistant MCP + filesystem, fetch, context7, tavily examples)
 - Landlock-based filesystem sandbox with readable/writable allowlists
 - Prompt-toolkit powered TUI with optional model chunks and reasoning display
 - Shell/tool confirmation patterns to guard dangerous operations
@@ -42,7 +42,7 @@ pip install -e .
 
 ## Quickstart
 
-The easiest way to run is with the provided script, which preconfigures several MCP servers and sensible defaults:
+The easiest way to run is with the provided script, which preconfigures the built-in Coding Assistant MCP server plus several external MCP servers and sensible defaults:
 
 ```bash
 ./run.fish --task "Say 'Hello World'"
@@ -75,10 +75,9 @@ uv run coding-assistant \
   --task "Say 'Hello World'" \
   --model "gpt-5" \
   --expert-model "gpt-5" \
-  --mcp-servers '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
-  --mcp-servers '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}' \
-  --mcp-servers '{"name": "context7", "command": "npx", "args": ["-y", "@upstash/context7-mcp"], "env": []}' \
-  --mcp-servers '{"name": "tavily", "command": "npx", "args": ["-y", "tavily-mcp"], "env": ["TAVILY_API_KEY"]}'
+  --mcp-servers \
+    '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
+    '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}'
 ```
 
 Notes:
@@ -93,6 +92,8 @@ Notes:
 - `--plan` Enable planning mode to build a stepwise plan before acting.
 - `--instructions` Provide extra instructions that are composed with defaults.
 - `--print-chunks`/`--print-reasoning` Control live stream and reasoning display in the TUI.
+- `--print-instructions` Print the final instruction bundle that will be given to the agent and exit.
+- `--user-feedback` Enable/disable user feedback prompts; `--ask-user` Allow the agent to ask the user questions.
 - `--shell-confirmation-patterns` Ask for confirmation before running matching shell commands.
 - `--tool-confirmation-patterns` Ask for confirmation before running matching tools.
 - `--wait-for-debugger` Wait for a debugger (debugpy) to attach on port 1234.
@@ -111,7 +112,21 @@ Pass MCP servers with repeated `--mcp-servers` flags as JSON strings:
 }
 ```
 
-The `run.fish` script includes these examples:
+### Built-in: Coding Assistant MCP
+
+This repository includes a built-in MCP server (package `packages/coding_assistant_mcp`) that provides:
+- shell: `shell_execute` — execute shell commands (see behavior below)
+- todo: `todo_add`, `todo_list_todos`, `todo_complete` — simple in-memory TODO list
+
+When connected, tools are exposed to the agent as fully-qualified names:
+- `mcp_coding_assistant_mcp_shell_execute`
+- `mcp_coding_assistant_mcp_todo_add`
+- `mcp_coding_assistant_mcp_todo_list_todos`
+- `mcp_coding_assistant_mcp_todo_complete`
+
+The `run.fish` script starts this server automatically. You can also add it manually as shown in the "Running without run.fish" example above.
+
+### Other examples included in `run.fish`
 - filesystem: `@modelcontextprotocol/server-filesystem`
 - fetch: `mcp-server-fetch` (via `uvx`)
 - context7: `@upstash/context7-mcp`
@@ -162,7 +177,13 @@ The MCP shell tool `shell_execute` (fully qualified in this project as `mcp_codi
   uv run pytest -n auto -m "not slow"
   ```
 
-- Handy `just` recipes: `hello-world`, `commit`, `review`, `pr` (see `justfile`).
+- Run linting/formatting/type-checking:
+
+  ```bash
+  just lint
+  ```
+
+- Handy `just` recipes: `hello-world`, `commit`, `review`, `fixlint` (see `justfile`).
 
 ## License
 
