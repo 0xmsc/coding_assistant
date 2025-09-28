@@ -13,6 +13,7 @@ dev = [
     "mypy",
     "ruff",
     "pytest",
+    "pytest-xdist",
     "pytest-asyncio",
 ]
 
