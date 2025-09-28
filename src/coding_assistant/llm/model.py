@@ -1,9 +1,8 @@
 import functools
 import logging
-import os
 import re
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 import litellm
 
@@ -38,6 +37,7 @@ def _parse_model_and_reasoning(
     if effort not in ("low", "medium", "high"):
         raise ValueError(f"Invalid reasoning effort level {effort} in {model}")
 
+    effort = cast(Literal["low", "medium", "high"], effort)
     return base, effort
 
 
@@ -68,7 +68,8 @@ async def complete(
                 content = chunk["choices"][0]["delta"]["content"]
                 callbacks.on_chunk(content)
 
-            # Drop created_at so that `ChunkProcessor` does not sort according to it. It seems buggy and seems to create out-of-order chunks.
+            # Drop created_at so that `ChunkProcessor` does not sort according to it.
+            # It seems buggy and seems to create out-of-order chunks.
             chunk._hidden_params.pop("created_at", None)
 
             chunks.append(chunk)
@@ -76,6 +77,7 @@ async def complete(
         callbacks.on_chunks_end()
 
         completion = litellm.stream_chunk_builder(chunks)
+        assert completion
 
         return Completion(
             message=completion["choices"][0]["message"],

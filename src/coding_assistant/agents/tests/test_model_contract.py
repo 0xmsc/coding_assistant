@@ -1,5 +1,3 @@
-import json
-
 import pytest
 from unittest.mock import Mock
 
@@ -11,10 +9,9 @@ from coding_assistant.agents.tests.helpers import (
     FakeToolCall,
     FakeFunction,
     make_test_agent,
-    make_test_context,
     make_ui_mock,
 )
-from coding_assistant.agents.types import AgentDescription, AgentState, AgentContext, TextResult, Tool
+from coding_assistant.agents.types import AgentContext, TextResult, Tool
 from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
 
 

@@ -6,6 +6,7 @@ readme = "README.md"
 authors = []
 license = "MIT"
 requires-python = ">=3.12"
+
 dependencies = [
     "litellm",
     "litellm[proxy]",
@@ -15,15 +16,22 @@ dependencies = [
     "opentelemetry-sdk",
     "rich",
     "requests",
-    "pytest",
-    "pytest-asyncio",
-    "pytest-xdist",
     "landlock",
     "beeprint",
     "pydantic",
     "debugpy",
-    "pytest-timeout",
     "prompt-toolkit",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-xdist",
+    "pytest-timeout",
+    "mypy",
+    "ruff",
+    "types-requests",
 ]
 
 [tool.black]

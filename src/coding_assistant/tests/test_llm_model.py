@@ -1,5 +1,3 @@
-import asyncio
-import types
 import pytest
 
 from coding_assistant.llm import model as llm_model

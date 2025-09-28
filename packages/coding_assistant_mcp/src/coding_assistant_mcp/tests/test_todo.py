@@ -14,7 +14,7 @@ def test_add_and_list_single(manager: TodoManager):
     # After second add, output is the full list with both tasks
     lines = r2.splitlines()
     assert "- [ ] 1: Write tests" in lines
-    assert any(l.endswith("2: Refactor code") for l in lines)
+    assert any(line.endswith("2: Refactor code") for line in lines)
 
     text = manager.list_todos()
     assert "1: Write tests" in text

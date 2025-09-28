@@ -3,7 +3,6 @@ import json
 import pytest
 
 from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.callbacks import ConfirmationToolCallbacks
 from coding_assistant.agents.execution import do_single_step, handle_tool_call
 from coding_assistant.agents.tests.helpers import (
     FakeFunction,
@@ -11,7 +10,6 @@ from coding_assistant.agents.tests.helpers import (
     FakeToolCall,
     FakeCompleter,
     make_test_agent,
-    make_test_context,
     make_ui_mock,
 )
 from coding_assistant.agents.types import AgentContext
@@ -52,9 +50,7 @@ async def test_shorten_conversation_resets_history():
     assert state.history[1] == {
         "role": "user",
         "content": (
-            "A summary of your conversation with the client until now:\n\n"
-            f"{summary_text}\n\n"
-            "Please continue your work."
+            f"A summary of your conversation with the client until now:\n\n{summary_text}\n\nPlease continue your work."
         ),
     }
 

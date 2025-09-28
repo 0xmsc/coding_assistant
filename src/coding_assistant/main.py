@@ -1,12 +1,10 @@
 import asyncio
-import json
 import logging
 import os
-import sys
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 
-import debugpy
+import debugpy  # type: ignore[import-untyped]
 import requests
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -14,13 +12,11 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from rich import print as rich_print
-from rich.console import Console
 from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.table import Table
 
-from coding_assistant.agents.callbacks import AgentProgressCallbacks, NullProgressCallbacks
+from coding_assistant.agents.callbacks import AgentProgressCallbacks
 from coding_assistant.agents.types import Tool
 from coding_assistant.callbacks import ConfirmationToolCallbacks, RichAgentProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
@@ -262,7 +258,7 @@ async def _main(args):
     logger.info(f"Using virtual environment directory: {venv_directory}")
 
     if args.sandbox:
-        logger.info(f"Sandboxing is enabled.")
+        logger.info("Sandboxing is enabled.")
 
         readable_sandbox_directories = [
             *[Path(d).resolve() for d in args.readable_sandbox_directories],

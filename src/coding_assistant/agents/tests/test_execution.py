@@ -4,29 +4,25 @@ import time
 import pytest
 
 from coding_assistant.agents.callbacks import AgentToolCallbacks, NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.agents.execution import do_single_step, handle_tool_call, handle_tool_calls
+from coding_assistant.agents.execution import handle_tool_call, handle_tool_calls
 from coding_assistant.agents.tests.helpers import (
     FakeFunction,
     FakeToolCall,
     make_test_agent,
-    make_test_context,
     make_ui_mock,
 )
 from coding_assistant.agents.types import (
     AgentContext,
-    AgentDescription,
-    AgentState,
     FinishTaskResult,
     TextResult,
     Tool,
     ToolResult,
 )
 from coding_assistant.callbacks import ConfirmationToolCallbacks
-from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
 
 
 class FakeConfirmTool(Tool):
-    def __init__(self):
+    def __init__(self) -> None:
         self.calls: list[dict] = []
 
     def name(self) -> str:
@@ -44,7 +40,7 @@ class FakeConfirmTool(Tool):
 
 
 @pytest.mark.asyncio
-async def test_tool_confirmation_denied_and_allowed():
+async def test_tool_confirmation_denied_and_allowed() -> None:
     tool = FakeConfirmTool()
     desc, state = make_test_agent(
         tools=[tool],
@@ -99,7 +95,7 @@ async def test_tool_confirmation_denied_and_allowed():
 
 
 @pytest.mark.asyncio
-async def test_unknown_result_type_raises():
+async def test_unknown_result_type_raises() -> None:
     class WeirdResult(ToolResult):
         pass
 
@@ -126,7 +122,7 @@ async def test_unknown_result_type_raises():
 
 
 class ParallelSlowTool(Tool):
-    def __init__(self, name: str, delay: float, events: list):
+    def __init__(self, name: str, delay: float, events: list) -> None:
         self._name = name
         self._delay = delay
         self._events = events
@@ -148,7 +144,7 @@ class ParallelSlowTool(Tool):
 
 
 @pytest.mark.asyncio
-async def test_tool_call_malformed_arguments_records_error():
+async def test_tool_call_malformed_arguments_records_error() -> None:
     # Tool name can be anything; malformed JSON should short-circuit before execution attempt
     desc, state = make_test_agent()
     ctx = AgentContext(desc=desc, state=state)
@@ -172,9 +168,9 @@ async def test_tool_call_malformed_arguments_records_error():
 
 
 @pytest.mark.asyncio
-async def test_tool_execution_value_error_records_error():
+async def test_tool_execution_value_error_records_error() -> None:
     class ErrorTool(Tool):
-        def __init__(self):
+        def __init__(self) -> None:
             self.executed = False
 
         def name(self) -> str:
@@ -212,10 +208,10 @@ async def test_tool_execution_value_error_records_error():
 
 
 @pytest.mark.asyncio
-async def test_shell_tool_confirmation_denied_and_allowed():
+async def test_shell_tool_confirmation_denied_and_allowed() -> None:
     # Simulate the special shell tool name used by confirmation logic
     class FakeShellTool(Tool):
-        def __init__(self):
+        def __init__(self) -> None:
             self.calls: list[dict] = []
 
         def name(self) -> str:
@@ -282,10 +278,10 @@ async def test_shell_tool_confirmation_denied_and_allowed():
 
 
 @pytest.mark.asyncio
-async def test_before_tool_execution_can_return_finish_task_result():
+async def test_before_tool_execution_can_return_finish_task_result() -> None:
     # Callback should fabricate a FinishTaskResult and prevent underlying tool execution
     class RecordingFinishTaskTool(Tool):
-        def __init__(self):
+        def __init__(self) -> None:
             self.executed = False
 
         def name(self) -> str:
@@ -340,7 +336,7 @@ async def test_before_tool_execution_can_return_finish_task_result():
 
 
 @pytest.mark.asyncio
-async def test_multiple_tool_calls_are_parallel():
+async def test_multiple_tool_calls_are_parallel() -> None:
     # Two tools with equal delays: parallel run should take ~delay, sequential would take ~2*delay
     delay = 0.2
     events: list[tuple[str, str, float]] = []
@@ -375,7 +371,7 @@ async def test_multiple_tool_calls_are_parallel():
     elapsed = time.monotonic() - start
 
     # Assert total runtime significantly less than sequential (~0.4s)
-    assert elapsed < delay + 0.1, f"Expected parallel execution (<~{delay+0.1:.2f}s) but took {elapsed:.2f}s"
+    assert elapsed < delay + 0.1, f"Expected parallel execution (<~{delay + 0.1:.2f}s) but took {elapsed:.2f}s"
 
     # Extract ordering: we expect both starts before at least one end (start1, start2, end?, end?) not start,end,start,end
     kinds = [k for (k, _, _) in events]
@@ -384,7 +380,7 @@ async def test_multiple_tool_calls_are_parallel():
     start_indices = [i for i, k in enumerate(kinds) if k == "start"]
     assert len(start_indices) == 2, "Both tools should have started"
     assert start_indices[1] < first_end_index, (
-        "Second tool did not start before the first finished; tools likely executed sequentially. Events: " f"{events}"
+        f"Second tool did not start before the first finished; tools likely executed sequentially. Events: {events}"
     )
 
     # History should contain two tool messages (order may be any); validate both present
