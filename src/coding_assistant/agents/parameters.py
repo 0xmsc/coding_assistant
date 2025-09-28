@@ -41,7 +41,16 @@ def parameters_from_model(model: BaseModel) -> list[Parameter]:
             rendered_items: list[str] = []
             for item in value:
                 item_str = str(item)
-                rendered_items.append(item_str if item_str.startswith("- ") else f"- {item_str}")
+                if "\n" in item_str:
+                    lines = item_str.splitlines()
+                    # First line as a bullet (preserve existing '- ' when present)
+                    first = lines[0]
+                    first_bulleted = first if first.startswith("- ") else f"- {first}"
+                    # Continuation lines are indented under the bullet text
+                    continuation = [f"  {ln}" for ln in lines[1:]]
+                    rendered_items.append("\n".join([first_bulleted, *continuation]) if continuation else first_bulleted)
+                else:
+                    rendered_items.append(item_str if item_str.startswith("- ") else f"- {item_str}")
             value_str = "\n".join(rendered_items)
         elif isinstance(value, (str, int, float, bool)):
             value_str = str(value)
@@ -66,13 +75,17 @@ def format_parameters(parameters: list[Parameter]) -> str:
     PARAMETER_TEMPLATE = """
 - Name: {name}
   - Description: {description}
-  - Value: {value}
+  - Value:{value}
 """.strip()
     parts: list[str] = []
     for parameter in parameters:
         value_str = parameter.value
         if "\n" in value_str:
+            # Multiline: start on next line, indented; no trailing space after ':'
             value_str = "\n" + textwrap.indent(value_str, "    ")
+        else:
+            # Single-line: keep a space after ':' before the value
+            value_str = " " + value_str
         parts.append(
             PARAMETER_TEMPLATE.format(
                 name=parameter.name,
