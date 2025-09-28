@@ -213,11 +213,12 @@ async def handle_tool_calls(
         aws.append(task)
 
     while True:
-        done, pending = await asyncio.wait(aws, return_when=asyncio.FIRST_COMPLETED, timeout=0.2)
+        done, pending = await asyncio.wait(aws, return_when=asyncio.FIRST_COMPLETED)
 
         # await the task, which will throw any exceptions stored in the future.
         for task in done:
             await task
+            logger.info(f"[{desc.name}] Tool call '{task.get_name()}' completed.")
 
         if not pending:
             break
