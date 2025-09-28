@@ -35,7 +35,7 @@ async def execute(
         result = stdout.decode()
 
     if len(result) > truncate_at:
-        note = "\n\n[truncated output due to truncate_at limit]"
+        note = f"\n\n[truncated output at: {truncate_at}, full length: {len(result)}]"
         truncated = result[: max(0, truncate_at - len(note))]
         result = truncated + note
 
