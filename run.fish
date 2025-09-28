@@ -15,6 +15,6 @@ uv --project $project_dir run coding-assistant \
         $mcp_json_config \
         '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
         '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}' \
-        '{"name": "context7", "command": "npx", "args": ["-y", "@upstash/context7-mcp"], "env": []}' \
+        '{"name": "context7", "command": "npx", "args": ["-y", "@upstash/context7-mcp"]}' \
         '{"name": "tavily", "command": "npx", "args": ["-y", "tavily-mcp"], "env": ["TAVILY_API_KEY"]}' \
     $argv
