@@ -1,6 +1,6 @@
 test:
     uv run pytest -n auto -m "not slow"
-    uv run --directory packages/coding_assistant_mcp pytest
+    uv run --directory packages/coding_assistant_mcp pytest -n auto
 
 
 lint:
