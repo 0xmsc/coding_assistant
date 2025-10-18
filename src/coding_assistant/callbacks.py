@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Optional
 import json
-import textwrap
 import re
+import textwrap
+from typing import Any, Optional
 
 from rich import print
 from rich.console import Group
@@ -13,7 +13,7 @@ from rich.panel import Panel
 from rich.pretty import Pretty
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
-from coding_assistant.agents.types import ToolResult, TextResult
+from coding_assistant.agents.types import TextResult, ToolResult
 
 
 async def confirm_tool_if_needed(*, tool_name: str, arguments: dict, patterns: list[str], ui) -> Optional[TextResult]:
@@ -114,11 +114,37 @@ class RichAgentProgressCallbacks(AgentProgressCallbacks):
         else:
             return Markdown(f"```\n{result}\n```")
 
+    def _format_arguments(self, arguments: dict, tool_name: str):
+        parts = []
+
+        if tool_name == "mcp_coding_assistant_mcp_python_execute":
+            arguments_without_code = {k: v for k, v in arguments.items() if k != "code"}
+
+            if arguments_without_code:
+                parts.append(Padding(Pretty(arguments_without_code, expand_all=True, indent_size=2), (1, 0, 0, 0)))
+
+            code = arguments["code"]
+            parts.append(Padding(Markdown(f"```python\n{code}\n```"), (1, 0, 0, 0)))
+
+        elif tool_name == "mcp_coding_assistant_mcp_shell_execute":
+            arguments_without_command = {k: v for k, v in arguments.items() if k != "command"}
+
+            if arguments_without_command:
+                parts.append(Padding(Pretty(arguments_without_command, expand_all=True, indent_size=2), (1, 0, 0, 0)))
+
+            command = arguments["command"]
+            parts.append(Padding(Markdown(f"```bash\n{command}\n```"), (1, 0, 0, 0)))
+
+        else:
+            parts.append(Padding(Pretty(arguments, expand_all=True, indent_size=2), (1, 0, 0, 0)))
+
+        return Group(*parts)
+
     def on_tool_message(self, agent_name: str, tool_name: str, arguments: dict | None, result: str):
         parts: list[Any] = [Markdown(f"Name: `{tool_name}`")]
 
         if arguments is not None:
-            parts.append(Padding(Pretty(arguments, expand_all=True, indent_size=2), (1, 0, 0, 0)))
+            parts.append(self._format_arguments(arguments, tool_name))
 
         parts.append(Padding(self._format_tool_result(tool_name, result), (1, 0, 0, 0)))
 
