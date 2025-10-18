@@ -5,6 +5,8 @@ from typing import Annotated
 
 from fastmcp import FastMCP
 
+from coding_assistant_mcp.utils import truncate_output
+
 shell_server = FastMCP()
 
 
@@ -34,10 +36,7 @@ async def execute(
     else:
         result = stdout.decode()
 
-    if len(result) > truncate_at:
-        note = f"\n\n[truncated output at: {truncate_at}, full length: {len(result)}]"
-        truncated = result[: max(0, truncate_at - len(note))]
-        result = truncated + note
+    result = truncate_output(result, truncate_at)
 
     return result
 
