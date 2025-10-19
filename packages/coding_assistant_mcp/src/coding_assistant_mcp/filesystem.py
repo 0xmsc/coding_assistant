@@ -67,9 +67,9 @@ def _find_matching_region(
     matches = list(re.finditer(pattern, content, re.MULTILINE))
 
     if not matches:
-        raise ValueError(f"No match found for {pattern}")
+        raise ValueError(f"No match found for `{pattern}`")
     if enforce_unique_match and len(matches) != 1:
-        raise ValueError(f"No unique match found for {pattern}.")
+        raise ValueError(f"No unique match found for `{pattern}`.")
 
     m = matches[0]
     start_line = content.count("\n", 0, m.start())
