@@ -5,7 +5,6 @@ import asyncio
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import configure_logging
 
-from coding_assistant_mcp.filesystem import create_filesystem_server
 from coding_assistant_mcp.python import python_server
 from coding_assistant_mcp.shell import shell_server
 from coding_assistant_mcp.todo import create_todo_server
@@ -53,7 +52,6 @@ INSTRUCTIONS = """
 - Use `cp` & `mv` to copy/move files. Do not memorize and write contents to copy or move.
 - Do not try to use `applypatch` to edit files. Use e.g. `sed` or `edit_file`.
 - You can use `sed` to search & replace (e.g. to rename variables).
-- Do not memorize and write full text blocks to copy/cut/paste. Use the dedicated clipboard tools provided.
 """.strip()
 
 
@@ -63,7 +61,6 @@ async def _main() -> None:
 
     mcp = FastMCP("Coding Assistant MCP", instructions=INSTRUCTIONS)
     await mcp.import_server(create_todo_server(), prefix="todo")
-    # await mcp.import_server(create_filesystem_server(), prefix="filesystem")
     await mcp.import_server(shell_server, prefix="shell")
     await mcp.import_server(python_server, prefix="python")
     await mcp.run_async()
