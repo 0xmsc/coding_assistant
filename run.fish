@@ -13,5 +13,4 @@ uv --project $project_dir run coding-assistant \
     --writable-sandbox-directories "$project_dir" /tmp /dev/shm \
     --mcp-servers \
         $mcp_json_config \
-        '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "~"]}' \
     $argv
