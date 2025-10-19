@@ -75,12 +75,6 @@ def parse_args():
         help="Whether the agent can ask the user questions.",
     )
     parser.add_argument(
-        "--plan",
-        action=BooleanOptionalAction,
-        default=False,
-        help="Enable planning mode for the orchestrator agent.",
-    )
-    parser.add_argument(
         "--instructions",
         nargs="*",
         default=[],
@@ -289,7 +283,6 @@ async def _main(args):
         instructions = get_instructions(
             working_directory=working_directory,
             user_instructions=args.instructions,
-            plan=args.plan,
             mcp_servers=mcp_servers,
         )
 

@@ -33,13 +33,13 @@ START_MESSAGE_TEMPLATE = """
 
 - You are an agent named `{name}`.
 - You are given a set of parameters by your client, among which are your task and your description.
-    - It is of the utmost importance that you try your best to fulfill the task as specified.
-    - The task shall be done in a way which fits your description.
+  - It is of the utmost importance that you try your best to fulfill the task as specified.
+  - The task shall be done in a way which fits your description.
 - You must use at least one tool call in every step.
-    - Use the `finish_task` tool when you have fully finished your task, no questions should still be open.
-    - Use the `ask_client` tool if you need to ask your client a question.
+  - Use the `finish_task` tool when you have fully finished your task, no questions should still be open.
+  - Use the `ask_client` tool if you need to ask your client a question.
 - It can happen that you receive feedback from your client while working on your task.
-    - If you receive feedback, you must address it before finishing your task.
+  - If you receive feedback, you must address it before finishing your task.
 
 ## Parameters
 
