@@ -5,63 +5,17 @@ import asyncio
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import configure_logging
 
+from coding_assistant_mcp.filesystem import filesystem_server
 from coding_assistant_mcp.python import python_server
 from coding_assistant_mcp.shell import shell_server
 from coding_assistant_mcp.todo import create_todo_server
-from coding_assistant_mcp.filesystem import filesystem_server
-
-INSTRUCTIONS = """
-## General
-
-- If other MCP servers provide the same functionality, prefer the tools from this MCP server.
-
-## Tools
-
-### Shell
-
-- Use MCP shell tool `shell_execute` to execute shell commands.
-- Examples: `eza`, `git`, `fd`, `rg`, `gh`, `pwd`.
-- Be sure that the command you are running is safe. If you are unsure, ask the user.
-- Interactive commands (e.g., `git rebase -i`) are not supported and will block.
-
-### Python
-
-- You have access to a Python interpreter.
-- Use it to run code where a Shell command is not sufficient.
-- The most common libraries are already installed. Try to use libraries that are common and well-known.
-
-### TODO
-- Always manage a TODO list while working on your task.
-- Use the `todo_*` tools for managing the list.
-
-## Skills
-
-### Tool usage
-
-- Choose wisely between Shell and Python tools.
-- When in doubt, prefer Python for complex logic and Shell for simple tasks.
-- Note that you can pass single-liners or multi-line scripts into both tools.
-- Prefer multi-line scripts with comments for complex tasks, so that the user can understand what you are doing.
-
-### Exploring 
-
-- Use `pwd` to determine the project you are working on.
-- Use shell tools to explore the codebase, e.g. `fd` or `rg`.
-
-### Editing
-
-- Use `cp` & `mv` to copy/move files. Do not memorize and write contents to copy or move.
-- Do not try to use `applypatch` to edit files. Use e.g. `sed` or `edit_file`.
-- You can use `sed` to search & replace (e.g. to rename variables).
-- Writing full files should be the exception. Try to use `edit_file` to edit existing files.
-""".strip()
 
 
 async def _main() -> None:
     # Set logging to CRITICAL to minimize output from FastMCP
     configure_logging(level="CRITICAL")
 
-    mcp = FastMCP("Coding Assistant MCP", instructions=INSTRUCTIONS)
+    mcp = FastMCP("Coding Assistant MCP", instructions="")
     await mcp.import_server(create_todo_server(), prefix="todo")
     await mcp.import_server(shell_server, prefix="shell")
     await mcp.import_server(python_server, prefix="python")

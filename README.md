@@ -89,7 +89,7 @@ Notes:
 - `--task` The task for the orchestrator agent (required).
 - `--resume`/`--resume-file` Resume from the latest/specific orchestrator history in `.coding_assistant/history/`.
 - `--model`/`--expert-model` Select models for general/expert tasks.
-- `--plan` Enable planning mode to build a stepwise plan before acting.
+- The agent may autonomously decide to use a planning phase before acting; there is no explicit CLI flag.
 - `--instructions` Provide extra instructions that are composed with defaults.
 - `--print-chunks`/`--print-reasoning` Control live stream and reasoning display in the TUI.
 - `--print-instructions` Print the final instruction bundle that will be given to the agent and exit.

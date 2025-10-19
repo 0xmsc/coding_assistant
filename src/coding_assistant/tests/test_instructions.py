@@ -10,7 +10,7 @@ from coding_assistant.tools.mcp import MCPServer
 def test_get_instructions_base_and_user_instructions(tmp_path: Path):
     wd = tmp_path
     # No local file, no planning
-    instr = get_instructions(working_directory=wd, plan=False, user_instructions=["  A  ", "B\n"])
+    instr = get_instructions(working_directory=wd, user_instructions=["  A  ", "B\n"])
 
     # Key baseline rules should be present
     assert "Do not initialize a new git repository" in instr
@@ -26,7 +26,7 @@ def test_get_instructions_with_planning_and_local_file(tmp_path: Path):
     local_dir.mkdir()
     (local_dir / "instructions.md").write_text("LOCAL OVERRIDE\n- extra rule")
 
-    instr = get_instructions(working_directory=wd, plan=True, user_instructions=[])
+    instr = get_instructions(working_directory=wd, user_instructions=[])
 
     # Planning block should be included
     assert "You are in planning mode." in instr
@@ -48,7 +48,6 @@ def test_get_instructions_appends_mcp_instructions(tmp_path: Path):
 
     instr = get_instructions(
         working_directory=wd,
-        plan=False,
         user_instructions=[],
         mcp_servers=cast(list[MCPServer], [s1, s2]),
     )
@@ -71,7 +70,6 @@ def test_get_instructions_ignores_empty_or_missing_mcp_instructions(tmp_path: Pa
 
     instr = get_instructions(
         working_directory=wd,
-        plan=False,
         user_instructions=[],
         mcp_servers=cast(list[MCPServer], [s1, s2, s3]),
     )
