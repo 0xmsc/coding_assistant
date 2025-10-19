@@ -67,9 +67,10 @@ def _find_matching_region(
     matches = list(re.finditer(pattern, content, re.MULTILINE))
 
     if not matches:
-        raise ValueError(f"No match found for {pattern}")
+        raise ValueError(f"No match found for '{pattern}'.")
+
     if enforce_unique_match and len(matches) != 1:
-        raise ValueError(f"No unique match found for {pattern}.")
+        raise ValueError(f"No unique match found for '{pattern}'.")
 
     m = matches[0]
     start_line = content.count("\n", 0, m.start())
@@ -136,29 +137,29 @@ class FilesystemManager:
     def copy_range(
         self,
         path: Annotated[Path, "File path."],
-        pattern: Annotated[str, "Regex for range."],
+        pattern: Annotated[str, "Regex for edit range."],
         enforce_unique_match: Annotated[bool, "Fail if match is not unique."] = True,
     ) -> str:
         result = _copy_cut_range(path, pattern, enforce_unique_match, cut=False)
         self._entry = ClipboardEntry(lines=result.clipped_lines)
-        return f"Copied\n\n{self._get_clipboard_text()}"
+        return self._get_clipboard_text()
 
     def cut_range(
         self,
         path: Annotated[Path, "File path."],
-        pattern: Annotated[str, "Regex for range."],
+        pattern: Annotated[str, "Regex for edit range."],
         enforce_unique_match: Annotated[bool, "Fail if match is not unique."] = True,
     ) -> str:
         result = _copy_cut_range(path, pattern, enforce_unique_match, cut=True)
         self._entry = ClipboardEntry(lines=result.clipped_lines)
         assert result.edit
         self._last_edit = result.edit
-        return f"Cut\n\n{_join_lines(result.clipped_lines)}\n\nwith diff\n\n{_unified_diff(path, self._last_edit)}"
+        return _unified_diff(path, self._last_edit)
 
     def paste(
         self,
         path: Annotated[Path, "File path."],
-        pattern: Annotated[str, "Regex for range."],
+        pattern: Annotated[str, "Regex for edit range."],
         position: Annotated[str, "One of 'before', 'after', 'replace'."],
         enforce_unique_match: Annotated[bool, "Fail if match is not unique."] = True,
     ) -> str:
@@ -166,7 +167,7 @@ class FilesystemManager:
             raise ValueError("Clipboard is empty.")
         result = _edit(path, pattern, self._entry.lines, EditMode[position.upper()], enforce_unique_match)
         self._last_edit = result
-        return f"Pasted\n\n{_join_lines(self._entry.lines)}\n\nwith diff\n\n{_unified_diff(path, result)}"
+        return _unified_diff(path, self._last_edit)
 
     def undo_last_edit(self) -> str:
         """Undo the last mutating edit."""
@@ -187,6 +188,7 @@ class FilesystemManager:
     def clear_clipboard(self) -> str:
         self._entry = None
         return "Cleared clipboard."
+
     def write_file(
         self,
         path: Annotated[Path, "File path, parent directories created as needed."],
@@ -194,22 +196,22 @@ class FilesystemManager:
     ) -> str:
         old_contents = path.read_text(encoding="utf-8") if path.exists() else ""
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Enforce a trailing newline for consistency with edit operations
-        content_to_write = content if content.endswith("\n") else content + "\n"
-        path.write_text(content_to_write, encoding="utf-8")
-        self._last_edit = EditRecord(path, old_contents.splitlines(), content_to_write.splitlines())
+        content = content if content.endswith("\n") else content + "\n"
+        path.write_text(content, encoding="utf-8")
+        self._last_edit = EditRecord(path, old_contents.splitlines(), content.splitlines())
         return _unified_diff(path, self._last_edit)
+
     def edit_file(
         self,
         path: Annotated[Path, "File path."],
-        pattern: Annotated[str, "Regex for range."],
+        pattern: Annotated[str, "Regex for edit range."],
         text: Annotated[str, "Text to insert."],
         position: Annotated[str, "One of 'before', 'after', 'replace'."],
         enforce_unique_match: Annotated[bool, "Fail if match is not unique."] = True,
     ) -> str:
         result = _edit(path, pattern, text.splitlines(), EditMode[position.upper()], enforce_unique_match)
         self._last_edit = result
-        return f"Edited with diff\n\n{_unified_diff(path, self._last_edit)}"
+        return _unified_diff(path, self._last_edit)
 
 
 def create_filesystem_server() -> FastMCP:
@@ -218,7 +220,6 @@ def create_filesystem_server() -> FastMCP:
 
     server.tool(manager.write_file)
     server.tool(manager.edit_file)
-
     server.tool(manager.copy_range)
     server.tool(manager.cut_range)
     server.tool(manager.paste)
