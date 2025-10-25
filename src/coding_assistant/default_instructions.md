@@ -15,9 +15,9 @@
 
 ## Sub-agents
 
-- Make use of sub-agents to reduce your context size.
-- Launch a sub-agent, if you expect to read many files.
-- Launch multiple sub-agents to parallelize and speed up your work.
+- Launch a sub-agent when you expect to read a lot of files to extract information from the codebase.
+- You can launch multiple sub-agents in parallel to speed up your work.
+- Do not use sub-agents to do implementation tasks, treat them as if they have read-only access to the codebase.
 - Pass all necessary context to the sub-agents.
   - Sub-agents do not have access to your conversation history with the client.
   - Sub-agents only have access to the parameters you pass to them.

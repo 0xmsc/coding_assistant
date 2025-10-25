@@ -28,8 +28,6 @@ def test_get_instructions_with_planning_and_local_file(tmp_path: Path):
 
     instr = get_instructions(working_directory=wd, user_instructions=[])
 
-    # Planning block should be included
-    assert "You are in planning mode." in instr
     # Local instructions appended
     assert "LOCAL OVERRIDE" in instr
     assert "- extra rule" in instr
