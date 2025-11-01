@@ -7,6 +7,11 @@
 - Do not start a web search before asking the user.
 - Output text in markdown formatting, where appropriate.
 
+## Tools
+
+- Call multiple tools in one step where appropriate, to parallelize their execution.
+- Do not call `ask_client` together with other tools.
+
 ## Repository
 
 - Do not initialize a new git repository before asking the user.

@@ -2,11 +2,7 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.agents.callbacks import (
-    AgentProgressCallbacks,
-    AgentToolCallbacks,
-    NullProgressCallbacks,
-)
+from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks, NullProgressCallbacks
 from coding_assistant.agents.execution import run_agent_loop
 from coding_assistant.agents.parameters import Parameter, parameters_from_model
 from coding_assistant.agents.types import (
@@ -237,7 +233,7 @@ class FinishTaskSchema(BaseModel):
         description="The result of the work on the task. The work of the agent is evaluated based on this result."
     )
     summary: str = Field(
-        description="A concise summary of the conversation the agent and the client had. The summary shall be a single paragraph, without line breaks. There should be enough context such that the work could be continued based on this summary. It should be possible to evaluate your result using only your input parameters and this summary. That means that you need to include all of the user feedback you worked into your result.",
+        description="A concise summary of the conversation the agent and the client had. The summary must be a single paragraph, without line breaks. There should be enough context such that the work could be continued based on this summary. It should be possible to evaluate your result using only your input parameters and this summary. That means that you need to include all of the user feedback you worked into your result.",
     )
 
 
