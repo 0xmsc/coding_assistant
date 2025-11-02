@@ -1,8 +1,9 @@
-from abc import ABC, abstractmethod
 import logging
+from abc import ABC, abstractmethod
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.shortcuts import create_confirm_session
+from rich.console import Console
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ class UI(ABC):
 
 class PromptToolkitUI(UI):
     async def ask(self, prompt_text: str, default: str | None = None) -> str:
+        Console().bell()
         print(prompt_text)
         return await PromptSession().prompt_async("> ", default=default or "")
 

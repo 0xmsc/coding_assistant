@@ -13,4 +13,5 @@ uv --project $project_dir run coding-assistant \
     --writable-sandbox-directories "$project_dir" /tmp /dev/shm \
     --mcp-servers \
         $mcp_json_config \
+        '{"name": "context7", "command": "npx", "args": ["-y", "@upstash/context7-mcp"]}' \
     $argv
