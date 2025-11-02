@@ -1,8 +1,8 @@
 import pytest
 
+from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.config import Config
 from coding_assistant.tools.tools import OrchestratorTool
-from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.ui import NullUI
 
 # This file contains integration tests using the real LLM API.

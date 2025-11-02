@@ -11,6 +11,7 @@
 
 - Call multiple tools in one step where appropriate, to parallelize their execution.
 - Do not call `ask_client` together with other tools.
+- Ask one question per `ask_client` call. If you have multiple questions, ask them in separate calls.
 
 ## Repository
 

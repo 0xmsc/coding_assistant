@@ -6,7 +6,7 @@ import textwrap
 from typing import Any, Optional
 
 from rich import print
-from rich.console import Group
+from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.panel import Panel
@@ -70,6 +70,7 @@ class RichAgentProgressCallbacks(AgentProgressCallbacks):
                 border_style="red",
             ),
         )
+        Console().bell()
 
     def on_user_message(self, agent_name: str, content: str):
         print(

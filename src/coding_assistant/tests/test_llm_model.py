@@ -1,7 +1,7 @@
 import pytest
 
-from coding_assistant.llm import model as llm_model
 from coding_assistant.agents.callbacks import AgentProgressCallbacks
+from coding_assistant.llm import model as llm_model
 
 
 class _CB(AgentProgressCallbacks):
@@ -141,3 +141,106 @@ async def test_complete_parses_reasoning_effort_from_model_string(monkeypatch):
     assert cb.chunks == ["A", "B"]
     assert comp.tokens == 2
     assert comp.message.content == "AB"
+
+
+@pytest.mark.asyncio
+async def test_complete_forwards_image_url_openai_format(monkeypatch):
+    captured = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+
+        async def agen():
+            yield _Chunk({"choices": [{"delta": {"content": "ok"}}]})
+
+        return agen()
+
+    def fake_stream_chunk_builder(chunks):
+        class _Msg:
+            def __init__(self):
+                self.content = "ok"
+
+            def model_dump(self):
+                return {"role": "assistant", "content": self.content}
+
+        return {"choices": [{"message": _Msg()}], "usage": {"total_tokens": 1}}
+
+    monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
+    monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What's in this image?"},
+                {"type": "image_url", "image_url": {"url": "https://example.com/cat.png", "detail": "high"}},
+            ],
+        }
+    ]
+
+    cb = _CB()
+    _ = await llm_model.complete(messages=messages, model="m", tools=[], callbacks=cb)
+
+    sent = captured.get("messages")
+    assert isinstance(sent, list)
+    assert sent and isinstance(sent[0], dict)
+    parts = sent[0]["content"]
+    assert parts[0] == {"type": "text", "text": "What's in this image?"}
+    assert parts[1] == {
+        "type": "image_url",
+        "image_url": {"url": "https://example.com/cat.png", "detail": "high"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_complete_forwards_base64_image_openai_format(monkeypatch):
+    captured = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+
+        async def agen():
+            yield _Chunk({"choices": [{"delta": {"content": "ok"}}]})
+
+        return agen()
+
+    def fake_stream_chunk_builder(chunks):
+        class _Msg:
+            def __init__(self):
+                self.content = "ok"
+
+            def model_dump(self):
+                return {"role": "assistant", "content": self.content}
+
+        return {"choices": [{"message": _Msg()}], "usage": {"total_tokens": 1}}
+
+    monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
+    monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
+
+    base64_payload = "AAAABASE64STRING"
+
+    # Provide content using the OpenAI/LiteLLM standard format with a base64 data URL
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_payload}"}},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_payload}"}},
+            ],
+        }
+    ]
+
+    cb = _CB()
+    _ = await llm_model.complete(messages=messages, model="m", tools=[], callbacks=cb)
+
+    sent = captured.get("messages")
+    parts = sent[0]["content"]
+
+    # ensure we forwarded without modification
+    assert parts[0]["type"] == "image_url"
+    assert parts[0]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    assert parts[0]["image_url"]["url"].endswith(base64_payload)
+
+    assert parts[1]["type"] == "image_url"
+    assert parts[1]["image_url"]["url"].startswith("data:image/png;base64,")
+    assert parts[1]["image_url"]["url"].endswith(base64_payload)
