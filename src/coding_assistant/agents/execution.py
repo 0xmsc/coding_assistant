@@ -234,10 +234,6 @@ async def handle_tool_calls(
     for task in done:
         await task
 
-    if interrupt_controller is not None and interrupt_controller.has_pending_interrupt:
-        interrupt_controller.consume_interrupts()
-        raise asyncio.CancelledError
-
 
 @tracer.start_as_current_span("do_single_step")
 async def do_single_step(
