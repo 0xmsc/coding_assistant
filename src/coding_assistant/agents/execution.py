@@ -209,32 +209,25 @@ async def handle_tool_calls(
     for tool_call, task in tasks_with_calls:
         try:
             result_summary = await task
-            # Parse arguments from tool_call
-            try:
-                function_args = json.loads(tool_call.function.arguments)
-            except JSONDecodeError:
-                function_args = None
-            
-            append_tool_message(
-                ctx.state.history,
-                agent_callbacks,
-                ctx.desc.name,
-                tool_call.id,
-                tool_call.function.name,
-                function_args,
-                result_summary,
-            )
         except asyncio.CancelledError:
-            # Tool was cancelled - append a cancellation message
-            append_tool_message(
-                ctx.state.history,
-                agent_callbacks,
-                ctx.desc.name,
-                tool_call.id,
-                tool_call.function.name,
-                None,
-                "Tool execution was cancelled.",
-            )
+            # Tool was cancelled
+            result_summary = "Tool execution was cancelled."
+        
+        # Parse arguments from tool_call
+        try:
+            function_args = json.loads(tool_call.function.arguments)
+        except JSONDecodeError:
+            function_args = None
+        
+        append_tool_message(
+            ctx.state.history,
+            agent_callbacks,
+            ctx.desc.name,
+            tool_call.id,
+            tool_call.function.name,
+            function_args,
+            result_summary,
+        )
 
 
 @tracer.start_as_current_span("do_single_step")
