@@ -92,6 +92,18 @@ class AgentToolCallbacks(ABC):
     ) -> Optional[ToolResult]:  # pragma: no cover - interface
         pass
 
+    @abstractmethod
+    async def on_tool_interrupted(
+        self,
+        agent_name: str,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict,
+        *,
+        reason: str,
+    ) -> None:  # pragma: no cover - interface
+        pass
+
 
 class NullToolCallbacks(AgentToolCallbacks):
     async def before_tool_execution(  # type: ignore[override]
@@ -102,5 +114,16 @@ class NullToolCallbacks(AgentToolCallbacks):
         arguments: dict,
         *,
         ui,
+    ) -> None:
+        return None
+
+    async def on_tool_interrupted(  # type: ignore[override]
+        self,
+        agent_name: str,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict,
+        *,
+        reason: str,
     ) -> None:
         return None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import textwrap
 from typing import Any, Optional
@@ -14,6 +15,8 @@ from rich.pretty import Pretty
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
 from coding_assistant.agents.types import TextResult, ToolResult
+
+logger = logging.getLogger(__name__)
 
 
 async def confirm_tool_if_needed(*, tool_name: str, arguments: dict, patterns: list[str], ui) -> Optional[TextResult]:
@@ -203,3 +206,20 @@ class ConfirmationToolCallbacks(AgentToolCallbacks):
             return result
 
         return None
+
+    async def on_tool_interrupted(
+        self,
+        agent_name: str,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict,
+        *,
+        reason: str,
+    ) -> None:
+        logger.info(
+            "Tool %s (call %s) for agent %s interrupted: %s",
+            tool_name,
+            tool_call_id,
+            agent_name,
+            reason,
+        )
