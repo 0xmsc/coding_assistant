@@ -13,6 +13,7 @@ from coding_assistant.agents.execution import handle_tool_call, handle_tool_call
 from coding_assistant.agents.history import append_tool_message
 from coding_assistant.agents.tests.helpers import (
     FakeFunction,
+    FakeMessage,
     FakeToolCall,
     make_test_agent,
     make_ui_mock,
