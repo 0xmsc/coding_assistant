@@ -141,6 +141,9 @@ async def handle_tool_call(
 
     logger.debug(f"[{tool_call.id}] [{desc.name}] Calling tool '{function_name}' with arguments {function_args}")
 
+    # Notify callbacks that tool is starting
+    agent_callbacks.on_tool_start(desc.name, tool_call.id, function_name, function_args)
+
     try:
         if callback_result := await tool_callbacks.before_tool_execution(
             desc.name,

@@ -10,7 +10,7 @@ def append_tool_message(
     function_args: dict | None,
     function_call_result: str,
 ):
-    callbacks.on_tool_message(agent_name, function_name, function_args, function_call_result)
+    callbacks.on_tool_message(agent_name, tool_call_id, function_name, function_args, function_call_result)
 
     history.append(
         {
@@ -38,7 +38,4 @@ def append_assistant_message(history: list, callbacks: AgentProgressCallbacks, a
         callbacks.on_assistant_message(agent_name, message.content)
 
     message_dump = message.model_dump()
-    # Remove reasoning_content from history to preserve privacy
-    if "reasoning_content" in message_dump:
-        del message_dump["reasoning_content"]
     history.append(message_dump)

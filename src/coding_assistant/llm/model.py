@@ -59,6 +59,7 @@ async def complete(
         )
 
         chunks = []
+
         async for chunk in response:
             if (
                 len(chunk["choices"]) > 0
