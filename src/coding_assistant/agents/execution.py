@@ -2,6 +2,7 @@ import asyncio
 import dataclasses
 import json
 import logging
+from collections.abc import Callable
 from json import JSONDecodeError
 
 from opentelemetry import trace
@@ -182,7 +183,7 @@ async def handle_tool_call(
 
     tool_return_summary = result_handlers[type(function_call_result)](function_call_result)
 
-    append_tool_message(
+    append_tool_mwessage(
         state.history,
         agent_callbacks,
         desc.name,
@@ -201,7 +202,7 @@ async def handle_tool_calls(
     tool_callbacks: AgentToolCallbacks,
     *,
     ui: UI,
-    interrupt_controller: InterruptController | None = None,
+    task_created_callback: Callable[[str, asyncio.Task], None] | None = None,
 ):
     tool_calls = message.tool_calls
 
@@ -223,8 +224,8 @@ async def handle_tool_calls(
             ),
             name=f"{tool_call.function.name} ({tool_call.id})",
         )
-        if interrupt_controller is not None:
-            interrupt_controller.register_task(tool_call.id, task)
+        if task_created_callback is not None:
+            task_created_callback(tool_call.id, task)
         aws.append(task)
 
     done, pending = await asyncio.wait(aws)
@@ -393,7 +394,7 @@ async def run_chat_loop(
                         agent_callbacks,
                         tool_callbacks,
                         ui=ui,
-                        interrupt_controller=interrupt_controller,
+                        task_created_callback=interrupt_controller.register_task,
                     )
                     need_user_input = False
                 else:
