@@ -4,13 +4,11 @@ import time
 import pytest
 
 from coding_assistant.agents.callbacks import (
-    AgentProgressCallbacks,
     AgentToolCallbacks,
     NullProgressCallbacks,
     NullToolCallbacks,
 )
 from coding_assistant.agents.execution import handle_tool_call, handle_tool_calls
-from coding_assistant.agents.history import append_tool_message
 from coding_assistant.agents.tests.helpers import (
     FakeFunction,
     FakeMessage,
@@ -26,37 +24,6 @@ from coding_assistant.agents.types import (
     ToolResult,
 )
 from coding_assistant.callbacks import ConfirmationToolCallbacks
-
-
-async def handle_tool_call_and_append(
-    tool_call,
-    ctx: AgentContext,
-    agent_callbacks: AgentProgressCallbacks,
-    tool_callbacks: AgentToolCallbacks,
-    *,
-    ui,
-):
-    """Helper to call handle_tool_call and append the result to history."""
-    from json import JSONDecodeError
-    import json
-
-    result_summary = await handle_tool_call(tool_call, ctx, agent_callbacks, tool_callbacks, ui=ui)
-
-    # Parse arguments from tool_call
-    try:
-        function_args = json.loads(tool_call.function.arguments)
-    except JSONDecodeError:
-        function_args = None
-
-    append_tool_message(
-        ctx.state.history,
-        agent_callbacks,
-        ctx.desc.name,
-        tool_call.id,
-        tool_call.function.name,
-        function_args,
-        result_summary,
-    )
 
 
 class FakeConfirmTool(Tool):
