@@ -245,47 +245,8 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
     assert state.output.result == "r"
 
 
-@pytest.mark.asyncio
-async def test_interrupt_signals_do_not_change_outcome(monkeypatch):
-    class FakeInterruptOnce:
-        _count = 0
-
-        def __enter__(self):
-            type(self)._count += 1
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        @property
-        def was_interrupted(self):
-            return self._count == 1
-
-    from coding_assistant.agents import execution as execution_module
-
-    monkeypatch.setattr(execution_module, "InterruptibleSection", FakeInterruptOnce)
-
-    finish_call = FakeToolCall(
-        "1",
-        FakeFunction(
-            "finish_task",
-            json.dumps({"result": "done", "summary": "sum"}),
-        ),
-    )
-    completer = FakeCompleter([FakeMessage(tool_calls=[finish_call])])
-
-    desc, state = make_test_agent(tools=[FinishTaskTool(), ShortenConversation()])
-
-    await run_agent_loop(
-        AgentContext(desc=desc, state=state),
-        agent_callbacks=NullProgressCallbacks(),
-        tool_callbacks=NullToolCallbacks(),
-        shorten_conversation_at_tokens=200_000,
-        completer=completer,
-        ui=make_ui_mock(),
-    )
-    assert state.output is not None
-    assert state.output.result == "done"
+# Note: Interrupt handling is now integrated into InterruptController and only used by run_chat_loop
+# run_agent_loop doesn't use interrupt handling, so no test needed here
 
 
 @pytest.mark.asyncio

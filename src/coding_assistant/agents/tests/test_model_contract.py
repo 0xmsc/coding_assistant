@@ -49,6 +49,11 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
 
     assert msg.content == fake_message.content
 
+    # Append assistant message to history (simulating loop behavior)
+    from coding_assistant.agents.history import append_assistant_message
+
+    append_assistant_message(state.history, NullProgressCallbacks(), desc.name, msg)
+
     # Simulate loop behavior: execute tools and then append shorten prompt due to tokens
     await handle_tool_calls(msg, ctx, NullProgressCallbacks(), NullToolCallbacks(), ui=make_ui_mock())
     if tokens > 1000:
