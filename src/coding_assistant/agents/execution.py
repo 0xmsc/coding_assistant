@@ -2,14 +2,13 @@ import asyncio
 import dataclasses
 import json
 import logging
-import textwrap
 from json import JSONDecodeError
 
 from opentelemetry import trace
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
-from coding_assistant.agents.interrupts import InterruptibleSection, NonInterruptibleSection
+from coding_assistant.agents.interrupts import InterruptibleSection, NonInterruptibleSection  # noqa: F401
 from coding_assistant.agents.parameters import format_parameters
 from coding_assistant.agents.types import (
     AgentContext,
@@ -37,8 +36,6 @@ START_MESSAGE_TEMPLATE = """
   - The task shall be done in a way which fits your description.
 - You must use at least one tool call in every step.
   - Use the `finish_task` tool when you have fully finished your task, no questions should still be open.
-- It can happen that you receive feedback from your client while working on your task.
-  - If you receive feedback, you must address it before finishing your task.
 
 ## Parameters
 
@@ -47,13 +44,17 @@ Your client has provided the following parameters for your task:
 {parameters}
 """.strip()
 
-FEEDBACK_TEMPLATE = """
-Your client has provided the following feedback on your work:
+CHAT_START_MESSAGE_TEMPLATE = """
+## General
 
-{feedback}
+- You are an agent named `{name}`.
+- You are in chat mode. You may converse without using tools. When you do not know what to do next, reply without any tool calls to return control to the user. Use tools only when they materially advance the work.
 
-Please rework your result to address the feedback.
-Afterwards, call the `finish_task` tool again to signal that you are done.
+## Parameters
+
+Your client has provided the following parameters for your session:
+
+{parameters}
 """.strip()
 
 
@@ -64,6 +65,15 @@ def _create_start_message(desc: AgentDescription) -> str:
         parameters=parameters_str,
     )
 
+    return message
+
+
+def _create_chat_start_message(desc: AgentDescription) -> str:
+    parameters_str = format_parameters(desc.parameters)
+    message = CHAT_START_MESSAGE_TEMPLATE.format(
+        name=desc.name,
+        parameters=parameters_str,
+    )
     return message
 
 
@@ -136,7 +146,7 @@ async def handle_tool_call(
     trace.get_current_span().set_attribute("function.name", function_name)
     trace.get_current_span().set_attribute("function.args", json.dumps(function_args))
 
-    logger.info(f"[{tool_call.id}] [{desc.name}] Calling tool '{function_name}' with arguments {function_args}")
+    logger.debug(f"[{tool_call.id}] [{desc.name}] Calling tool '{function_name}' with arguments {function_args}")
 
     try:
         if callback_result := await tool_callbacks.before_tool_execution(
@@ -192,16 +202,9 @@ async def handle_tool_calls(
     *,
     ui: UI,
 ):
-    desc = ctx.desc
-    state = ctx.state
     tool_calls = message.tool_calls
+
     if not tool_calls:
-        append_user_message(
-            state.history,
-            agent_callbacks,
-            desc.name,
-            "I detected a step from you without any tool calls. This is not allowed. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
-        )
         return
 
     trace.get_current_span().set_attribute("message.tool_calls", [x.model_dump_json() for x in tool_calls])
@@ -232,21 +235,12 @@ async def handle_tool_calls(
 async def do_single_step(
     ctx: AgentContext,
     agent_callbacks: AgentProgressCallbacks,
-    shorten_conversation_at_tokens: int,
     *,
     completer: Completer,
-    ui: UI,
-    tool_callbacks: AgentToolCallbacks,
 ):
     desc = ctx.desc
     state = ctx.state
     trace.get_current_span().set_attribute("agent.name", desc.name)
-
-    # Validate agent tools
-    if not any(tool.name() == "finish_task" for tool in desc.tools):
-        raise RuntimeError("Agent needs to have a `finish_task` tool in order to run a step.")
-    if not any(tool.name() == "shorten_conversation" for tool in desc.tools):
-        raise RuntimeError("Agent needs to have a `shorten_conversation` tool in order to run a step.")
 
     tools = await get_tools(desc.tools)
     trace.get_current_span().set_attribute("agent.tools", json.dumps(tools))
@@ -268,28 +262,9 @@ async def do_single_step(
         trace.get_current_span().set_attribute("completion.reasoning_content", message.reasoning_content)
         agent_callbacks.on_assistant_reasoning(desc.name, message.reasoning_content)
 
-        # We delete reasoning so we don't store it in the history, and hence do not send it to the LLM again.
-        del message.reasoning_content
-
     append_assistant_message(state.history, agent_callbacks, desc.name, message)
-    await handle_tool_calls(
-        message,
-        ctx,
-        agent_callbacks,
-        tool_callbacks,
-        ui=ui,
-    )
 
-    # Check conversation length and request shortening if needed
-    if completion.tokens > shorten_conversation_at_tokens:
-        append_user_message(
-            state.history,
-            agent_callbacks,
-            desc.name,
-            "Your conversation history has grown too large. Please summarize it by using the `shorten_conversation` tool.",
-        )
-
-    return message
+    return message, completion.tokens
 
 
 @tracer.start_as_current_span("run_agent_loop")
@@ -301,8 +276,6 @@ async def run_agent_loop(
     completer: Completer,
     ui: UI,
     shorten_conversation_at_tokens: int = 200_000,
-    enable_user_feedback: bool = False,
-    is_interruptible: bool = False,
 ):
     desc = ctx.desc
     state = ctx.state
@@ -314,47 +287,99 @@ async def run_agent_loop(
     parameters_json = json.dumps([dataclasses.asdict(p) for p in desc.parameters])
     trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
 
+    # Validate tools required for the agent loop
+    if not any(tool.name() == "finish_task" for tool in desc.tools):
+        raise RuntimeError("Agent needs to have a `finish_task` tool in order to run.")
+    if not any(tool.name() == "shorten_conversation" for tool in desc.tools):
+        raise RuntimeError("Agent needs to have a `shorten_conversation` tool in order to run.")
+
     start_message = _create_start_message(desc)
     agent_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
     append_user_message(state.history, agent_callbacks, desc.name, start_message)
 
-    while True:
-        while state.output is None:
-            section_cls = InterruptibleSection if is_interruptible else NonInterruptibleSection
-            with section_cls() as interruptible_section:
-                await do_single_step(
-                    ctx,
-                    agent_callbacks,
-                    shorten_conversation_at_tokens,
-                    completer=completer,
-                    ui=ui,
-                    tool_callbacks=tool_callbacks,
-                )
+    while state.output is None:
+        message, tokens = await do_single_step(
+            ctx,
+            agent_callbacks,
+            completer=completer,
+        )
 
-            if interruptible_section.was_interrupted:
-                logger.info(f"Agent '{desc.name}' was interrupted during execution.")
-                feedback = await ui.ask("Feedback: ")
-                formatted_feedback = FEEDBACK_TEMPLATE.format(
-                    feedback=textwrap.indent(feedback, "> "),
-                )
-                append_user_message(state.history, agent_callbacks, desc.name, formatted_feedback)
-
-        assert state.output is not None, "Agent did not produce output"
-
-        trace.get_current_span().set_attribute("agent.result", state.output.result)
-        trace.get_current_span().set_attribute("agent.summary", state.output.summary)
-
-        agent_callbacks.on_agent_end(desc.name, state.output.result, state.output.summary)
-
-        user_feedback: str = "Ok"
-        if enable_user_feedback:
-            user_feedback = await ui.ask(f"Feedback for {desc.name}", default="Ok")
-
-        if user_feedback != "Ok":
-            formatted_feedback = FEEDBACK_TEMPLATE.format(feedback=textwrap.indent(user_feedback, "> "))
-            append_user_message(state.history, agent_callbacks, desc.name, formatted_feedback)
-            state.output = None  # continue loop
+        if getattr(message, "tool_calls", []):
+            await handle_tool_calls(
+                message,
+                ctx,
+                agent_callbacks,
+                tool_callbacks,
+                ui=ui,
+            )
         else:
-            break
+            # Handle assistant steps without tool calls: inject corrective message
+            append_user_message(
+                state.history,
+                agent_callbacks,
+                desc.name,
+                "I detected a step from you without any tool calls. This is not allowed. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
+            )
+        if tokens > shorten_conversation_at_tokens:
+            append_user_message(
+                state.history,
+                agent_callbacks,
+                desc.name,
+                "Your conversation history has grown too large. Please summarize it by using the `shorten_conversation` tool.",
+            )
 
     assert state.output is not None
+
+    trace.get_current_span().set_attribute("agent.result", state.output.result)
+    trace.get_current_span().set_attribute("agent.summary", state.output.summary)
+
+    agent_callbacks.on_agent_end(desc.name, state.output.result, state.output.summary)
+
+
+@tracer.start_as_current_span("run_chat_loop")
+async def run_chat_loop(
+    ctx: AgentContext,
+    *,
+    agent_callbacks: AgentProgressCallbacks,
+    tool_callbacks: AgentToolCallbacks,
+    completer: Completer,
+    ui: UI,
+    is_interruptible: bool = True,
+):
+    desc = ctx.desc
+    state = ctx.state
+
+    trace.get_current_span().set_attribute("agent.name", desc.name)
+    parameters_json = json.dumps([dataclasses.asdict(p) for p in desc.parameters])
+    trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
+
+    start_message = _create_chat_start_message(desc)
+    agent_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
+    append_user_message(state.history, agent_callbacks, desc.name, start_message)
+
+    need_user_input = True
+
+    while True:
+        if need_user_input:
+            answer = await ui.prompt()
+            if answer.strip() == "/exit":
+                break
+            append_user_message(state.history, agent_callbacks, desc.name, answer)
+
+        message, _tokens = await do_single_step(
+            ctx,
+            agent_callbacks,
+            completer=completer,
+        )
+
+        if getattr(message, "tool_calls", []):
+            await handle_tool_calls(
+                message,
+                ctx,
+                agent_callbacks,
+                tool_callbacks,
+                ui=ui,
+            )
+            need_user_input = False
+        else:
+            need_user_input = True

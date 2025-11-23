@@ -16,7 +16,7 @@ from coding_assistant.agents.types import (
 )
 from coding_assistant.config import Config
 from coding_assistant.llm.model import complete
-from coding_assistant.ui import UI, DefaultAnswerUI
+from coding_assistant.ui import DefaultAnswerUI, UI
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,6 @@ class OrchestratorTool(Tool):
                     NullProgressCallbacks(),
                     self._tool_callbacks,
                 ),
-                AskClientTool(self._config.enable_ask_user, ui=self._ui),
                 *self._tools,
             ],
         )
@@ -99,10 +98,8 @@ class OrchestratorTool(Tool):
                 agent_callbacks=self._agent_callbacks,
                 tool_callbacks=self._tool_callbacks,
                 shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
-                enable_user_feedback=self._config.enable_user_feedback,
                 completer=complete,
                 ui=self._ui,
-                is_interruptible=True,
             )
             assert state.output is not None, "Agent did not produce output"
             self.summary = state.output.summary
@@ -185,47 +182,11 @@ class AgentTool(Tool):
             agent_callbacks=self._agent_callbacks,
             tool_callbacks=self._tool_callbacks,
             shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
-            enable_user_feedback=False,
             completer=complete,
-            is_interruptible=False,
             ui=self._ui,
         )
         assert state.output is not None, "Agent did not produce output"
         return TextResult(content=state.output.result)
-
-
-class AskClientSchema(BaseModel):
-    question: str = Field(description="The question to ask the client.")
-    default_answer: str | None = Field(default=None, description="A sensible default answer to the question.")
-
-
-class AskClientTool(Tool):
-    def __init__(self, enabled: bool, ui: UI):
-        self.enabled = enabled
-        self._ui = ui
-
-    def name(self) -> str:
-        return "ask_client"
-
-    def description(self) -> str:
-        return "Ask the client for input."
-
-    def parameters(self) -> dict:
-        return AskClientSchema.model_json_schema()
-
-    async def execute(self, parameters: dict) -> TextResult:
-        assert "question" in parameters
-
-        if not self.enabled:
-            return TextResult(
-                "Client input is disabled for this session. Please continue as if the client had given the most sensible answer to your question."
-            )
-
-        question = parameters["question"]
-        default_answer = parameters.get("default_answer")
-
-        answer = await self._ui.ask(question, default=default_answer or "")
-        return TextResult(content=str(answer))
 
 
 class FinishTaskSchema(BaseModel):
@@ -233,7 +194,7 @@ class FinishTaskSchema(BaseModel):
         description="The result of the work on the task. The work of the agent is evaluated based on this result."
     )
     summary: str = Field(
-        description="A concise summary of the conversation the agent and the client had. The summary must be a single paragraph, without line breaks. There should be enough context such that the work could be continued based on this summary. It should be possible to evaluate your result using only your input parameters and this summary. That means that you need to include all of the user feedback you worked into your result.",
+        description="A concise summary of the conversation the agent and the client had. The summary must be a single paragraph, without line breaks. There should be enough context such that the work could be continued based on this summary. It should be possible to evaluate your result using only your input parameters and this summary.",
     )
 
 

@@ -61,7 +61,6 @@ async def test_tool_selection_then_finish():
         agent_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         shorten_conversation_at_tokens=200_000,
-        enable_user_feedback=False,
         completer=completer,
         ui=make_ui_mock(),
     )
@@ -138,7 +137,6 @@ async def test_unknown_tool_error_then_finish(monkeypatch):
         agent_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         shorten_conversation_at_tokens=200_000,
-        enable_user_feedback=False,
         completer=completer,
         ui=make_ui_mock(),
     )
@@ -210,7 +208,6 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
         agent_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         shorten_conversation_at_tokens=200_000,
-        enable_user_feedback=False,
         completer=completer,
         ui=make_ui_mock(),
     )
@@ -249,8 +246,7 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_interrupt_feedback_injected_and_loop_continues(monkeypatch):
-    # Fake InterruptibleSection that signals one interruption, then none
+async def test_interrupt_signals_do_not_change_outcome(monkeypatch):
     class FakeInterruptOnce:
         _count = 0
 
@@ -265,103 +261,31 @@ async def test_interrupt_feedback_injected_and_loop_continues(monkeypatch):
         def was_interrupted(self):
             return self._count == 1
 
-    # Patch the execution module to use our fake
     from coding_assistant.agents import execution as execution_module
 
     monkeypatch.setattr(execution_module, "InterruptibleSection", FakeInterruptOnce)
 
-    echo_call = FakeToolCall("1", FakeFunction("fake.echo", json.dumps({"text": "first"})))
     finish_call = FakeToolCall(
-        "2",
+        "1",
         FakeFunction(
             "finish_task",
             json.dumps({"result": "done", "summary": "sum"}),
         ),
     )
+    completer = FakeCompleter([FakeMessage(tool_calls=[finish_call])])
 
-    completer = FakeCompleter(
-        [
-            FakeMessage(tool_calls=[echo_call]),  # interrupted after this step
-            FakeMessage(tool_calls=[finish_call]),
-        ]
-    )
-
-    echo_tool = FakeEchoTool()
-    agent = make_test_agent(tools=[echo_tool, FinishTaskTool(), ShortenConversation()])
-    desc, state = agent
-
-    expected_feedback_text = (
-        "Your client has provided the following feedback on your work:\n\n"
-        "> Please refine\n\n"
-        "Please rework your result to address the feedback.\n"
-        "Afterwards, call the `finish_task` tool again to signal that you are done."
-    )
+    desc, state = make_test_agent(tools=[FinishTaskTool(), ShortenConversation()])
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
         agent_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         shorten_conversation_at_tokens=200_000,
-        enable_user_feedback=False,
         completer=completer,
-        ui=make_ui_mock(ask_sequence=[("Feedback: ", "Please refine")]),
-        is_interruptible=True,
+        ui=make_ui_mock(),
     )
     assert state.output is not None
     assert state.output.result == "done"
-    desc, state = agent
-    # Feedback should be injected between first tool result and the next assistant call
-    assert expected_feedback_text in [m.get("content") for m in state.history if m.get("role") == "user"]
-
-    @pytest.mark.asyncio
-    async def test_interrupt_disabled_skips_feedback(monkeypatch):
-        # Fake InterruptibleSection that would signal interruption, but we disable it
-        class FakeInterruptAlways:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, exc_type, exc, tb):
-                return False
-
-            @property
-            def was_interrupted(self):
-                return True
-
-        from coding_assistant.agents import execution as execution_module
-
-        monkeypatch.setattr(execution_module, "InterruptibleSection", FakeInterruptAlways)
-
-        finish_call = FakeToolCall(
-            "1",
-            FakeFunction(
-                "finish_task",
-                json.dumps({"result": "done", "summary": "sum"}),
-            ),
-        )
-        completer = FakeCompleter(
-            [
-                FakeMessage(tool_calls=[finish_call]),
-            ]
-        )
-
-        desc, state = make_test_agent(tools=[FinishTaskTool(), ShortenConversation()])
-
-        await run_agent_loop(
-            AgentContext(desc=desc, state=state),
-            agent_callbacks=NullProgressCallbacks(),
-            tool_callbacks=NullToolCallbacks(),
-            shorten_conversation_at_tokens=200_000,
-            enable_user_feedback=False,
-            completer=completer,
-            ui=make_ui_mock(),
-            is_interruptible=False,
-        )
-        assert state.output is not None
-        assert state.output.result == "done"
-        # Ensure no feedback prompt injected
-        assert not any(
-            "Feedback on your work" in (m.get("content") or "") for m in state.history if m.get("role") == "user"
-        )
 
 
 @pytest.mark.asyncio
@@ -374,7 +298,6 @@ async def test_errors_if_output_already_set():
             agent_callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             shorten_conversation_at_tokens=200_000,
-            enable_user_feedback=False,
             completer=FakeCompleter([FakeMessage(content="irrelevant")]),
             ui=make_ui_mock(),
         )
@@ -399,9 +322,8 @@ async def test_feedback_ok_does_not_reloop():
         agent_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         shorten_conversation_at_tokens=200_000,
-        enable_user_feedback=True,
         completer=completer,
-        ui=make_ui_mock(ask_sequence=[(f"Feedback for {desc.name}", "Ok")]),
+        ui=make_ui_mock(),
     )
     assert state.output is not None
     assert state.output.result == "final"
@@ -435,7 +357,6 @@ async def test_multiple_tool_calls_processed_in_order():
         agent_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         shorten_conversation_at_tokens=200_000,
-        enable_user_feedback=False,
         completer=completer,
         ui=make_ui_mock(),
     )
@@ -532,22 +453,12 @@ async def test_feedback_loop_then_finish():
         agent_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         shorten_conversation_at_tokens=200_000,
-        enable_user_feedback=True,
         completer=completer,
-        ui=make_ui_mock(
-            ask_sequence=[(f"Feedback for {desc.name}", "Please improve"), (f"Feedback for {desc.name}", "Ok")]
-        ),
+        ui=make_ui_mock(),
     )
     assert state.output is not None
-    assert state.output.result == "second"
-    assert state.output.summary == "s2"
-
-    expected_feedback_text = (
-        "Your client has provided the following feedback on your work:\n\n"
-        "> Please improve\n\n"
-        "Please rework your result to address the feedback.\n"
-        "Afterwards, call the `finish_task` tool again to signal that you are done."
-    )
+    assert state.output.result == "first"
+    assert state.output.summary == "s1"
 
     desc, state = agent
     assert state.history[1:] == [
@@ -565,28 +476,6 @@ async def test_feedback_loop_then_finish():
         },
         {
             "tool_call_id": "1",
-            "role": "tool",
-            "name": "finish_task",
-            "content": "Agent output set.",
-        },
-        {
-            "role": "user",
-            "content": expected_feedback_text,
-        },
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "2",
-                    "function": {
-                        "name": "finish_task",
-                        "arguments": '{"result": "second", "summary": "s2"}',
-                    },
-                }
-            ],
-        },
-        {
-            "tool_call_id": "2",
             "role": "tool",
             "name": "finish_task",
             "content": "Agent output set.",

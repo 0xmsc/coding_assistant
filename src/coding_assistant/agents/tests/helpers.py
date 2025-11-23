@@ -115,6 +115,12 @@ def make_ui_mock(
     ui.ask = AsyncMock(side_effect=_ask)
     ui.confirm = AsyncMock(side_effect=_confirm)
 
+    async def _prompt() -> str:
+        # In chat mode, prompt uses a generic '> ' prompt
+        return await _ask("> ", None)
+
+    ui.prompt = AsyncMock(side_effect=_prompt)
+
     # Expose remaining expectations for introspection in tests (optional)
     ui._remaining_ask_expectations = ask_seq
     ui._remaining_confirm_expectations = confirm_seq
