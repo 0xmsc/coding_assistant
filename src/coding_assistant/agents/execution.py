@@ -358,7 +358,6 @@ async def run_chat_loop(
 
     need_user_input = True
     loop = asyncio.get_running_loop()
-    interrupt_controller = InterruptController(loop)
 
     while True:
         if need_user_input:
@@ -367,7 +366,8 @@ async def run_chat_loop(
                 break
             append_user_message(state.history, agent_callbacks, desc.name, answer)
 
-        with interrupt_controller:
+        # Create fresh interrupt controller for this iteration
+        with InterruptController(loop) as interrupt_controller:
             # Create task for do_single_step so it can be cancelled
             step_task = loop.create_task(
                 do_single_step(
@@ -383,11 +383,8 @@ async def run_chat_loop(
                 message, _tokens = await step_task
             except asyncio.CancelledError:
                 # LLM call was interrupted - prompt for user input
-                if interrupt_controller.has_pending_interrupt:
-                    interrupt_controller.consume_interrupts()
-                    need_user_input = True
-                    continue
-                raise
+                need_user_input = True
+                continue
 
             if getattr(message, "tool_calls", []):
                 await handle_tool_calls(
@@ -401,8 +398,3 @@ async def run_chat_loop(
                 need_user_input = False
             else:
                 need_user_input = True
-
-        # After execution, check for interrupts from tool calls
-        if interrupt_controller.has_pending_interrupt:
-            interrupt_controller.consume_interrupts()
-            need_user_input = True
