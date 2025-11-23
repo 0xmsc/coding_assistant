@@ -262,8 +262,6 @@ async def do_single_step(
         trace.get_current_span().set_attribute("completion.reasoning_content", message.reasoning_content)
         agent_callbacks.on_assistant_reasoning(desc.name, message.reasoning_content)
 
-    append_assistant_message(state.history, agent_callbacks, desc.name, message)
-
     return message, completion.tokens
 
 
@@ -303,6 +301,9 @@ async def run_agent_loop(
             agent_callbacks,
             completer=completer,
         )
+        
+        # Append assistant message to history
+        append_assistant_message(state.history, agent_callbacks, desc.name, message)
 
         if getattr(message, "tool_calls", []):
             await handle_tool_calls(
@@ -381,6 +382,8 @@ async def run_chat_loop(
 
             try:
                 message, _tokens = await step_task
+                # Append assistant message to history
+                append_assistant_message(state.history, agent_callbacks, desc.name, message)
             except asyncio.CancelledError:
                 # LLM call was interrupted - prompt for user input
                 need_user_input = True
