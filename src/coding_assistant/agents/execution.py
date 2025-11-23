@@ -401,4 +401,3 @@ async def run_chat_loop(
                     need_user_input = True
             except asyncio.CancelledError:
                 need_user_input = True
-                continue
