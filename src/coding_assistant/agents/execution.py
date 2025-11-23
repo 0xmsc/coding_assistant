@@ -360,15 +360,15 @@ async def run_chat_loop(
     loop = asyncio.get_running_loop()
     interrupt_controller = InterruptController(loop)
 
-    with interrupt_controller:
-        while True:
-            try:
-                if need_user_input:
-                    answer = await ui.prompt()
-                    if answer.strip() == "/exit":
-                        break
-                    append_user_message(state.history, agent_callbacks, desc.name, answer)
+    while True:
+        if need_user_input:
+            answer = await ui.prompt()
+            if answer.strip() == "/exit":
+                break
+            append_user_message(state.history, agent_callbacks, desc.name, answer)
 
+        with interrupt_controller:
+            try:
                 message, _tokens = await do_single_step(
                     ctx,
                     agent_callbacks,
