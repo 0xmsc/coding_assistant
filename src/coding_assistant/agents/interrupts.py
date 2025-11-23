@@ -3,7 +3,7 @@ import signal
 from asyncio import AbstractEventLoop, Task
 from enum import Enum
 from types import FrameType
-from typing import Any, Awaitable, Callable, Optional, Union
+from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,9 @@ class InterruptController:
         self._pending_cleanup: dict[str, Callable[[], Awaitable[None]] | None] = {}
         self._interrupt_reasons: list[InterruptReason] = []
         self._was_interrupted = 0
-        self._original_handler: Optional[Union[signal._HANDLER, int, None]] = None
+        self._original_handler: signal.Handlers | None = None
 
-    def _signal_handler(self, signum: int, frame: Optional[FrameType]) -> None:
+    def _signal_handler(self, signum: int, frame: FrameType | None) -> None:
         """Handle SIGINT signals."""
         self._was_interrupted += 1
         self.request_interrupt()
