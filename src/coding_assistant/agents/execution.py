@@ -118,7 +118,8 @@ async def handle_tool_call(
     tool_callbacks: AgentToolCallbacks,
     *,
     ui: UI,
-):
+) -> tuple[str, dict | None, str]:
+    """Execute a single tool call and return (function_name, function_args, result_summary)."""
     desc = ctx.desc
     state = ctx.state
     function_name = tool_call.function.name
@@ -133,16 +134,7 @@ async def handle_tool_call(
         logger.error(
             f"[{desc.name}] [{tool_call.id}] Failed to parse tool '{function_name}' arguments as JSON: {e} | raw: {args_str}"
         )
-        append_tool_message(
-            state.history,
-            agent_callbacks,
-            desc.name,
-            tool_call.id,
-            function_name,
-            None,
-            f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}",
-        )
-        return
+        return (function_name, None, f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}")
 
     trace.get_current_span().set_attribute("function.name", function_name)
     trace.get_current_span().set_attribute("function.args", json.dumps(function_args))
@@ -162,16 +154,7 @@ async def handle_tool_call(
         else:
             function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
     except ValueError as e:
-        append_tool_message(
-            state.history,
-            agent_callbacks,
-            desc.name,
-            tool_call.id,
-            function_name,
-            function_args,
-            f"Error executing tool: {e}",
-        )
-        return
+        return (function_name, function_args, f"Error executing tool: {e}")
 
     trace.get_current_span().set_attribute("function.result", str(function_call_result))
 
@@ -182,16 +165,7 @@ async def handle_tool_call(
     }
 
     tool_return_summary = result_handlers[type(function_call_result)](function_call_result)
-
-    append_tool_message(
-        state.history,
-        agent_callbacks,
-        desc.name,
-        tool_call.id,
-        function_name,
-        function_args,
-        tool_return_summary,
-    )
+    return (function_name, function_args, tool_return_summary)
 
 
 @tracer.start_as_current_span("handle_tool_calls")
@@ -211,7 +185,7 @@ async def handle_tool_calls(
 
     trace.get_current_span().set_attribute("message.tool_calls", [x.model_dump_json() for x in tool_calls])
 
-    aws = []
+    tasks_with_calls = []
     loop = asyncio.get_running_loop()
     for tool_call in tool_calls:
         task = loop.create_task(
@@ -226,14 +200,35 @@ async def handle_tool_calls(
         )
         if task_created_callback is not None:
             task_created_callback(tool_call.id, task)
-        aws.append(task)
+        tasks_with_calls.append((tool_call, task))
 
-    done, pending = await asyncio.wait(aws)
+    done, pending = await asyncio.wait([task for _, task in tasks_with_calls])
     assert len(pending) == 0
 
-    # await the task, which will throw any exceptions stored in the future.
-    for task in done:
-        await task
+    # Process results and append tool messages
+    for tool_call, task in tasks_with_calls:
+        try:
+            function_name, function_args, result_summary = await task
+            append_tool_message(
+                ctx.state.history,
+                agent_callbacks,
+                ctx.desc.name,
+                tool_call.id,
+                function_name,
+                function_args,
+                result_summary,
+            )
+        except asyncio.CancelledError:
+            # Tool was cancelled - append a cancellation message
+            append_tool_message(
+                ctx.state.history,
+                agent_callbacks,
+                ctx.desc.name,
+                tool_call.id,
+                tool_call.function.name,
+                None,
+                "Tool execution was cancelled.",
+            )
 
 
 @tracer.start_as_current_span("do_single_step")
