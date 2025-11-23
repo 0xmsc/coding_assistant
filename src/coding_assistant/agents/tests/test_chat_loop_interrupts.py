@@ -552,5 +552,5 @@ async def test_sigint_interrupts_tool_execution():
     assert any("recovered from SIGINT" in m.get("content", "") for m in user_messages)
 
 
-# Note: Multiple SIGINT behavior (>3 causing SystemExit) is already tested
-# in test_interrupts.py::test_interruptible_section_exits_after_too_many_sigints
+# Note: Multiple SIGINT behavior is tested in test_interrupts.py::test_interruptible_section_handles_multiple_sigints
+# With proper interrupt handling, multiple SIGINTs no longer cause sys.exit()

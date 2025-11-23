@@ -1,6 +1,5 @@
 import logging
 import signal
-import sys
 from asyncio import AbstractEventLoop, Task
 from enum import Enum
 from types import FrameType
@@ -30,8 +29,6 @@ class InterruptibleSection:
                 self._on_interrupt()
             except Exception:  # pragma: no cover - defensive logging
                 logger.exception("Error while handling interrupt callback")
-        if self._was_interrupted > 3:
-            sys.exit(1)
 
     def __enter__(self) -> "InterruptibleSection":
         self._original_handler = signal.signal(signal.SIGINT, self._signal_handler)

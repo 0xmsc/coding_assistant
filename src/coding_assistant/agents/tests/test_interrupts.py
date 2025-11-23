@@ -18,11 +18,14 @@ def test_interruptible_section_catches_sigint():
     assert interruptible_section.was_interrupted
 
 
-def test_interruptible_section_exits_after_too_many_sigints():
-    with pytest.raises(SystemExit):
-        with InterruptibleSection():
-            for _ in range(6):
-                os.kill(os.getpid(), signal.SIGINT)
+def test_interruptible_section_handles_multiple_sigints():
+    """Test that multiple SIGINTs are handled without exiting."""
+    with InterruptibleSection() as interruptible_section:
+        for _ in range(6):
+            os.kill(os.getpid(), signal.SIGINT)
+    # Should have tracked all interrupts
+    assert interruptible_section.was_interrupted
+    assert interruptible_section._was_interrupted == 6
 
 
 @pytest.mark.asyncio
