@@ -373,10 +373,8 @@ async def run_chat_loop(
                 break
             append_user_message(state.history, agent_callbacks, desc.name, answer)
 
-        # Create fresh interrupt controller for this iteration
         with InterruptController(loop) as interrupt_controller:
-            # Create task for do_single_step so it can be cancelled
-            step_task = loop.create_task(
+            do_single_step_task = loop.create_task(
                 do_single_step(
                     ctx,
                     agent_callbacks,
@@ -384,14 +382,12 @@ async def run_chat_loop(
                 ),
                 name="do_single_step",
             )
-            interrupt_controller.register_task("llm_call", step_task)
+            interrupt_controller.register_task("do_single_step", do_single_step_task)
 
             try:
-                message, _tokens = await step_task
-                # Append assistant message to history
+                message, _ = await do_single_step_task
                 append_assistant_message(state.history, agent_callbacks, desc.name, message)
             except asyncio.CancelledError:
-                # LLM call was interrupted - prompt for user input
                 need_user_input = True
                 continue
 

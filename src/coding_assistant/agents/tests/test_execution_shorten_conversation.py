@@ -3,8 +3,7 @@ import json
 import pytest
 
 from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.agents.execution import do_single_step, handle_tool_call, handle_tool_calls
-from coding_assistant.agents.history import append_tool_message
+from coding_assistant.agents.execution import do_single_step, handle_tool_calls
 from coding_assistant.agents.tests.helpers import (
     FakeFunction,
     FakeMessage,
@@ -41,22 +40,8 @@ async def test_shorten_conversation_resets_history():
     )
 
     ctx = AgentContext(desc=desc, state=state)
-    result_summary = await handle_tool_call(
-        tool_call, ctx, callbacks, tool_callbacks=NullToolCallbacks(), ui=make_ui_mock()
-    )
-    
-    # Parse arguments from tool_call
-    function_args = json.loads(tool_call.function.arguments)
-    
-    append_tool_message(
-        state.history,
-        callbacks,
-        desc.name,
-        tool_call.id,
-        tool_call.function.name,
-        function_args,
-        result_summary,
-    )
+    msg = FakeMessage(tool_calls=[tool_call])
+    await handle_tool_calls(msg, ctx, callbacks, tool_callbacks=NullToolCallbacks(), ui=make_ui_mock())
 
     # History should be reset to a fresh start message + summary message, followed by the tool result message
     assert len(state.history) >= 3

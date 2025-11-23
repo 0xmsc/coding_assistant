@@ -94,8 +94,9 @@ async def test_tool_confirmation_denied_and_allowed() -> None:
 
     # First: denied
     call1 = FakeToolCall(id="1", function=FakeFunction(name="execute_shell_command", arguments=args_json))
-    await handle_tool_call_and_append(
-        call1,
+    msg1 = FakeMessage(tool_calls=[call1])
+    await handle_tool_calls(
+        msg1,
         ctx,
         NullProgressCallbacks(),
         tool_callbacks=ConfirmationToolCallbacks(
@@ -114,8 +115,9 @@ async def test_tool_confirmation_denied_and_allowed() -> None:
 
     # Second: allowed
     call2 = FakeToolCall(id="2", function=FakeFunction(name="execute_shell_command", arguments=args_json))
-    await handle_tool_call_and_append(
-        call2,
+    msg2 = FakeMessage(tool_calls=[call2])
+    await handle_tool_calls(
+        msg2,
         ctx,
         NullProgressCallbacks(),
         tool_callbacks=ConfirmationToolCallbacks(
@@ -189,9 +191,10 @@ async def test_tool_call_malformed_arguments_records_error() -> None:
     ctx = AgentContext(desc=desc, state=state)
     bad_args = "{bad"  # invalid JSON
     call = FakeToolCall(id="bad1", function=FakeFunction(name="bad_tool", arguments=bad_args))
+    msg = FakeMessage(tool_calls=[call])
 
-    await handle_tool_call_and_append(
-        call,
+    await handle_tool_calls(
+        msg,
         ctx,
         NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
@@ -229,9 +232,10 @@ async def test_tool_execution_value_error_records_error() -> None:
     desc, state = make_test_agent(tools=[tool])
     ctx = AgentContext(desc=desc, state=state)
     call = FakeToolCall(id="e1", function=FakeFunction(name="err_tool", arguments="{}"))
+    msg = FakeMessage(tool_calls=[call])
 
-    await handle_tool_call_and_append(
-        call,
+    await handle_tool_calls(
+        msg,
         ctx,
         NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
@@ -277,10 +281,11 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
 
     # First denied
     call1 = FakeToolCall("s1", FakeFunction("mcp_coding_assistant_mcp_shell_execute", args_json))
+    msg1 = FakeMessage(tool_calls=[call1])
     from coding_assistant.callbacks import ConfirmationToolCallbacks  # local import to avoid circular
 
-    await handle_tool_call_and_append(
-        call1,
+    await handle_tool_calls(
+        msg1,
         ctx,
         NullProgressCallbacks(),
         tool_callbacks=ConfirmationToolCallbacks(
@@ -298,8 +303,9 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
 
     # Then allowed
     call2 = FakeToolCall("s2", FakeFunction("mcp_coding_assistant_mcp_shell_execute", args_json))
-    await handle_tool_call_and_append(
-        call2,
+    msg2 = FakeMessage(tool_calls=[call2])
+    await handle_tool_calls(
+        msg2,
         ctx,
         NullProgressCallbacks(),
         tool_callbacks=ConfirmationToolCallbacks(
@@ -354,8 +360,9 @@ async def test_before_tool_execution_can_return_finish_task_result() -> None:
             raise AssertionError("Unexpected interruption in test")
 
     call = FakeToolCall("f1", FakeFunction("finish_task", '{"result": "ignored", "summary": "ignored"}'))
-    await handle_tool_call_and_append(
-        call,
+    msg = FakeMessage(tool_calls=[call])
+    await handle_tool_calls(
+        msg,
         ctx,
         NullProgressCallbacks(),
         tool_callbacks=FabricatingCallbacks(),
@@ -398,12 +405,10 @@ async def test_multiple_tool_calls_are_parallel() -> None:
     )
 
     start = time.monotonic()
-    await handle_tool_call_and_append(
-        msg.tool_calls[0], ctx, NullProgressCallbacks(), tool_callbacks=NullToolCallbacks(), ui=make_ui_mock()
-    )
-    await handle_tool_call_and_append(
-        msg.tool_calls[1], ctx, NullProgressCallbacks(), tool_callbacks=NullToolCallbacks(), ui=make_ui_mock()
-    )
+    msg1 = FakeMessage(tool_calls=[msg.tool_calls[0]])
+    await handle_tool_calls(msg1, ctx, NullProgressCallbacks(), tool_callbacks=NullToolCallbacks(), ui=make_ui_mock())
+    msg2 = FakeMessage(tool_calls=[msg.tool_calls[1]])
+    await handle_tool_calls(msg2, ctx, NullProgressCallbacks(), tool_callbacks=NullToolCallbacks(), ui=make_ui_mock())
     # Above would be sequential; now test real parallel variant using handle_tool_calls
     desc, state = make_test_agent(tools=[t1, t2])  # reset agent history
     ctx = AgentContext(desc=desc, state=state)
