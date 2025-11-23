@@ -206,4 +206,3 @@ class ConfirmationToolCallbacks(AgentToolCallbacks):
             return result
 
         return None
-

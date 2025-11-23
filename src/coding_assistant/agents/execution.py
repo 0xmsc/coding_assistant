@@ -214,13 +214,13 @@ async def handle_tool_calls(
             # Tool was cancelled
             result_summary = "Tool execution was cancelled."
             any_cancelled = True
-        
+
         # Parse arguments from tool_call
         try:
             function_args = json.loads(tool_call.function.arguments)
         except JSONDecodeError:
             function_args = None
-        
+
         append_tool_message(
             ctx.state.history,
             agent_callbacks,
@@ -230,7 +230,7 @@ async def handle_tool_calls(
             function_args,
             result_summary,
         )
-    
+
     # Re-raise CancelledError if any tool was cancelled
     if any_cancelled:
         raise asyncio.CancelledError()
@@ -306,7 +306,7 @@ async def run_agent_loop(
             agent_callbacks,
             completer=completer,
         )
-        
+
         # Append assistant message to history
         append_assistant_message(state.history, agent_callbacks, desc.name, message)
 

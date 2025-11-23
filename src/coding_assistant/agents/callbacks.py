@@ -93,7 +93,6 @@ class AgentToolCallbacks(ABC):
         pass
 
 
-
 class NullToolCallbacks(AgentToolCallbacks):
     async def before_tool_execution(  # type: ignore[override]
         self,

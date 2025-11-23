@@ -51,6 +51,7 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
 
     # Append assistant message to history (simulating loop behavior)
     from coding_assistant.agents.history import append_assistant_message
+
     append_assistant_message(state.history, NullProgressCallbacks(), desc.name, msg)
 
     # Simulate loop behavior: execute tools and then append shorten prompt due to tokens

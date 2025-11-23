@@ -78,9 +78,10 @@ async def test_shorten_conversation_resets_history():
         callbacks,
         completer=completer,
     )
-    
+
     # Append assistant message to history
     from coding_assistant.agents.history import append_assistant_message
+
     append_assistant_message(state.history, callbacks, desc.name, msg)
 
     await handle_tool_calls(msg, ctx, callbacks, NullToolCallbacks(), ui=make_ui_mock())
