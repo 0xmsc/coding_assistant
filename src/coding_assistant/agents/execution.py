@@ -213,29 +213,18 @@ async def handle_tool_calls(
     aws = []
     loop = asyncio.get_running_loop()
     for tool_call in tool_calls:
+        task = loop.create_task(
+            handle_tool_call(
+                tool_call,
+                ctx,
+                agent_callbacks,
+                tool_callbacks,
+                ui=ui,
+            ),
+            name=f"{tool_call.function.name} ({tool_call.id})",
+        )
         if interrupt_controller is not None:
-            task = interrupt_controller.create_task(
-                tool_call.id,
-                handle_tool_call(
-                    tool_call,
-                    ctx,
-                    agent_callbacks,
-                    tool_callbacks,
-                    ui=ui,
-                ),
-                name=f"{tool_call.function.name} ({tool_call.id})",
-            )
-        else:
-            task = loop.create_task(
-                handle_tool_call(
-                    tool_call,
-                    ctx,
-                    agent_callbacks,
-                    tool_callbacks,
-                    ui=ui,
-                ),
-                name=f"{tool_call.function.name} ({tool_call.id})",
-            )
+            interrupt_controller.register_task(tool_call.id, task)
         aws.append(task)
 
     done, pending = await asyncio.wait(aws)
@@ -379,7 +368,6 @@ async def run_chat_loop(
     loop = asyncio.get_running_loop()
     interrupt_controller = InterruptController(loop)
 
-    # InterruptController now handles SIGINT directly via context manager
     with interrupt_controller:
         while True:
             if need_user_input:

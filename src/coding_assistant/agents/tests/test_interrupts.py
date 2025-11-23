@@ -38,20 +38,21 @@ def test_interrupt_controller_handles_multiple_sigints():
 @pytest.mark.asyncio
 async def test_tool_call_cancellation_manager_cancel_all():
     loop = asyncio.get_running_loop()
-    manager = ToolCallCancellationManager(loop)
+    manager = ToolCallCancellationManager()
 
     async def wait_forever():
         await asyncio.Future()
 
-    task = manager.create_task(wait_forever(), name="tool-task")
+    task = loop.create_task(wait_forever(), name="tool-task")
+    manager.register_task(task)
 
     manager.cancel_all()
-    await asyncio.sleep(0)
 
     with pytest.raises(asyncio.CancelledError):
         await task
 
     assert task.cancelled()
+    # The done callback should have removed it from the set
     assert len(manager._tasks) == 0
 
 
@@ -67,7 +68,8 @@ async def test_interrupt_controller_cancels_tasks_and_runs_cleanup():
     async def cleanup():
         cleanup_called.set()
 
-    task = controller.create_task("call-1", wait_forever(), cleanup=cleanup)
+    task = loop.create_task(wait_forever())
+    controller.register_task("call-1", task, cleanup=cleanup)
 
     controller.request_interrupt()
     await asyncio.sleep(0)
