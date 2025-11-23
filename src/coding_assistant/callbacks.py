@@ -275,6 +275,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
             print()
             print("[bold green]◉[/bold green] ", end="")
             self._last_tool_info = None
+            self._chunk_buffer = ""
             self._live = Live("", console=self._console, refresh_per_second=10, auto_refresh=True)
             self._live.start()
 
