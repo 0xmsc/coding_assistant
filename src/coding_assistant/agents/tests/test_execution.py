@@ -357,8 +357,6 @@ async def test_before_tool_execution_can_return_finish_task_result() -> None:
                 return FinishTaskResult(result="R", summary="S")
             return None
 
-        async def on_tool_interrupted(self, agent_name, tool_call_id, tool_name, arguments, *, reason):
-            raise AssertionError("Unexpected interruption in test")
 
     call = FakeToolCall("f1", FakeFunction("finish_task", '{"result": "ignored", "summary": "ignored"}'))
     msg = FakeMessage(tool_calls=[call])

@@ -139,7 +139,7 @@ async def handle_tool_call(
     trace.get_current_span().set_attribute("function.name", function_name)
     trace.get_current_span().set_attribute("function.args", json.dumps(function_args))
 
-    logger.info(f"[{tool_call.id}] [{desc.name}] Calling tool '{function_name}' with arguments {function_args}")
+    logger.debug(f"[{tool_call.id}] [{desc.name}] Calling tool '{function_name}' with arguments {function_args}")
 
     try:
         if callback_result := await tool_callbacks.before_tool_execution(

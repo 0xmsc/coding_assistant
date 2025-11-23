@@ -207,19 +207,3 @@ class ConfirmationToolCallbacks(AgentToolCallbacks):
 
         return None
 
-    async def on_tool_interrupted(
-        self,
-        agent_name: str,
-        tool_call_id: str,
-        tool_name: str,
-        arguments: dict,
-        *,
-        reason: str,
-    ) -> None:
-        logger.info(
-            "Tool %s (call %s) for agent %s interrupted: %s",
-            tool_name,
-            tool_call_id,
-            agent_name,
-            reason,
-        )
