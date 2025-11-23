@@ -139,7 +139,7 @@ async def handle_tool_call(
     trace.get_current_span().set_attribute("function.name", function_name)
     trace.get_current_span().set_attribute("function.args", json.dumps(function_args))
 
-    logger.debug(f"[{tool_call.id}] [{desc.name}] Calling tool '{function_name}' with arguments {function_args}")
+    logger.info(f"[{tool_call.id}] [{desc.name}] Calling tool '{function_name}' with arguments {function_args}")
 
     try:
         if callback_result := await tool_callbacks.before_tool_execution(
@@ -368,11 +368,26 @@ async def run_chat_loop(
             append_user_message(state.history, agent_callbacks, desc.name, answer)
 
         with interrupt_controller:
-            message, _tokens = await do_single_step(
-                ctx,
-                agent_callbacks,
-                completer=completer,
+            # Create task for do_single_step so it can be cancelled
+            step_task = loop.create_task(
+                do_single_step(
+                    ctx,
+                    agent_callbacks,
+                    completer=completer,
+                ),
+                name="do_single_step",
             )
+            interrupt_controller.register_task("llm_call", step_task)
+
+            try:
+                message, _tokens = await step_task
+            except asyncio.CancelledError:
+                # LLM call was interrupted - prompt for user input
+                if interrupt_controller.has_pending_interrupt:
+                    interrupt_controller.consume_interrupts()
+                    need_user_input = True
+                    continue
+                raise
 
             if getattr(message, "tool_calls", []):
                 await handle_tool_calls(
@@ -386,8 +401,8 @@ async def run_chat_loop(
                 need_user_input = False
             else:
                 need_user_input = True
-        
-        # After tool execution, check for interrupts and prompt user
+
+        # After execution, check for interrupts from tool calls
         if interrupt_controller.has_pending_interrupt:
             interrupt_controller.consume_interrupts()
             need_user_input = True
