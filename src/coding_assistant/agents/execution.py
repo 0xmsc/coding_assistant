@@ -183,7 +183,7 @@ async def handle_tool_call(
 
     tool_return_summary = result_handlers[type(function_call_result)](function_call_result)
 
-    append_tool_mwessage(
+    append_tool_message(
         state.history,
         agent_callbacks,
         desc.name,
