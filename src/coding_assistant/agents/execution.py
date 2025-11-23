@@ -8,7 +8,12 @@ from opentelemetry import trace
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
-from coding_assistant.agents.interrupts import InterruptibleSection, NonInterruptibleSection  # noqa: F401
+from coding_assistant.agents.interrupts import (
+    InterruptController,
+    InterruptReason,
+    InterruptibleSection,
+    NonInterruptibleSection,
+)
 from coding_assistant.agents.parameters import format_parameters
 from coding_assistant.agents.types import (
     AgentContext,
@@ -201,6 +206,7 @@ async def handle_tool_calls(
     tool_callbacks: AgentToolCallbacks,
     *,
     ui: UI,
+    interrupt_controller: InterruptController | None = None,
 ):
     tool_calls = message.tool_calls
 
@@ -210,17 +216,31 @@ async def handle_tool_calls(
     trace.get_current_span().set_attribute("message.tool_calls", [x.model_dump_json() for x in tool_calls])
 
     aws = []
+    loop = asyncio.get_running_loop()
     for tool_call in tool_calls:
-        task = asyncio.create_task(
-            handle_tool_call(
-                tool_call,
-                ctx,
-                agent_callbacks,
-                tool_callbacks,
-                ui=ui,
-            ),
-            name=f"{tool_call.function.name} ({tool_call.id})",
-        )
+        if interrupt_controller is not None:
+            task = interrupt_controller.create_task(
+                tool_call.id,
+                handle_tool_call(
+                    tool_call,
+                    ctx,
+                    agent_callbacks,
+                    tool_callbacks,
+                    ui=ui,
+                ),
+                name=f"{tool_call.function.name} ({tool_call.id})",
+            )
+        else:
+            task = loop.create_task(
+                handle_tool_call(
+                    tool_call,
+                    ctx,
+                    agent_callbacks,
+                    tool_callbacks,
+                    ui=ui,
+                ),
+                name=f"{tool_call.function.name} ({tool_call.id})",
+            )
         aws.append(task)
 
     done, pending = await asyncio.wait(aws)
@@ -229,6 +249,10 @@ async def handle_tool_calls(
     # await the task, which will throw any exceptions stored in the future.
     for task in done:
         await task
+
+    if interrupt_controller is not None and interrupt_controller.has_pending_interrupt:
+        interrupt_controller.consume_interrupts()
+        raise asyncio.CancelledError
 
 
 @tracer.start_as_current_span("do_single_step")
@@ -358,6 +382,8 @@ async def run_chat_loop(
     append_user_message(state.history, agent_callbacks, desc.name, start_message)
 
     need_user_input = True
+    loop = asyncio.get_running_loop()
+    interrupt_controller = InterruptController(loop) if is_interruptible else None
 
     while True:
         if need_user_input:
@@ -366,20 +392,35 @@ async def run_chat_loop(
                 break
             append_user_message(state.history, agent_callbacks, desc.name, answer)
 
-        message, _tokens = await do_single_step(
-            ctx,
-            agent_callbacks,
-            completer=completer,
-        )
-
-        if getattr(message, "tool_calls", []):
-            await handle_tool_calls(
-                message,
+        try:
+            message, _tokens = await do_single_step(
                 ctx,
                 agent_callbacks,
-                tool_callbacks,
-                ui=ui,
+                completer=completer,
             )
-            need_user_input = False
-        else:
-            need_user_input = True
+        except asyncio.CancelledError:
+            if interrupt_controller is not None and interrupt_controller.has_pending_interrupt:
+                interrupt_controller.consume_interrupts()
+                need_user_input = True
+                continue
+            raise
+
+        try:
+            if getattr(message, "tool_calls", []):
+                await handle_tool_calls(
+                    message,
+                    ctx,
+                    agent_callbacks,
+                    tool_callbacks,
+                    ui=ui,
+                    interrupt_controller=interrupt_controller,
+                )
+                need_user_input = False
+            else:
+                need_user_input = True
+        except asyncio.CancelledError:
+            if interrupt_controller is not None and interrupt_controller.has_pending_interrupt:
+                interrupt_controller.consume_interrupts()
+                need_user_input = True
+                continue
+            raise

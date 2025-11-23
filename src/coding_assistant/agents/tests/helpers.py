@@ -69,6 +69,9 @@ class FakeCompleter:
         self._total_tokens = 0
 
     async def __call__(self, messages, *, model, tools, callbacks) -> Completion:
+        if hasattr(self, "before_completion") and callable(self.before_completion):
+            await self.before_completion()
+
         if not self.script:
             raise AssertionError("FakeCompleter script exhausted")
 
