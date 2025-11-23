@@ -205,7 +205,6 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         pass
 
     def on_assistant_reasoning(self, agent_name: str, content: str):
-        print()
         print(f"[dim cyan]💭 {content}[/dim cyan]")
         self._last_tool_info = None
 
