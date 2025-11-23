@@ -10,7 +10,6 @@ from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolC
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
 from coding_assistant.agents.interrupts import (
     InterruptController,
-    InterruptReason,
     InterruptibleSection,
     NonInterruptibleSection,
 )
@@ -385,42 +384,50 @@ async def run_chat_loop(
     loop = asyncio.get_running_loop()
     interrupt_controller = InterruptController(loop) if is_interruptible else None
 
-    while True:
-        if need_user_input:
-            answer = await ui.prompt()
-            if answer.strip() == "/exit":
-                break
-            append_user_message(state.history, agent_callbacks, desc.name, answer)
+    # Set up SIGINT handler to trigger interrupt controller
+    interruptible_section: InterruptibleSection | NonInterruptibleSection
+    if interrupt_controller is not None:
+        interruptible_section = InterruptibleSection(on_interrupt=lambda: interrupt_controller.request_interrupt())
+    else:
+        interruptible_section = NonInterruptibleSection()
 
-        try:
-            message, _tokens = await do_single_step(
-                ctx,
-                agent_callbacks,
-                completer=completer,
-            )
-        except asyncio.CancelledError:
-            if interrupt_controller is not None and interrupt_controller.has_pending_interrupt:
-                interrupt_controller.consume_interrupts()
-                need_user_input = True
-                continue
-            raise
+    with interruptible_section:
+        while True:
+            if need_user_input:
+                answer = await ui.prompt()
+                if answer.strip() == "/exit":
+                    break
+                append_user_message(state.history, agent_callbacks, desc.name, answer)
 
-        try:
-            if getattr(message, "tool_calls", []):
-                await handle_tool_calls(
-                    message,
+            try:
+                message, _tokens = await do_single_step(
                     ctx,
                     agent_callbacks,
-                    tool_callbacks,
-                    ui=ui,
-                    interrupt_controller=interrupt_controller,
+                    completer=completer,
                 )
-                need_user_input = False
-            else:
-                need_user_input = True
-        except asyncio.CancelledError:
-            if interrupt_controller is not None and interrupt_controller.has_pending_interrupt:
-                interrupt_controller.consume_interrupts()
-                need_user_input = True
-                continue
-            raise
+            except asyncio.CancelledError:
+                if interrupt_controller is not None and interrupt_controller.has_pending_interrupt:
+                    interrupt_controller.consume_interrupts()
+                    need_user_input = True
+                    continue
+                raise
+
+            try:
+                if getattr(message, "tool_calls", []):
+                    await handle_tool_calls(
+                        message,
+                        ctx,
+                        agent_callbacks,
+                        tool_callbacks,
+                        ui=ui,
+                        interrupt_controller=interrupt_controller,
+                    )
+                    need_user_input = False
+                else:
+                    need_user_input = True
+            except asyncio.CancelledError:
+                if interrupt_controller is not None and interrupt_controller.has_pending_interrupt:
+                    interrupt_controller.consume_interrupts()
+                    need_user_input = True
+                    continue
+                raise
