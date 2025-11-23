@@ -368,28 +368,26 @@ async def run_chat_loop(
             append_user_message(state.history, agent_callbacks, desc.name, answer)
 
         with interrupt_controller:
-            try:
-                message, _tokens = await do_single_step(
+            message, _tokens = await do_single_step(
+                ctx,
+                agent_callbacks,
+                completer=completer,
+            )
+
+            if getattr(message, "tool_calls", []):
+                await handle_tool_calls(
+                    message,
                     ctx,
                     agent_callbacks,
-                    completer=completer,
+                    tool_callbacks,
+                    ui=ui,
+                    task_created_callback=interrupt_controller.register_task,
                 )
-
-                if getattr(message, "tool_calls", []):
-                    await handle_tool_calls(
-                        message,
-                        ctx,
-                        agent_callbacks,
-                        tool_callbacks,
-                        ui=ui,
-                        task_created_callback=interrupt_controller.register_task,
-                    )
-                    need_user_input = False
-                else:
-                    need_user_input = True
-            except asyncio.CancelledError:
-                if interrupt_controller.has_pending_interrupt:
-                    interrupt_controller.consume_interrupts()
-                    need_user_input = True
-                    continue
-                raise
+                need_user_input = False
+            else:
+                need_user_input = True
+        
+        # After tool execution, check for interrupts and prompt user
+        if interrupt_controller.has_pending_interrupt:
+            interrupt_controller.consume_interrupts()
+            need_user_input = True
