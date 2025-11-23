@@ -43,7 +43,6 @@ async def test_on_agent_start_end_called_with_expected_args():
         agent_callbacks=callbacks,
         tool_callbacks=NullToolCallbacks(),
         shorten_conversation_at_tokens=200_000,
-        enable_user_feedback=False,
         completer=completer,
         ui=make_ui_mock(),
     )
@@ -65,7 +64,6 @@ async def test_on_tool_message_called_with_arguments_and_result():
         agent_callbacks=callbacks,
         tool_callbacks=NullToolCallbacks(),
         shorten_conversation_at_tokens=200_000,
-        enable_user_feedback=False,
         completer=completer,
         ui=make_ui_mock(),
     )

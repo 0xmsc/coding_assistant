@@ -19,6 +19,13 @@ dev = [
     "types-aiofiles",
 ]
 
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]
+
 [project.scripts]
 coding-assistant-mcp = "coding_assistant_mcp.main:main"
 

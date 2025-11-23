@@ -14,7 +14,6 @@ lint:
 
 hello-world:
     ./run.fish \
-    --no-user-feedback \
       --task "Say 'Hello World'"
 
 commit:

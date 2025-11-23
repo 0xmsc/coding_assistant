@@ -17,7 +17,10 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks
-from coding_assistant.agents.types import Tool
+from coding_assistant.llm.model import complete
+from coding_assistant.agents.execution import run_chat_loop
+from coding_assistant.agents.parameters import Parameter
+from coding_assistant.agents.types import AgentContext, AgentDescription, AgentState, Tool
 from coding_assistant.callbacks import ConfirmationToolCallbacks, RichAgentProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
@@ -63,16 +66,10 @@ def parse_args():
     parser.add_argument("--model", type=str, default="gpt-5", help="Model to use for the orchestrator agent.")
     parser.add_argument("--expert-model", type=str, default="gpt-5", help="Expert model to use.")
     parser.add_argument(
-        "--user-feedback",
+        "--chat-mode",
         action=BooleanOptionalAction,
         default=True,
-        help="Enable user feedback.",
-    )
-    parser.add_argument(
-        "--ask-user",
-        action=BooleanOptionalAction,
-        default=True,
-        help="Whether the agent can ask the user questions.",
+        help="Enable open-ended chat mode for the root agent (no task, no finish_task).",
     )
     parser.add_argument(
         "--instructions",
@@ -154,9 +151,8 @@ def create_config_from_args(args) -> Config:
     return Config(
         model=args.model,
         expert_model=args.expert_model,
-        enable_user_feedback=args.user_feedback,
         shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
-        enable_ask_user=args.ask_user,
+        enable_chat_mode=args.chat_mode,
     )
 
 
@@ -214,6 +210,51 @@ async def run_orchestrator_agent(
 
     print(f"🎉 Final Result\n\nSummary:\n\n{summary}\n\nResult:\n\n{result.content}")
     return result
+
+
+async def run_chat_session(
+    *,
+    config: Config,
+    tools: list[Tool],
+    history: list | None,
+    instructions: str | None,
+    working_directory: Path,
+    agent_callbacks: AgentProgressCallbacks,
+    tool_callbacks: ConfirmationToolCallbacks,
+):
+    # Build a simple root agent for chat mode (no finish_task)
+    params: list[Parameter] = []
+    if instructions:
+        params.append(
+            Parameter(
+                name="instructions",
+                description="General instructions for the agent.",
+                value=instructions,
+            )
+        )
+    desc = AgentDescription(
+        name="Orchestrator",
+        model=config.model,
+        parameters=params,
+        tools=[
+            *tools,  # MCP tools etc. (no finish_task, no shorten_conversation in chat mode)
+        ],
+    )
+    state = AgentState(history=history or [])
+    ctx = AgentContext(desc=desc, state=state)
+
+    try:
+        await run_chat_loop(
+            ctx,
+            agent_callbacks=agent_callbacks,
+            tool_callbacks=tool_callbacks,
+            completer=complete,
+            ui=PromptToolkitUI(),
+            is_interruptible=True,
+        )
+    finally:
+        save_orchestrator_history(working_directory, state.history)
+        trim_orchestrator_history(working_directory)
 
 
 async def _main(args):
@@ -290,9 +331,6 @@ async def _main(args):
             rich_print(Panel(Markdown(instructions), title="Instructions"))
             return
 
-        if not args.task:
-            raise ValueError("Task must be provided. Use --task to specify the task for the orchestrator agent.")
-
         agent_callbacks = RichAgentProgressCallbacks(
             print_chunks=args.print_chunks,
             print_reasoning=args.print_reasoning,
@@ -303,17 +341,30 @@ async def _main(args):
             shell_confirmation_patterns=args.shell_confirmation_patterns,
         )
 
-        await run_orchestrator_agent(
-            task=args.task,
-            config=config,
-            tools=tools,
-            history=resume_history,
-            conversation_summaries=conversation_summaries,
-            instructions=instructions,
-            working_directory=working_directory,
-            agent_callbacks=agent_callbacks,
-            tool_callbacks=tool_callbacks,
-        )
+        if config.enable_chat_mode:
+            await run_chat_session(
+                config=config,
+                tools=tools,
+                history=resume_history,
+                instructions=instructions,
+                working_directory=working_directory,
+                agent_callbacks=agent_callbacks,
+                tool_callbacks=tool_callbacks,
+            )
+        else:
+            if not args.task:
+                raise ValueError("Task must be provided. Use --task to specify the task for the orchestrator agent.")
+            await run_orchestrator_agent(
+                task=args.task,
+                config=config,
+                tools=tools,
+                history=resume_history,
+                conversation_summaries=conversation_summaries,
+                instructions=instructions,
+                working_directory=working_directory,
+                agent_callbacks=agent_callbacks,
+                tool_callbacks=tool_callbacks,
+            )
 
 
 def main():

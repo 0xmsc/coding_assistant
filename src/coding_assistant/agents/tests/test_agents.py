@@ -7,7 +7,7 @@ from coding_assistant.ui import NullUI
 
 # This file contains integration tests using the real LLM API.
 
-TEST_MODEL = "openai/gpt-5-mini"
+TEST_MODEL = "openrouter/openai/gpt-5-mini"
 
 
 def create_test_config() -> Config:
@@ -15,9 +15,7 @@ def create_test_config() -> Config:
     return Config(
         model=TEST_MODEL,
         expert_model=TEST_MODEL,
-        enable_user_feedback=False,
         shorten_conversation_at_tokens=200_000,
-        enable_ask_user=False,
     )
 
 

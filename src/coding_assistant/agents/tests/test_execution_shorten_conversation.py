@@ -3,7 +3,7 @@ import json
 import pytest
 
 from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.agents.execution import do_single_step, handle_tool_call
+from coding_assistant.agents.execution import do_single_step, handle_tool_call, handle_tool_calls
 from coding_assistant.agents.tests.helpers import (
     FakeFunction,
     FakeMessage,
@@ -72,14 +72,13 @@ async def test_shorten_conversation_resets_history():
 
     completer = FakeCompleter([FakeMessage(tool_calls=[finish_call])])
 
-    await do_single_step(
+    msg, _ = await do_single_step(
         ctx,
         callbacks,
-        shorten_conversation_at_tokens=200_000,
         completer=completer,
-        ui=make_ui_mock(),
-        tool_callbacks=NullToolCallbacks(),
     )
+
+    await handle_tool_calls(msg, ctx, callbacks, NullToolCallbacks(), ui=make_ui_mock())
 
     # Verify the assistant tool call and finish result were appended after the reset messages
     assert state.history[-2] == {

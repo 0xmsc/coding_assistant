@@ -37,4 +37,8 @@ def append_assistant_message(history: list, callbacks: AgentProgressCallbacks, a
     if message.content:
         callbacks.on_assistant_message(agent_name, message.content)
 
-    history.append(message.model_dump())
+    message_dump = message.model_dump()
+    # Remove reasoning_content from history to preserve privacy
+    if "reasoning_content" in message_dump:
+        del message_dump["reasoning_content"]
+    history.append(message_dump)

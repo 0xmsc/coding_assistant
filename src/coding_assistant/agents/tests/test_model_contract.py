@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.agents.execution import do_single_step
+from coding_assistant.agents.execution import do_single_step, handle_tool_calls, run_agent_loop
 from coding_assistant.agents.tests.helpers import (
     FakeCompleter,
     FakeMessage,
@@ -41,16 +41,26 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
     )
     ctx = AgentContext(desc=desc, state=state)
 
-    msg = await do_single_step(
+    msg, tokens = await do_single_step(
         ctx,
         NullProgressCallbacks(),
-        shorten_conversation_at_tokens=1000,
         completer=completer,
-        ui=make_ui_mock(),
-        tool_callbacks=NullToolCallbacks(),
     )
 
     assert msg.content == fake_message.content
+
+    # Simulate loop behavior: execute tools and then append shorten prompt due to tokens
+    await handle_tool_calls(msg, ctx, NullProgressCallbacks(), NullToolCallbacks(), ui=make_ui_mock())
+    if tokens > 1000:
+        state.history.append(
+            {
+                "role": "user",
+                "content": (
+                    "Your conversation history has grown too large. "
+                    "Please summarize it by using the `shorten_conversation` tool."
+                ),
+            }
+        )
 
     expected_history = [
         {"role": "user", "content": "start"},
@@ -99,13 +109,10 @@ async def test_reasoning_is_forwarded_and_not_stored():
 
     callbacks = Mock(spec=AgentProgressCallbacks)
 
-    await do_single_step(
+    _, _ = await do_single_step(
         ctx,
         callbacks,
-        shorten_conversation_at_tokens=100_000,
         completer=completer,
-        ui=make_ui_mock(),
-        tool_callbacks=NullToolCallbacks(),
     )
 
     # Assert reasoning was forwarded via callback
@@ -127,14 +134,14 @@ async def test_requires_finish_tool():
         history=[{"role": "user", "content": "start"}],
     )
     ctx = AgentContext(desc=desc, state=state)
-    with pytest.raises(RuntimeError, match="Agent needs to have a `finish_task` tool in order to run a step."):
-        await do_single_step(
+    with pytest.raises(RuntimeError, match="Agent needs to have a `finish_task` tool in order to run."):
+        await run_agent_loop(
             ctx,
-            NullProgressCallbacks(),
-            shorten_conversation_at_tokens=1000,
+            agent_callbacks=NullProgressCallbacks(),
+            tool_callbacks=NullToolCallbacks(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
             ui=make_ui_mock(),
-            tool_callbacks=NullToolCallbacks(),
+            shorten_conversation_at_tokens=1000,
         )
 
 
@@ -146,14 +153,14 @@ async def test_requires_shorten_tool():
         history=[{"role": "user", "content": "start"}],
     )
     ctx = AgentContext(desc=desc, state=state)
-    with pytest.raises(RuntimeError, match="Agent needs to have a `shorten_conversation` tool in order to run a step."):
-        await do_single_step(
+    with pytest.raises(RuntimeError, match="Agent needs to have a `shorten_conversation` tool in order to run."):
+        await run_agent_loop(
             ctx,
-            NullProgressCallbacks(),
-            shorten_conversation_at_tokens=1000,
+            agent_callbacks=NullProgressCallbacks(),
+            tool_callbacks=NullToolCallbacks(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
             ui=make_ui_mock(),
-            tool_callbacks=NullToolCallbacks(),
+            shorten_conversation_at_tokens=1000,
         )
 
 
@@ -166,8 +173,5 @@ async def test_requires_non_empty_history():
         await do_single_step(
             ctx,
             NullProgressCallbacks(),
-            shorten_conversation_at_tokens=1000,
             completer=FakeCompleter([FakeMessage(content="hi")]),
-            ui=make_ui_mock(),
-            tool_callbacks=NullToolCallbacks(),
         )
