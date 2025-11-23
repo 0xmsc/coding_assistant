@@ -206,12 +206,14 @@ async def handle_tool_calls(
     assert len(pending) == 0
 
     # Process results and append tool messages
+    any_cancelled = False
     for tool_call, task in tasks_with_calls:
         try:
             result_summary = await task
         except asyncio.CancelledError:
             # Tool was cancelled
             result_summary = "Tool execution was cancelled."
+            any_cancelled = True
         
         # Parse arguments from tool_call
         try:
@@ -228,6 +230,10 @@ async def handle_tool_calls(
             function_args,
             result_summary,
         )
+    
+    # Re-raise CancelledError if any tool was cancelled
+    if any_cancelled:
+        raise asyncio.CancelledError()
 
 
 @tracer.start_as_current_span("do_single_step")
@@ -380,19 +386,19 @@ async def run_chat_loop(
             try:
                 message, _ = await do_single_step_task
                 append_assistant_message(state.history, agent_callbacks, desc.name, message)
+
+                if getattr(message, "tool_calls", []):
+                    await handle_tool_calls(
+                        message,
+                        ctx,
+                        agent_callbacks,
+                        tool_callbacks,
+                        ui=ui,
+                        task_created_callback=interrupt_controller.register_task,
+                    )
+                    need_user_input = False
+                else:
+                    need_user_input = True
             except asyncio.CancelledError:
                 need_user_input = True
                 continue
-
-            if getattr(message, "tool_calls", []):
-                await handle_tool_calls(
-                    message,
-                    ctx,
-                    agent_callbacks,
-                    tool_callbacks,
-                    ui=ui,
-                    task_created_callback=interrupt_controller.register_task,
-                )
-                need_user_input = False
-            else:
-                need_user_input = True
