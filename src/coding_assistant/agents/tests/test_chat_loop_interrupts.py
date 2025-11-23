@@ -494,3 +494,68 @@ async def test_sigint_interrupts_tool_execution():
 
 # Note: Multiple SIGINT behavior is tested in test_interrupts.py::test_interruptible_section_handles_multiple_sigints
 # With proper interrupt handling, multiple SIGINTs no longer cause sys.exit()
+
+
+@pytest.mark.asyncio
+async def test_interrupt_during_llm_call():
+    """Test that CTRL-C during LLM call (not tool execution) cancels immediately."""
+    
+    # Create a slow completer that signals when it starts
+    llm_started = asyncio.Event()
+    
+    async def slow_completer(history, model, tools, callbacks):
+        llm_started.set()
+        # Simulate slow LLM call
+        await asyncio.sleep(2.0)
+        return FakeCompleter([FakeMessage(content="Response from LLM")])._completions[0]
+    
+    desc, state = make_test_agent(history=[{"role": "user", "content": "test"}])
+    ctx = AgentContext(desc=desc, state=state)
+    
+    ui = make_ui_mock(
+        ask_sequence=[
+            ("> ", "user input after interrupt"),
+            ("> ", "/exit"),
+        ]
+    )
+    
+    captured_controller = []
+    
+    original_init = InterruptController.__init__
+    
+    def capture_init(self, loop):
+        captured_controller.append(self)
+        original_init(self, loop)
+    
+    with patch.object(InterruptController, "__init__", capture_init):
+        async def run_with_interrupt():
+            task = asyncio.create_task(
+                run_chat_loop(
+                    ctx,
+                    agent_callbacks=NullProgressCallbacks(),
+                    tool_callbacks=NullToolCallbacks(),
+                    completer=slow_completer,
+                    ui=ui,
+                )
+            )
+            
+            # Wait for LLM to start
+            await llm_started.wait()
+            await asyncio.sleep(0.1)
+            
+            # Send interrupt while LLM is processing
+            if captured_controller:
+                captured_controller[0].request_interrupt()
+            
+            await task
+        
+        await run_with_interrupt()
+    
+    # Verify LLM call was cancelled - no assistant message with "Response from LLM"
+    assistant_messages = [m for m in state.history if m.get("role") == "assistant"]
+    for msg in assistant_messages:
+        assert "Response from LLM" not in msg.get("content", "")
+    
+    # Verify user was prompted after interrupt
+    user_messages = [m for m in state.history if m.get("role") == "user"]
+    assert any("user input after interrupt" in m.get("content", "") for m in user_messages)

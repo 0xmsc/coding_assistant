@@ -364,7 +364,6 @@ async def run_chat_loop(
     append_user_message(state.history, agent_callbacks, desc.name, start_message)
 
     need_user_input = True
-    loop = asyncio.get_running_loop()
 
     while True:
         if need_user_input:
@@ -373,6 +372,7 @@ async def run_chat_loop(
                 break
             append_user_message(state.history, agent_callbacks, desc.name, answer)
 
+        loop = asyncio.get_running_loop()
         with InterruptController(loop) as interrupt_controller:
             do_single_step_task = loop.create_task(
                 do_single_step(
