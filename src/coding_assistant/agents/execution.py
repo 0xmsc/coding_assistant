@@ -8,11 +8,7 @@ from opentelemetry import trace
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
-from coding_assistant.agents.interrupts import (
-    InterruptController,
-    InterruptibleSection,
-    NonInterruptibleSection,
-)
+from coding_assistant.agents.interrupts import InterruptController
 from coding_assistant.agents.parameters import format_parameters
 from coding_assistant.agents.types import (
     AgentContext,
@@ -367,7 +363,6 @@ async def run_chat_loop(
     tool_callbacks: AgentToolCallbacks,
     completer: Completer,
     ui: UI,
-    is_interruptible: bool = True,
 ):
     desc = ctx.desc
     state = ctx.state
@@ -382,16 +377,10 @@ async def run_chat_loop(
 
     need_user_input = True
     loop = asyncio.get_running_loop()
-    interrupt_controller = InterruptController(loop) if is_interruptible else None
+    interrupt_controller = InterruptController(loop)
 
-    # Set up SIGINT handler to trigger interrupt controller
-    interruptible_section: InterruptibleSection | NonInterruptibleSection
-    if interrupt_controller is not None:
-        interruptible_section = InterruptibleSection(on_interrupt=lambda: interrupt_controller.request_interrupt())
-    else:
-        interruptible_section = NonInterruptibleSection()
-
-    with interruptible_section:
+    # InterruptController now handles SIGINT directly via context manager
+    with interrupt_controller:
         while True:
             if need_user_input:
                 answer = await ui.prompt()

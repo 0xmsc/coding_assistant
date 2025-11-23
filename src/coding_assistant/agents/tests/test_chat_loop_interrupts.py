@@ -98,7 +98,6 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
-                    is_interruptible=True,
                 )
             )
 
@@ -167,7 +166,6 @@ async def test_interrupt_during_do_single_step():
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
-                    is_interruptible=True,
                 )
             )
 
@@ -237,7 +235,6 @@ async def test_multiple_tool_calls_with_interrupt():
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
-                    is_interruptible=True,
                 )
             )
 
@@ -285,7 +282,6 @@ async def test_chat_loop_without_interrupts_works_normally():
         tool_callbacks=NullToolCallbacks(),
         completer=completer,
         ui=ui,
-        is_interruptible=True,
     )
 
     # Verify tool completed successfully
@@ -295,59 +291,6 @@ async def test_chat_loop_without_interrupts_works_normally():
 
     # Verify conversation progressed normally
     assert len(state.history) > 2
-
-
-@pytest.mark.asyncio
-async def test_non_interruptible_mode_disables_interrupt_handling():
-    """Test that is_interruptible=False doesn't create an interrupt controller."""
-    # Test verifies that interrupt controller is not created when is_interruptible=False
-    tool = InterruptibleTool(delay=0.1)
-    tool_call = FakeToolCall("1", FakeFunction("interruptible_tool", json.dumps({})))
-
-    completer = FakeCompleter(
-        [
-            FakeMessage(tool_calls=[tool_call]),
-            FakeMessage(content="Done"),
-        ]
-    )
-
-    desc, state = make_test_agent(tools=[tool], history=[{"role": "user", "content": "start"}])
-
-    ui = make_ui_mock(
-        ask_sequence=[
-            ("> ", "user input"),  # First prompt
-            ("> ", "/exit"),  # Second prompt after tool execution
-        ]
-    )
-
-    ctx = AgentContext(desc=desc, state=state)
-
-    # Track if InterruptController was created
-    controller_created = []
-
-    original_init = InterruptController.__init__
-
-    def track_init(self, loop):
-        controller_created.append(True)
-        original_init(self, loop)
-
-    with patch.object(InterruptController, "__init__", track_init):
-        await run_chat_loop(
-            ctx,
-            agent_callbacks=NullProgressCallbacks(),
-            tool_callbacks=NullToolCallbacks(),
-            completer=completer,
-            ui=ui,
-            is_interruptible=False,
-        )
-
-    # Verify no interrupt controller was created
-    assert len(controller_created) == 0
-
-    # Verify tool completed normally
-    assert tool.called
-    assert tool.completed
-    assert not tool.cancelled
 
 
 @pytest.mark.asyncio
@@ -395,7 +338,6 @@ async def test_interrupt_recovery_continues_conversation():
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
-                    is_interruptible=True,
                 )
             )
 
@@ -468,7 +410,6 @@ async def test_interrupt_during_second_tool_call():
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
-                    is_interruptible=True,
                 )
             )
 
@@ -527,7 +468,6 @@ async def test_sigint_interrupts_tool_execution():
                 tool_callbacks=NullToolCallbacks(),
                 completer=completer,
                 ui=ui,
-                is_interruptible=True,
             )
         )
 

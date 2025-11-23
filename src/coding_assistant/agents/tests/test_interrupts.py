@@ -7,25 +7,32 @@ import pytest
 from coding_assistant.agents.interrupts import (
     InterruptController,
     InterruptReason,
-    InterruptibleSection,
     ToolCallCancellationManager,
 )
 
 
-def test_interruptible_section_catches_sigint():
-    with InterruptibleSection() as interruptible_section:
-        os.kill(os.getpid(), signal.SIGINT)
-    assert interruptible_section.was_interrupted
-
-
-def test_interruptible_section_handles_multiple_sigints():
-    """Test that multiple SIGINTs are handled without exiting."""
-    with InterruptibleSection() as interruptible_section:
-        for _ in range(6):
+def test_interrupt_controller_catches_sigint():
+    loop = asyncio.new_event_loop()
+    try:
+        with InterruptController(loop) as controller:
             os.kill(os.getpid(), signal.SIGINT)
-    # Should have tracked all interrupts
-    assert interruptible_section.was_interrupted
-    assert interruptible_section._was_interrupted == 6
+        assert controller.was_interrupted
+    finally:
+        loop.close()
+
+
+def test_interrupt_controller_handles_multiple_sigints():
+    """Test that multiple SIGINTs are handled without exiting."""
+    loop = asyncio.new_event_loop()
+    try:
+        with InterruptController(loop) as controller:
+            for _ in range(6):
+                os.kill(os.getpid(), signal.SIGINT)
+        # Should have tracked all interrupts
+        assert controller.was_interrupted
+        assert controller._was_interrupted == 6
+    finally:
+        loop.close()
 
 
 @pytest.mark.asyncio

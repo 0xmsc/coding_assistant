@@ -48,7 +48,6 @@ async def test_chat_step_prompts_user_on_no_tool_calls_once():
             tool_callbacks=NullToolCallbacks(),
             completer=completer,
             ui=ui,
-            is_interruptible=False,
         )
 
     # Should prompt first, then assistant responds, then prompt again
@@ -73,7 +72,6 @@ async def test_chat_step_executes_tools_without_prompt():
             tool_callbacks=NullToolCallbacks(),
             completer=completer,
             ui=ui,
-            is_interruptible=False,
         )
 
     # Tool must have executed
@@ -95,7 +93,6 @@ async def test_chat_mode_does_not_require_finish_task_tool():
             tool_callbacks=NullToolCallbacks(),
             completer=completer,
             ui=ui,
-            is_interruptible=False,
         )
 
     # Should be assistant followed by next user prompt
@@ -118,7 +115,6 @@ async def test_chat_exit_command_stops_loop_without_appending_command():
         tool_callbacks=NullToolCallbacks(),
         completer=completer,
         ui=ui,
-        is_interruptible=False,
     )
 
     # Verify that '/exit' was not appended to history
