@@ -373,17 +373,17 @@ async def run_chat_loop(
 
         loop = asyncio.get_running_loop()
         with InterruptController(loop) as interrupt_controller:
-            do_single_step_task = loop.create_task(
-                do_single_step(
-                    ctx,
-                    agent_callbacks,
-                    completer=completer,
-                ),
-                name="do_single_step",
-            )
-            interrupt_controller.register_task("do_single_step", do_single_step_task)
-
             try:
+                do_single_step_task = loop.create_task(
+                    do_single_step(
+                        ctx,
+                        agent_callbacks,
+                        completer=completer,
+                    ),
+                    name="do_single_step",
+                )
+                interrupt_controller.register_task("do_single_step", do_single_step_task)
+
                 message, _ = await do_single_step_task
                 append_assistant_message(state.history, agent_callbacks, desc.name, message)
 
