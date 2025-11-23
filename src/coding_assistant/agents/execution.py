@@ -2,13 +2,14 @@ import asyncio
 import dataclasses
 import json
 import logging
+from collections.abc import Callable
 from json import JSONDecodeError
 
 from opentelemetry import trace
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
-from coding_assistant.agents.interrupts import InterruptibleSection, NonInterruptibleSection  # noqa: F401
+from coding_assistant.agents.interrupts import InterruptController
 from coding_assistant.agents.parameters import format_parameters
 from coding_assistant.agents.types import (
     AgentContext,
@@ -117,7 +118,8 @@ async def handle_tool_call(
     tool_callbacks: AgentToolCallbacks,
     *,
     ui: UI,
-):
+) -> str:
+    """Execute a single tool call and return result_summary."""
     desc = ctx.desc
     state = ctx.state
     function_name = tool_call.function.name
@@ -132,16 +134,7 @@ async def handle_tool_call(
         logger.error(
             f"[{desc.name}] [{tool_call.id}] Failed to parse tool '{function_name}' arguments as JSON: {e} | raw: {args_str}"
         )
-        append_tool_message(
-            state.history,
-            agent_callbacks,
-            desc.name,
-            tool_call.id,
-            function_name,
-            None,
-            f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}",
-        )
-        return
+        return f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}"
 
     trace.get_current_span().set_attribute("function.name", function_name)
     trace.get_current_span().set_attribute("function.args", json.dumps(function_args))
@@ -161,16 +154,7 @@ async def handle_tool_call(
         else:
             function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
     except ValueError as e:
-        append_tool_message(
-            state.history,
-            agent_callbacks,
-            desc.name,
-            tool_call.id,
-            function_name,
-            function_args,
-            f"Error executing tool: {e}",
-        )
-        return
+        return f"Error executing tool: {e}"
 
     trace.get_current_span().set_attribute("function.result", str(function_call_result))
 
@@ -181,16 +165,7 @@ async def handle_tool_call(
     }
 
     tool_return_summary = result_handlers[type(function_call_result)](function_call_result)
-
-    append_tool_message(
-        state.history,
-        agent_callbacks,
-        desc.name,
-        tool_call.id,
-        function_name,
-        function_args,
-        tool_return_summary,
-    )
+    return tool_return_summary
 
 
 @tracer.start_as_current_span("handle_tool_calls")
@@ -201,6 +176,7 @@ async def handle_tool_calls(
     tool_callbacks: AgentToolCallbacks,
     *,
     ui: UI,
+    task_created_callback: Callable[[str, asyncio.Task], None] | None = None,
 ):
     tool_calls = message.tool_calls
 
@@ -209,9 +185,10 @@ async def handle_tool_calls(
 
     trace.get_current_span().set_attribute("message.tool_calls", [x.model_dump_json() for x in tool_calls])
 
-    aws = []
+    tasks_with_calls = []
+    loop = asyncio.get_running_loop()
     for tool_call in tool_calls:
-        task = asyncio.create_task(
+        task = loop.create_task(
             handle_tool_call(
                 tool_call,
                 ctx,
@@ -221,14 +198,42 @@ async def handle_tool_calls(
             ),
             name=f"{tool_call.function.name} ({tool_call.id})",
         )
-        aws.append(task)
+        if task_created_callback is not None:
+            task_created_callback(tool_call.id, task)
+        tasks_with_calls.append((tool_call, task))
 
-    done, pending = await asyncio.wait(aws)
+    done, pending = await asyncio.wait([task for _, task in tasks_with_calls])
     assert len(pending) == 0
 
-    # await the task, which will throw any exceptions stored in the future.
-    for task in done:
-        await task
+    # Process results and append tool messages
+    any_cancelled = False
+    for tool_call, task in tasks_with_calls:
+        try:
+            result_summary = await task
+        except asyncio.CancelledError:
+            # Tool was cancelled
+            result_summary = "Tool execution was cancelled."
+            any_cancelled = True
+
+        # Parse arguments from tool_call
+        try:
+            function_args = json.loads(tool_call.function.arguments)
+        except JSONDecodeError:
+            function_args = None
+
+        append_tool_message(
+            ctx.state.history,
+            agent_callbacks,
+            ctx.desc.name,
+            tool_call.id,
+            tool_call.function.name,
+            function_args,
+            result_summary,
+        )
+
+    # Re-raise CancelledError if any tool was cancelled
+    if any_cancelled:
+        raise asyncio.CancelledError()
 
 
 @tracer.start_as_current_span("do_single_step")
@@ -261,8 +266,6 @@ async def do_single_step(
     if hasattr(message, "reasoning_content") and message.reasoning_content:
         trace.get_current_span().set_attribute("completion.reasoning_content", message.reasoning_content)
         agent_callbacks.on_assistant_reasoning(desc.name, message.reasoning_content)
-
-    append_assistant_message(state.history, agent_callbacks, desc.name, message)
 
     return message, completion.tokens
 
@@ -304,6 +307,9 @@ async def run_agent_loop(
             completer=completer,
         )
 
+        # Append assistant message to history
+        append_assistant_message(state.history, agent_callbacks, desc.name, message)
+
         if getattr(message, "tool_calls", []):
             await handle_tool_calls(
                 message,
@@ -344,7 +350,6 @@ async def run_chat_loop(
     tool_callbacks: AgentToolCallbacks,
     completer: Completer,
     ui: UI,
-    is_interruptible: bool = True,
 ):
     desc = ctx.desc
     state = ctx.state
@@ -366,20 +371,33 @@ async def run_chat_loop(
                 break
             append_user_message(state.history, agent_callbacks, desc.name, answer)
 
-        message, _tokens = await do_single_step(
-            ctx,
-            agent_callbacks,
-            completer=completer,
-        )
+        loop = asyncio.get_running_loop()
+        with InterruptController(loop) as interrupt_controller:
+            try:
+                do_single_step_task = loop.create_task(
+                    do_single_step(
+                        ctx,
+                        agent_callbacks,
+                        completer=completer,
+                    ),
+                    name="do_single_step",
+                )
+                interrupt_controller.register_task("do_single_step", do_single_step_task)
 
-        if getattr(message, "tool_calls", []):
-            await handle_tool_calls(
-                message,
-                ctx,
-                agent_callbacks,
-                tool_callbacks,
-                ui=ui,
-            )
-            need_user_input = False
-        else:
-            need_user_input = True
+                message, _ = await do_single_step_task
+                append_assistant_message(state.history, agent_callbacks, desc.name, message)
+
+                if getattr(message, "tool_calls", []):
+                    await handle_tool_calls(
+                        message,
+                        ctx,
+                        agent_callbacks,
+                        tool_callbacks,
+                        ui=ui,
+                        task_created_callback=interrupt_controller.register_task,
+                    )
+                    need_user_input = False
+                else:
+                    need_user_input = True
+            except asyncio.CancelledError:
+                need_user_input = True

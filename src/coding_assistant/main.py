@@ -250,7 +250,6 @@ async def run_chat_session(
             tool_callbacks=tool_callbacks,
             completer=complete,
             ui=PromptToolkitUI(),
-            is_interruptible=True,
         )
     finally:
         save_orchestrator_history(working_directory, state.history)

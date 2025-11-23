@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import textwrap
 from typing import Any, Optional
@@ -14,6 +15,8 @@ from rich.pretty import Pretty
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
 from coding_assistant.agents.types import TextResult, ToolResult
+
+logger = logging.getLogger(__name__)
 
 
 async def confirm_tool_if_needed(*, tool_name: str, arguments: dict, patterns: list[str], ui) -> Optional[TextResult]:
