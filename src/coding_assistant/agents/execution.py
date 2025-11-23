@@ -118,8 +118,8 @@ async def handle_tool_call(
     tool_callbacks: AgentToolCallbacks,
     *,
     ui: UI,
-) -> tuple[str, dict | None, str]:
-    """Execute a single tool call and return (function_name, function_args, result_summary)."""
+) -> str:
+    """Execute a single tool call and return result_summary."""
     desc = ctx.desc
     state = ctx.state
     function_name = tool_call.function.name
@@ -134,7 +134,7 @@ async def handle_tool_call(
         logger.error(
             f"[{desc.name}] [{tool_call.id}] Failed to parse tool '{function_name}' arguments as JSON: {e} | raw: {args_str}"
         )
-        return (function_name, None, f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}")
+        return f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}"
 
     trace.get_current_span().set_attribute("function.name", function_name)
     trace.get_current_span().set_attribute("function.args", json.dumps(function_args))
@@ -154,7 +154,7 @@ async def handle_tool_call(
         else:
             function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
     except ValueError as e:
-        return (function_name, function_args, f"Error executing tool: {e}")
+        return f"Error executing tool: {e}"
 
     trace.get_current_span().set_attribute("function.result", str(function_call_result))
 
@@ -165,7 +165,7 @@ async def handle_tool_call(
     }
 
     tool_return_summary = result_handlers[type(function_call_result)](function_call_result)
-    return (function_name, function_args, tool_return_summary)
+    return tool_return_summary
 
 
 @tracer.start_as_current_span("handle_tool_calls")
@@ -208,13 +208,19 @@ async def handle_tool_calls(
     # Process results and append tool messages
     for tool_call, task in tasks_with_calls:
         try:
-            function_name, function_args, result_summary = await task
+            result_summary = await task
+            # Parse arguments from tool_call
+            try:
+                function_args = json.loads(tool_call.function.arguments)
+            except JSONDecodeError:
+                function_args = None
+            
             append_tool_message(
                 ctx.state.history,
                 agent_callbacks,
                 ctx.desc.name,
                 tool_call.id,
-                function_name,
+                tool_call.function.name,
                 function_args,
                 result_summary,
             )

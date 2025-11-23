@@ -41,15 +41,19 @@ async def test_shorten_conversation_resets_history():
     )
 
     ctx = AgentContext(desc=desc, state=state)
-    function_name, function_args, result_summary = await handle_tool_call(
+    result_summary = await handle_tool_call(
         tool_call, ctx, callbacks, tool_callbacks=NullToolCallbacks(), ui=make_ui_mock()
     )
+    
+    # Parse arguments from tool_call
+    function_args = json.loads(tool_call.function.arguments)
+    
     append_tool_message(
         state.history,
         callbacks,
         desc.name,
         tool_call.id,
-        function_name,
+        tool_call.function.name,
         function_args,
         result_summary,
     )

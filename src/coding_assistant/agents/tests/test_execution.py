@@ -36,15 +36,25 @@ async def handle_tool_call_and_append(
     ui,
 ):
     """Helper to call handle_tool_call and append the result to history."""
-    function_name, function_args, result_summary = await handle_tool_call(
+    from json import JSONDecodeError
+    import json
+    
+    result_summary = await handle_tool_call(
         tool_call, ctx, agent_callbacks, tool_callbacks, ui=ui
     )
+    
+    # Parse arguments from tool_call
+    try:
+        function_args = json.loads(tool_call.function.arguments)
+    except JSONDecodeError:
+        function_args = None
+    
     append_tool_message(
         ctx.state.history,
         agent_callbacks,
         ctx.desc.name,
         tool_call.id,
-        function_name,
+        tool_call.function.name,
         function_args,
         result_summary,
     )
