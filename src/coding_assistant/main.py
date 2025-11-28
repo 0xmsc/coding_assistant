@@ -168,17 +168,18 @@ async def run_orchestrator_agent(
             ui=PromptToolkitUI(),
             tool_callbacks=tool_callbacks,
         )
-        orchestrator_params = {
-            "task": task,
-            "summaries": conversation_summaries[-5:],
-            "instructions": instructions,
-        }
 
-        try:
-            result = await tool.execute(orchestrator_params)
-        finally:
-            save_orchestrator_history(working_directory, tool.history)
-            trim_orchestrator_history(working_directory)
+    orchestrator_params = {
+        "task": task,
+        "summaries": conversation_summaries[-5:],
+        "instructions": instructions,
+    }
+
+    try:
+        result = await tool.execute(orchestrator_params)
+    finally:
+        save_orchestrator_history(working_directory, tool.history)
+        trim_orchestrator_history(working_directory)
 
     summary = tool.summary
     save_conversation_summary(working_directory, summary)
