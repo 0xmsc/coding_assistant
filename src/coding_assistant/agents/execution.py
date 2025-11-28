@@ -5,8 +5,6 @@ import logging
 from collections.abc import Callable
 from json import JSONDecodeError
 
-from opentelemetry import trace
-
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
 from coding_assistant.agents.interrupts import InterruptController
@@ -25,7 +23,6 @@ from coding_assistant.llm.adapters import execute_tool_call, get_tools
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
-tracer = trace.get_tracer(__name__)
 
 
 START_MESSAGE_TEMPLATE = """
@@ -110,7 +107,6 @@ def _handle_shorten_conversation_result(
     return "Conversation shortened and history reset."
 
 
-@tracer.start_as_current_span("handle_tool_call")
 async def handle_tool_call(
     tool_call,
     ctx: AgentContext,
@@ -136,9 +132,6 @@ async def handle_tool_call(
         )
         return f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}"
 
-    trace.get_current_span().set_attribute("function.name", function_name)
-    trace.get_current_span().set_attribute("function.args", json.dumps(function_args))
-
     logger.debug(f"[{tool_call.id}] [{desc.name}] Calling tool '{function_name}' with arguments {function_args}")
 
     # Notify callbacks that tool is starting
@@ -159,8 +152,6 @@ async def handle_tool_call(
     except ValueError as e:
         return f"Error executing tool: {e}"
 
-    trace.get_current_span().set_attribute("function.result", str(function_call_result))
-
     result_handlers = {
         FinishTaskResult: lambda r: _handle_finish_task_result(r, state),
         ShortenConversationResult: lambda r: _handle_shorten_conversation_result(r, desc, state, agent_callbacks),
@@ -171,7 +162,6 @@ async def handle_tool_call(
     return tool_return_summary
 
 
-@tracer.start_as_current_span("handle_tool_calls")
 async def handle_tool_calls(
     message,
     ctx: AgentContext,
@@ -185,8 +175,6 @@ async def handle_tool_calls(
 
     if not tool_calls:
         return
-
-    trace.get_current_span().set_attribute("message.tool_calls", [x.model_dump_json() for x in tool_calls])
 
     tasks_with_calls = []
     loop = asyncio.get_running_loop()
@@ -239,7 +227,6 @@ async def handle_tool_calls(
         raise asyncio.CancelledError()
 
 
-@tracer.start_as_current_span("do_single_step")
 async def do_single_step(
     ctx: AgentContext,
     agent_callbacks: AgentProgressCallbacks,
@@ -248,14 +235,11 @@ async def do_single_step(
 ):
     desc = ctx.desc
     state = ctx.state
-    trace.get_current_span().set_attribute("agent.name", desc.name)
 
     tools = await get_tools(desc.tools)
-    trace.get_current_span().set_attribute("agent.tools", json.dumps(tools))
 
     if not state.history:
         raise RuntimeError("Agent needs to have history in order to run a step.")
-    trace.get_current_span().set_attribute("agent.history", json.dumps(state.history))
 
     completion = await completer(
         state.history,
@@ -264,16 +248,13 @@ async def do_single_step(
         callbacks=agent_callbacks,
     )
     message = completion.message
-    trace.get_current_span().set_attribute("completion.message", message.model_dump_json())
 
     if hasattr(message, "reasoning_content") and message.reasoning_content:
-        trace.get_current_span().set_attribute("completion.reasoning_content", message.reasoning_content)
         agent_callbacks.on_assistant_reasoning(desc.name, message.reasoning_content)
 
     return message, completion.tokens
 
 
-@tracer.start_as_current_span("run_agent_loop")
 async def run_agent_loop(
     ctx: AgentContext,
     *,
@@ -288,10 +269,6 @@ async def run_agent_loop(
 
     if state.output is not None:
         raise RuntimeError("Agent already has a result or summary.")
-
-    trace.get_current_span().set_attribute("agent.name", desc.name)
-    parameters_json = json.dumps([dataclasses.asdict(p) for p in desc.parameters])
-    trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
 
     # Validate tools required for the agent loop
     if not any(tool.name() == "finish_task" for tool in desc.tools):
@@ -339,13 +316,9 @@ async def run_agent_loop(
 
     assert state.output is not None
 
-    trace.get_current_span().set_attribute("agent.result", state.output.result)
-    trace.get_current_span().set_attribute("agent.summary", state.output.summary)
-
     agent_callbacks.on_agent_end(desc.name, state.output.result, state.output.summary)
 
 
-@tracer.start_as_current_span("run_chat_loop")
 async def run_chat_loop(
     ctx: AgentContext,
     *,
@@ -356,10 +329,6 @@ async def run_chat_loop(
 ):
     desc = ctx.desc
     state = ctx.state
-
-    trace.get_current_span().set_attribute("agent.name", desc.name)
-    parameters_json = json.dumps([dataclasses.asdict(p) for p in desc.parameters])
-    trace.get_current_span().set_attribute("agent.parameter_description", parameters_json)
 
     start_message = _create_chat_start_message(desc)
     agent_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
