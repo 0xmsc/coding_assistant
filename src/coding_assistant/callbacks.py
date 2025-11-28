@@ -228,6 +228,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
             print()
             print(Padding(Markdown(result), left_padding))
             return True
+
         return False
 
     def _format_arguments(self, arguments: dict) -> str:

@@ -5,12 +5,6 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptio
 from pathlib import Path
 
 import debugpy  # type: ignore[import-untyped]
-import requests
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from rich import print as rich_print
 from rich.logging import RichHandler
 from rich.markdown import Markdown
@@ -39,7 +33,6 @@ from coding_assistant.ui import PromptToolkitUI
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
 logger = logging.getLogger("coding_assistant")
-tracer = trace.get_tracer(__name__)
 logger.setLevel(logging.INFO)
 
 
@@ -102,12 +95,6 @@ def parse_args():
         help='MCP server configurations as JSON strings. Format: \'{"name": "server_name", "command": "command", "args": ["arg1", "arg2"], "env": ["ENV_VAR1", "ENV_VAR2"]}\'',
     )
     parser.add_argument(
-        "--trace-endpoint",
-        type=str,
-        default="http://localhost:4318/v1/traces",
-        help="Endpoint for OTLP trace exporter.",
-    )
-    parser.add_argument(
         "--shorten-conversation-at-tokens",
         type=int,
         default=200_000,
@@ -162,23 +149,6 @@ def create_config_from_args(args) -> Config:
     )
 
 
-def setup_tracing(args):
-    TRACE_ENDPOINT = args.trace_endpoint
-
-    try:
-        requests.head(TRACE_ENDPOINT, timeout=0.2)
-    except requests.RequestException as e:
-        logger.info(f"Tracing endpoint {TRACE_ENDPOINT} not reachable. Tracing will be disabled. Error: {e}")
-        return
-
-    resource = Resource.create(attributes={SERVICE_NAME: "coding_assistant"})
-    tracerProvider = TracerProvider(resource=resource)
-    processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=TRACE_ENDPOINT))
-    tracerProvider.add_span_processor(processor)
-    trace.set_tracer_provider(tracerProvider)
-    logger.info(f"Tracing successfully enabled on endpoint {TRACE_ENDPOINT}.")
-
-
 async def run_orchestrator_agent(
     task: str,
     config: Config,
@@ -190,8 +160,7 @@ async def run_orchestrator_agent(
     agent_callbacks: AgentProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
 ):
-    with tracer.start_as_current_span("run_root_agent"):
-        tool = OrchestratorTool(
+    tool = OrchestratorTool(
             config=config,
             tools=tools,
             history=history,
@@ -264,8 +233,6 @@ async def run_chat_session(
 
 async def _main(args):
     logger.info(f"Starting Coding Assistant with arguments {args}")
-
-    setup_tracing(args)
 
     config = create_config_from_args(args)
     logger.info(f"Using configuration from command line arguments: {config}")

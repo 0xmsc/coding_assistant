@@ -1,6 +1,6 @@
 # Coding Assistant
 
-Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automate and streamline coding tasks. It can plan, launch sub-agents, use MCP tools, run inside a sandbox, keep resumable history, and optionally emit OTLP traces for observability.
+Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automate and streamline coding tasks. It can plan, launch sub-agents, use MCP tools (filesystem, web fetch/search, Context7, Tavily, etc.), run inside a sandbox, and keep resumable history.
 
 ## Key Features
 
@@ -13,7 +13,6 @@ Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automa
 - Shell/tool confirmation patterns to guard dangerous operations
 - Chat mode enabled by default for interactive conversations
 - Configurable via CLI flags (models, planning mode, instructions, etc.)
-- Optional OTLP tracing (exporter over HTTP)
 
 ## Requirements
 
@@ -180,11 +179,7 @@ Example from `run.fish`:
 - Use `--resume` to continue from the most recent session, or `--resume-file` to select a specific file.
 - The assistant automatically trims old history once it's saved.
 
-## Tracing (optional)
-
-If `--trace-endpoint` is reachable (default `http://localhost:4318/v1/traces`), OTLP traces are exported using the HTTP exporter. If unreachable, tracing is disabled automatically.
-
-## Shell and Python Execution
+## Shell command execution behavior
 
 The built-in MCP tools `shell_execute` and `python_execute`:
 - Support multi-line scripts
