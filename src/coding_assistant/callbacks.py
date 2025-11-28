@@ -185,12 +185,12 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
     def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
         status = "resuming" if is_resuming else "starting"
         print()
-        print(f"[bold red]▸[/bold red] Agent {agent_name} ({model}) {status}")
+        print(f"[bold red]▶[/bold red] Agent {agent_name} ({model}) {status}")
         self._last_printed_tool_id = None
 
     def on_agent_end(self, agent_name: str, result: str, summary: str):
         print()
-        print(f"[bold red]◂[/bold red] Agent {agent_name} complete")
+        print(f"[bold red]◀[/bold red] Agent {agent_name} complete")
         print(f"[dim]Summary: {summary}[/dim]")
         self._last_printed_tool_id = None
 
