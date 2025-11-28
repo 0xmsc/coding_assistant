@@ -30,7 +30,7 @@ def _execute_code(code: str) -> str:
 async def execute(
     code: Annotated[str, "The Python code to execute."],
     timeout: Annotated[int, "The timeout for execution in seconds."] = 30,
-    truncate_at: Annotated[int, "Maximum number of characters to return in stdout/stderr combined."] = 50_000,
+    truncate_at: Annotated[int, "Maximum number of characters to return in stdout/stderr combined."] = 5_000,
 ) -> str:
     """Execute the given Python code using exec and return combined stdout/stderr."""
 

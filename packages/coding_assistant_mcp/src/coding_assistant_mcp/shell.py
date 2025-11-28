@@ -13,7 +13,7 @@ shell_server = FastMCP()
 async def execute(
     command: Annotated[str, "The shell command to execute. Do not include 'bash -c'."],
     timeout: Annotated[int, "The timeout for the command in seconds."] = 30,
-    truncate_at: Annotated[int, "Maximum number of characters to return in stdout/stderr combined."] = 50_000,
+    truncate_at: Annotated[int, "Maximum number of characters to return in stdout/stderr combined."] = 5_000,
 ) -> str:
     """Execute a shell command using bash and return combined stdout/stderr."""
     command = command.strip()

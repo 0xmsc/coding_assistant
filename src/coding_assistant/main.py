@@ -146,7 +146,7 @@ def parse_args():
     parser.add_argument(
         "--dense",
         action=BooleanOptionalAction,
-        default=False,
+        default=True,
         help="Use dense output mode (no panels, compact formatting, chunks enabled by default).",
     )
 
@@ -336,10 +336,8 @@ async def _main(args):
             rich_print(Panel(Markdown(instructions), title="Instructions"))
             return
 
-        # Set up callbacks based on mode
         if args.dense:
             agent_callbacks = DenseProgressCallbacks()
-            # In dense mode, chunks are always printed
         else:
             agent_callbacks = RichAgentProgressCallbacks(
                 print_chunks=args.print_chunks,

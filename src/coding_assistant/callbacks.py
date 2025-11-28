@@ -145,11 +145,10 @@ class RichAgentProgressCallbacks(AgentProgressCallbacks):
 
         return Group(*parts)
 
-    def on_tool_message(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict | None, result: str):
+    def on_tool_message(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         parts: list[Any] = [Markdown(f"Name: `{tool_name}`")]
 
-        if arguments is not None:
-            parts.append(self._format_arguments(arguments, tool_name))
+        parts.append(self._format_arguments(arguments, tool_name))
 
         parts.append(Padding(self._format_tool_result(tool_name, result), (1, 0, 0, 0)))
 
@@ -162,7 +161,7 @@ class RichAgentProgressCallbacks(AgentProgressCallbacks):
             ),
         )
 
-    def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict | None):
+    def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         pass  # Default implementation does nothing
 
     def on_chunk(self, chunk: str):
@@ -178,7 +177,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
     """Dense progress callbacks with minimal formatting."""
 
     def __init__(self):
-        self._last_tool_info: tuple[str, str, str] | None = None  # (tool_call_id, tool_name, args_str)
+        self._last_printed_tool_id: str | None = None
         self._chunk_buffer = ""
         self._console = Console()
         self._live: Live | None = None
@@ -187,13 +186,13 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         status = "resuming" if is_resuming else "starting"
         print()
         print(f"[bold red]▸[/bold red] Agent {agent_name} ({model}) {status}")
-        self._last_tool_info = None
+        self._last_printed_tool_id = None
 
     def on_agent_end(self, agent_name: str, result: str, summary: str):
         print()
         print(f"[bold red]◂[/bold red] Agent {agent_name} complete")
         print(f"[dim]Summary: {summary}[/dim]")
-        self._last_tool_info = None
+        self._last_printed_tool_id = None
 
     def on_user_message(self, agent_name: str, content: str):
         # Has already been printed via prompt
@@ -204,78 +203,60 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         pass
 
     def on_assistant_reasoning(self, agent_name: str, content: str):
+        print()
         print(f"[dim cyan]💭 {content}[/dim cyan]")
-        self._last_tool_info = None
+        self._last_printed_tool_id = None
 
-    def _count_lines(self, text: str) -> int:
-        """Count number of lines in text."""
-        return len(text.splitlines())
+    def _print_tool_start(self, tool_call_id: str, tool_name: str, arguments: dict):
+        args_str = self._format_arguments(arguments)
+        print(f"[bold yellow]▸[/bold yellow] {tool_name} [dim]({tool_call_id})[/dim]{args_str}")
+
+    def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict):
+        print()
+        self._print_tool_start(tool_call_id, tool_name, arguments)
+        self._last_printed_tool_id = tool_call_id
+
+    def _special_handle_full_result(self, tool_call_id: str, tool_name: str, result: str) -> bool:
+        left_padding = (0, 0, 0, 1)
+        if tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
+            diff_body = result.strip("\n")
+            rendered_result = Markdown(f"```diff\n{diff_body}\n```")
+            print()
+            print(Padding(rendered_result, left_padding))
+            return True
+        elif tool_name.startswith("mcp_coding_assistant_mcp_todo_"):
+            print()
+            print(Padding(Markdown(result), left_padding))
+            return True
+        return False
 
     def _format_arguments(self, arguments: dict) -> str:
-        """Format arguments with each on a separate line."""
-        # For large arguments, show count instead of full content
-        formatted = {}
-        for key, value in arguments.items():
-            if isinstance(value, str) and len(value) > 100:
-                formatted[key] = f"<{len(value)} chars>"
-            else:
-                formatted[key] = value
-
-        # Format with each argument on a separate line
-        if not formatted:
+        if not arguments:
             return ""
 
         lines = []
-        for key, value in formatted.items():
+        for key, value in arguments.items():
             value_json = json.dumps(value)
             lines.append(f"\n    {key}={value_json}")
 
         return "".join(lines)
 
-    def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict | None):
-        print()
-        # Print tool name and arguments with call ID
-        args_str = self._format_arguments(arguments) if arguments else ""
-        if args_str:
-            print(f"[bold yellow]▸[/bold yellow] {tool_name} [dim]({tool_call_id})[/dim]{args_str}")
-        else:
-            print(f"[bold yellow]▸[/bold yellow] {tool_name} [dim]({tool_call_id})[/dim]")
+    def on_tool_message(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
+        if self._last_printed_tool_id is None or self._last_printed_tool_id != tool_call_id:
+            self._print_tool_start(tool_call_id, tool_name, arguments)
 
-        # Remember what we printed
-        self._last_tool_info = (tool_call_id, tool_name, args_str)
-
-    def on_tool_message(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict | None, result: str):
-        # If we printed something between start and end, reprint the tool info
-        if self._last_tool_info is None:
-            # Something was printed, need to show tool info again
-            print()
-            args_str = self._format_arguments(arguments) if arguments else ""
-            if args_str:
-                print(f"[bold yellow]▸[/bold yellow] {tool_name} [dim]({tool_call_id})[/dim]{args_str}")
-            else:
-                print(f"[bold yellow]▸[/bold yellow] {tool_name} [dim]({tool_call_id})[/dim]")
-
-        # Print result summary (line count only, no call ID if nothing printed between)
-        line_count = self._count_lines(result)
-        if line_count > 0:
-            if self._last_tool_info is None:
-                print(f" [dim]({tool_call_id}) → {line_count} lines[/dim]")
-            else:
-                print(f" [dim]→ {line_count} lines[/dim]")
-        elif self._last_tool_info is None:
-            print(f" [dim]({tool_call_id})[/dim]")
+        if not self._special_handle_full_result(tool_call_id, tool_name, result):
+            print(f"  [dim]→ {len(result.splitlines())} lines[/dim]")
 
         # Reset state
-        self._last_tool_info = None
+        self._last_printed_tool_id = None
 
     def on_chunk(self, chunk: str):
-        # Start live display on first non-empty chunk
         if not self._live and chunk:
             print()
-            print("[bold green]◉[/bold green] ", end="")
-            self._last_tool_info = None
+            self._last_printed_tool_id = None
             self._chunk_buffer = ""
-            self._live = Live("", console=self._console, refresh_per_second=10, auto_refresh=True)
+            self._live = Live(self._chunk_buffer, console=self._console, refresh_per_second=10, auto_refresh=True)
             self._live.start()
 
         # Buffer and render markdown in real-time
@@ -283,11 +264,14 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         if self._live:
             self._live.update(Markdown(self._chunk_buffer))
 
+        self._last_printed_tool_id = None
+
     def on_chunks_end(self):
         if self._live:
             self._live.stop()
             self._live = None
-        print()  # Newline after chunks
+
+        self._last_printed_tool_id = None
 
 
 class ConfirmationToolCallbacks(AgentToolCallbacks):

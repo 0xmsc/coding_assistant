@@ -17,16 +17,6 @@
 - Do not commit changes before asking the user.
 - Do not switch branches before asking the user.
 
-## Sub-agents
-
-- Launch a sub-agent when you expect to read a lot of files to extract information from the codebase.
-- You can launch multiple sub-agents in parallel to speed up your work.
-- Do not use sub-agents to do implementation tasks, treat them as if they have read-only access to the codebase.
-- Pass all necessary context to the sub-agents.
-  - Sub-agents do not have access to your conversation history with the client.
-  - Sub-agents only have access to the parameters you pass to them.
-- You are responsible for the work of the sub-agents. Review it before showing it to the client.
-
 ## MCP
 
 - You have access to a custom MCP server (`coding_assistant_mcp`).
