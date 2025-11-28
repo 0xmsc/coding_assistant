@@ -74,11 +74,12 @@ async def test_on_tool_message_called_with_arguments_and_result():
         # on_tool_message is called positionally in code; args tuple
         args = call_args[0]
         if (
-            len(args) == 4
+            len(args) == 5
             and args[0] == desc.name
-            and args[1] == "echo"
-            and args[2] == {"text": "hello"}
-            and args[3] == "hello"
+            and args[1] == "1"
+            and args[2] == "echo"
+            and args[3] == {"text": "hello"}
+            and args[4] == "hello"
         ):
             found = True
             break

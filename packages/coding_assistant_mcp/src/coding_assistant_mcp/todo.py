@@ -51,22 +51,16 @@ class TodoManager:
         task_id: Annotated[int, "ID of the TODO to mark complete"],
         result: Annotated[str | None, "Optional result text (one line) to attach"] = None,
     ) -> str:
-        """Mark a task complete and return a completion message plus the full list."""
-        output = ""
+        """Mark a task complete and return the updated list (or an error)."""
         todo = self._todos.get(task_id)
-        if todo:
-            todo.completed = True
-            if result is not None and result != "":
-                todo.result = result
-            output += f"Completed TODO {task_id}: {todo.description}"
-            if result:
-                output += f" with result: {result}\n"
-            else:
-                output += "\n"
-        else:
-            output += f"TODO {task_id} not found\n"
-        output += "\n" + self.format()
-        return output
+        if not todo:
+            return f"TODO {task_id} not found."
+
+        todo.completed = True
+        if result is not None and result != "":
+            todo.result = result
+
+        return self.format()
 
     def reset(self) -> str:
         """Reset the in-memory TODO list."""
