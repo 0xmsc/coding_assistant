@@ -1,15 +1,17 @@
 # Coding Assistant
 
-Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automate and streamline coding tasks. It can plan, launch sub-agents, use MCP tools (filesystem, web fetch/search, Context7, Tavily, etc.), run inside a sandbox, keep resumable history, and optionally emit OTLP traces for observability.
+Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automate and streamline coding tasks. It can plan, launch sub-agents, use MCP tools, run inside a sandbox, keep resumable history, and optionally emit OTLP traces for observability.
 
 ## Key Features
 
 - Orchestrator agent that delegates to sub-agents and tools
 - Resumable sessions and conversation summaries stored per-project
-- MCP Server integration out of the box (built-in Coding Assistant MCP + filesystem, fetch, context7, tavily examples)
+- Built-in MCP server with shell, Python, filesystem, and TODO tools
+- Support for external MCP servers (filesystem, fetch, Context7, Tavily, etc.)
 - Landlock-based filesystem sandbox with readable/writable allowlists
-- Prompt-toolkit powered TUI with optional model chunks and reasoning display
+- Prompt-toolkit powered TUI with dense and regular output modes
 - Shell/tool confirmation patterns to guard dangerous operations
+- Chat mode enabled by default for interactive conversations
 - Configurable via CLI flags (models, planning mode, instructions, etc.)
 - Optional OTLP tracing (exporter over HTTP)
 
@@ -18,12 +20,12 @@ Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automa
 - Python 3.12+
 - uv (recommended) or pip for running/installing
 - Optional: fish shell if you want to use the provided `run.fish`
-- For the example MCP servers used in `run.fish`:
-  - Node.js/npm for `npx`
+- Optional: External MCP servers if you want to extend functionality
+  - Node.js/npm for `npx` (for NPM-based MCP servers)
   - Network access to fetch packages
 - API keys as needed by your chosen model/tooling, e.g.:
   - `OPENAI_API_KEY` (or other LiteLLM-compatible provider keys)
-  - `TAVILY_API_KEY` (for the Tavily MCP server)
+  - Additional keys for external MCP servers (e.g., `TAVILY_API_KEY`)
 
 ## Installation
 
@@ -42,7 +44,7 @@ pip install -e .
 
 ## Quickstart
 
-The easiest way to run is with the provided script, which preconfigures the built-in Coding Assistant MCP server plus several external MCP servers and sensible defaults:
+The easiest way to run is with the provided script, which preconfigures the built-in Coding Assistant MCP server and sensible defaults:
 
 ```bash
 ./run.fish --task "Say 'Hello World'"
@@ -73,8 +75,16 @@ You can invoke the CLI directly (e.g., using uv):
 ```bash
 uv run coding-assistant \
   --task "Say 'Hello World'" \
-  --model "gpt-5" \
-  --expert-model "gpt-5" \
+  --model "openrouter/openai/gpt-4o-mini" \
+  --expert-model "openrouter/anthropic/claude-3.5-sonnet"
+```
+
+Or with external MCP servers:
+
+```bash
+uv run coding-assistant \
+  --task "Say 'Hello World'" \
+  --model "openrouter/openai/gpt-4o-mini" \
   --mcp-servers \
     '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
     '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}'
@@ -86,12 +96,14 @@ Notes:
 
 ## Usage Highlights
 
-- `--task` The task for the orchestrator agent (required).
-- `--resume`/`--resume-file` Resume from the latest/specific orchestrator history in `.coding_assistant/history/`.
-- `--model`/`--expert-model` Select models for general/expert tasks.
-- The agent may autonomously decide to use a planning phase before acting; there is no explicit CLI flag.
+- `--task` The task for the orchestrator agent (required unless in chat mode).
+- `--chat-mode` / `--no-chat-mode` Enable/disable open-ended chat mode (default: **enabled**).
+- `--resume` / `--resume-file` Resume from the latest/specific orchestrator history in `.coding_assistant/history/`.
+- `--model` / `--expert-model` Select models for general/expert tasks (default: `gpt-5` for both).
 - `--instructions` Provide extra instructions that are composed with defaults.
-- `--print-chunks`/`--print-reasoning` Control live stream and reasoning display in the TUI.
+- `--dense` / `--no-dense` Use dense output mode with compact formatting (default: **enabled**).
+- `--print-chunks` / `--no-print-chunks` Control live model stream display (default: disabled, enabled in dense mode).
+- `--print-reasoning` / `--no-print-reasoning` Display model reasoning (default: **enabled**).
 - `--print-instructions` Print the final instruction bundle that will be given to the agent and exit.
 - `--shell-confirmation-patterns` Ask for confirmation before running matching shell commands.
 - `--tool-confirmation-patterns` Ask for confirmation before running matching tools.
@@ -114,27 +126,38 @@ Pass MCP servers with repeated `--mcp-servers` flags as JSON strings:
 ### Built-in: Coding Assistant MCP
 
 This repository includes a built-in MCP server (package `packages/coding_assistant_mcp`) that provides:
-- shell: `shell_execute` — execute shell commands (see behavior below)
-- todo: `todo_add`, `todo_list_todos`, `todo_complete` — simple in-memory TODO list
+
+- **shell**: `shell_execute` — Execute shell commands with timeout and output truncation
+- **python**: `python_execute` — Execute Python code with timeout and output truncation
+- **filesystem**: `filesystem_write_file`, `filesystem_edit_file` — Write new files or apply targeted edits
+- **todo**: `todo_add`, `todo_list_todos`, `todo_complete` — Simple in-memory TODO list management
 
 When connected, tools are exposed to the agent as fully-qualified names:
 - `mcp_coding_assistant_mcp_shell_execute`
+- `mcp_coding_assistant_mcp_python_execute`
+- `mcp_coding_assistant_mcp_filesystem_write_file`
+- `mcp_coding_assistant_mcp_filesystem_edit_file`
 - `mcp_coding_assistant_mcp_todo_add`
 - `mcp_coding_assistant_mcp_todo_list_todos`
 - `mcp_coding_assistant_mcp_todo_complete`
 
-The `run.fish` script starts this server automatically. You can also add it manually as shown in the "Running without run.fish" example above.
+The `run.fish` script starts this server automatically.
 
-### Other examples included in `run.fish`
-- filesystem: `@modelcontextprotocol/server-filesystem`
-- fetch: `mcp-server-fetch` (via `uvx`)
-- context7: `@upstash/context7-mcp`
-- tavily: `tavily-mcp` (needs `TAVILY_API_KEY`)
+### External MCP Servers (Optional)
 
-You can print discovered tools from running MCP servers:
+You can add external MCP servers to extend functionality. Examples include:
+
+- **filesystem**: `@modelcontextprotocol/server-filesystem` (NPM) — Additional filesystem operations
+- **fetch**: `mcp-server-fetch` (uvx) — Web fetching capabilities
+- **context7**: `@upstash/context7-mcp` (NPM) — Context management
+- **tavily**: `tavily-mcp` (needs `TAVILY_API_KEY`) — Web search
+
+To use these, add them via `--mcp-servers` flags as shown in the examples above.
+
+You can print all discovered tools from running MCP servers:
 
 ```bash
-uv run coding-assistant --print-mcp-tools ...
+uv run coding-assistant --print-mcp-tools --mcp-servers '...'
 ```
 
 ## Sandbox
@@ -145,22 +168,31 @@ When enabled (default), the assistant applies Landlock restrictions. By default 
 
 Use these flags to widen access if needed when working across multiple directories or mounts.
 
+Example from `run.fish`:
+```bash
+--readable-sandbox-directories /mnt/wsl ~/.ssh ~/.rustup \
+--writable-sandbox-directories "$project_dir" /tmp /dev/shm ~/.cache/coding_assistant
+```
+
 ## History and Resume
 
 - Conversation history and summaries are kept under `.coding_assistant/` in your project.
 - Use `--resume` to continue from the most recent session, or `--resume-file` to select a specific file.
-- The assistant automatically trims old history once it’s saved.
+- The assistant automatically trims old history once it's saved.
 
 ## Tracing (optional)
 
 If `--trace-endpoint` is reachable (default `http://localhost:4318/v1/traces`), OTLP traces are exported using the HTTP exporter. If unreachable, tracing is disabled automatically.
 
-## Shell command execution behavior
+## Shell and Python Execution
 
-The MCP shell tool `shell_execute` (fully qualified in this project as `mcp_coding_assistant_mcp_shell_execute`):
-- Merges stderr into stdout and returns plain text (no JSON envelope).
-- Prefixes output with `Returncode: N` only when the command exits non-zero.
-- Supports `truncate_at` to limit the combined output size and appends a note when truncation occurs.
+The built-in MCP tools `shell_execute` and `python_execute`:
+- Support multi-line scripts
+- Merge stderr into stdout and return plain text (no JSON envelope)
+- Prefix output with `Returncode: N` only when the command/code exits non-zero
+- Support `truncate_at` parameter to limit combined output size and append a note when truncation occurs
+- Support `timeout` parameter (default: 30 seconds)
+- Interactive commands (e.g., `git rebase -i`) are not supported and will block
 
 ## Development
 
@@ -174,6 +206,7 @@ The MCP shell tool `shell_execute` (fully qualified in this project as `mcp_codi
 
   ```bash
   uv run pytest -n auto -m "not slow"
+  uv run --directory packages/coding_assistant_mcp pytest -n auto
   ```
 
 - Run linting/formatting/type-checking:
