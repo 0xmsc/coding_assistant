@@ -207,13 +207,13 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         print(f"[dim cyan]💭 {content}[/dim cyan]")
         self._last_printed_tool_id = None
 
-    def _print_tool_start(self, tool_call_id: str, tool_name: str, arguments: dict):
+    def _print_tool_start(self, tool_name: str, arguments: dict):
         args_str = self._format_arguments(arguments)
-        print(f"[bold yellow]▸[/bold yellow] {tool_name} [dim]({tool_call_id})[/dim]{args_str}")
+        print(f"[bold yellow]▸[/bold yellow] {tool_name}{args_str}")
 
     def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         print()
-        self._print_tool_start(tool_call_id, tool_name, arguments)
+        self._print_tool_start(tool_name, arguments)
         self._last_printed_tool_id = tool_call_id
 
     def _special_handle_full_result(self, tool_call_id: str, tool_name: str, result: str) -> bool:
@@ -234,12 +234,8 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         if not arguments:
             return ""
 
-        lines = []
-        for key, value in arguments.items():
-            value_json = json.dumps(value)
-            lines.append(f"\n    {key}={value_json}")
-
-        return "".join(lines)
+        formatted = ", ".join(f"{key}={json.dumps(value)}" for key, value in arguments.items())
+        return f"({formatted})"
 
     def on_tool_message(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         if self._last_printed_tool_id is None or self._last_printed_tool_id != tool_call_id:
