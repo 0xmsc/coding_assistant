@@ -37,7 +37,7 @@ def test_complete(manager: TodoManager):
 def test_complete_with_result(manager: TodoManager):
     manager.add(["Run benchmarks"])  # type: ignore[arg-type]
     manager.add(["Prepare release notes"])  # type: ignore[arg-type]
-    res = manager.complete(1, result="Throughput +12% vs baseline")
+    manager.complete(1, result="Throughput +12% vs baseline")
 
     # Listing shows the result inline with an arrow (single line)
     listing = manager.list_todos()

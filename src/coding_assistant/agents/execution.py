@@ -209,7 +209,7 @@ async def handle_tool_calls(
         try:
             function_args = json.loads(tool_call.function.arguments)
         except JSONDecodeError:
-            function_args = None
+            function_args = {}
 
         append_tool_message(
             ctx.state.history,
