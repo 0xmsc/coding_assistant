@@ -29,6 +29,15 @@ async def execute(
         )
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
+        # Properly terminate the process on timeout
+        proc.terminate()
+        try:
+            # Give the process a grace period to terminate
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            # Force kill if graceful termination didn't work
+            proc.kill()
+            await proc.wait()
         return f"Command timed out after {timeout} seconds."
 
     if proc.returncode != 0:
