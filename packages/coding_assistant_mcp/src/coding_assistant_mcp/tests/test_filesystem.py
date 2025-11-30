@@ -97,7 +97,7 @@ async def test_edit_file_order_applies_sequentially(tmp_path: Path):
     await write_file(p, "foo bar\n")
 
     # Apply edits sequentially to demonstrate ordering
-    diff1 = await edit_file(p, TextEdit(old_text="foo", new_text="baz"))
+    await edit_file(p, TextEdit(old_text="foo", new_text="baz"))
     diff2 = await edit_file(p, TextEdit(old_text="baz", new_text="FOO"))
 
     assert p.read_text(encoding="utf-8") == "FOO bar\n"
@@ -201,7 +201,7 @@ async def test_edit_file_with_json_string_multiple_edits(tmp_path: Path):
     # Apply multiple edits sequentially as JSON strings
     json_edit1 = '{"old_text": "beta", "new_text": "BETA"}'
     json_edit2 = '{"old_text": "gamma", "new_text": "GAMMA"}'
-    diff1 = await edit_file(p, json_edit1)
+    await edit_file(p, json_edit1)
     diff2 = await edit_file(p, json_edit2)
 
     assert p.read_text(encoding="utf-8") == "alpha BETA GAMMA\n"
