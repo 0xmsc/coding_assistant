@@ -178,3 +178,103 @@ async def test_edit_file_replace_entire_content(tmp_path: Path):
     assert p.read_text(encoding="utf-8") == ""
     # Diff shows full removal
     assert f"-{original.strip()}" in diff and "+" not in diff.splitlines()[-1]
+
+
+@pytest.mark.asyncio
+async def test_edit_file_with_json_string_edits(tmp_path: Path):
+    """Test that edit_file accepts edits as a JSON string."""
+    p = tmp_path / "json_string.txt"
+    original = "hello world\nsecond line\n"
+    await write_file(p, original)
+
+    # Pass edits as JSON string (simulating what models might do)
+    json_edits = '[{"old_text": "world", "new_text": "Earth"}]'
+    diff = await edit_file(p, json_edits)
+
+    # File content should be updated correctly
+    assert p.read_text(encoding="utf-8") == "hello Earth\nsecond line\n"
+    assert "-hello world" in diff
+    assert "+hello Earth" in diff
+
+
+@pytest.mark.asyncio
+async def test_edit_file_with_json_string_multiple_edits(tmp_path: Path):
+    """Test that edit_file handles multiple edits from a JSON string."""
+    p = tmp_path / "json_multi.txt"
+    original = "alpha beta gamma\n"
+    await write_file(p, original)
+
+    # Pass multiple edits as JSON string
+    json_edits = '''[
+        {"old_text": "beta", "new_text": "BETA"},
+        {"old_text": "gamma", "new_text": "GAMMA"}
+    ]'''
+    diff = await edit_file(p, json_edits)
+
+    assert p.read_text(encoding="utf-8") == "alpha BETA GAMMA\n"
+    assert "+alpha BETA GAMMA" in diff
+
+
+@pytest.mark.asyncio
+async def test_edit_file_with_json_string_escaped_newlines(tmp_path: Path):
+    """Test JSON string with escaped newlines (common from models)."""
+    p = tmp_path / "json_escaped.txt"
+    original = "line1\nline2\nline3\n"
+    await write_file(p, original)
+
+    # JSON string with escaped newlines (as models often generate)
+    json_edits = '[{"old_text": "line1\\nline2", "new_text": "REPLACED"}]'
+    diff = await edit_file(p, json_edits)
+
+    assert p.read_text(encoding="utf-8") == "REPLACED\nline3\n"
+
+
+@pytest.mark.asyncio
+async def test_edit_file_json_string_invalid_format(tmp_path: Path):
+    """Test that invalid JSON string raises a helpful error."""
+    p = tmp_path / "invalid_json.txt"
+    await write_file(p, "content\n")
+
+    # Invalid JSON
+    with pytest.raises(ValueError) as ei:
+        await edit_file(p, '{invalid json}')
+    assert "Invalid JSON format" in str(ei.value)
+
+
+@pytest.mark.asyncio
+async def test_edit_file_json_string_missing_keys(tmp_path: Path):
+    """Test that JSON missing required keys raises a helpful error."""
+    p = tmp_path / "missing_keys.txt"
+    await write_file(p, "content\n")
+
+    # Valid JSON but missing 'old_text' key
+    with pytest.raises(ValueError) as ei:
+        await edit_file(p, '[{"new_text": "value"}]')
+    assert "Invalid JSON format" in str(ei.value)
+
+
+@pytest.mark.asyncio
+async def test_edit_file_json_string_not_a_list(tmp_path: Path):
+    """Test that JSON that's not a list raises a helpful error."""
+    p = tmp_path / "not_list.txt"
+    await write_file(p, "content\n")
+
+    # Valid JSON but not a list
+    with pytest.raises(ValueError) as ei:
+        await edit_file(p, '{"old_text": "x", "new_text": "y"}')
+    assert "Invalid JSON format" in str(ei.value)
+
+
+@pytest.mark.asyncio
+async def test_edit_file_objects_still_work(tmp_path: Path):
+    """Ensure backward compatibility: TextEdit objects still work."""
+    p = tmp_path / "objects.txt"
+    original = "hello world\n"
+    await write_file(p, original)
+
+    # Pass edits as TextEdit objects (original behavior)
+    diff = await edit_file(p, [TextEdit(old_text="world", new_text="Earth")])
+
+    assert p.read_text(encoding="utf-8") == "hello Earth\n"
+    assert "-hello world" in diff
+    assert "+hello Earth" in diff

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import difflib
+import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Union
 
 import aiofiles
 from fastmcp import FastMCP
@@ -33,7 +34,7 @@ async def write_file(
 
 async def edit_file(
     path: Annotated[Path, "The file to edit."],
-    edits: Annotated[list[TextEdit], "A list of edit operations."],
+    edits: Annotated[Union[list[TextEdit], str], "A list of edit operations (as objects or JSON string)."],
 ) -> str:
     """
     Apply multiple unique text replacements to a file and return a unified diff.
@@ -43,7 +44,22 @@ async def edit_file(
     - For each edit, the old_text must occur exactly once; otherwise a ValueError is raised.
     - If any edit fails validation, no changes are written (operation is atomic).
     - Edits are applied in the given order.
+    - The edits parameter can be a list of TextEdit objects or a JSON string representation.
     """
+
+    # Parse edits if provided as a JSON string
+    if isinstance(edits, str):
+        try:
+            parsed_data = json.loads(edits)
+            edits = [
+                TextEdit(old_text=item["old_text"], new_text=item["new_text"])
+                for item in parsed_data
+            ]
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            raise ValueError(
+                f"Invalid JSON format for edits: {e}. Expected a JSON string representing "
+                "a list of objects with 'old_text' and 'new_text' keys."
+            )
 
     async with aiofiles.open(path, "r", encoding="utf-8") as f:
         original = await f.read()
