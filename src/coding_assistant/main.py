@@ -161,13 +161,13 @@ async def run_orchestrator_agent(
     tool_callbacks: ConfirmationToolCallbacks,
 ):
     tool = OrchestratorTool(
-            config=config,
-            tools=tools,
-            history=history,
-            agent_callbacks=agent_callbacks,
-            ui=PromptToolkitUI(),
-            tool_callbacks=tool_callbacks,
-        )
+        config=config,
+        tools=tools,
+        history=history,
+        agent_callbacks=agent_callbacks,
+        ui=PromptToolkitUI(),
+        tool_callbacks=tool_callbacks,
+    )
 
     orchestrator_params = {
         "task": task,

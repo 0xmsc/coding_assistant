@@ -1,5 +1,4 @@
 import asyncio
-import dataclasses
 import json
 import logging
 from collections.abc import Callable

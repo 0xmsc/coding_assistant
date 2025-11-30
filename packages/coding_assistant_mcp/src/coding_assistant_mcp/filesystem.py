@@ -51,10 +51,7 @@ async def edit_file(
     if isinstance(edits, str):
         try:
             parsed_data = json.loads(edits)
-            edits = [
-                TextEdit(old_text=item["old_text"], new_text=item["new_text"])
-                for item in parsed_data
-            ]
+            edits = [TextEdit(old_text=item["old_text"], new_text=item["new_text"]) for item in parsed_data]
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             raise ValueError(
                 f"Invalid JSON format for edits: {e}. Expected a JSON string representing "
