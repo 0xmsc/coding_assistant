@@ -6,7 +6,6 @@ import pytest
 
 from coding_assistant.agents.interrupts import (
     InterruptController,
-    InterruptReason,
     ToolCallCancellationManager,
 )
 
@@ -57,19 +56,15 @@ async def test_tool_call_cancellation_manager_cancel_all():
 
 
 @pytest.mark.asyncio
-async def test_interrupt_controller_cancels_tasks_and_runs_cleanup():
+async def test_interrupt_controller_cancels_tasks():
     loop = asyncio.get_running_loop()
     controller = InterruptController(loop)
-    cleanup_called = asyncio.Event()
 
     async def wait_forever():
         await asyncio.Future()
 
-    async def cleanup():
-        cleanup_called.set()
-
     task = loop.create_task(wait_forever())
-    controller.register_task("call-1", task, cleanup=cleanup)
+    controller.register_task("call-1", task)
 
     controller.request_interrupt()
     await asyncio.sleep(0)
@@ -78,7 +73,4 @@ async def test_interrupt_controller_cancels_tasks_and_runs_cleanup():
         await task
 
     assert task.cancelled()
-    await asyncio.wait_for(cleanup_called.wait(), timeout=1)
     assert controller.has_pending_interrupt
-    assert controller.consume_interrupts() == [InterruptReason.USER_INTERRUPT]
-    assert not controller.has_pending_interrupt
