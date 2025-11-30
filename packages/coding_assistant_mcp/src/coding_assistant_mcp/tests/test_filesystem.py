@@ -205,10 +205,10 @@ async def test_edit_file_with_json_string_multiple_edits(tmp_path: Path):
     await write_file(p, original)
 
     # Pass multiple edits as JSON string
-    json_edits = '''[
+    json_edits = """[
         {"old_text": "beta", "new_text": "BETA"},
         {"old_text": "gamma", "new_text": "GAMMA"}
-    ]'''
+    ]"""
     diff = await edit_file(p, json_edits)
 
     assert p.read_text(encoding="utf-8") == "alpha BETA GAMMA\n"
@@ -224,7 +224,7 @@ async def test_edit_file_with_json_string_escaped_newlines(tmp_path: Path):
 
     # JSON string with escaped newlines (as models often generate)
     json_edits = '[{"old_text": "line1\\nline2", "new_text": "REPLACED"}]'
-    diff = await edit_file(p, json_edits)
+    await edit_file(p, json_edits)
 
     assert p.read_text(encoding="utf-8") == "REPLACED\nline3\n"
 
@@ -237,7 +237,7 @@ async def test_edit_file_json_string_invalid_format(tmp_path: Path):
 
     # Invalid JSON
     with pytest.raises(ValueError) as ei:
-        await edit_file(p, '{invalid json}')
+        await edit_file(p, "{invalid json}")
     assert "Invalid JSON format" in str(ei.value)
 
 
