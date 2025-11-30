@@ -4,7 +4,6 @@ import asyncio
 import io
 import sys
 import traceback
-from concurrent.futures import ProcessPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
 from typing import Annotated
 
@@ -14,20 +13,8 @@ from coding_assistant_mcp.utils import truncate_output
 
 python_server = FastMCP()
 
-# Process pool executor for code execution
-_executor: ProcessPoolExecutor | None = None
-
-
-def _get_executor() -> ProcessPoolExecutor:
-    """Get or create the process pool executor."""
-    global _executor
-    if _executor is None:
-        _executor = ProcessPoolExecutor(max_workers=1)
-    return _executor
-
 
 def _execute_code(code: str) -> str:
-    """Execute code in a separate process."""
     out_buf = io.StringIO()
     ns: dict[str, object] = {}
     with redirect_stdout(out_buf):
@@ -43,20 +30,17 @@ def _execute_code(code: str) -> str:
 async def execute(
     code: Annotated[str, "The Python code to execute."],
     timeout: Annotated[int, "The timeout for execution in seconds."] = 30,
-    truncate_at: Annotated[int, "Maximum number of characters to return in stdout/stderr combined."] = 5_000,
+    truncate_at: Annotated[int, "Maximum number of characters to return in stdout/stderr combined."] = 50_000,
 ) -> str:
     """Execute the given Python code using exec and return combined stdout/stderr."""
 
     code = code.strip()
     loop = asyncio.get_running_loop()
-    executor = _get_executor()
 
     try:
-        fut = loop.run_in_executor(executor, _execute_code, code)
+        fut = loop.run_in_executor(None, _execute_code, code)
         result = await asyncio.wait_for(fut, timeout=timeout)
     except asyncio.TimeoutError:
-        # Cancel the future to interrupt execution
-        fut.cancel()
         return f"Command timed out after {timeout} seconds."
 
     result = truncate_output(result, truncate_at)
