@@ -278,7 +278,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         if self._last_output_type != DenseProgressOutputType.CONTENT:
             self._ensure_empty_line()
 
-        print(chunk, end="", flush=True)
+        print(Markdown(chunk), end="", flush=True)
         self._last_printed_tool_id = None
         self._last_output_type = DenseProgressOutputType.CONTENT
 
