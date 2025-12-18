@@ -254,7 +254,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         self._last_printed_tool_id = None
 
     def on_reasoning_chunk(self, chunk: str):
-        self.on_content_chunk(chunk)
+        print(chunk)
 
     def on_content_chunk(self, chunk: str):
         if not self._live and chunk:
