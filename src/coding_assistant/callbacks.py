@@ -282,11 +282,12 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         if self._last_output != DenseProgressOutputType.CONTENT:
             print()
 
-        print(chunk, end="", flush=True)
+        print(Markdown(chunk), end="", flush=True)
         self._last_output = DenseState(DenseProgressOutputType.CONTENT)
 
     def on_chunks_end(self):
-        print()
+        if self._last_output == DenseProgressOutputType.CONTENT:
+            print()
 
 
 class ConfirmationToolCallbacks(AgentToolCallbacks):
