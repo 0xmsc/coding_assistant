@@ -61,13 +61,13 @@ async def complete(
         chunks = []
 
         async for chunk in response:
-            if (
-                len(chunk["choices"]) > 0
-                and "content" in chunk["choices"][0]["delta"]
-                and chunk["choices"][0]["delta"]["content"] is not None
-            ):
-                content = chunk["choices"][0]["delta"]["content"]
-                callbacks.on_chunk(content)
+            if len(chunk["choices"]) > 0:
+                delta = chunk["choices"][0]["delta"]
+                if "reasoning_content" in delta and delta["reasoning_content"]:
+                    callbacks.on_reasoning_chunk(delta["reasoning_content"])
+
+                if "content" in delta and delta["content"]:
+                    callbacks.on_content_chunk(delta["content"])
 
             # Drop created_at so that `ChunkProcessor` does not sort according to it.
             # It seems buggy and seems to create out-of-order chunks.

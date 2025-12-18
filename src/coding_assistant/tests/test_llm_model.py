@@ -31,8 +31,11 @@ class _CB(AgentProgressCallbacks):
     def on_tool_message(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         pass
 
-    def on_chunk(self, chunk: str):
+    def on_content_chunk(self, chunk: str):
         self.chunks.append(chunk)
+
+    def on_reasoning_chunk(self, chunk: str):
+        self.reasoning.append(chunk)
 
     def on_chunks_end(self):
         self.end = True
@@ -88,6 +91,43 @@ async def test_complete_streaming_happy_path(monkeypatch):
     # Completion assembled
     assert comp.tokens == 42
     assert comp.message.content == "Hello world"
+
+
+@pytest.mark.asyncio
+async def test_complete_streaming_with_reasoning(monkeypatch):
+    # Build a fake async generator that yields chunks with delta.content
+    async def fake_acompletion(**kwargs):
+        async def agen():
+            yield _Chunk({"choices": [{"delta": {"reasoning_content": "Thinking..."}}]})
+            yield _Chunk({"choices": [{"delta": {"content": "Hello"}}]})
+
+        return agen()
+
+    def fake_stream_chunk_builder(chunks):
+        # Simulate final message with model_dump_json available
+        class _Msg:
+            def __init__(self):
+                self.content = "Hello"
+
+            def model_dump(self):
+                return {"role": "assistant", "content": self.content}
+
+        return {"choices": [{"message": _Msg()}], "usage": {"total_tokens": 42}}
+
+    monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
+    monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
+
+    cb = _CB()
+    comp = await llm_model.complete(messages=[], model="m", tools=[], callbacks=cb)
+
+    # Chunks were forwarded and end signaled
+    assert cb.chunks == ["Hello"]
+    assert cb.reasoning == ["Thinking..."]
+    assert cb.end is True
+
+    # Completion assembled
+    assert comp.tokens == 42
+    assert comp.message.content == "Hello"
 
 
 @pytest.mark.asyncio

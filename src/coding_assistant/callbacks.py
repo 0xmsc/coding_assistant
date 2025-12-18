@@ -164,8 +164,12 @@ class RichAgentProgressCallbacks(AgentProgressCallbacks):
     def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         pass  # Default implementation does nothing
 
-    def on_chunk(self, chunk: str):
+    def on_content_chunk(self, chunk: str):
         if self._print_chunks:
+            print(chunk, end="", flush=True)
+
+    def on_reasoning_chunk(self, chunk: str):
+        if self._print_reasoning:
             print(chunk, end="", flush=True)
 
     def on_chunks_end(self):
@@ -249,7 +253,10 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         # Reset state
         self._last_printed_tool_id = None
 
-    def on_chunk(self, chunk: str):
+    def on_reasoning_chunk(self, chunk: str):
+        self.on_content_chunk(chunk)
+
+    def on_content_chunk(self, chunk: str):
         if not self._live and chunk:
             print()
             self._last_printed_tool_id = None
