@@ -185,6 +185,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         self._chunk_buffer = ""
         self._console = Console()
         self._live: Live | None = None
+        self._is_reasoning = False
 
     def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
         status = "resuming" if is_resuming else "starting"
@@ -253,12 +254,17 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         self._last_printed_tool_id = None
 
     def on_reasoning_chunk(self, chunk: str):
-        print(f"[dim cyan]💭 {chunk}[/dim cyan]")
+        if not self._is_reasoning:
+            print(f"[dim cyan]💭 ", end="", flush=True)
+            self._is_reasoning = True
+
+        print(f"[dim cyan]{chunk}[/dim cyan]", end="", flush=True)
         self._last_printed_tool_id = None
 
     def on_content_chunk(self, chunk: str):
         if not self._live and chunk:
             print()
+            self._is_reasoning = False
             self._last_printed_tool_id = None
             self._chunk_buffer = ""
             self._live = Live(self._chunk_buffer, console=self._console, refresh_per_second=10, auto_refresh=True)
