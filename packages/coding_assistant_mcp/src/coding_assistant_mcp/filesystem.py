@@ -4,7 +4,7 @@ import difflib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Union
+from typing import Annotated
 
 import aiofiles
 from fastmcp import FastMCP
@@ -34,7 +34,7 @@ async def write_file(
 
 async def edit_file(
     path: Annotated[Path, "The file to edit."],
-    edit: Annotated[Union[TextEdit, str], "A text edit operation (as an object or JSON string)."],
+    edit: Annotated[TextEdit | str, "A text edit operation (as an object or JSON string)."],
 ) -> str:
     """
     Apply a single text replacement to a file and return a unified diff.
