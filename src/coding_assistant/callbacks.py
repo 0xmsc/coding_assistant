@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import textwrap
+from enum import Enum, auto
 from typing import Any, Optional
 
 from rich import print
@@ -176,23 +177,38 @@ class RichAgentProgressCallbacks(AgentProgressCallbacks):
             print()
 
 
+class DenseProgressOutputType(Enum):
+    AGENT = auto()
+    TOOL = auto()
+    REASONING = auto()
+    CONTENT = auto()
+
+
 class DenseProgressCallbacks(AgentProgressCallbacks):
     """Dense progress callbacks with minimal formatting."""
 
     def __init__(self):
         self._last_printed_tool_id: str | None = None
+        self._last_output_type: DenseProgressOutputType | None = None
+
+    def _ensure_empty_line(self):
+        if self._last_output_type in (DenseProgressOutputType.REASONING, DenseProgressOutputType.CONTENT):
+            print()
+        print()
 
     def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
         status = "resuming" if is_resuming else "starting"
         print()
         print(f"[bold red]▶[/bold red] Agent {agent_name} ({model}) {status}")
         self._last_printed_tool_id = None
+        self._last_output_type = DenseProgressOutputType.AGENT
 
     def on_agent_end(self, agent_name: str, result: str, summary: str):
         print()
         print(f"[bold red]◀[/bold red] Agent {agent_name} complete")
         print(f"[dim]Summary: {summary}[/dim]")
         self._last_printed_tool_id = None
+        self._last_output_type = DenseProgressOutputType.AGENT
 
     def on_user_message(self, agent_name: str, content: str):
         # Has already been printed via prompt
@@ -214,6 +230,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         print()
         self._print_tool_start("▶", tool_name, arguments)
         self._last_printed_tool_id = tool_call_id
+        self._last_output_type = DenseProgressOutputType.TOOL
 
     def _special_handle_full_result(self, tool_call_id: str, tool_name: str, result: str) -> bool:
         left_padding = (0, 0, 0, 1)
@@ -247,14 +264,23 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
 
         # Reset state
         self._last_printed_tool_id = None
+        self._last_output_type = DenseProgressOutputType.TOOL
 
     def on_reasoning_chunk(self, chunk: str):
-        print(f"[dim cyan]💭 {chunk}", end="", flush=True)
+        if self._last_output_type != DenseProgressOutputType.REASONING:
+            self._ensure_empty_line()
+
+        print(f"[dim cyan]{chunk}[/dim cyan]", end="", flush=True)
         self._last_printed_tool_id = None
+        self._last_output_type = DenseProgressOutputType.REASONING
 
     def on_content_chunk(self, chunk: str):
-        print(f"{chunk}", end="", flush=True)
+        if self._last_output_type != DenseProgressOutputType.CONTENT:
+            self._ensure_empty_line()
+
+        print(chunk, end="", flush=True)
         self._last_printed_tool_id = None
+        self._last_output_type = DenseProgressOutputType.CONTENT
 
     def on_chunks_end(self):
         self._last_printed_tool_id = None
