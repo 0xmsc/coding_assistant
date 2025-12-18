@@ -98,7 +98,7 @@ async def test_complete_streaming_with_reasoning(monkeypatch):
     # Build a fake async generator that yields chunks with delta.content
     async def fake_acompletion(**kwargs):
         async def agen():
-            yield _Chunk({"choices": [{"delta": {"reasoning_content": "Thinking..."}}]})
+            yield _Chunk({"choices": [{"delta": {"reasoning": "Thinking..."}}]})
             yield _Chunk({"choices": [{"delta": {"content": "Hello"}}]})
 
         return agen()
