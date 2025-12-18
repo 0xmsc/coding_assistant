@@ -207,9 +207,8 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         pass
 
     def on_assistant_reasoning(self, agent_name: str, content: str):
-        print()
-        print(f"[dim cyan]💭 {content}[/dim cyan]")
-        self._last_printed_tool_id = None
+        # Don't print - reasoning is already printed via chunks
+        pass
 
     def _print_tool_start(self, symbol, tool_name: str, arguments: dict):
         args_str = self._format_arguments(arguments)
@@ -254,7 +253,8 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         self._last_printed_tool_id = None
 
     def on_reasoning_chunk(self, chunk: str):
-        print(chunk)
+        print(f"[dim cyan]💭 {chunk}[/dim cyan]")
+        self._last_printed_tool_id = None
 
     def on_content_chunk(self, chunk: str):
         if not self._live and chunk:
