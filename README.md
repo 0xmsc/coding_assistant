@@ -18,7 +18,7 @@ Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automa
 
 - Python 3.12+
 - uv (recommended) or pip for running/installing
-- Optional: fish shell if you want to use the provided `run.fish`
+
 - Optional: External MCP servers if you want to extend functionality
   - Node.js/npm for `npx` (for NPM-based MCP servers)
   - Network access to fetch packages
@@ -43,31 +43,37 @@ pip install -e .
 
 ## Quickstart
 
-The easiest way to run is with the provided script, which preconfigures the built-in Coding Assistant MCP server and sensible defaults:
+The easiest way to run is with the uv command, which can be configured with the built-in Coding Assistant MCP server and sensible defaults like this:
 
 ```bash
-./run.fish --task "Say 'Hello World'"
+uv run coding-assistant \
+  --task "Say 'Hello World'" \
+  --mcp-servers '{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}'
 ```
 
 A more realistic example:
 
 ```bash
-./run.fish --task "Refactor all function names to snake_case."
+uv run coding-assistant \
+  --task "Refactor all function names to snake_case." \
+  --mcp-servers '{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}'
 ```
 
 Resume the last session:
 
 ```bash
-./run.fish --task "Continue with the previous task." --resume
+uv run coding-assistant \
+  --task "Continue with the previous task." --resume \
+  --mcp-servers '{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}'
 ```
 
 Show available options:
 
 ```bash
-./run.fish --help
+uv run coding-assistant --help
 ```
 
-### Running without run.fish
+### Direct uv Invocation
 
 You can invoke the CLI directly (e.g., using uv):
 
@@ -152,7 +158,9 @@ When connected, tools are exposed to the agent as fully-qualified names:
 - `mcp_coding_assistant_mcp_todo_list_todos`
 - `mcp_coding_assistant_mcp_todo_complete`
 
-The `run.fish` script starts this server automatically.
+This server can be started by passing its configuration in the `--mcp-servers` argument, for example: 
+
+'{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}'
 
 ### External MCP Servers (Optional)
 
@@ -179,7 +187,7 @@ When enabled (default), the assistant applies Landlock restrictions. By default 
 
 Use these flags to widen access if needed when working across multiple directories or mounts.
 
-Example from `run.fish`:
+Example:
 ```bash
 --readable-sandbox-directories /mnt/wsl ~/.ssh ~/.rustup \
 --writable-sandbox-directories "$project_dir" /tmp /dev/shm ~/.cache/coding_assistant
