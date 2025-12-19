@@ -138,19 +138,15 @@ async def test_chat_loop_prompts_after_compact_command():
     compact_call = FakeToolCall("1", FakeFunction("compact_conversation", json.dumps({"summary": "Compacted"})))
     # The first message comes from the model in response to the injected compact message
     # The second message is to check if it tries to loop again automatically (it shouldn't)
-    completer = FakeCompleter([
-        FakeMessage(tool_calls=[compact_call]),
-        FakeMessage(content="Should not be reached autonomously")
-    ])
+    completer = FakeCompleter(
+        [FakeMessage(tool_calls=[compact_call]), FakeMessage(content="Should not be reached autonomously")]
+    )
 
     compact_tool = CompactConversation()
     desc, state = make_test_agent(tools=[compact_tool], history=[{"role": "user", "content": "start"}])
 
     # Mock UI: first is /compact, second is /exit to stop the loop after verifying it prompted
-    ui = make_ui_mock(ask_sequence=[
-        ("> ", "/compact"),
-        ("> ", "/exit")
-    ])
+    ui = make_ui_mock(ask_sequence=[("> ", "/compact"), ("> ", "/exit")])
 
     await run_chat_loop(
         AgentContext(desc=desc, state=state),
