@@ -5,13 +5,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncGenerator
 
-import mcp
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
-from mcp.client.sse import sse_client
+from fastmcp import Client
+from fastmcp.mcp_config import RemoteMCPServer, StdioMCPServer
 from rich.console import Console
-from rich.table import Table
 from rich.pretty import Pretty
+from rich.table import Table
 
 from coding_assistant.agents.types import TextResult, Tool
 from coding_assistant.config import MCPServerConfig
@@ -22,61 +20,42 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MCPServer:
     name: str
-    session: ClientSession
+    client: Client
     instructions: str | None
 
 
-def _fix_input_schema(input_schema: dict):
-    """Normalize input schema (e.g. remove unsupported formats)."""
-    if not input_schema:
-        return
-    for prop in input_schema.get("properties", {}).values():
-        if prop.get("format") == "uri":
-            prop.pop("format", None)
-
-
 class MCPWrappedTool(Tool):
-    def __init__(self, session: ClientSession, server_name: str, function_name: str, description: str, schema: dict):
-        self._session = session
+    def __init__(self, client: Client, server_name: str, tool):
+        self._client = client
         self._server_name = server_name
-        self._function_name = function_name
-        self._description = description
-        self._schema = schema
-        _fix_input_schema(self._schema)
+        self._tool = tool
 
     def name(self) -> str:
-        return f"mcp_{self._server_name}_{self._function_name}"
+        return f"mcp_{self._server_name}_{self._tool.name}"
 
     def description(self) -> str:
-        return self._description
+        return self._tool.description or ""
 
     def parameters(self) -> dict:
-        return self._schema
+        return self._tool.inputSchema
 
     async def execute(self, parameters) -> TextResult:
-        result = await self._session.call_tool(self._function_name, parameters)
-
-        if not result.content:
-            return TextResult(content="")
-
-        if not isinstance(result.content[0], mcp.types.TextContent):
-            raise ValueError(f"Expected TextContent, got {type(result.content[0])}")
-
-        return TextResult(content=result.content[0].text)
+        result = await self._client.call_tool(self._tool.name, parameters)
+        # FastMCP's call_tool returns a CallToolResult with a data field
+        content = result.data if hasattr(result, 'data') else str(result)
+        return TextResult(content=content)
 
 
 async def get_mcp_wrapped_tools(mcp_servers: list[MCPServer]) -> list[Tool]:
     wrapped: list[Tool] = []
     for server in mcp_servers:
-        tools_response = await server.session.list_tools()
-        for remote_tool in getattr(tools_response, "tools"):
+        tools = await server.client.list_tools()
+        for tool in tools:
             wrapped.append(
                 MCPWrappedTool(
-                    session=server.session,
+                    client=server.client,
                     server_name=server.name,
-                    function_name=remote_tool.name,
-                    description=remote_tool.description,
-                    schema=remote_tool.inputSchema,
+                    tool=tool,
                 )
             )
     return wrapped
@@ -92,35 +71,15 @@ def get_default_env():
 @asynccontextmanager
 async def _get_mcp_server(
     name: str,
-    command: str | None = None,
-    args: list[str] | None = None,
-    env: dict[str, str] | None = None,
-    url: str | None = None,
+    config: StdioMCPServer | RemoteMCPServer,
 ) -> AsyncGenerator[MCPServer, None]:
-    if url:
-        logger.info(f"Connecting to MCP server '{name}' at URL '{url}'")
-        async with sse_client(url) as (read, write):
-            async with ClientSession(read, write) as session:
-                initialize_result = await session.initialize()
-                yield MCPServer(
-                    name=name,
-                    session=session,
-                    instructions=initialize_result.instructions,
-                )
-    elif command:
-        logger.info(f"Starting MCP server '{name}' with command '{command}', args '{' '.join(args or [])}' and env: '{env}'")
-        params = StdioServerParameters(command=command, args=args or [], env=env)
-
-        async with stdio_client(params) as (read, write):
-            async with ClientSession(read, write) as session:
-                initialize_result = await session.initialize()
-                yield MCPServer(
-                    name=name,
-                    session=session,
-                    instructions=initialize_result.instructions,
-                )
-    else:
-        raise ValueError(f"MCP server '{name}' must have either a command or a url.")
+    client = Client(config.to_transport(), name=name)
+    async with client:
+        yield MCPServer(
+            name=name,
+            client=client,
+            instructions=None,  # FastMCP Client doesn't expose server instructions directly yet
+        )
 
 
 @asynccontextmanager
@@ -153,13 +112,23 @@ async def get_mcp_servers_from_config(
                     )
                 env[env_var] = os.environ[env_var]
 
-            server = await stack.enter_async_context(
-                _get_mcp_server(
-                    name=server_config.name,
+            backend: StdioMCPServer | RemoteMCPServer
+            if server_config.url:
+                backend = RemoteMCPServer(url=server_config.url)
+            elif server_config.command:
+                backend = StdioMCPServer(
                     command=server_config.command,
                     args=args,
                     env=env,
-                    url=server_config.url,
+                    cwd=str(working_directory),
+                )
+            else:
+                raise ValueError(f"MCP server '{server_config.name}' must have either a command or a url.")
+
+            server = await stack.enter_async_context(
+                _get_mcp_server(
+                    name=server_config.name,
+                    config=backend,
                 )
             )
             servers.append(server)
@@ -176,10 +145,8 @@ async def handle_mcp_tool_call(function_name, arguments, mcp_servers):
 
     for server in mcp_servers:
         if server.name == server_name:
-            result = await server.session.call_tool(tool_name, arguments)
-            if not result.content:
-                return "MCP server did not return any content."
-            return result.content[0].text
+            result = await server.client.call_tool(tool_name, arguments)
+            return str(result)
 
     raise RuntimeError(f"Server {server_name} not found in MCP servers.")
 
@@ -198,17 +165,18 @@ async def print_mcp_tools(mcp_servers):
     table.add_column("Parameters", style="yellow")
 
     for server in mcp_servers:
-        tools_response = await server.session.list_tools()
-        server_tools = tools_response.tools
+        tools = await server.client.list_tools()
 
-        if not server_tools:
+        if not tools:
             logger.info(f"No tools found for MCP server: {server.name}")
             continue
 
-        for tool in server_tools:
-            name = tool.name
-            description = tool.description
-            parameters = tool.inputSchema
-            table.add_row(server.name, name, description, Pretty(parameters, expand_all=True, indent_size=2))
+        for tool in tools:
+            table.add_row(
+                server.name,
+                tool.name,
+                tool.description or "",
+                Pretty(tool.inputSchema, expand_all=True, indent_size=2),
+            )
 
     console.print(table)

@@ -20,6 +20,7 @@ dependencies = [
     "pydantic",
     "debugpy",
     "prompt-toolkit",
+    "fastmcp>=2.14.1",
 ]
 
 [dependency-groups]
