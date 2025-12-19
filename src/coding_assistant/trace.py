@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from coding_assistant.paths import get_app_cache_dir
+
 _trace_enabled = False
 
 
@@ -24,8 +26,6 @@ def trace_data(name: str, content: str) -> None:
     """
     if not trace_enabled():
         return
-
-    from coding_assistant.paths import get_app_cache_dir
 
     trace_path = get_app_cache_dir() / "traces"
     trace_path.mkdir(parents=True, exist_ok=True)
