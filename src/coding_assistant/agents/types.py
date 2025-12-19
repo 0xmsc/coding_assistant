@@ -19,6 +19,9 @@ class TextResult(ToolResult):
 
     content: str
 
+    def to_dict(self):
+        return {"content": self.content}
+
 
 @dataclass
 class FinishTaskResult(ToolResult):
@@ -27,12 +30,18 @@ class FinishTaskResult(ToolResult):
     result: str
     summary: str
 
+    def to_dict(self):
+        return {"result": self.result, "summary": self.summary}
+
 
 @dataclass
 class ShortenConversationResult(ToolResult):
     """Signals that the conversation history should be summarized."""
 
     summary: str
+
+    def to_dict(self):
+        return {"summary": self.summary}
 
 
 class Tool(ABC):

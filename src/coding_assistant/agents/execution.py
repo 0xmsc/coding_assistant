@@ -19,6 +19,7 @@ from coding_assistant.agents.types import (
     TextResult,
 )
 from coding_assistant.llm.adapters import execute_tool_call, get_tools
+from coding_assistant.trace import trace_data
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
@@ -150,6 +151,21 @@ async def handle_tool_call(
             function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
     except ValueError as e:
         return f"Error executing tool: {e}"
+
+    trace_data(
+        f"tool_result_{function_name}.json",
+        json.dumps(
+            {
+                "tool_call_id": tool_call.id,
+                "function_name": function_name,
+                "function_args": function_args,
+                "result": function_call_result.to_dict()
+                if hasattr(function_call_result, "to_dict")
+                else str(function_call_result),
+            },
+            indent=2,
+        ),
+    )
 
     result_handlers = {
         FinishTaskResult: lambda r: _handle_finish_task_result(r, state),
