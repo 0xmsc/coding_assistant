@@ -27,7 +27,14 @@ async def test_compact_conversation_resets_history():
         ],
     )
 
-    callbacks = NullProgressCallbacks()
+    class SpyCallbacks(NullProgressCallbacks):
+        def __init__(self):
+            self.user_messages = []
+
+        def on_user_message(self, agent_name: str, content: str, force: bool = False):
+            self.user_messages.append((content, force))
+
+    callbacks = SpyCallbacks()
 
     # Invoke compact_conversation tool directly
     summary_text = "This is the summary of prior conversation."
@@ -42,6 +49,9 @@ async def test_compact_conversation_resets_history():
     ctx = AgentContext(desc=desc, state=state)
     msg = FakeMessage(tool_calls=[tool_call])
     await handle_tool_calls(msg, ctx, callbacks, tool_callbacks=NullToolCallbacks(), ui=make_ui_mock())
+
+    # Verify that the summary user message was forced
+    assert any(force for content, force in callbacks.user_messages if summary_text in content)
 
     # History should be reset to keeping the first message + summary message, followed by the tool result message
     assert len(state.history) >= 3

@@ -22,8 +22,10 @@ def append_tool_message(
     )
 
 
-def append_user_message(history: list, callbacks: AgentProgressCallbacks, agent_name: str, content: str):
-    callbacks.on_user_message(agent_name, content)
+def append_user_message(
+    history: list, callbacks: AgentProgressCallbacks, agent_name: str, content: str, force: bool = False
+):
+    callbacks.on_user_message(agent_name, content, force=force)
 
     history.append(
         {

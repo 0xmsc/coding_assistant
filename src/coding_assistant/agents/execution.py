@@ -90,15 +90,24 @@ def _handle_compact_conversation_result(
     state: AgentState,
     agent_callbacks: AgentProgressCallbacks,
 ):
+    start_message = state.history[0]
+    state.history = []
+
     # Keep the first message (start message) and clear the rest
-    start_message_obj = state.history[0]
-    state.history = [start_message_obj]
+    append_user_message(
+        state.history,
+        agent_callbacks,
+        desc.name,
+        start_message["content"],
+        force=True,
+    )
 
     append_user_message(
         state.history,
         agent_callbacks,
         desc.name,
         f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work.",
+        force=True,
     )
 
     return "Conversation compacted and history reset."

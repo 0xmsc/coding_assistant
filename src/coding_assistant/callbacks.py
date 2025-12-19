@@ -144,9 +144,12 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         print(f"[dim]Summary: {summary}[/dim]")
         self._state = IdleState()
 
-    def on_user_message(self, agent_name: str, content: str):
-        # Has already been printed via prompt
-        pass
+    def on_user_message(self, agent_name: str, content: str, force: bool = False):
+        if force:
+            self._finalize_state()
+            print()
+            print(Markdown(content))
+            self._state = IdleState()
 
     def on_assistant_message(self, agent_name: str, content: str):
         # Don't print - content is already printed via chunks
