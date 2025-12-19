@@ -85,13 +85,17 @@ async def complete(
 
         trace_data(
             "completion",
-            {
-                "model": model,
-                "reasoning_effort": reasoning_effort,
-                "messages": messages,
-                "tools": tools,
-                "completion": completion,
-            },
+            json.dumps(
+                {
+                    "model": model,
+                    "reasoning_effort": reasoning_effort,
+                    "messages": messages,
+                    "tools": tools,
+                    "completion": completion,
+                },
+                indent=2,
+                default=str,
+            ),
         )
 
         return Completion(
