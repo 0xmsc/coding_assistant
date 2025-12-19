@@ -18,6 +18,22 @@ def get_state_home() -> Path:
     return Path.home() / ".local" / "state"
 
 
+def get_data_home() -> Path:
+    """Return the XDG_DATA_HOME directory, defaulting to ~/.local/share."""
+    xdg_data_home = os.getenv("XDG_DATA_HOME")
+    if xdg_data_home:
+        return Path(xdg_data_home)
+    return Path.home() / ".local" / "share"
+
+
+def get_config_home() -> Path:
+    """Return the XDG_CONFIG_HOME directory, defaulting to ~/.config."""
+    xdg_config_home = os.getenv("XDG_CONFIG_HOME")
+    if xdg_config_home:
+        return Path(xdg_config_home)
+    return Path.home() / ".config"
+
+
 def get_app_cache_dir() -> Path:
     """Return the application-specific cache directory."""
     return get_cache_home() / "coding_assistant"
