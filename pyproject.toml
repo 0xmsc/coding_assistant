@@ -9,7 +9,6 @@ requires-python = ">=3.12"
 
 dependencies = [
     "litellm",
-    "mcp[cli]",
     "opentelemetry-api",
     "opentelemetry-exporter-otlp-proto-http",
     "opentelemetry-sdk",
@@ -20,7 +19,7 @@ dependencies = [
     "pydantic",
     "debugpy",
     "prompt-toolkit",
-    "fastmcp>=2.14.1",
+    "fastmcp",
 ]
 
 [dependency-groups]

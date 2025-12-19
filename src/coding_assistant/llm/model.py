@@ -90,7 +90,7 @@ async def complete(
                     "reasoning_effort": reasoning_effort,
                     "messages": messages,
                     "tools": tools,
-                    "completion": completion.model_dump() if hasattr(completion, "model_dump") else completion,
+                    "completion": completion.model_dump(),
                 },
                 indent=2,
                 default=str,
