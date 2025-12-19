@@ -245,6 +245,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
 
     def _special_handle_full_result(self, tool_call_id: str, tool_name: str, result: str) -> bool:
         left_padding = (0, 0, 0, 1)
+
         if tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
             diff_body = result.strip("\n")
             rendered_result = Markdown(f"```diff\n{diff_body}\n```")
@@ -254,6 +255,15 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         elif tool_name.startswith("mcp_coding_assistant_mcp_todo_"):
             print()
             print(Padding(Markdown(result), left_padding))
+            return True
+        elif tool_name in (
+            "mcp_coding_assistant_mcp_python_execute",
+            "mcp_coding_assistant_mcp_shell_execute",
+        ):
+            body = result.strip("\n")
+            rendered_result = Markdown(f"```\n{body}\n```")
+            print()
+            print(Padding(rendered_result, left_padding))
             return True
 
         return False
@@ -284,7 +294,12 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         if not isinstance(self._state, ReasoningState):
             self._stop_live()
             print()
-            live = Live(Markdown(""), refresh_per_second=8, transient=False)
+            live = Live(
+                Markdown(""),
+                refresh_per_second=8,
+                transient=False,
+                vertical_overflow="visible",
+            )
             live.start()
             self._state = ReasoningState(live=live)
 
@@ -295,7 +310,12 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         if not isinstance(self._state, ContentState):
             self._stop_live()
             print()
-            live = Live(Markdown(""), refresh_per_second=8, transient=False)
+            live = Live(
+                Markdown(""),
+                refresh_per_second=8,
+                transient=False,
+                vertical_overflow="visible",
+            )
             live.start()
             self._state = ContentState(live=live)
 
