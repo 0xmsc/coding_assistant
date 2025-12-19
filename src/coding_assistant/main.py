@@ -15,7 +15,7 @@ from coding_assistant.llm.model import complete
 from coding_assistant.agents.execution import run_chat_loop
 from coding_assistant.agents.parameters import Parameter
 from coding_assistant.agents.types import AgentContext, AgentDescription, AgentState, Tool
-from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks, RichAgentProgressCallbacks
+from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
     get_conversation_summaries,
@@ -102,18 +102,6 @@ def parse_args():
         help="Number of tokens after which conversation should be shortened.",
     )
     parser.add_argument(
-        "--print-chunks",
-        action=BooleanOptionalAction,
-        default=False,
-        help="Print chunks from the model stream.",
-    )
-    parser.add_argument(
-        "--print-reasoning",
-        action=BooleanOptionalAction,
-        default=True,
-        help="Print reasoning from the model.",
-    )
-    parser.add_argument(
         "--tool-confirmation-patterns",
         nargs="*",
         default=[],
@@ -130,12 +118,6 @@ def parse_args():
         action=BooleanOptionalAction,
         default=False,
         help="Wait for a debugger to attach.",
-    )
-    parser.add_argument(
-        "--dense",
-        action=BooleanOptionalAction,
-        default=True,
-        help="Use dense output mode (no panels, compact formatting, chunks enabled by default).",
     )
     parser.add_argument(
         "--trace",
@@ -311,13 +293,7 @@ async def _main(args):
             rich_print(Panel(Markdown(instructions), title="Instructions"))
             return
 
-        if args.dense:
-            agent_callbacks = DenseProgressCallbacks()
-        else:
-            agent_callbacks = RichAgentProgressCallbacks(
-                print_chunks=args.print_chunks,
-                print_reasoning=args.print_reasoning,
-            )
+        agent_callbacks = DenseProgressCallbacks()
 
         tool_callbacks = ConfirmationToolCallbacks(
             tool_confirmation_patterns=args.tool_confirmation_patterns,
