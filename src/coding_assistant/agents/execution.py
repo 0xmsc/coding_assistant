@@ -348,19 +348,15 @@ async def run_chat_loop(
     append_user_message(state.history, agent_callbacks, desc.name, start_message)
 
     need_user_input = True
-    tokens = 0
 
     while True:
         if need_user_input:
             print()
-
-            if tokens > 0:
-                tokens_str = f"{tokens:,}".replace(",", "'")
-                print(f"T: {tokens_str}")
-
             answer = await ui.prompt()
+
             if answer.strip() == "/exit":
                 break
+
             append_user_message(state.history, agent_callbacks, desc.name, answer)
 
         loop = asyncio.get_running_loop()
@@ -376,7 +372,7 @@ async def run_chat_loop(
                 )
                 interrupt_controller.register_task("do_single_step", do_single_step_task)
 
-                message, tokens = await do_single_step_task
+                message, _ = await do_single_step_task
                 append_assistant_message(state.history, agent_callbacks, desc.name, message)
 
                 if getattr(message, "tool_calls", []):
