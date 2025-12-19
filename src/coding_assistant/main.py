@@ -15,21 +15,18 @@ from coding_assistant.llm.model import complete
 from coding_assistant.agents.execution import run_chat_loop
 from coding_assistant.agents.parameters import Parameter
 from coding_assistant.agents.types import AgentContext, AgentDescription, AgentState, Tool
-from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks, RichAgentProgressCallbacks
+from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
-    get_conversation_summaries,
     get_latest_orchestrator_history_file,
     load_orchestrator_history,
-    save_conversation_summary,
     save_orchestrator_history,
-    trim_orchestrator_history,
 )
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
-from coding_assistant.tools.tools import OrchestratorTool
+from coding_assistant.tools.tools import AgentTool, CompactConversation
 from coding_assistant.ui import PromptToolkitUI
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
@@ -96,22 +93,10 @@ def parse_args():
         help='MCP server configurations as JSON strings. Format: \'{"name": "server_name", "command": "command", "args": ["arg1", "arg2"], "env": ["ENV_VAR1", "ENV_VAR2"]}\' or \'{"name": "server_name", "url": "http://localhost:8000/sse"}\'',
     )
     parser.add_argument(
-        "--shorten-conversation-at-tokens",
+        "--compact-conversation-at-tokens",
         type=int,
         default=200_000,
         help="Number of tokens after which conversation should be shortened.",
-    )
-    parser.add_argument(
-        "--print-chunks",
-        action=BooleanOptionalAction,
-        default=False,
-        help="Print chunks from the model stream.",
-    )
-    parser.add_argument(
-        "--print-reasoning",
-        action=BooleanOptionalAction,
-        default=True,
-        help="Print reasoning from the model.",
     )
     parser.add_argument(
         "--tool-confirmation-patterns",
@@ -132,12 +117,6 @@ def parse_args():
         help="Wait for a debugger to attach.",
     )
     parser.add_argument(
-        "--dense",
-        action=BooleanOptionalAction,
-        default=True,
-        help="Use dense output mode (no panels, compact formatting, chunks enabled by default).",
-    )
-    parser.add_argument(
         "--trace",
         action=BooleanOptionalAction,
         default=bool(os.getenv("CODING_ASSISTANT_TRACE")),
@@ -151,7 +130,7 @@ def create_config_from_args(args) -> Config:
     return Config(
         model=args.model,
         expert_model=args.expert_model,
-        shorten_conversation_at_tokens=args.shorten_conversation_at_tokens,
+        compact_conversation_at_tokens=args.compact_conversation_at_tokens,
         enable_chat_mode=args.chat_mode,
     )
 
@@ -161,37 +140,33 @@ async def run_orchestrator_agent(
     config: Config,
     tools: list[Tool],
     history: list | None,
-    conversation_summaries: list[str],
     instructions: str | None,
     working_directory: Path,
     agent_callbacks: AgentProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
 ):
-    tool = OrchestratorTool(
+    tool = AgentTool(
         config=config,
         tools=tools,
         history=history,
         agent_callbacks=agent_callbacks,
         ui=PromptToolkitUI(),
         tool_callbacks=tool_callbacks,
+        name="launch_orchestrator_agent",
     )
 
     orchestrator_params = {
         "task": task,
-        "summaries": conversation_summaries[-5:],
         "instructions": instructions,
+        "expert_knowledge": True,
     }
 
     try:
         result = await tool.execute(orchestrator_params)
     finally:
         save_orchestrator_history(working_directory, tool.history)
-        trim_orchestrator_history(working_directory)
 
-    summary = tool.summary
-    save_conversation_summary(working_directory, summary)
-
-    print(f"🎉 Final Result\n\nSummary:\n\n{summary}\n\nResult:\n\n{result.content}")
+    print(f"🎉 Final Result\n\nResult:\n\n{result.content}")
     return result
 
 
@@ -220,7 +195,8 @@ async def run_chat_session(
         model=config.model,
         parameters=params,
         tools=[
-            *tools,  # MCP tools etc. (no finish_task, no shorten_conversation in chat mode)
+            CompactConversation(),
+            *tools,
         ],
     )
     state = AgentState(history=history or [])
@@ -236,7 +212,6 @@ async def run_chat_session(
         )
     finally:
         save_orchestrator_history(working_directory, state.history)
-        trim_orchestrator_history(working_directory)
 
 
 async def _main(args):
@@ -247,8 +222,6 @@ async def _main(args):
 
     working_directory = Path(os.getcwd())
     logger.info(f"Running in working directory: {working_directory}")
-
-    conversation_summaries = get_conversation_summaries(working_directory)
 
     if args.resume_file:
         if not args.resume_file.exists():
@@ -311,13 +284,7 @@ async def _main(args):
             rich_print(Panel(Markdown(instructions), title="Instructions"))
             return
 
-        if args.dense:
-            agent_callbacks = DenseProgressCallbacks()
-        else:
-            agent_callbacks = RichAgentProgressCallbacks(
-                print_chunks=args.print_chunks,
-                print_reasoning=args.print_reasoning,
-            )
+        agent_callbacks = DenseProgressCallbacks()
 
         tool_callbacks = ConfirmationToolCallbacks(
             tool_confirmation_patterns=args.tool_confirmation_patterns,
@@ -342,7 +309,6 @@ async def _main(args):
                 config=config,
                 tools=tools,
                 history=resume_history,
-                conversation_summaries=conversation_summaries,
                 instructions=instructions,
                 working_directory=working_directory,
                 agent_callbacks=agent_callbacks,

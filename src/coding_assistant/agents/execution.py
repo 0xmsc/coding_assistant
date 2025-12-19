@@ -1,7 +1,9 @@
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from dataclasses import dataclass
+from enum import Enum
+from collections.abc import Awaitable, Callable
 from json import JSONDecodeError
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
@@ -15,7 +17,7 @@ from coding_assistant.agents.types import (
     AgentState,
     Completer,
     FinishTaskResult,
-    ShortenConversationResult,
+    CompactConversationResult,
     TextResult,
 )
 from coding_assistant.llm.adapters import execute_tool_call, get_tools
@@ -84,27 +86,28 @@ def _handle_text_result(result: TextResult) -> str:
     return result.content
 
 
-def _handle_shorten_conversation_result(
-    result: ShortenConversationResult,
+def _clear_history(state: AgentState):
+    """Resets the history to the first message (start message)."""
+    state.history = [state.history[0]]
+
+
+def _handle_compact_conversation_result(
+    result: CompactConversationResult,
     desc: AgentDescription,
     state: AgentState,
     agent_callbacks: AgentProgressCallbacks,
 ):
-    start_message = _create_start_message(desc)
-    state.history = []
-    append_user_message(
-        state.history,
-        agent_callbacks,
-        desc.name,
-        start_message,
-    )
+    _clear_history(state)
+
     append_user_message(
         state.history,
         agent_callbacks,
         desc.name,
         f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work.",
+        force=True,
     )
-    return "Conversation shortened and history reset."
+
+    return "Conversation compacted and history reset."
 
 
 async def handle_tool_call(
@@ -149,7 +152,7 @@ async def handle_tool_call(
             function_call_result = callback_result
         else:
             function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
-    except ValueError as e:
+    except Exception as e:
         function_call_result = TextResult(content=f"Error executing tool: {e}")
 
     trace_data(
@@ -167,7 +170,7 @@ async def handle_tool_call(
 
     result_handlers = {
         FinishTaskResult: lambda r: _handle_finish_task_result(r, state),
-        ShortenConversationResult: lambda r: _handle_shorten_conversation_result(r, desc, state, agent_callbacks),
+        CompactConversationResult: lambda r: _handle_compact_conversation_result(r, desc, state, agent_callbacks),
         TextResult: lambda r: _handle_text_result(r),
     }
 
@@ -275,7 +278,7 @@ async def run_agent_loop(
     tool_callbacks: AgentToolCallbacks,
     completer: Completer,
     ui: UI,
-    shorten_conversation_at_tokens: int = 200_000,
+    compact_conversation_at_tokens: int = 200_000,
 ):
     desc = ctx.desc
     state = ctx.state
@@ -286,8 +289,8 @@ async def run_agent_loop(
     # Validate tools required for the agent loop
     if not any(tool.name() == "finish_task" for tool in desc.tools):
         raise RuntimeError("Agent needs to have a `finish_task` tool in order to run.")
-    if not any(tool.name() == "shorten_conversation" for tool in desc.tools):
-        raise RuntimeError("Agent needs to have a `shorten_conversation` tool in order to run.")
+    if not any(tool.name() == "compact_conversation" for tool in desc.tools):
+        raise RuntimeError("Agent needs to have a `compact_conversation` tool in order to run.")
 
     start_message = _create_start_message(desc)
     agent_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
@@ -319,17 +322,30 @@ async def run_agent_loop(
                 desc.name,
                 "I detected a step from you without any tool calls. This is not allowed. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
             )
-        if tokens > shorten_conversation_at_tokens:
+        if tokens > compact_conversation_at_tokens:
             append_user_message(
                 state.history,
                 agent_callbacks,
                 desc.name,
-                "Your conversation history has grown too large. Please summarize it by using the `shorten_conversation` tool.",
+                "Your conversation history has grown too large. Compact it immediately by using the `compact_conversation` tool.",
             )
 
     assert state.output is not None
 
     agent_callbacks.on_agent_end(desc.name, state.output.result, state.output.summary)
+
+
+class ChatCommandResult(Enum):
+    PROCEED_WITH_MODEL = 1
+    PROCEED_WITH_PROMPT = 2
+    EXIT = 3
+
+
+@dataclass
+class ChatCommand:
+    name: str
+    help: str
+    execute: Callable[[], Awaitable[ChatCommandResult]]
 
 
 async def run_chat_loop(
@@ -343,18 +359,61 @@ async def run_chat_loop(
     desc = ctx.desc
     state = ctx.state
 
+    need_user_input = True
+
+    async def _exit_cmd():
+        return ChatCommandResult.EXIT
+
+    async def _compact_cmd():
+        append_user_message(
+            state.history,
+            agent_callbacks,
+            desc.name,
+            "Immediately compact our conversation so far by using the `compact_conversation` tool.",
+            force=True,
+        )
+
+        nonlocal need_user_input
+        need_user_input = True
+
+        return ChatCommandResult.PROCEED_WITH_MODEL
+
+    async def _clear_cmd():
+        _clear_history(state)
+        print("History cleared.")
+        return ChatCommandResult.PROCEED_WITH_PROMPT
+
+    commands = [
+        ChatCommand("/exit", "Exit the chat", _exit_cmd),
+        ChatCommand("/compact", "Compact the conversation history", _compact_cmd),
+        ChatCommand("/clear", "Clear the conversation history", _clear_cmd),
+    ]
+    command_map = {cmd.name: cmd for cmd in commands}
+    command_names = list(command_map.keys())
+
     start_message = _create_chat_start_message(desc)
     agent_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
     append_user_message(state.history, agent_callbacks, desc.name, start_message)
 
-    need_user_input = True
-
     while True:
         if need_user_input:
-            answer = await ui.prompt()
-            if answer.strip() == "/exit":
-                break
-            append_user_message(state.history, agent_callbacks, desc.name, answer)
+            need_user_input = False
+
+            print()
+            answer = await ui.prompt(words=command_names)
+            answer_strip = answer.strip()
+
+            if tool := command_map.get(answer_strip):
+                result = await tool.execute()
+                if result == ChatCommandResult.EXIT:
+                    break
+                elif result == ChatCommandResult.PROCEED_WITH_PROMPT:
+                    need_user_input = True
+                    continue
+                elif result == ChatCommandResult.PROCEED_WITH_MODEL:
+                    pass
+            else:
+                append_user_message(state.history, agent_callbacks, desc.name, answer)
 
         loop = asyncio.get_running_loop()
         with InterruptController(loop) as interrupt_controller:
@@ -381,7 +440,6 @@ async def run_chat_loop(
                         ui=ui,
                         task_created_callback=interrupt_controller.register_task,
                     )
-                    need_user_input = False
                 else:
                     need_user_input = True
             except asyncio.CancelledError:

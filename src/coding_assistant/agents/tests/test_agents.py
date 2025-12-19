@@ -2,7 +2,7 @@ import pytest
 
 from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.config import Config
-from coding_assistant.tools.tools import OrchestratorTool
+from coding_assistant.tools.tools import AgentTool
 from coding_assistant.ui import NullUI
 
 # This file contains integration tests using the real LLM API.
@@ -15,7 +15,7 @@ def create_test_config() -> Config:
     return Config(
         model=TEST_MODEL,
         expert_model=TEST_MODEL,
-        shorten_conversation_at_tokens=200_000,
+        compact_conversation_at_tokens=200_000,
     )
 
 
@@ -23,7 +23,7 @@ def create_test_config() -> Config:
 @pytest.mark.asyncio
 async def test_orchestrator_tool():
     config = create_test_config()
-    tool = OrchestratorTool(
+    tool = AgentTool(
         config=config,
         tools=[],
         history=None,
@@ -39,7 +39,7 @@ async def test_orchestrator_tool():
 @pytest.mark.asyncio
 async def test_orchestrator_tool_resume():
     config = create_test_config()
-    first = OrchestratorTool(
+    first = AgentTool(
         config=config,
         tools=[],
         history=None,
@@ -51,7 +51,7 @@ async def test_orchestrator_tool_resume():
     result = await first.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result.content == "Hello, World!"
 
-    second = OrchestratorTool(
+    second = AgentTool(
         config=config,
         tools=[],
         history=first.history,
@@ -69,7 +69,7 @@ async def test_orchestrator_tool_resume():
 @pytest.mark.asyncio
 async def test_orchestrator_tool_instructions():
     config = create_test_config()
-    tool = OrchestratorTool(
+    tool = AgentTool(
         config=config,
         tools=[],
         history=None,
