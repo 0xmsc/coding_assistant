@@ -26,7 +26,8 @@ def trace_data(name: str, content: str) -> None:
     if not trace_enabled():
         return
 
-    trace_path = Path("/tmp/coding_assistant_trace")
+    xdg_state_home = os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state"))
+    trace_path = Path(xdg_state_home) / "coding-assistant" / "traces"
     trace_path.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
