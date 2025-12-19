@@ -104,7 +104,8 @@ async def test_tool_confirmation_denied_and_allowed() -> None:
 @pytest.mark.asyncio
 async def test_unknown_result_type_raises() -> None:
     class WeirdResult(ToolResult):
-        pass
+        def to_dict(self):
+            return {}
 
     class WeirdTool(Tool):
         def name(self) -> str:
