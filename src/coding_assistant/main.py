@@ -27,6 +27,7 @@ from coding_assistant.history import (
 )
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
+from coding_assistant.trace import enable_tracing
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
 from coding_assistant.tools.tools import OrchestratorTool
 from coding_assistant.ui import PromptToolkitUI
@@ -135,6 +136,12 @@ def parse_args():
         action=BooleanOptionalAction,
         default=True,
         help="Use dense output mode (no panels, compact formatting, chunks enabled by default).",
+    )
+    parser.add_argument(
+        "--trace",
+        action=BooleanOptionalAction,
+        default=bool(os.getenv("CODING_ASSISTANT_TRACE")),
+        help="Enable tracing of model requests and responses to /tmp/coding_assistant_trace.",
     )
 
     return parser.parse_args()
@@ -345,6 +352,10 @@ async def _main(args):
 
 def main():
     args = parse_args()
+
+    if args.trace:
+        enable_tracing()
+
     if args.wait_for_debugger:
         logger.info("Waiting for debugger to attach on port 1234")
         debugpy.listen(1234)

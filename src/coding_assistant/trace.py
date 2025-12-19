@@ -4,9 +4,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+_trace_enabled = False
+
+def enable_tracing() -> None:
+    """Enable tracing globally."""
+    global _trace_enabled
+    _trace_enabled = True
+
 def trace_enabled() -> bool:
-    """Check if tracing is enabled via environment variable."""
-    return bool(os.getenv("CODING_ASSISTANT_TRACE"))
+    """Check if tracing is enabled."""
+    return _trace_enabled
 
 def trace_data(name: str, content: str) -> None:
     """
