@@ -1,7 +1,9 @@
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from dataclasses import dataclass
+from enum import Enum
+from collections.abc import Awaitable, Callable
 from json import JSONDecodeError
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
@@ -333,6 +335,19 @@ async def run_agent_loop(
     agent_callbacks.on_agent_end(desc.name, state.output.result, state.output.summary)
 
 
+class ChatCommandResult(Enum):
+    PROCEED_TO_MODEL = 1
+    CONTINUE_PROMPT = 2
+    EXIT = 3
+
+
+@dataclass
+class ChatCommand:
+    name: str
+    help: str
+    execute: Callable[[], Awaitable[ChatCommandResult]]
+
+
 async def run_chat_loop(
     ctx: AgentContext,
     *,
@@ -344,6 +359,32 @@ async def run_chat_loop(
     desc = ctx.desc
     state = ctx.state
 
+    async def _exit_cmd():
+        return ChatCommandResult.EXIT
+
+    async def _compact_cmd():
+        append_user_message(
+            state.history,
+            agent_callbacks,
+            desc.name,
+            "Immediately compact our conversation so far by using the `compact_conversation` tool.",
+            force=True,
+        )
+        return ChatCommandResult.PROCEED_TO_MODEL
+
+    async def _clear_cmd():
+        _clear_history(state)
+        print("History cleared.")
+        return ChatCommandResult.CONTINUE_PROMPT
+
+    commands = [
+        ChatCommand("/exit", "Exit the chat", _exit_cmd),
+        ChatCommand("/compact", "Compact the conversation history", _compact_cmd),
+        ChatCommand("/clear", "Clear the conversation history", _clear_cmd),
+    ]
+    command_map = {cmd.name: cmd for cmd in commands}
+    command_names = list(command_map.keys())
+
     start_message = _create_chat_start_message(desc)
     agent_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
     append_user_message(state.history, agent_callbacks, desc.name, start_message)
@@ -353,25 +394,21 @@ async def run_chat_loop(
     while True:
         if need_user_input:
             print()
-            answer = await ui.prompt()
+            answer = await ui.prompt(words=command_names)
+            answer_strip = answer.strip()
 
-            if answer.strip() == "/exit":
-                break
-            elif answer.strip() == "/compact":
-                append_user_message(
-                    state.history,
-                    agent_callbacks,
-                    desc.name,
-                    "Immediately compact our conversation so far by using the `compact_conversation` tool.",
-                    force=True,
-                )
-            elif answer.strip() == "/clear":
-                _clear_history(state)
-                print("History cleared.")
-                need_user_input = True
-                continue
+            if answer_strip in command_map:
+                result = await command_map[answer_strip].execute()
+                if result == ChatCommandResult.EXIT:
+                    break
+                elif result == ChatCommandResult.CONTINUE_PROMPT:
+                    need_user_input = True
+                    continue
+                elif result == ChatCommandResult.PROCEED_TO_MODEL:
+                    need_user_input = False
             else:
                 append_user_message(state.history, agent_callbacks, desc.name, answer)
+                need_user_input = False
 
         loop = asyncio.get_running_loop()
         with InterruptController(loop) as interrupt_controller:

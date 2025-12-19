@@ -118,7 +118,7 @@ def make_ui_mock(
     ui.ask = AsyncMock(side_effect=_ask)
     ui.confirm = AsyncMock(side_effect=_confirm)
 
-    async def _prompt() -> str:
+    async def _prompt(words: list[str] | None = None) -> str:
         # In chat mode, prompt uses a generic '> ' prompt
         return await _ask("> ", None)
 
