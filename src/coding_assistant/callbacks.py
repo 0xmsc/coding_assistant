@@ -1,5 +1,6 @@
 from __future__ import annotations
 from rich.styled import Styled
+from coding_assistant.trace import trace_data
 
 import json
 import logging
@@ -315,10 +316,8 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
             "mcp_coding_assistant_mcp_shell_execute",
         ):
             body = result.strip("\n")
-            rendered_result = Markdown(f"```\n{body}\n```")
-            print()
-            print(Padding(rendered_result, left_padding))
-            return True
+            trace_data(tool_name.split("_")[-1], body)
+            return False
 
         return False
 
