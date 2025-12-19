@@ -58,6 +58,7 @@ async def complete(
             model=model,
             stream=True,
             reasoning_effort=reasoning_effort,
+            num_retries=3,
         )
 
         chunks = []
