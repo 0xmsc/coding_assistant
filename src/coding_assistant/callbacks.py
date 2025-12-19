@@ -310,15 +310,6 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         elif tool_name.startswith("mcp_coding_assistant_mcp_todo_"):
             print(Padding(Markdown(result), left_padding))
             return True
-        elif tool_name in (
-            "mcp_coding_assistant_mcp_python_execute",
-            "mcp_coding_assistant_mcp_shell_execute",
-        ):
-            body = result.strip("\n")
-            rendered_result = Markdown(f"```\n{body}\n```")
-            print()
-            print(Padding(rendered_result, left_padding))
-            return True
 
         return False
 
