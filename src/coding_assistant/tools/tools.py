@@ -21,101 +21,19 @@ from coding_assistant.ui import DefaultAnswerUI, UI
 logger = logging.getLogger(__name__)
 
 
-class LaunchOrchestratorAgentSchema(BaseModel):
-    task: str = Field(description="The task to assign to the orchestrator agent.")
+class LaunchAgentSchema(BaseModel):
+    task: str = Field(description="The task to assign to the agent.")
+    expected_output: str | None = Field(
+        default=None,
+        description="The expected output to return to the client. This includes the content but also the format of the output (e.g. markdown).",
+    )
     summaries: list[str] = Field(
         default_factory=list,
         description="The past conversation summaries of the client and the agent.",
     )
     instructions: str | None = Field(
         default=None,
-        description="Special instructions for the agent. The agent will do everything it can to follow these instructions. The orchestrator will forward relevant instructions to the other agents it launches.",
-    )
-
-
-class OrchestratorTool(Tool):
-    def __init__(
-        self,
-        config: Config,
-        tools: list[Tool],
-        history: list | None,
-        agent_callbacks: AgentProgressCallbacks,
-        ui: UI,
-        tool_callbacks: AgentToolCallbacks,
-    ):
-        super().__init__()
-        self._config = config
-        self._tools = tools
-        self._history = history
-        self._agent_callbacks = agent_callbacks
-        self._ui = ui
-        self._tool_callbacks = tool_callbacks
-
-    def name(self) -> str:
-        return "launch_orchestrator_agent"
-
-    def description(self) -> str:
-        return "Launch an orchestrator agent to accomplish a given task."
-
-    def parameters(self) -> dict:
-        return LaunchOrchestratorAgentSchema.model_json_schema()
-
-    async def execute(self, parameters: dict) -> TextResult:
-        # Compose parameters with the tool description as a dedicated entry
-        validated = LaunchOrchestratorAgentSchema.model_validate(parameters)
-        params = [
-            Parameter(
-                name="description",
-                description="The description of the agent's work and capabilities.",
-                value=self.description(),
-            ),
-            *parameters_from_model(validated),
-        ]
-
-        desc = AgentDescription(
-            name="Orchestrator",
-            model=self._config.expert_model,
-            parameters=params,
-            tools=[
-                FinishTaskTool(),
-                ShortenConversation(),
-                AgentTool(
-                    self._config,
-                    self._tools,
-                    DefaultAnswerUI(),
-                    NullProgressCallbacks(),
-                    self._tool_callbacks,
-                ),
-                *self._tools,
-            ],
-        )
-        state = AgentState(history=self._history or [])
-
-        try:
-            ctx = AgentContext(desc=desc, state=state)
-            await run_agent_loop(
-                ctx,
-                agent_callbacks=self._agent_callbacks,
-                tool_callbacks=self._tool_callbacks,
-                shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
-                completer=complete,
-                ui=self._ui,
-            )
-            assert state.output is not None, "Agent did not produce output"
-            self.summary = state.output.summary
-            return TextResult(content=state.output.result)
-        finally:
-            self.history = state.history
-
-
-class LaunchAgentSchema(BaseModel):
-    task: str = Field(description="The task to assign to the sub-agent.")
-    expected_output: str = Field(
-        description="The expected output to return to the client. This includes the content but also the format of the output (e.g. markdown).",
-    )
-    instructions: str | None = Field(
-        default=None,
-        description="Special instructions for the agent. The agent will do everything it can to follow these instructions.",
+        description="Special instructions for the agent. The agent will do everything it can to follow these instructions. If appropriate, the agent will forward relevant instructions to the other agents it launches.",
     )
     expert_knowledge: bool = Field(
         False,
@@ -131,6 +49,8 @@ class AgentTool(Tool):
         ui: UI,
         agent_callbacks: AgentProgressCallbacks,
         tool_callbacks: AgentToolCallbacks,
+        name: str = "launch_agent",
+        history: list | None = None,
     ):
         super().__init__()
         self._config = config
@@ -138,12 +58,16 @@ class AgentTool(Tool):
         self._ui = ui
         self._agent_callbacks = agent_callbacks
         self._tool_callbacks = tool_callbacks
+        self._name = name
+        self._history = history
+        self.history: list = []
+        self.summary: str = ""
 
     def name(self) -> str:
-        return "launch_agent"
+        return self._name
 
     def description(self) -> str:
-        return "Launch a sub-agent to work on a given task. The agent will refuse to accept any task that is not clearly defined and misses context. It needs to be clear what to do using **only** the information given in the task description."
+        return "Launch an agent to work on a given task. The agent will refuse to accept any task that is not clearly defined and misses context. It needs to be clear what to do using **only** the information given in the task description."
 
     def parameters(self) -> dict:
         return LaunchAgentSchema.model_json_schema()
@@ -171,22 +95,33 @@ class AgentTool(Tool):
             tools=[
                 FinishTaskTool(),
                 ShortenConversation(),
+                AgentTool(
+                    self._config,
+                    self._tools,
+                    DefaultAnswerUI(),
+                    NullProgressCallbacks(),
+                    self._tool_callbacks,
+                ),
                 *self._tools,
             ],
         )
-        state = AgentState()
+        state = AgentState(history=self._history or [])
         ctx = AgentContext(desc=desc, state=state)
 
-        await run_agent_loop(
-            ctx,
-            agent_callbacks=self._agent_callbacks,
-            tool_callbacks=self._tool_callbacks,
-            shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
-            completer=complete,
-            ui=self._ui,
-        )
-        assert state.output is not None, "Agent did not produce output"
-        return TextResult(content=state.output.result)
+        try:
+            await run_agent_loop(
+                ctx,
+                agent_callbacks=self._agent_callbacks,
+                tool_callbacks=self._tool_callbacks,
+                shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
+                completer=complete,
+                ui=self._ui,
+            )
+            assert state.output is not None, "Agent did not produce output"
+            self.summary = state.output.summary
+            return TextResult(content=state.output.result)
+        finally:
+            self.history = state.history
 
 
 class FinishTaskSchema(BaseModel):

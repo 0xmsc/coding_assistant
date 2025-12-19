@@ -29,7 +29,7 @@ from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
-from coding_assistant.tools.tools import OrchestratorTool
+from coding_assistant.tools.tools import AgentTool
 from coding_assistant.ui import PromptToolkitUI
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
@@ -149,19 +149,21 @@ async def run_orchestrator_agent(
     agent_callbacks: AgentProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
 ):
-    tool = OrchestratorTool(
+    tool = AgentTool(
         config=config,
         tools=tools,
         history=history,
         agent_callbacks=agent_callbacks,
         ui=PromptToolkitUI(),
         tool_callbacks=tool_callbacks,
+        name="launch_orchestrator_agent",
     )
 
     orchestrator_params = {
         "task": task,
         "summaries": conversation_summaries[-5:],
         "instructions": instructions,
+        "expert_knowledge": True,
     }
 
     try:

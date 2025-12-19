@@ -5,7 +5,7 @@ import pytest
 
 from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.agents.tests.test_agents import create_test_config
-from coding_assistant.tools.tools import OrchestratorTool
+from coding_assistant.tools.tools import AgentTool
 from coding_assistant.ui import NullUI
 
 TEST_MODEL = "openai/gpt-5-mini"
@@ -26,7 +26,7 @@ async def test_model_vision_recognizes_car_image():
     history.append({"role": "user", "content": [{"type": "image_url", "image_url": {"url": data_url}}]})
 
     config = create_test_config()
-    tool = OrchestratorTool(
+    tool = AgentTool(
         config=config,
         tools=[],
         history=history,
