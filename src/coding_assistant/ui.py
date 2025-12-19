@@ -1,11 +1,12 @@
 import logging
 from abc import ABC, abstractmethod
-from pathlib import Path
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.shortcuts import create_confirm_session
 from rich.console import Console
+
+from coding_assistant.paths import get_app_cache_dir
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class UI(ABC):
 
 class PromptToolkitUI(UI):
     def __init__(self):
-        history_dir = Path.home() / ".cache" / "coding_assistant"
+        history_dir = get_app_cache_dir()
         history_dir.mkdir(parents=True, exist_ok=True)
         history_file = history_dir / "history"
         self._session = PromptSession(
