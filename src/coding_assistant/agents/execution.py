@@ -159,9 +159,7 @@ async def handle_tool_call(
                 "tool_call_id": tool_call.id,
                 "function_name": function_name,
                 "function_args": function_args,
-                "result": function_call_result.to_dict()
-                if hasattr(function_call_result, "to_dict")
-                else str(function_call_result),
+                "result": function_call_result.to_dict(),
             },
             indent=2,
         ),
