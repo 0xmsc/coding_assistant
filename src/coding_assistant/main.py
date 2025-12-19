@@ -141,7 +141,7 @@ def parse_args():
         "--trace",
         action=BooleanOptionalAction,
         default=bool(os.getenv("CODING_ASSISTANT_TRACE")),
-        help="Enable tracing of model requests and responses to /tmp/coding_assistant_trace.",
+        help="Enable tracing of model requests and responses to $XDG_STATE_HOME/coding-assistant/traces.",
     )
 
     return parser.parse_args()
