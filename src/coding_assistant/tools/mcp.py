@@ -41,8 +41,14 @@ class MCPWrappedTool(Tool):
 
     async def execute(self, parameters) -> TextResult:
         result = await self._client.call_tool(self._tool.name, parameters)
-        # FastMCP's call_tool returns a CallToolResult with a data field
-        content = result.data if hasattr(result, "data") else str(result)
+
+        if len(result.content) != 1:
+            raise ValueError("Expected exactly one result from MCP tool call.")
+
+        if not hasattr(result.content[0], "text"):
+            raise ValueError("Expected result to have a 'text' attribute.")
+
+        content = result.content[0].text
         return TextResult(content=content)
 
 
@@ -134,21 +140,6 @@ async def get_mcp_servers_from_config(
             servers.append(server)
 
         yield servers
-
-
-async def handle_mcp_tool_call(function_name, arguments, mcp_servers):
-    parts = function_name.split("_")
-    assert parts[0] == "mcp"
-
-    server_name = parts[1]
-    tool_name = "_".join(parts[2:])
-
-    for server in mcp_servers:
-        if server.name == server_name:
-            result = await server.client.call_tool(tool_name, arguments)
-            return str(result)
-
-    raise RuntimeError(f"Server {server_name} not found in MCP servers.")
 
 
 async def print_mcp_tools(mcp_servers):

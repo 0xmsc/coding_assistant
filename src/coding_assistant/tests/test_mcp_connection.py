@@ -7,7 +7,6 @@ from coding_assistant.tools.mcp import get_mcp_servers_from_config
 from fastmcp.mcp_config import StdioMCPServer, RemoteMCPServer
 
 
-
 @pytest.mark.asyncio
 async def test_get_mcp_servers_from_config_stdio():
     config = [MCPServerConfig(name="test-stdio", command="test-cmd", args=["--arg1"])]
@@ -32,7 +31,6 @@ async def test_get_mcp_servers_from_config_stdio():
             assert config_arg.args == ["--arg1"]
 
 
-
 @pytest.mark.asyncio
 async def test_get_mcp_servers_from_config_sse():
     config = [MCPServerConfig(name="test-sse", url="http://localhost:8000/sse")]
@@ -51,7 +49,6 @@ async def test_get_mcp_servers_from_config_sse():
             config_arg = kwargs["config"]
             assert isinstance(config_arg, RemoteMCPServer)
             assert config_arg.url == "http://localhost:8000/sse"
-
 
 
 @pytest.mark.asyncio

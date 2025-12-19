@@ -37,14 +37,6 @@ logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
 
 
-def set_log_level(logger_name: str, level: int):
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(level)
-
-
-set_log_level("mcp.client.sse", logging.DEBUG)
-
-
 def parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant CLI")
     parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
