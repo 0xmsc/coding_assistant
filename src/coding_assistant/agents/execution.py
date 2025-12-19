@@ -149,27 +149,23 @@ async def handle_tool_call(
             function_call_result = callback_result
         else:
             function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
-
-        trace_name = f"tool_result_{function_name}.json"
-        trace_payload = {
-            "tool_call_id": tool_call.id,
-            "function_name": function_name,
-            "function_args": function_args,
-            "result": function_call_result.to_dict()
-            if hasattr(function_call_result, "to_dict")
-            else str(function_call_result),
-        }
-    except Exception as e:
+    except ValueError as e:
         function_call_result = TextResult(content=f"Error executing tool: {e}")
-        trace_name = f"tool_error_{function_name}.json"
-        trace_payload = {
-            "tool_call_id": tool_call.id,
-            "function_name": function_name,
-            "function_args": function_args,
-            "error": str(e),
-        }
 
-    trace_data(trace_name, json.dumps(trace_payload, indent=2))
+    trace_data(
+        f"tool_result_{function_name}.json",
+        json.dumps(
+            {
+                "tool_call_id": tool_call.id,
+                "function_name": function_name,
+                "function_args": function_args,
+                "result": function_call_result.to_dict()
+                if hasattr(function_call_result, "to_dict")
+                else str(function_call_result),
+            },
+            indent=2,
+        ),
+    )
 
     result_handlers = {
         FinishTaskResult: lambda r: _handle_finish_task_result(r, state),
