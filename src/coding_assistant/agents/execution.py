@@ -149,7 +149,7 @@ async def handle_tool_call(
             function_call_result = callback_result
         else:
             function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
-    except ValueError as e:
+    except Exception as e:
         return f"Error executing tool: {e}"
 
     trace_data(
