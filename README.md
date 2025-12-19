@@ -78,7 +78,7 @@ uv run coding-assistant \
   --expert-model "openrouter/anthropic/claude-3.5-sonnet"
 ```
 
-Or with external MCP servers:
+Or with external MCP servers (stdio or SSE/remote):
 
 ```bash
 uv run coding-assistant \
@@ -86,7 +86,8 @@ uv run coding-assistant \
   --model "openrouter/openai/gpt-4o-mini" \
   --mcp-servers \
     '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
-    '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}'
+    '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}' \
+    '{"name": "remote-mcp", "url": "http://localhost:8000/sse"}'
 ```
 
 Notes:
@@ -112,13 +113,24 @@ Run `coding-assistant --help` to see all options.
 
 ## MCP Servers
 
-Pass MCP servers with repeated `--mcp-servers` flags as JSON strings:
+Pass MCP servers with repeated `--mcp-servers` flags as JSON strings. Support is provided for both stdio-based servers and remote servers via SSE (Server-Sent Events).
+
+### Stdio Server
 
 ```json
 {
   "name": "filesystem",
   "command": "npx",
   "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]
+}
+```
+
+### Remote Server (SSE)
+
+```json
+{
+  "name": "remote-mcp",
+  "url": "http://localhost:8000/sse"
 }
 ```
 
