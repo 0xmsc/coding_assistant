@@ -23,7 +23,6 @@ from coding_assistant.history import (
     load_orchestrator_history,
     save_conversation_summary,
     save_orchestrator_history,
-    trim_orchestrator_history,
 )
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
@@ -170,7 +169,6 @@ async def run_orchestrator_agent(
         result = await tool.execute(orchestrator_params)
     finally:
         save_orchestrator_history(working_directory, tool.history)
-        trim_orchestrator_history(working_directory)
 
     summary = tool.summary
     save_conversation_summary(working_directory, summary)
@@ -220,7 +218,6 @@ async def run_chat_session(
         )
     finally:
         save_orchestrator_history(working_directory, state.history)
-        trim_orchestrator_history(working_directory)
 
 
 async def _main(args):
