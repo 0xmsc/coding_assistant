@@ -145,15 +145,22 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         self._state = IdleState()
 
     def on_user_message(self, agent_name: str, content: str, force: bool = False):
-        if force:
-            self._finalize_state()
-            print()
-            print(Markdown(content))
-            self._state = IdleState()
+        if not force:
+            return
 
-    def on_assistant_message(self, agent_name: str, content: str):
-        # Don't print - content is already printed via chunks
-        pass
+        self._finalize_state()
+        print()
+        print(Markdown(f"## User\n\n{content}"))
+        self._state = IdleState()
+
+    def on_assistant_message(self, agent_name: str, content: str, force: bool = False):
+        if not force:
+            return
+
+        self._finalize_state()
+        print()
+        print(Markdown(f"## Assistant\n\n{content}"))
+        self._state = IdleState()
 
     def on_assistant_reasoning(self, agent_name: str, content: str):
         # Don't print - reasoning is already printed via chunks
