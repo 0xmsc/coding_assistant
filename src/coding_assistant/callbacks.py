@@ -9,9 +9,7 @@ from typing import Any, Optional, Union
 
 from rich import print
 from rich.console import Console, Group
-from rich.live import Live
 from rich.markdown import Markdown
-from rich.styled import Styled
 from rich.padding import Padding
 from rich.panel import Panel
 from rich.pretty import Pretty
@@ -24,14 +22,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ReasoningState:
-    live: Live
-    accumulated_text: str = ""
+    pass
 
 
 @dataclass
 class ContentState:
-    live: Live
-    accumulated_text: str = ""
+    pass
 
 
 @dataclass
@@ -286,45 +282,22 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         # Reset state
         self._state = ToolState()
 
-    def _stop_live(self):
-        if isinstance(self._state, (ReasoningState, ContentState)):
-            self._state.live.stop()
-
     def on_reasoning_chunk(self, chunk: str):
         if not isinstance(self._state, ReasoningState):
-            self._stop_live()
             print()
-            live = Live(
-                Markdown(""),
-                refresh_per_second=8,
-                transient=False,
-                vertical_overflow="visible",
-            )
-            live.start()
-            self._state = ReasoningState(live=live)
+            self._state = ReasoningState()
 
-        self._state.accumulated_text += chunk
-        self._state.live.update(Styled(Markdown(self._state.accumulated_text), "dim cyan"))
+        print(chunk, end="", flush=True)
 
     def on_content_chunk(self, chunk: str):
         if not isinstance(self._state, ContentState):
-            self._stop_live()
             print()
-            live = Live(
-                Markdown(""),
-                refresh_per_second=8,
-                transient=False,
-                vertical_overflow="visible",
-            )
-            live.start()
-            self._state = ContentState(live=live)
+            self._state = ContentState()
 
-        self._state.accumulated_text += chunk
-        self._state.live.update(Markdown(self._state.accumulated_text))
+        print(chunk, end="", flush=True)
 
     def on_chunks_end(self):
-        self._stop_live()
-        if isinstance(self._state, ContentState):
+        if isinstance(self._state, (ReasoningState, ContentState)):
             print()
         self._state = IdleState()
 
