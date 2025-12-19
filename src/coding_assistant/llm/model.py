@@ -1,7 +1,6 @@
 import functools
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass
 from typing import Literal, cast
@@ -84,14 +83,14 @@ async def complete(
         assert completion
 
         trace_data(
-            "completion",
+            "completion.json",
             json.dumps(
                 {
                     "model": model,
                     "reasoning_effort": reasoning_effort,
                     "messages": messages,
                     "tools": tools,
-                    "completion": completion,
+                    "completion": completion.model_dump() if hasattr(completion, "model_dump") else completion,
                 },
                 indent=2,
                 default=str,
