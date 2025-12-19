@@ -150,7 +150,7 @@ async def handle_tool_call(
         else:
             function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
     except ValueError as e:
-        return f"Error executing tool: {e}"
+        function_call_result = TextResult(content=f"Error executing tool: {e}")
 
     trace_data(
         f"tool_result_{function_name}.json",
@@ -159,9 +159,7 @@ async def handle_tool_call(
                 "tool_call_id": tool_call.id,
                 "function_name": function_name,
                 "function_args": function_args,
-                "result": function_call_result.to_dict()
-                if hasattr(function_call_result, "to_dict")
-                else str(function_call_result),
+                "result": function_call_result.to_dict(),
             },
             indent=2,
         ),

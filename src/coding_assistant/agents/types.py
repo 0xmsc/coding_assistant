@@ -10,7 +10,8 @@ from coding_assistant.llm.model import Completion
 class ToolResult(ABC):
     """Base class for all tool results."""
 
-    pass
+    @abstractmethod
+    def to_dict(self) -> dict: ...
 
 
 @dataclass
