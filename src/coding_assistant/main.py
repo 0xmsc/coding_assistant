@@ -18,10 +18,8 @@ from coding_assistant.agents.types import AgentContext, AgentDescription, AgentS
 from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
-    get_conversation_summaries,
     get_latest_orchestrator_history_file,
     load_orchestrator_history,
-    save_conversation_summary,
     save_orchestrator_history,
 )
 from coding_assistant.instructions import get_instructions
@@ -142,7 +140,6 @@ async def run_orchestrator_agent(
     config: Config,
     tools: list[Tool],
     history: list | None,
-    conversation_summaries: list[str],
     instructions: str | None,
     working_directory: Path,
     agent_callbacks: AgentProgressCallbacks,
@@ -160,7 +157,6 @@ async def run_orchestrator_agent(
 
     orchestrator_params = {
         "task": task,
-        "summaries": conversation_summaries[-5:],
         "instructions": instructions,
         "expert_knowledge": True,
     }
@@ -170,10 +166,7 @@ async def run_orchestrator_agent(
     finally:
         save_orchestrator_history(working_directory, tool.history)
 
-    summary = tool.summary
-    save_conversation_summary(working_directory, summary)
-
-    print(f"🎉 Final Result\n\nSummary:\n\n{summary}\n\nResult:\n\n{result.content}")
+    print(f"🎉 Final Result\n\nResult:\n\n{result.content}")
     return result
 
 
@@ -228,8 +221,6 @@ async def _main(args):
 
     working_directory = Path(os.getcwd())
     logger.info(f"Running in working directory: {working_directory}")
-
-    conversation_summaries = get_conversation_summaries(working_directory)
 
     if args.resume_file:
         if not args.resume_file.exists():
@@ -317,7 +308,6 @@ async def _main(args):
                 config=config,
                 tools=tools,
                 history=resume_history,
-                conversation_summaries=conversation_summaries,
                 instructions=instructions,
                 working_directory=working_directory,
                 agent_callbacks=agent_callbacks,

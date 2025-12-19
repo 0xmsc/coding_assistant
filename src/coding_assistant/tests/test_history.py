@@ -3,14 +3,10 @@ from pathlib import Path
 
 from coding_assistant.history import (
     _fix_invalid_history,
-    clear_orchestrator_history,
-    get_conversation_history_file,
-    get_conversation_summaries,
     get_latest_orchestrator_history_file,
     get_orchestrator_history_file,
     get_project_cache_dir,
     load_orchestrator_history,
-    save_conversation_summary,
     save_orchestrator_history,
 )
 
@@ -69,22 +65,6 @@ def test_fix_invalid_history_with_multiple_trailing_assistant_messages():
     assert _fix_invalid_history(history) == [{"role": "user", "content": "Hello"}]
 
 
-def test_conversation_summaries_roundtrip(tmp_path: Path):
-    wd = tmp_path
-
-    # Initially none
-    assert get_conversation_summaries(wd) == []
-
-    # Save two summaries and read back
-    save_conversation_summary(wd, "first")
-    save_conversation_summary(wd, "second")
-    assert get_conversation_summaries(wd) == ["first", "second"]
-
-    # Files exist in expected location
-    path = get_conversation_history_file(wd)
-    assert path.exists()
-
-
 def test_orchestrator_history_roundtrip(tmp_path: Path):
     wd = tmp_path
 
@@ -105,11 +85,6 @@ def test_orchestrator_history_roundtrip(tmp_path: Path):
     save_orchestrator_history(wd, [{"role": "user", "content": "msg-2"}])
     data = load_orchestrator_history(latest)
     assert isinstance(data, list) and data[-1]["content"] == "msg-2"
-
-    # Clear
-    clear_orchestrator_history(wd)
-    assert not latest.exists()
-    assert get_latest_orchestrator_history_file(wd) is None
 
 
 def test_save_orchestrator_history_strips_trailing_assistant_tool_calls(tmp_path: Path):

@@ -27,10 +27,6 @@ class LaunchAgentSchema(BaseModel):
         default=None,
         description="The expected output to return to the client. This includes the content but also the format of the output (e.g. markdown).",
     )
-    summaries: list[str] = Field(
-        default_factory=list,
-        description="The past conversation summaries of the client and the agent.",
-    )
     instructions: str | None = Field(
         default=None,
         description="Special instructions for the agent. The agent will do everything it can to follow these instructions. If appropriate, the agent will forward relevant instructions to the other agents it launches.",

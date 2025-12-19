@@ -12,38 +12,6 @@ def get_project_cache_dir(working_directory: Path) -> Path:
     return cache_dir
 
 
-def get_conversation_history_file(working_directory: Path) -> Path:
-    """Get the conversation history file path for the specific project."""
-    conversations_file = get_project_cache_dir(working_directory) / "conversations_summary.json"
-    return conversations_file
-
-
-def get_conversation_summaries(working_directory: Path) -> list[str]:
-    conversations_file = get_conversation_history_file(working_directory)
-
-    if not conversations_file.exists():
-        logger.info("No conversations summary file found.")
-        return []
-
-    logger.info(f"Loading conversations summary from {conversations_file}.")
-    conversations = json.loads(conversations_file.read_text())
-    return conversations.get("summaries", [])
-
-
-def save_conversation_summary(working_directory: Path, summary: str):
-    conversations_file = get_conversation_history_file(working_directory)
-
-    if conversations_file.exists():
-        conversations = json.loads(conversations_file.read_text())
-    else:
-        conversations = {"summaries": []}
-
-    conversations["summaries"].append(summary)
-    conversations_file.write_text(json.dumps(conversations, indent=2))
-
-    logger.info(f"Saved conversations summary for {working_directory} to {conversations_file}.")
-
-
 def get_orchestrator_history_file(working_directory: Path) -> Path:
     """Get the orchestrator history file for the specific project."""
     return get_project_cache_dir(working_directory) / "history.json"
@@ -89,11 +57,3 @@ def load_orchestrator_history(file: str | Path) -> list | None:
         return None
     logger.info(f"Loading orchestrator history from {file_path}.")
     return json.loads(file_path.read_text())
-
-
-def clear_orchestrator_history(working_directory: Path):
-    """Clear orchestrator agent history file after successful completion."""
-    history_file = get_orchestrator_history_file(working_directory)
-    if history_file.exists():
-        history_file.unlink()
-    logger.info(f"Cleared orchestrator history for {working_directory}.")
