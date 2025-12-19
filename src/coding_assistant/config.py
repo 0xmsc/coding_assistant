@@ -20,5 +20,5 @@ class MCPServerConfig(BaseModel):
 class Config(BaseModel):
     model: str
     expert_model: str
-    shorten_conversation_at_tokens: int
+    compact_conversation_at_tokens: int
     enable_chat_mode: bool = True

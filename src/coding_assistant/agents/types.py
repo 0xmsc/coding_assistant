@@ -36,7 +36,7 @@ class FinishTaskResult(ToolResult):
 
 
 @dataclass
-class ShortenConversationResult(ToolResult):
+class CompactConversationResult(ToolResult):
     """Signals that the conversation history should be summarized."""
 
     summary: str
