@@ -15,7 +15,7 @@ def create_test_config() -> Config:
     return Config(
         model=TEST_MODEL,
         expert_model=TEST_MODEL,
-        shorten_conversation_at_tokens=200_000,
+        compact_conversation_at_tokens=200_000,
     )
 
 

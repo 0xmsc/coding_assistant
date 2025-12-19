@@ -15,7 +15,7 @@ from coding_assistant.agents.types import (
     AgentState,
     Completer,
     FinishTaskResult,
-    ShortenConversationResult,
+    CompactConversationResult,
     TextResult,
 )
 from coding_assistant.llm.adapters import execute_tool_call, get_tools
@@ -84,27 +84,24 @@ def _handle_text_result(result: TextResult) -> str:
     return result.content
 
 
-def _handle_shorten_conversation_result(
-    result: ShortenConversationResult,
+def _handle_compact_conversation_result(
+    result: CompactConversationResult,
     desc: AgentDescription,
     state: AgentState,
     agent_callbacks: AgentProgressCallbacks,
 ):
-    start_message = _create_start_message(desc)
-    state.history = []
-    append_user_message(
-        state.history,
-        agent_callbacks,
-        desc.name,
-        start_message,
-    )
+    # Keep the first message (start message) and clear the rest
+    start_message_obj = state.history[0]
+    state.history = [start_message_obj]
+
     append_user_message(
         state.history,
         agent_callbacks,
         desc.name,
         f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work.",
     )
-    return "Conversation shortened and history reset."
+
+    return "Conversation compacted and history reset."
 
 
 async def handle_tool_call(
@@ -167,7 +164,7 @@ async def handle_tool_call(
 
     result_handlers = {
         FinishTaskResult: lambda r: _handle_finish_task_result(r, state),
-        ShortenConversationResult: lambda r: _handle_shorten_conversation_result(r, desc, state, agent_callbacks),
+        CompactConversationResult: lambda r: _handle_compact_conversation_result(r, desc, state, agent_callbacks),
         TextResult: lambda r: _handle_text_result(r),
     }
 
@@ -275,7 +272,7 @@ async def run_agent_loop(
     tool_callbacks: AgentToolCallbacks,
     completer: Completer,
     ui: UI,
-    shorten_conversation_at_tokens: int = 200_000,
+    compact_conversation_at_tokens: int = 200_000,
 ):
     desc = ctx.desc
     state = ctx.state
@@ -286,8 +283,8 @@ async def run_agent_loop(
     # Validate tools required for the agent loop
     if not any(tool.name() == "finish_task" for tool in desc.tools):
         raise RuntimeError("Agent needs to have a `finish_task` tool in order to run.")
-    if not any(tool.name() == "shorten_conversation" for tool in desc.tools):
-        raise RuntimeError("Agent needs to have a `shorten_conversation` tool in order to run.")
+    if not any(tool.name() == "compact_conversation" for tool in desc.tools):
+        raise RuntimeError("Agent needs to have a `compact_conversation` tool in order to run.")
 
     start_message = _create_start_message(desc)
     agent_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
@@ -319,12 +316,12 @@ async def run_agent_loop(
                 desc.name,
                 "I detected a step from you without any tool calls. This is not allowed. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
             )
-        if tokens > shorten_conversation_at_tokens:
+        if tokens > compact_conversation_at_tokens:
             append_user_message(
                 state.history,
                 agent_callbacks,
                 desc.name,
-                "Your conversation history has grown too large. Please summarize it by using the `shorten_conversation` tool.",
+                "Your conversation history has grown too large. Compact it immediately by using the `compact_conversation` tool.",
             )
 
     assert state.output is not None
@@ -356,8 +353,15 @@ async def run_chat_loop(
 
             if answer.strip() == "/exit":
                 break
-
-            append_user_message(state.history, agent_callbacks, desc.name, answer)
+            elif answer.strip() == "/compact":
+                append_user_message(
+                    state.history,
+                    agent_callbacks,
+                    desc.name,
+                    "Immediately compact our conversation so far by using the `compact_conversation` tool.",
+                )
+            else:
+                append_user_message(state.history, agent_callbacks, desc.name, answer)
 
         loop = asyncio.get_running_loop()
         with InterruptController(loop) as interrupt_controller:

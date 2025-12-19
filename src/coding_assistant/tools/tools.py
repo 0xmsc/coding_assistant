@@ -9,8 +9,8 @@ from coding_assistant.agents.types import (
     AgentContext,
     AgentDescription,
     AgentState,
+    CompactConversationResult,
     FinishTaskResult,
-    ShortenConversationResult,
     TextResult,
     Tool,
 )
@@ -90,7 +90,7 @@ class AgentTool(Tool):
             parameters=params,
             tools=[
                 FinishTaskTool(),
-                ShortenConversation(),
+                CompactConversation(),
                 AgentTool(
                     self._config,
                     self._tools,
@@ -109,7 +109,7 @@ class AgentTool(Tool):
                 ctx,
                 agent_callbacks=self._agent_callbacks,
                 tool_callbacks=self._tool_callbacks,
-                shorten_conversation_at_tokens=self._config.shorten_conversation_at_tokens,
+                compact_conversation_at_tokens=self._config.compact_conversation_at_tokens,
                 completer=complete,
                 ui=self._ui,
             )
@@ -146,19 +146,19 @@ class FinishTaskTool(Tool):
         )
 
 
-class ShortenConversationSchema(BaseModel):
+class CompactConversationSchema(BaseModel):
     summary: str = Field(description="A summary of the conversation so far.")
 
 
-class ShortenConversation(Tool):
+class CompactConversation(Tool):
     def name(self) -> str:
-        return "shorten_conversation"
+        return "compact_conversation"
 
     def description(self) -> str:
         return "Give the framework a summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. Additionally, you should include the next steps you had planned. This tool should only be called when the client tells you to call it."
 
     def parameters(self) -> dict:
-        return ShortenConversationSchema.model_json_schema()
+        return CompactConversationSchema.model_json_schema()
 
-    async def execute(self, parameters) -> ShortenConversationResult:
-        return ShortenConversationResult(summary=parameters["summary"])
+    async def execute(self, parameters) -> CompactConversationResult:
+        return CompactConversationResult(summary=parameters["summary"])
