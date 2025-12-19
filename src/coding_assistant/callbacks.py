@@ -37,7 +37,7 @@ class ParagraphBuffer:
     def push(self, chunk: str) -> list[str]:
         """Push a chunk of text and return any complete paragraphs found."""
         self._buffer += chunk
-
+        
         # If we are inside a code fence, we don't split yet
         if self._is_inside_code_fence(self._buffer):
             return []
@@ -48,11 +48,11 @@ class ParagraphBuffer:
             # start a code fence that isn't closed within that part.
             # This is complex if a code fence spans multiple paragraphs.
             # Let's refine: find double newlines only outside of code fences.
-
+            
             paragraphs = []
             current_temp = ""
             remaining = self._buffer
-
+            
             while "\n\n" in remaining:
                 prefix, suffix = remaining.split("\n\n", 1)
                 current_temp += prefix
@@ -65,7 +65,7 @@ class ParagraphBuffer:
                     paragraphs.append(current_temp)
                     current_temp = ""
                     remaining = suffix
-
+            
             self._buffer = current_temp + remaining
             return paragraphs
 
@@ -317,7 +317,11 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         ):
             body = result.strip("\n")
             trace_data(tool_name, body)
-            return False
+
+            rendered_result = Markdown(f"```\n{body}\n```")
+            print()
+            print(Padding(rendered_result, left_padding))
+            return True
 
         return False
 
