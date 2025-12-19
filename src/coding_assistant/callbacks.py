@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import textwrap
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
 from rich import print
@@ -21,14 +21,70 @@ from coding_assistant.agents.types import TextResult, ToolResult
 logger = logging.getLogger(__name__)
 
 
+class ParagraphBuffer:
+    """Buffers text and returns full paragraphs (separated by double newlines).
+
+    Handles code fences (```) by buffering the entire fence before splitting.
+    """
+
+    def __init__(self):
+        self._buffer = ""
+
+    def _is_inside_code_fence(self, text: str) -> bool:
+        return text.count("```") % 2 != 0
+
+    def push(self, chunk: str) -> list[str]:
+        """Push a chunk of text and return any complete paragraphs found."""
+        self._buffer += chunk
+        
+        # If we are inside a code fence, we don't split yet
+        if self._is_inside_code_fence(self._buffer):
+            return []
+
+        parts = self._buffer.split("\n\n")
+        if len(parts) > 1:
+            # We need to make sure none of the parts (except maybe the last one which stays in buffer)
+            # start a code fence that isn't closed within that part.
+            # This is complex if a code fence spans multiple paragraphs.
+            # Let's refine: find double newlines only outside of code fences.
+            
+            paragraphs = []
+            current_temp = ""
+            remaining = self._buffer
+            
+            while "\n\n" in remaining:
+                prefix, suffix = remaining.split("\n\n", 1)
+                current_temp += prefix
+                if self._is_inside_code_fence(current_temp):
+                    # The double newline is inside a code fence, keep it
+                    current_temp += "\n\n"
+                    remaining = suffix
+                else:
+                    # Found a real paragraph boundary
+                    paragraphs.append(current_temp)
+                    current_temp = ""
+                    remaining = suffix
+            
+            self._buffer = current_temp + remaining
+            return paragraphs
+
+        return []
+
+    def flush(self) -> Optional[str]:
+        """Flush the remaining buffer and return it as a paragraph if not empty."""
+        remaining = self._buffer.strip()
+        self._buffer = ""
+        return remaining if remaining else None
+
+
 @dataclass
 class ReasoningState:
-    pass
+    buffer: ParagraphBuffer = field(default_factory=ParagraphBuffer)
 
 
 @dataclass
 class ContentState:
-    pass
+    buffer: ParagraphBuffer = field(default_factory=ParagraphBuffer)
 
 
 @dataclass
@@ -214,6 +270,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         self._state = IdleState()
 
     def on_agent_end(self, agent_name: str, result: str, summary: str):
+        self._finalize_state()
         print()
         print(f"[bold red]◀[/bold red] Agent {agent_name} complete")
         print(f"[dim]Summary: {summary}[/dim]")
@@ -236,6 +293,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
     def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict):
+        self._finalize_state()
         print()
         self._print_tool_start("▶", tool_name, arguments)
         self._state = ToolState(tool_call_id=tool_call_id)
@@ -285,21 +343,38 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
 
     def on_reasoning_chunk(self, chunk: str):
         if not isinstance(self._state, ReasoningState):
+            self._finalize_state()
             print()
             self._state = ReasoningState()
 
-        print(Styled(chunk, "dim cyan"), end="", flush=True)
+        for paragraph in self._state.buffer.push(chunk):
+            print()
+            print(Styled(Markdown(paragraph), "dim cyan"))
 
     def on_content_chunk(self, chunk: str):
         if not isinstance(self._state, ContentState):
+            self._finalize_state()
             print()
             self._state = ContentState()
 
-        print(chunk, end="", flush=True)
+        for paragraph in self._state.buffer.push(chunk):
+            print()
+            print(Markdown(paragraph))
+
+    def _finalize_state(self):
+        if isinstance(self._state, ContentState):
+            if flushed := self._state.buffer.flush():
+                print()
+                print(Markdown(flushed))
+        elif isinstance(self._state, ReasoningState):
+            if flushed := self._state.buffer.flush():
+                print()
+                print(Styled(Markdown(flushed), "dim cyan"))
+            else:
+                print()
 
     def on_chunks_end(self):
-        if isinstance(self._state, (ReasoningState, ContentState)):
-            print()
+        self._finalize_state()
         self._state = IdleState()
 
 
