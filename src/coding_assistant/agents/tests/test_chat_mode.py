@@ -121,3 +121,43 @@ async def test_chat_exit_command_stops_loop_without_appending_command():
     assert not any(m.get("role") == "user" and (m.get("content") or "").strip() == "/exit" for m in state.history)
     # No assistant step should have happened; last message remains the start message
     assert state.history[-1]["role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_chat_loop_prompts_after_compact_command():
+    # Test that /compact command forces a user prompt after the next tool step
+    # Even if that logic is autonomous by default
+    from coding_assistant.tools.tools import CompactConversation
+
+    # Sequence:
+    # 1. User enters /compact -> calls _compact_cmd -> appends message, returns PROCEED_WITH_MODEL
+    # 2. Model responds with tool_call compact_conversation
+    # 3. Tool executes
+    # 4. LOOP SHOULD PROMPT USER
+
+    compact_call = FakeToolCall("1", FakeFunction("compact_conversation", json.dumps({"summary": "Compacted"})))
+    # The first message comes from the model in response to the injected compact message
+    # The second message is to check if it tries to loop again automatically (it shouldn't)
+    completer = FakeCompleter(
+        [FakeMessage(tool_calls=[compact_call]), FakeMessage(content="Should not be reached autonomously")]
+    )
+
+    compact_tool = CompactConversation()
+    desc, state = make_test_agent(tools=[compact_tool], history=[{"role": "user", "content": "start"}])
+
+    # Mock UI: first is /compact, second is /exit to stop the loop after verifying it prompted
+    ui = make_ui_mock(ask_sequence=[("> ", "/compact"), ("> ", "/exit")])
+
+    await run_chat_loop(
+        AgentContext(desc=desc, state=state),
+        agent_callbacks=NullProgressCallbacks(),
+        tool_callbacks=NullToolCallbacks(),
+        completer=completer,
+        ui=ui,
+    )
+
+    # If the logic works, ui.prompt was called twice
+    assert ui.prompt.call_count == 2
+    # Most recent history should be the tool result summary
+    assert state.history[-1]["role"] == "tool"
+    assert "compacted" in state.history[-1]["content"].lower()

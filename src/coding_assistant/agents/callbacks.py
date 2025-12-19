@@ -21,12 +21,12 @@ class AgentProgressCallbacks(ABC):
         pass
 
     @abstractmethod
-    def on_user_message(self, agent_name: str, content: str):
+    def on_user_message(self, agent_name: str, content: str, force: bool = False):
         """Handle messages with role: user."""
         pass
 
     @abstractmethod
-    def on_assistant_message(self, agent_name: str, content: str):
+    def on_assistant_message(self, agent_name: str, content: str, force: bool = False):
         """Handle messages with role: assistant."""
         pass
 
@@ -70,10 +70,10 @@ class NullProgressCallbacks(AgentProgressCallbacks):
     def on_agent_end(self, agent_name: str, result: str, summary: str):
         pass
 
-    def on_user_message(self, agent_name: str, content: str):
+    def on_user_message(self, agent_name: str, content: str, force: bool = False):
         pass
 
-    def on_assistant_message(self, agent_name: str, content: str):
+    def on_assistant_message(self, agent_name: str, content: str, force: bool = False):
         pass
 
     def on_assistant_reasoning(self, agent_name: str, content: str):

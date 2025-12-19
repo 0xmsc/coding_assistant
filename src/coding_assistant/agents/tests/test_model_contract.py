@@ -12,7 +12,7 @@ from coding_assistant.agents.tests.helpers import (
     make_ui_mock,
 )
 from coding_assistant.agents.types import AgentContext, TextResult, Tool
-from coding_assistant.tools.tools import FinishTaskTool, ShortenConversation
+from coding_assistant.tools.tools import FinishTaskTool, CompactConversation
 
 
 class DummyTool(Tool):
@@ -37,7 +37,7 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
     completer = FakeCompleter([fake_message])
 
     desc, state = make_test_agent(
-        tools=[DummyTool(), FinishTaskTool(), ShortenConversation()], history=[{"role": "user", "content": "start"}]
+        tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[{"role": "user", "content": "start"}]
     )
     ctx = AgentContext(desc=desc, state=state)
 
@@ -62,7 +62,7 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
                 "role": "user",
                 "content": (
                     "Your conversation history has grown too large. "
-                    "Please summarize it by using the `shorten_conversation` tool."
+                    "Please summarize it by using the `compact_conversation` tool."
                 ),
             }
         )
@@ -89,7 +89,7 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
             "role": "user",
             "content": (
                 "Your conversation history has grown too large. "
-                "Please summarize it by using the `shorten_conversation` tool."
+                "Please summarize it by using the `compact_conversation` tool."
             ),
         },
     ]
@@ -107,7 +107,7 @@ async def test_reasoning_is_forwarded_and_not_stored():
     completer = FakeCompleter([msg])
 
     desc, state = make_test_agent(
-        tools=[DummyTool(), FinishTaskTool(), ShortenConversation()],
+        tools=[DummyTool(), FinishTaskTool(), CompactConversation()],
         history=[{"role": "user", "content": "start"}],
     )
     ctx = AgentContext(desc=desc, state=state)
@@ -135,7 +135,7 @@ async def test_reasoning_is_forwarded_and_not_stored():
 async def test_requires_finish_tool():
     # Missing finish_task tool should raise
     desc, state = make_test_agent(
-        tools=[DummyTool(), ShortenConversation()],
+        tools=[DummyTool(), CompactConversation()],
         history=[{"role": "user", "content": "start"}],
     )
     ctx = AgentContext(desc=desc, state=state)
@@ -146,33 +146,33 @@ async def test_requires_finish_tool():
             tool_callbacks=NullToolCallbacks(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
             ui=make_ui_mock(),
-            shorten_conversation_at_tokens=1000,
+            compact_conversation_at_tokens=1000,
         )
 
 
 @pytest.mark.asyncio
 async def test_requires_shorten_tool():
-    # Missing shorten_conversation tool should raise
+    # Missing compact_conversation tool should raise
     desc, state = make_test_agent(
         tools=[DummyTool(), FinishTaskTool()],
         history=[{"role": "user", "content": "start"}],
     )
     ctx = AgentContext(desc=desc, state=state)
-    with pytest.raises(RuntimeError, match="Agent needs to have a `shorten_conversation` tool in order to run."):
+    with pytest.raises(RuntimeError, match="Agent needs to have a `compact_conversation` tool in order to run."):
         await run_agent_loop(
             ctx,
             agent_callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
             ui=make_ui_mock(),
-            shorten_conversation_at_tokens=1000,
+            compact_conversation_at_tokens=1000,
         )
 
 
 @pytest.mark.asyncio
 async def test_requires_non_empty_history():
     # Empty history should raise
-    desc, state = make_test_agent(tools=[DummyTool(), FinishTaskTool(), ShortenConversation()], history=[])
+    desc, state = make_test_agent(tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[])
     ctx = AgentContext(desc=desc, state=state)
     with pytest.raises(RuntimeError, match="Agent needs to have history in order to run a step."):
         await do_single_step(
