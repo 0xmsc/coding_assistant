@@ -1,4 +1,5 @@
 from __future__ import annotations
+from rich.styled import Styled
 
 import json
 import logging
@@ -287,7 +288,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
             print()
             self._state = ReasoningState()
 
-        print(chunk, end="", flush=True)
+        print(Styled(chunk, "dim cyan"), end="", flush=True)
 
     def on_content_chunk(self, chunk: str):
         if not isinstance(self._state, ContentState):
