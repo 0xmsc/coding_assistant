@@ -5,12 +5,13 @@ import logging
 import re
 import textwrap
 from dataclasses import dataclass
-from enum import Enum, auto
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from rich import print
 from rich.console import Console, Group
+from rich.live import Live
 from rich.markdown import Markdown
+from rich.styled import Styled
 from rich.padding import Padding
 from rich.panel import Panel
 from rich.pretty import Pretty
@@ -19,6 +20,31 @@ from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolC
 from coding_assistant.agents.types import TextResult, ToolResult
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ReasoningState:
+    live: Live
+    accumulated_text: str = ""
+
+
+@dataclass
+class ContentState:
+    live: Live
+    accumulated_text: str = ""
+
+
+@dataclass
+class ToolState:
+    tool_call_id: str | None = None
+
+
+@dataclass
+class IdleState:
+    pass
+
+
+ProgressState = Union[ReasoningState, ContentState, ToolState, IdleState, None]
 
 
 async def confirm_tool_if_needed(*, tool_name: str, arguments: dict, patterns: list[str], ui) -> Optional[TextResult]:
@@ -178,44 +204,23 @@ class RichAgentProgressCallbacks(AgentProgressCallbacks):
             print()
 
 
-class DenseProgressOutputType(Enum):
-    AGENT = auto()
-    TOOL = auto()
-    REASONING = auto()
-    CONTENT = auto()
-    TOOL_HEADER = auto()
-
-
-@dataclass(frozen=True)
-class DenseState:
-    output_type: DenseProgressOutputType
-    tool_call_id: str | None = None
-
-    def __eq__(self, other):
-        if isinstance(other, DenseProgressOutputType):
-            return self.output_type == other
-        if isinstance(other, str):
-            return self.tool_call_id == other
-        return super().__eq__(other)
-
-
 class DenseProgressCallbacks(AgentProgressCallbacks):
     """Dense progress callbacks with minimal formatting."""
 
     def __init__(self):
-        self._last_output: DenseState | None = None
+        self._state: ProgressState = None
 
     def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
         status = "resuming" if is_resuming else "starting"
         print()
         print(f"[bold red]▶[/bold red] Agent {agent_name} ({model}) {status}")
-        self._last_output = DenseState(DenseProgressOutputType.AGENT)
+        self._state = IdleState()
 
     def on_agent_end(self, agent_name: str, result: str, summary: str):
         print()
         print(f"[bold red]◀[/bold red] Agent {agent_name} complete")
         print(f"[dim]Summary: {summary}[/dim]")
-        self._last_output = DenseState(DenseProgressOutputType.AGENT)
+        self._state = IdleState()
 
     def on_user_message(self, agent_name: str, content: str):
         # Has already been printed via prompt
@@ -236,7 +241,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
     def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         print()
         self._print_tool_start("▶", tool_name, arguments)
-        self._last_output = DenseState(DenseProgressOutputType.TOOL_HEADER, tool_call_id)
+        self._state = ToolState(tool_call_id=tool_call_id)
 
     def _special_handle_full_result(self, tool_call_id: str, tool_name: str, result: str) -> bool:
         left_padding = (0, 0, 0, 1)
@@ -261,7 +266,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         return f"({formatted})"
 
     def on_tool_message(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
-        if self._last_output != tool_call_id:
+        if not isinstance(self._state, ToolState) or self._state.tool_call_id != tool_call_id:
             print()
             self._print_tool_start("◀", tool_name, arguments)
 
@@ -269,25 +274,39 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
             print(f"  [dim]→ {len(result.splitlines())} lines[/dim]")
 
         # Reset state
-        self._last_output = DenseState(DenseProgressOutputType.TOOL)
+        self._state = ToolState()
+
+    def _stop_live(self):
+        if isinstance(self._state, (ReasoningState, ContentState)):
+            self._state.live.stop()
 
     def on_reasoning_chunk(self, chunk: str):
-        if self._last_output != DenseProgressOutputType.REASONING:
+        if not isinstance(self._state, ReasoningState):
+            self._stop_live()
             print()
+            live = Live(Markdown(""), refresh_per_second=8, transient=False)
+            live.start()
+            self._state = ReasoningState(live=live)
 
-        print(f"[dim cyan]{chunk}[/dim cyan]", end="", flush=True)
-        self._last_output = DenseState(DenseProgressOutputType.REASONING)
+        self._state.accumulated_text += chunk
+        self._state.live.update(Styled(Markdown(self._state.accumulated_text), "dim cyan"))
 
     def on_content_chunk(self, chunk: str):
-        if self._last_output != DenseProgressOutputType.CONTENT:
+        if not isinstance(self._state, ContentState):
+            self._stop_live()
             print()
+            live = Live(Markdown(""), refresh_per_second=8, transient=False)
+            live.start()
+            self._state = ContentState(live=live)
 
-        print(Markdown(chunk), end="", flush=True)
-        self._last_output = DenseState(DenseProgressOutputType.CONTENT)
+        self._state.accumulated_text += chunk
+        self._state.live.update(Markdown(self._state.accumulated_text))
 
     def on_chunks_end(self):
-        if self._last_output == DenseProgressOutputType.CONTENT:
+        self._stop_live()
+        if isinstance(self._state, ContentState):
             print()
+        self._state = IdleState()
 
 
 class ConfirmationToolCallbacks(AgentToolCallbacks):
