@@ -155,7 +155,7 @@ class CompactConversation(Tool):
         return "compact_conversation"
 
     def description(self) -> str:
-        return "Give the framework a summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. Additionally, you should include the next steps you had planned. This tool should only be called when the client tells you to call it."
+        return "Give the framework a summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. Additionally, you should include the next steps you had planned. This tool shall only be called when the client tells you to call it."
 
     def parameters(self) -> dict:
         return CompactConversationSchema.model_json_schema()
