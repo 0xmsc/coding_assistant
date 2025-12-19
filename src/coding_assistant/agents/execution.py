@@ -150,22 +150,20 @@ async def handle_tool_call(
         else:
             function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
     except Exception as e:
-        return f"Error executing tool: {e}"
-
-    trace_data(
-        f"tool_result_{function_name}.json",
-        json.dumps(
-            {
-                "tool_call_id": tool_call.id,
-                "function_name": function_name,
-                "function_args": function_args,
-                "result": function_call_result.to_dict()
-                if hasattr(function_call_result, "to_dict")
-                else str(function_call_result),
-            },
-            indent=2,
-        ),
-    )
+        error_msg = f"Error executing tool: {e}"
+        trace_data(
+            f"tool_error_{function_name}.json",
+            json.dumps(
+                {
+                    "tool_call_id": tool_call.id,
+                    "function_name": function_name,
+                    "function_args": function_args,
+                    "error": str(e),
+                },
+                indent=2,
+            ),
+        )
+        return error_msg
 
     result_handlers = {
         FinishTaskResult: lambda r: _handle_finish_task_result(r, state),
