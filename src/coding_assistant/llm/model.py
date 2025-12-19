@@ -4,13 +4,12 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
 from typing import Literal, cast
 
 import litellm
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks
+from coding_assistant.trace import trace_data
 
 logger = logging.getLogger(__name__)
 
@@ -84,24 +83,16 @@ async def complete(
         completion = litellm.stream_chunk_builder(chunks)
         assert completion
 
-        if os.getenv("CODING_ASSISTANT_TRACE"):
-            trace_path = Path("/tmp/coding_assistant")
-            trace_path.mkdir(parents=True, exist_ok=True)
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            trace_file = trace_path / f"{timestamp}.json"
-
-            trace_data = {
-                "timestamp": datetime.now().isoformat(),
+        trace_data(
+            "completion",
+            {
                 "model": model,
                 "reasoning_effort": reasoning_effort,
                 "messages": messages,
                 "tools": tools,
                 "completion": completion,
-            }
-
-            with open(trace_file, "w") as f:
-                json.dump(trace_data, f, indent=2, default=str)
+            },
+        )
 
         return Completion(
             message=completion["choices"][0]["message"],
