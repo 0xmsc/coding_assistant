@@ -9,9 +9,6 @@ requires-python = ">=3.12"
 
 dependencies = [
     "litellm",
-    "opentelemetry-api",
-    "opentelemetry-exporter-otlp-proto-http",
-    "opentelemetry-sdk",
     "rich",
     "requests",
     "landlock",
