@@ -91,16 +91,7 @@ def _handle_compact_conversation_result(
     agent_callbacks: AgentProgressCallbacks,
 ):
     start_message = state.history[0]
-    state.history = []
-
-    # Keep the first message (start message) and clear the rest
-    append_user_message(
-        state.history,
-        agent_callbacks,
-        desc.name,
-        start_message["content"],
-        force=True,
-    )
+    state.history = [start_message]
 
     append_user_message(
         state.history,
