@@ -372,7 +372,10 @@ async def run_chat_loop(
             "Immediately compact our conversation so far by using the `compact_conversation` tool.",
             force=True,
         )
+
+        nonlocal need_user_input
         need_user_input = True
+
         return ChatCommandResult.PROCEED_WITH_MODEL
 
     async def _clear_cmd():
