@@ -37,18 +37,15 @@ class PromptToolkitUI(UI):
 
     async def ask(self, prompt_text: str, default: str | None = None) -> str:
         Console().bell()
-        print()
         print(prompt_text)
         return await self._session.prompt_async("> ", default=default or "")
 
     async def confirm(self, prompt_text: str) -> bool:
         Console().bell()
-        print()
         return await create_confirm_session(prompt_text).prompt_async()
 
     async def prompt(self) -> str:
         Console().bell()
-        print()
         return await self._session.prompt_async("> ")
 
 

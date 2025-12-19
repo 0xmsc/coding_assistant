@@ -352,6 +352,8 @@ async def run_chat_loop(
 
     while True:
         if need_user_input:
+            print()
+
             if tokens > 0:
                 tokens_str = f"{tokens:,}".replace(",", "'")
                 print(f"T: {tokens_str}")
