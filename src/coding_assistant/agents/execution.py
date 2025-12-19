@@ -84,14 +84,18 @@ def _handle_text_result(result: TextResult) -> str:
     return result.content
 
 
+def _clear_history(state: AgentState):
+    """Resets the history to the first message (start message)."""
+    state.history = [state.history[0]]
+
+
 def _handle_compact_conversation_result(
     result: CompactConversationResult,
     desc: AgentDescription,
     state: AgentState,
     agent_callbacks: AgentProgressCallbacks,
 ):
-    start_message = state.history[0]
-    state.history = [start_message]
+    _clear_history(state)
 
     append_user_message(
         state.history,
@@ -361,6 +365,11 @@ async def run_chat_loop(
                     "Immediately compact our conversation so far by using the `compact_conversation` tool.",
                     force=True,
                 )
+            elif answer.strip() == "/clear":
+                _clear_history(state)
+                print("History cleared.")
+                need_user_input = True
+                continue
             else:
                 append_user_message(state.history, agent_callbacks, desc.name, answer)
 
