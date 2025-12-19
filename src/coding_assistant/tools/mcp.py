@@ -8,6 +8,7 @@ from typing import AsyncGenerator
 import mcp
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.client.sse import sse_client
 from rich.console import Console
 from rich.table import Table
 from rich.pretty import Pretty
@@ -90,19 +91,36 @@ def get_default_env():
 
 @asynccontextmanager
 async def _get_mcp_server(
-    name: str, command: str, args: list[str], env: dict[str, str] | None = None
+    name: str,
+    command: str | None = None,
+    args: list[str] | None = None,
+    env: dict[str, str] | None = None,
+    url: str | None = None,
 ) -> AsyncGenerator[MCPServer, None]:
-    logger.info(f"Starting MCP server '{name}' with command '{command}', args '{' '.join(args)}' and env: '{env}'")
-    params = StdioServerParameters(command=command, args=args, env=env)
+    if url:
+        logger.info(f"Connecting to MCP server '{name}' at URL '{url}'")
+        async with sse_client(url) as (read, write):
+            async with ClientSession(read, write) as session:
+                initialize_result = await session.initialize()
+                yield MCPServer(
+                    name=name,
+                    session=session,
+                    instructions=initialize_result.instructions,
+                )
+    elif command:
+        logger.info(f"Starting MCP server '{name}' with command '{command}', args '{' '.join(args or [])}' and env: '{env}'")
+        params = StdioServerParameters(command=command, args=args or [], env=env)
 
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            initialize_result = await session.initialize()
-            yield MCPServer(
-                name=name,
-                session=session,
-                instructions=initialize_result.instructions,
-            )
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                initialize_result = await session.initialize()
+                yield MCPServer(
+                    name=name,
+                    session=session,
+                    instructions=initialize_result.instructions,
+                )
+    else:
+        raise ValueError(f"MCP server '{name}' must have either a command or a url.")
 
 
 @asynccontextmanager
@@ -136,7 +154,13 @@ async def get_mcp_servers_from_config(
                 env[env_var] = os.environ[env_var]
 
             server = await stack.enter_async_context(
-                _get_mcp_server(name=server_config.name, command=server_config.command, args=args, env=env)
+                _get_mcp_server(
+                    name=server_config.name,
+                    command=server_config.command,
+                    args=args,
+                    env=env,
+                    url=server_config.url,
+                )
             )
             servers.append(server)
 
