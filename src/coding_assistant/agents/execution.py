@@ -368,6 +368,7 @@ async def run_chat_loop(
                     agent_callbacks,
                     desc.name,
                     "Immediately compact our conversation so far by using the `compact_conversation` tool.",
+                    force=True,
                 )
             else:
                 append_user_message(state.history, agent_callbacks, desc.name, answer)
