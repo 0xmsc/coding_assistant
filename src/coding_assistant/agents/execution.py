@@ -359,6 +359,15 @@ async def run_chat_loop(
     desc = ctx.desc
     state = ctx.state
 
+    if state.history:
+        for message in state.history:
+            if message.get("role") == "assistant":
+                if content := message.get("content"):
+                    agent_callbacks.on_assistant_message(desc.name, content, force=True)
+            elif message.get("role") == "user":
+                if content := message.get("content"):
+                    agent_callbacks.on_user_message(desc.name, content, force=True)
+
     need_user_input = True
 
     async def _exit_cmd():
