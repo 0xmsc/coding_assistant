@@ -196,7 +196,7 @@ async def run_chat_session(
         parameters=params,
         tools=[
             CompactConversation(),
-            *tools,  # MCP tools etc. (no finish_task, no compact_conversation in chat mode)
+            *tools,
         ],
     )
     state = AgentState(history=history or [])

@@ -336,8 +336,8 @@ async def run_agent_loop(
 
 
 class ChatCommandResult(Enum):
-    PROCEED_TO_MODEL = 1
-    CONTINUE_PROMPT = 2
+    PROCEED_WITH_MODEL = 1
+    PROCEED_WITH_PROMPT = 2
     EXIT = 3
 
 
@@ -359,6 +359,8 @@ async def run_chat_loop(
     desc = ctx.desc
     state = ctx.state
 
+    need_user_input = True
+
     async def _exit_cmd():
         return ChatCommandResult.EXIT
 
@@ -370,12 +372,13 @@ async def run_chat_loop(
             "Immediately compact our conversation so far by using the `compact_conversation` tool.",
             force=True,
         )
-        return ChatCommandResult.PROCEED_TO_MODEL
+        need_user_input = True
+        return ChatCommandResult.PROCEED_WITH_MODEL
 
     async def _clear_cmd():
         _clear_history(state)
         print("History cleared.")
-        return ChatCommandResult.CONTINUE_PROMPT
+        return ChatCommandResult.PROCEED_WITH_PROMPT
 
     commands = [
         ChatCommand("/exit", "Exit the chat", _exit_cmd),
@@ -389,26 +392,25 @@ async def run_chat_loop(
     agent_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
     append_user_message(state.history, agent_callbacks, desc.name, start_message)
 
-    need_user_input = True
-
     while True:
         if need_user_input:
+            need_user_input = False
+
             print()
             answer = await ui.prompt(words=command_names)
             answer_strip = answer.strip()
 
-            if answer_strip in command_map:
-                result = await command_map[answer_strip].execute()
+            if tool := command_map.get(answer_strip):
+                result = await tool.execute()
                 if result == ChatCommandResult.EXIT:
                     break
-                elif result == ChatCommandResult.CONTINUE_PROMPT:
+                elif result == ChatCommandResult.PROCEED_WITH_PROMPT:
                     need_user_input = True
                     continue
-                elif result == ChatCommandResult.PROCEED_TO_MODEL:
-                    need_user_input = False
+                elif result == ChatCommandResult.PROCEED_WITH_MODEL:
+                    pass
             else:
                 append_user_message(state.history, agent_callbacks, desc.name, answer)
-                need_user_input = False
 
         loop = asyncio.get_running_loop()
         with InterruptController(loop) as interrupt_controller:
@@ -435,7 +437,6 @@ async def run_chat_loop(
                         ui=ui,
                         task_created_callback=interrupt_controller.register_task,
                     )
-                    need_user_input = False
                 else:
                     need_user_input = True
             except asyncio.CancelledError:
