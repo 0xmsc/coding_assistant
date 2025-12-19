@@ -20,7 +20,7 @@ async def _main() -> None:
     await mcp.import_server(shell_server, prefix="shell")
     await mcp.import_server(python_server, prefix="python")
     await mcp.import_server(filesystem_server, prefix="filesystem")
-    await mcp.run_async()
+    await mcp.run_async(show_banner=False)
 
 
 def main() -> None:

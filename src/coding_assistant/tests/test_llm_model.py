@@ -57,6 +57,39 @@ class _Chunk:
         return self._data[key]
 
 
+def _make_mock_response(data: dict):
+    class _Msg:
+        def __init__(self, msg_data):
+            self.content = msg_data.get("content")
+
+        def model_dump(self):
+            return {"role": "assistant", "content": self.content}
+
+    class _Response(dict):
+        def model_dump(self):
+            def _dump(o):
+                # Avoid infinite recursion: if it's the Response itself, dump its items
+                if o is self:
+                    return {k: _dump(v) for k, v in self.items()}
+                if hasattr(o, "model_dump"):
+                    return o.model_dump()
+                if isinstance(o, list):
+                    return [_dump(i) for i in o]
+                if isinstance(o, dict):
+                    return {k: _dump(v) for k, v in o.items()}
+                return o
+
+            return _dump(self)
+
+    # Wrap messages in _Msg if they are dicts
+    if "choices" in data:
+        for choice in data["choices"]:
+            if "message" in choice and isinstance(choice["message"], dict):
+                choice["message"] = _Msg(choice["message"])
+
+    return _Response(data)
+
+
 @pytest.mark.asyncio
 async def test_complete_streaming_happy_path(monkeypatch):
     # Build a fake async generator that yields chunks with delta.content
@@ -68,15 +101,9 @@ async def test_complete_streaming_happy_path(monkeypatch):
         return agen()
 
     def fake_stream_chunk_builder(chunks):
-        # Simulate final message with model_dump_json available
-        class _Msg:
-            def __init__(self):
-                self.content = "Hello world"
-
-            def model_dump(self):
-                return {"role": "assistant", "content": self.content}
-
-        return {"choices": [{"message": _Msg()}], "usage": {"total_tokens": 42}}
+        return _make_mock_response(
+            {"choices": [{"message": {"content": "Hello world"}}], "usage": {"total_tokens": 42}}
+        )
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
     monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
@@ -104,15 +131,7 @@ async def test_complete_streaming_with_reasoning(monkeypatch):
         return agen()
 
     def fake_stream_chunk_builder(chunks):
-        # Simulate final message with model_dump_json available
-        class _Msg:
-            def __init__(self):
-                self.content = "Hello"
-
-            def model_dump(self):
-                return {"role": "assistant", "content": self.content}
-
-        return {"choices": [{"message": _Msg()}], "usage": {"total_tokens": 42}}
+        return _make_mock_response({"choices": [{"message": {"content": "Hello"}}], "usage": {"total_tokens": 42}})
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
     monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
@@ -161,14 +180,7 @@ async def test_complete_parses_reasoning_effort_from_model_string(monkeypatch):
         return agen()
 
     def fake_stream_chunk_builder(chunks):
-        class _Msg:
-            def __init__(self):
-                self.content = "AB"
-
-            def model_dump(self):
-                return {"role": "assistant", "content": self.content}
-
-        return {"choices": [{"message": _Msg()}], "usage": {"total_tokens": 2}}
+        return _make_mock_response({"choices": [{"message": {"content": "AB"}}], "usage": {"total_tokens": 2}})
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
     monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
@@ -199,14 +211,7 @@ async def test_complete_forwards_image_url_openai_format(monkeypatch):
         return agen()
 
     def fake_stream_chunk_builder(chunks):
-        class _Msg:
-            def __init__(self):
-                self.content = "ok"
-
-            def model_dump(self):
-                return {"role": "assistant", "content": self.content}
-
-        return {"choices": [{"message": _Msg()}], "usage": {"total_tokens": 1}}
+        return _make_mock_response({"choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 1}})
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
     monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
@@ -248,14 +253,7 @@ async def test_complete_forwards_base64_image_openai_format(monkeypatch):
         return agen()
 
     def fake_stream_chunk_builder(chunks):
-        class _Msg:
-            def __init__(self):
-                self.content = "ok"
-
-            def model_dump(self):
-                return {"role": "assistant", "content": self.content}
-
-        return {"choices": [{"message": _Msg()}], "usage": {"total_tokens": 1}}
+        return _make_mock_response({"choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 1}})
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
     monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)

@@ -42,7 +42,7 @@ class MCPWrappedTool(Tool):
     async def execute(self, parameters) -> TextResult:
         result = await self._client.call_tool(self._tool.name, parameters)
         # FastMCP's call_tool returns a CallToolResult with a data field
-        content = result.data if hasattr(result, 'data') else str(result)
+        content = result.data if hasattr(result, "data") else str(result)
         return TextResult(content=content)
 
 
