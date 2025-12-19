@@ -1,6 +1,7 @@
 import functools
 import json
 import logging
+import asyncio
 import re
 from dataclasses import dataclass
 from typing import Literal, cast
@@ -43,6 +44,88 @@ def _parse_model_and_reasoning(
     return base, effort
 
 
+async def _try_completion(
+    messages: list[dict],
+    tools: list,
+    model: str,
+    reasoning_effort: Literal["low", "medium", "high"] | None,
+    callbacks: AgentProgressCallbacks,
+):
+    response = await litellm.acompletion(
+        messages=messages,
+        tools=tools,
+        model=model,
+        stream=True,
+        reasoning_effort=reasoning_effort,
+    )
+
+    chunks = []
+
+    async for chunk in response:
+        if len(chunk["choices"]) > 0:
+            delta = chunk["choices"][0]["delta"]
+            if "reasoning" in delta and delta["reasoning"]:
+                callbacks.on_reasoning_chunk(delta["reasoning"])
+
+            if "content" in delta and delta["content"]:
+                callbacks.on_content_chunk(delta["content"])
+
+        # Drop created_at so that `ChunkProcessor` does not sort according to it.
+        # It seems buggy and seems to create out-of-order chunks.
+        chunk._hidden_params.pop("created_at", None)
+
+        chunks.append(chunk)
+
+    callbacks.on_chunks_end()
+
+    completion = litellm.stream_chunk_builder(chunks)
+    assert completion
+
+    trace_data(
+        "completion.json",
+        json.dumps(
+            {
+                "model": model,
+                "reasoning_effort": reasoning_effort,
+                "messages": messages,
+                "tools": tools,
+                "completion": completion.model_dump(),
+            },
+            indent=2,
+            default=str,
+        ),
+    )
+
+    return Completion(
+        message=completion["choices"][0]["message"],
+        tokens=completion["usage"]["total_tokens"],
+    )
+
+
+async def _try_completion_with_retry(
+    messages: list[dict],
+    tools: list,
+    model: str,
+    reasoning_effort: Literal["low", "medium", "high"] | None,
+    callbacks: AgentProgressCallbacks,
+):
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            return await _try_completion(messages, tools, model, reasoning_effort, callbacks)
+        except (
+            litellm.APIConnectionError,
+            litellm.RateLimitError,
+            litellm.Timeout,
+            litellm.ServiceUnavailableError,
+            litellm.InternalServerError,
+        ) as e:
+            if attempt == max_retries - 1:
+                raise
+            logger.warning(f"Retry {attempt + 1}/{max_retries} due to {e} for model {model}")
+            await asyncio.sleep(0.5 + attempt)
+
+
 async def complete(
     messages: list[dict],
     model: str,
@@ -51,57 +134,7 @@ async def complete(
 ):
     try:
         model, reasoning_effort = _parse_model_and_reasoning(model)
-
-        response = await litellm.acompletion(
-            messages=messages,
-            tools=tools,
-            model=model,
-            stream=True,
-            reasoning_effort=reasoning_effort,
-            num_retries=3,
-        )
-
-        chunks = []
-
-        async for chunk in response:
-            if len(chunk["choices"]) > 0:
-                delta = chunk["choices"][0]["delta"]
-                if "reasoning" in delta and delta["reasoning"]:
-                    callbacks.on_reasoning_chunk(delta["reasoning"])
-
-                if "content" in delta and delta["content"]:
-                    callbacks.on_content_chunk(delta["content"])
-
-            # Drop created_at so that `ChunkProcessor` does not sort according to it.
-            # It seems buggy and seems to create out-of-order chunks.
-            chunk._hidden_params.pop("created_at", None)
-
-            chunks.append(chunk)
-
-        callbacks.on_chunks_end()
-
-        completion = litellm.stream_chunk_builder(chunks)
-        assert completion
-
-        trace_data(
-            "completion.json",
-            json.dumps(
-                {
-                    "model": model,
-                    "reasoning_effort": reasoning_effort,
-                    "messages": messages,
-                    "tools": tools,
-                    "completion": completion.model_dump(),
-                },
-                indent=2,
-                default=str,
-            ),
-        )
-
-        return Completion(
-            message=completion["choices"][0]["message"],
-            tokens=completion["usage"]["total_tokens"],
-        )
+        return await _try_completion_with_retry(messages, tools, model, reasoning_effort, callbacks)
     except Exception as e:
         logger.error(f"Error during model completion: {e}, last messages: {messages[-5:]}")
         raise e
