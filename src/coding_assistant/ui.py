@@ -29,7 +29,10 @@ class PromptToolkitUI(UI):
         history_dir = Path.home() / ".cache" / "coding_assistant"
         history_dir.mkdir(parents=True, exist_ok=True)
         history_file = history_dir / "history"
-        self._session = PromptSession(history=FileHistory(str(history_file)))
+        self._session = PromptSession(
+            history=FileHistory(str(history_file)),
+            enable_open_in_editor=True,
+        )
 
     async def ask(self, prompt_text: str, default: str | None = None) -> str:
         Console().bell()
