@@ -10,7 +10,12 @@ from coding_assistant.llm.types import (
     ProgressCallbacks as LLMProgressCallbacks,
 )
 from coding_assistant.framework.parameters import Parameter
-from coding_assistant.framework.results import ToolResult
+from coding_assistant.framework.results import (
+    CompactConversationResult as CompactConversationResult,
+    FinishTaskResult as FinishTaskResult,
+    TextResult as TextResult,
+    ToolResult as ToolResult,
+)
 
 
 class Tool(LLMTool, ABC):
@@ -67,7 +72,7 @@ class Completer(Protocol):
         callbacks: LLMProgressCallbacks,
     ) -> Awaitable[Completion]: ...
 
-# Re-export ToolResult types for convenience if needed, 
+
+# Re-export ToolResult types for convenience if needed,
 # but better to import from results.py directly.
 # However, many files might expect them here.
-from coding_assistant.framework.results import TextResult, FinishTaskResult, CompactConversationResult
