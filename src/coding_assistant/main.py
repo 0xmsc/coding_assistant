@@ -26,7 +26,8 @@ from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
-from coding_assistant.tools.tools import AgentTool, CompactConversation
+from coding_assistant.tools.tools import AgentTool
+from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
 from coding_assistant.ui import PromptToolkitUI
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])

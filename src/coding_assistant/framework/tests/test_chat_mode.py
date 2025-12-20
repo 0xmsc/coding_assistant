@@ -143,7 +143,7 @@ async def test_chat_exit_command_stops_loop_without_appending_command():
 async def test_chat_loop_prompts_after_compact_command():
     # Test that /compact command forces a user prompt after the next tool step
     # Even if that logic is autonomous by default
-    from coding_assistant.tools.tools import CompactConversation
+    from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
 
     # Sequence:
     # 1. User enters /compact -> calls _compact_cmd -> appends message, returns PROCEED_WITH_MODEL
