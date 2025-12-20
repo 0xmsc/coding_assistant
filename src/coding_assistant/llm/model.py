@@ -189,60 +189,14 @@ async def _try_completion_with_retry(
 
 
 async def complete(
-    messages: list[LLMMessage] | list[dict],
+    messages: list[LLMMessage],
     model: str,
     tools: list,
     callbacks: ProgressCallbacks,
 ):
-    # Support both list[dict] and list[LLMMessage] during migration
-    internal_messages: list[LLMMessage] = []
-    for m in messages:
-        if isinstance(m, (SystemMessage, UserMessage, AssistantMessage, ToolMessage)):
-            internal_messages.append(m)
-        elif isinstance(m, dict):
-            # Fallback for dicts
-            tool_calls = []
-            if "tool_calls" in m:
-                for tc in m["tool_calls"]:
-                    tool_calls.append(
-                        ToolCall(
-                            id=tc["id"],
-                            function=FunctionCall(
-                                name=tc["function"]["name"],
-                                arguments=tc["function"]["arguments"],
-                            ),
-                        )
-                    )
-            role = m["role"]
-            content = m.get("content")
-            name = m.get("name")
-            if role == "system":
-                internal_messages.append(SystemMessage(content=content or "", name=name))
-            elif role == "user":
-                internal_messages.append(UserMessage(content=content or "", name=name))
-            elif role == "assistant":
-                internal_messages.append(
-                    AssistantMessage(
-                        content=content,
-                        reasoning_content=m.get("reasoning_content"),
-                        tool_calls=tool_calls,
-                        name=name,
-                    )
-                )
-            elif role == "tool":
-                internal_messages.append(
-                    ToolMessage(
-                        content=content or "",
-                        tool_call_id=m.get("tool_call_id", ""),
-                        name=name,
-                    )
-                )
-            else:
-                raise ValueError(f"Unknown role {role}")
-
     try:
         model, reasoning_effort = _parse_model_and_reasoning(model)
-        return await _try_completion_with_retry(internal_messages, tools, model, reasoning_effort, callbacks)
+        return await _try_completion_with_retry(messages, tools, model, reasoning_effort, callbacks)
     except Exception as e:
-        logger.error(f"Error during model completion: {e}, last messages: {internal_messages[-5:]}")
+        logger.error(f"Error during model completion: {e}, last messages: {messages[-5:]}")
         raise e
