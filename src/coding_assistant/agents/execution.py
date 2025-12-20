@@ -1,23 +1,24 @@
 import asyncio
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
-from collections.abc import Awaitable, Callable
 from json import JSONDecodeError
 
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
+from coding_assistant.agents.types import Tool, ToolResult
 from coding_assistant.agents.interrupts import InterruptController
-from coding_assistant.agents.parameters import format_parameters, Parameter
+from coding_assistant.agents.parameters import Parameter, format_parameters
 from coding_assistant.agents.types import (
     AgentContext,
     AgentDescription,
     AgentOutput,
     AgentState,
+    CompactConversationResult,
     Completer,
     FinishTaskResult,
-    CompactConversationResult,
     TextResult,
 )
 from coding_assistant.llm.adapters import execute_tool_call, get_tools
@@ -227,10 +228,10 @@ async def handle_tool_calls(
         if handle_tool_result:
             result_summary = handle_tool_result(result)
         else:
-            if isinstance(result, TextResult):
-                result_summary = result.content
-            else:
-                result_summary = f"Tool produced result of type {type(result).__name__}"
+            result_summary = result.content
+
+        if not result_summary:
+            raise RuntimeError(f"Tool call {tool_call.id} produced empty result summary.")
 
         # Parse arguments from tool_call
         try:
@@ -254,29 +255,29 @@ async def handle_tool_calls(
 
 
 async def do_single_step(
-    ctx: AgentContext,
+    history: list,
+    model: str,
+    tools: list[Tool],
     agent_callbacks: AgentProgressCallbacks,
     *,
     completer: Completer,
+    context_name: str,
 ):
-    desc = ctx.desc
-    state = ctx.state
+    wrapped_tools = await get_tools(tools)
 
-    tools = await get_tools(desc.tools)
-
-    if not state.history:
-        raise RuntimeError("Agent needs to have history in order to run a step.")
+    if not history:
+        raise RuntimeError("History is required in order to run a step.")
 
     completion = await completer(
-        state.history,
-        model=desc.model,
-        tools=tools,
+        history,
+        model=model,
+        tools=wrapped_tools,
         callbacks=agent_callbacks,
     )
     message = completion.message
 
     if hasattr(message, "reasoning_content") and message.reasoning_content:
-        agent_callbacks.on_assistant_reasoning(desc.name, message.reasoning_content)
+        agent_callbacks.on_assistant_reasoning(context_name, message.reasoning_content)
 
     return message, completion.tokens
 
@@ -308,9 +309,12 @@ async def run_agent_loop(
 
     while state.output is None:
         message, tokens = await do_single_step(
-            ctx,
+            state.history,
+            desc.model,
+            desc.tools,
             agent_callbacks,
             completer=completer,
+            context_name=desc.name,
         )
 
         # Append assistant message to history
@@ -452,9 +456,12 @@ async def run_chat_loop(
             try:
                 do_single_step_task = loop.create_task(
                     do_single_step(
-                        ctx,
+                        state.history,
+                        desc.model,
+                        desc.tools,
                         agent_callbacks,
                         completer=completer,
+                        context_name=desc.name,
                     ),
                     name="do_single_step",
                 )
