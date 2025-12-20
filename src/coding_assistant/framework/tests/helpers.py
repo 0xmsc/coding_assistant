@@ -9,7 +9,7 @@ from coding_assistant.llm.types import (
     LLMMessage,
     ToolCall,
 )
-from coding_assistant.llm.model import Completion
+from coding_assistant.llm.litellm import Completion
 from coding_assistant.ui import UI
 
 

@@ -13,7 +13,7 @@ from coding_assistant.framework.types import (
     Tool,
 )
 from coding_assistant.config import Config
-from coding_assistant.llm.model import complete
+from coding_assistant.llm.litellm import complete
 from coding_assistant.ui import DefaultAnswerUI, UI
 
 logger = logging.getLogger(__name__)
