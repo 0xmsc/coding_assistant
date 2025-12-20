@@ -17,6 +17,7 @@ dependencies = [
     "debugpy",
     "prompt-toolkit",
     "fastmcp",
+    "dacite>=1.9.2",
 ]
 
 [dependency-groups]
