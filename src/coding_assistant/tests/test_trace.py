@@ -1,3 +1,4 @@
+import coding_assistant.trace
 import pytest
 from coding_assistant.trace import enable_tracing, trace_enabled, trace_data
 
@@ -5,8 +6,6 @@ from coding_assistant.trace import enable_tracing, trace_enabled, trace_data
 @pytest.fixture(autouse=True)
 def reset_tracing():
     # Global state reset
-    import coding_assistant.trace
-
     coding_assistant.trace._trace_enabled = False
 
 

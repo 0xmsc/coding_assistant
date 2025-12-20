@@ -1,5 +1,7 @@
 import asyncio
 import json
+import os
+import signal
 import pytest
 from unittest.mock import patch
 
@@ -448,9 +450,6 @@ async def test_interrupt_during_second_tool_call():
 @pytest.mark.asyncio
 async def test_sigint_interrupts_tool_execution():
     """E2E test: SIGINT (CTRL-C) interrupts tool execution and returns to user prompt."""
-    import os
-    import signal
-
     interrupt_event = asyncio.Event()
     tool = InterruptibleTool(delay=1.0, interrupt_event=interrupt_event)
     tool_call = FakeToolCall("1", FakeFunction("interruptible_tool", json.dumps({})))

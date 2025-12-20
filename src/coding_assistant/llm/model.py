@@ -10,13 +10,8 @@ import litellm
 
 from coding_assistant.framework.callbacks import ProgressCallbacks
 from coding_assistant.framework.models import (
-    AssistantMessage,
-    FunctionCall,
     LLMMessage,
-    SystemMessage,
-    ToolCall,
-    ToolMessage,
-    UserMessage,
+    message_from_dict,
 )
 from coding_assistant.trace import trace_data
 
@@ -34,52 +29,11 @@ class Completion:
 
 
 def _map_litellm_message_to_internal(litellm_message: litellm.Message) -> LLMMessage:
-    tool_calls = []
-    if hasattr(litellm_message, "tool_calls") and litellm_message.tool_calls:
-        for tc in litellm_message.tool_calls:
-            tool_calls.append(
-                ToolCall(
-                    id=tc.id,
-                    function=FunctionCall(
-                        name=tc.function.name or "",
-                        arguments=tc.function.arguments or "",
-                    ),
-                )
-            )
-
-    return AssistantMessage(
-        content=getattr(litellm_message, "content", None),
-        reasoning_content=getattr(litellm_message, "reasoning_content", None),
-        tool_calls=tool_calls,
-    )
+    return message_from_dict(litellm_message)  # type: ignore[arg-type]
 
 
 def _map_internal_message_to_litellm(msg: LLMMessage) -> dict:
-    d: dict = {"role": msg.role}
-    if msg.content is not None:
-        d["content"] = msg.content
-    if msg.name:
-        d["name"] = msg.name
-
-    if isinstance(msg, AssistantMessage):
-        if msg.reasoning_content is not None:
-            d["reasoning_content"] = msg.reasoning_content
-        if msg.tool_calls:
-            d["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
-                    },
-                }
-                for tc in msg.tool_calls
-            ]
-    elif isinstance(msg, ToolMessage):
-        d["tool_call_id"] = msg.tool_call_id
-
-    return d
+    return msg.to_dict()
 
 
 @functools.cache

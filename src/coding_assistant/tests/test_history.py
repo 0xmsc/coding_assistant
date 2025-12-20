@@ -1,6 +1,13 @@
 from pathlib import Path
 
 
+from coding_assistant.framework.models import (
+    AssistantMessage,
+    FunctionCall,
+    ToolCall,
+    ToolMessage,
+    UserMessage,
+)
 from coding_assistant.history import (
     _fix_invalid_history,
     get_latest_orchestrator_history_file,
@@ -65,6 +72,25 @@ def test_fix_invalid_history_with_multiple_trailing_assistant_messages():
     assert _fix_invalid_history(history) == [{"role": "user", "content": "Hello"}]
 
 
+def test_fix_invalid_history_with_objects():
+    history = [
+        AssistantMessage(
+            content="Thinking...", tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))]
+        ),
+        ToolMessage(content="Result", tool_call_id="123"),
+    ]
+    # Should not remove anything because it's followed by a tool message
+    assert _fix_invalid_history(history) == history
+
+    history_invalid = [
+        AssistantMessage(
+            content="Thinking...", tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))]
+        )
+    ]
+    # Should remove the trailing assistant message
+    assert _fix_invalid_history(history_invalid) == []
+
+
 def test_orchestrator_history_roundtrip(tmp_path: Path):
     wd = tmp_path
 
@@ -79,12 +105,27 @@ def test_orchestrator_history_roundtrip(tmp_path: Path):
     assert latest == get_orchestrator_history_file(wd)
 
     data = load_orchestrator_history(latest)
+    assert data is not None
     assert isinstance(data, list) and data[-1]["content"] == "msg-1"
 
     # Overwrite
     save_orchestrator_history(wd, [{"role": "user", "content": "msg-2"}])
     data = load_orchestrator_history(latest)
+    assert data is not None
     assert isinstance(data, list) and data[-1]["content"] == "msg-2"
+
+
+def test_save_orchestrator_history_with_objects(tmp_path: Path):
+    wd = tmp_path
+    history = [UserMessage(content="Hello")]
+    save_orchestrator_history(wd, history)
+
+    latest = get_latest_orchestrator_history_file(wd)
+    assert latest is not None
+    data = load_orchestrator_history(latest)
+    assert data is not None
+    assert data[0]["role"] == "user"
+    assert data[0]["content"] == "Hello"
 
 
 def test_save_orchestrator_history_strips_trailing_assistant_tool_calls(tmp_path: Path):
