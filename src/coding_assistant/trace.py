@@ -1,9 +1,12 @@
 from datetime import datetime
 from pathlib import Path
+import logging
 
 from coding_assistant.paths import get_app_cache_dir
 
 _trace_enabled = False
+
+logger = logging.getLogger(__name__)
 
 
 def _get_trace_dir() -> Path:
@@ -21,6 +24,8 @@ def enable_tracing() -> None:
         for f in trace_path.iterdir():
             if f.is_file():
                 f.unlink()
+
+    logger.info(f"Tracing to {trace_path}")
 
 
 def trace_enabled() -> bool:
