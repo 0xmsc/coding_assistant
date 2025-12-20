@@ -3,9 +3,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from coding_assistant.agents.execution import run_agent_loop
-from coding_assistant.agents.callbacks import NullToolCallbacks
-from coding_assistant.agents.tests.helpers import (
+from coding_assistant.framework.agent import run_agent_loop
+from coding_assistant.framework.callbacks import NullToolCallbacks
+from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FakeFunction,
     FakeMessage,
@@ -13,8 +13,8 @@ from coding_assistant.agents.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.agents.types import TextResult, Tool, AgentContext
-from coding_assistant.tools.tools import FinishTaskTool, CompactConversation
+from coding_assistant.framework.types import TextResult, Tool, AgentContext
+from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 
 class EchoTool(Tool):
@@ -32,7 +32,7 @@ class EchoTool(Tool):
 
 
 @pytest.mark.asyncio
-async def test_on_agent_start_end_called_with_expected_args():
+async def test_agent_loop_runs_successfully():
     callbacks = Mock()
     finish = FakeToolCall("f1", FakeFunction("finish_task", json.dumps({"result": "r", "summary": "s"})))
     completer = FakeCompleter([FakeMessage(tool_calls=[finish])])
@@ -40,15 +40,14 @@ async def test_on_agent_start_end_called_with_expected_args():
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
-        agent_callbacks=callbacks,
+        progress_callbacks=callbacks,
         tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,
         ui=make_ui_mock(),
     )
 
-    callbacks.on_agent_start.assert_called_once()
-    callbacks.on_agent_end.assert_called_once_with(desc.name, "r", "s")
+    assert state.output.result == "r"
 
 
 @pytest.mark.asyncio
@@ -61,7 +60,7 @@ async def test_on_tool_message_called_with_arguments_and_result():
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
-        agent_callbacks=callbacks,
+        progress_callbacks=callbacks,
         tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,

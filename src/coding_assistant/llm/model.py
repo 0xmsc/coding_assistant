@@ -8,7 +8,7 @@ from typing import Literal, cast
 
 import litellm
 
-from coding_assistant.agents.callbacks import AgentProgressCallbacks
+from coding_assistant.framework.callbacks import ProgressCallbacks
 from coding_assistant.trace import trace_data
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ async def _try_completion(
     tools: list,
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
-    callbacks: AgentProgressCallbacks,
+    callbacks: ProgressCallbacks,
 ):
     response = await litellm.acompletion(
         messages=messages,
@@ -107,7 +107,7 @@ async def _try_completion_with_retry(
     tools: list,
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
-    callbacks: AgentProgressCallbacks,
+    callbacks: ProgressCallbacks,
 ):
     max_retries = 3
     for attempt in range(max_retries):
@@ -130,7 +130,7 @@ async def complete(
     messages: list[dict],
     model: str,
     tools: list,
-    callbacks: AgentProgressCallbacks,
+    callbacks: ProgressCallbacks,
 ):
     try:
         model, reasoning_effort = _parse_model_and_reasoning(model)

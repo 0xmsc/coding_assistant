@@ -11,8 +11,8 @@ from rich import print
 from rich.markdown import Markdown
 from rich.padding import Padding
 
-from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
-from coding_assistant.agents.types import TextResult, ToolResult
+from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
+from coding_assistant.framework.types import TextResult, ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -125,26 +125,13 @@ async def confirm_shell_if_needed(*, tool_name: str, arguments: dict, patterns: 
     return None
 
 
-class DenseProgressCallbacks(AgentProgressCallbacks):
+class DenseProgressCallbacks(ProgressCallbacks):
     """Dense progress callbacks with minimal formatting."""
 
     def __init__(self):
         self._state: ProgressState = None
 
-    def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
-        status = "resuming" if is_resuming else "starting"
-        print()
-        print(f"[bold red]▶[/bold red] Agent {agent_name} ({model}) {status}")
-        self._state = IdleState()
-
-    def on_agent_end(self, agent_name: str, result: str, summary: str):
-        self._finalize_state()
-        print()
-        print(f"[bold red]◀[/bold red] Agent {agent_name} complete")
-        print(f"[dim]Summary: {summary}[/dim]")
-        self._state = IdleState()
-
-    def on_user_message(self, agent_name: str, content: str, force: bool = False):
+    def on_user_message(self, context_name: str, content: str, force: bool = False):
         if not force:
             return
 
@@ -153,7 +140,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         print(Markdown(f"## User\n\n{content}"))
         self._state = IdleState()
 
-    def on_assistant_message(self, agent_name: str, content: str, force: bool = False):
+    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
         if not force:
             return
 
@@ -162,7 +149,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         print(Markdown(f"## Assistant\n\n{content}"))
         self._state = IdleState()
 
-    def on_assistant_reasoning(self, agent_name: str, content: str):
+    def on_assistant_reasoning(self, context_name: str, content: str):
         # Don't print - reasoning is already printed via chunks
         pass
 
@@ -170,7 +157,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         args_str = self._format_arguments(arguments)
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
-    def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict):
+    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         self._finalize_state()
         print()
         self._print_tool_start("▶", tool_name, arguments)
@@ -198,7 +185,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         formatted = ", ".join(f"{key}={json.dumps(value)}" for key, value in arguments.items())
         return f"({formatted})"
 
-    def on_tool_message(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
+    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         if not isinstance(self._state, ToolState) or self._state.tool_call_id != tool_call_id:
             print()
             self._print_tool_start("◀", tool_name, arguments)
@@ -246,7 +233,7 @@ class DenseProgressCallbacks(AgentProgressCallbacks):
         self._state = IdleState()
 
 
-class ConfirmationToolCallbacks(AgentToolCallbacks):
+class ConfirmationToolCallbacks(ToolCallbacks):
     def __init__(
         self,
         *,
@@ -258,7 +245,7 @@ class ConfirmationToolCallbacks(AgentToolCallbacks):
 
     async def before_tool_execution(
         self,
-        agent_name: str,
+        context_name: str,
         tool_call_id: str,
         tool_name: str,
         arguments: dict,

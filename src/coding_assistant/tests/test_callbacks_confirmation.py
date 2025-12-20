@@ -5,8 +5,8 @@ from coding_assistant.callbacks import (
     confirm_shell_if_needed,
     ConfirmationToolCallbacks,
 )
-from coding_assistant.agents.types import TextResult
-from coding_assistant.agents.tests.helpers import make_ui_mock
+from coding_assistant.framework.types import TextResult
+from coding_assistant.framework.tests.helpers import make_ui_mock
 
 
 @pytest.mark.asyncio
@@ -111,7 +111,7 @@ async def test_confirmation_tool_callbacks_tool_pattern():
 
     # Denied
     res = await callbacks.before_tool_execution(
-        agent_name="Agent",
+        context_name="Agent",
         tool_call_id="1",
         tool_name=tool_name,
         arguments=args,
@@ -122,7 +122,7 @@ async def test_confirmation_tool_callbacks_tool_pattern():
 
     # Allowed -> returns None
     res2 = await callbacks.before_tool_execution(
-        agent_name="Agent",
+        context_name="Agent",
         tool_call_id="2",
         tool_name=tool_name,
         arguments=args,
@@ -145,7 +145,7 @@ async def test_confirmation_tool_callbacks_shell_pattern():
 
     # Denied
     res = await callbacks.before_tool_execution(
-        agent_name="Agent",
+        context_name="Agent",
         tool_call_id="1",
         tool_name=tool_name,
         arguments=args,
@@ -156,7 +156,7 @@ async def test_confirmation_tool_callbacks_shell_pattern():
 
     # Allowed
     res2 = await callbacks.before_tool_execution(
-        agent_name="Agent",
+        context_name="Agent",
         tool_call_id="2",
         tool_name=tool_name,
         arguments=args,
@@ -182,7 +182,7 @@ async def test_confirmation_tool_callbacks_both_patterns_shell_tool_two_prompts(
 
     # First confirmation allowed -> second confirmation (shell) denies -> early return denial message
     res = await callbacks.before_tool_execution(
-        agent_name="Agent",
+        context_name="Agent",
         tool_call_id="1",
         tool_name=tool_name,
         arguments=args,

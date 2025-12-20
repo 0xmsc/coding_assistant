@@ -1,34 +1,28 @@
 import pytest
 
-from coding_assistant.agents.callbacks import AgentProgressCallbacks
+from coding_assistant.framework.callbacks import ProgressCallbacks
 from coding_assistant.llm import model as llm_model
 
 
-class _CB(AgentProgressCallbacks):
+class _CB(ProgressCallbacks):
     def __init__(self):
         self.chunks = []
         self.end = False
         self.reasoning = []
 
-    def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
+    def on_user_message(self, context_name: str, content: str, force: bool = False):
         pass
 
-    def on_agent_end(self, agent_name: str, result: str, summary: str):
+    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
         pass
 
-    def on_user_message(self, agent_name: str, content: str, force: bool = False):
-        pass
-
-    def on_assistant_message(self, agent_name: str, content: str, force: bool = False):
-        pass
-
-    def on_assistant_reasoning(self, agent_name: str, content: str):
+    def on_assistant_reasoning(self, context_name: str, content: str):
         self.reasoning.append(content)
 
-    def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict):
+    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         pass
 
-    def on_tool_message(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
+    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         pass
 
     def on_content_chunk(self, chunk: str):

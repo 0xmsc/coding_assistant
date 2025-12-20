@@ -1,9 +1,10 @@
 import pytest
 from unittest.mock import Mock
 
-from coding_assistant.agents.callbacks import AgentProgressCallbacks, NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.agents.execution import do_single_step, handle_tool_calls, run_agent_loop
-from coding_assistant.agents.tests.helpers import (
+from coding_assistant.framework.callbacks import ProgressCallbacks, NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.execution import do_single_step, handle_tool_calls
+from coding_assistant.framework.agent import run_agent_loop
+from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FakeMessage,
     FakeToolCall,
@@ -11,8 +12,8 @@ from coding_assistant.agents.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.agents.types import AgentContext, TextResult, Tool
-from coding_assistant.tools.tools import FinishTaskTool, CompactConversation
+from coding_assistant.framework.types import AgentContext, TextResult, Tool
+from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 
 class DummyTool(Tool):
@@ -39,23 +40,33 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
     desc, state = make_test_agent(
         tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[{"role": "user", "content": "start"}]
     )
-    ctx = AgentContext(desc=desc, state=state)
 
     msg, tokens = await do_single_step(
-        ctx,
+        state.history,
+        desc.model,
+        desc.tools,
         NullProgressCallbacks(),
         completer=completer,
+        context_name=desc.name,
     )
 
     assert msg.content == fake_message.content
 
     # Append assistant message to history (simulating loop behavior)
-    from coding_assistant.agents.history import append_assistant_message
+    from coding_assistant.framework.history import append_assistant_message
 
     append_assistant_message(state.history, NullProgressCallbacks(), desc.name, msg)
 
     # Simulate loop behavior: execute tools and then append shorten prompt due to tokens
-    await handle_tool_calls(msg, ctx, NullProgressCallbacks(), NullToolCallbacks(), ui=make_ui_mock())
+    await handle_tool_calls(
+        msg,
+        desc.tools,
+        state.history,
+        NullProgressCallbacks(),
+        tool_callbacks=NullToolCallbacks(),
+        ui=make_ui_mock(),
+        context_name=desc.name,
+    )
     if tokens > 1000:
         state.history.append(
             {
@@ -110,14 +121,16 @@ async def test_reasoning_is_forwarded_and_not_stored():
         tools=[DummyTool(), FinishTaskTool(), CompactConversation()],
         history=[{"role": "user", "content": "start"}],
     )
-    ctx = AgentContext(desc=desc, state=state)
 
-    callbacks = Mock(spec=AgentProgressCallbacks)
+    callbacks = Mock(spec=ProgressCallbacks)
 
     _, _ = await do_single_step(
-        ctx,
+        state.history,
+        desc.model,
+        desc.tools,
         callbacks,
         completer=completer,
+        context_name=desc.name,
     )
 
     # Assert reasoning was forwarded via callback
@@ -142,7 +155,7 @@ async def test_requires_finish_tool():
     with pytest.raises(RuntimeError, match="Agent needs to have a `finish_task` tool in order to run."):
         await run_agent_loop(
             ctx,
-            agent_callbacks=NullProgressCallbacks(),
+            progress_callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
             ui=make_ui_mock(),
@@ -161,7 +174,7 @@ async def test_requires_shorten_tool():
     with pytest.raises(RuntimeError, match="Agent needs to have a `compact_conversation` tool in order to run."):
         await run_agent_loop(
             ctx,
-            agent_callbacks=NullProgressCallbacks(),
+            progress_callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
             ui=make_ui_mock(),
@@ -173,10 +186,12 @@ async def test_requires_shorten_tool():
 async def test_requires_non_empty_history():
     # Empty history should raise
     desc, state = make_test_agent(tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[])
-    ctx = AgentContext(desc=desc, state=state)
-    with pytest.raises(RuntimeError, match="Agent needs to have history in order to run a step."):
+    with pytest.raises(RuntimeError, match="History is required in order to run a step."):
         await do_single_step(
-            ctx,
+            state.history,
+            desc.model,
+            desc.tools,
             NullProgressCallbacks(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
+            context_name=desc.name,
         )
