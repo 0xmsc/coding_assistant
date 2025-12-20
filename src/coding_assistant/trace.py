@@ -10,6 +10,13 @@ def enable_tracing() -> None:
     global _trace_enabled
     _trace_enabled = True
 
+    # Empty the traces directory
+    trace_path = get_app_cache_dir() / "traces"
+    if trace_path.exists():
+        for f in trace_path.iterdir():
+            if f.is_file():
+                f.unlink()
+
 
 def trace_enabled() -> bool:
     """Check if tracing is enabled."""
