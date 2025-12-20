@@ -14,7 +14,7 @@ from coding_assistant.agents.callbacks import ProgressCallbacks
 from coding_assistant.llm.model import complete
 from coding_assistant.agents.chat import run_chat_loop
 from coding_assistant.agents.parameters import Parameter
-from coding_assistant.agents.types import AgentDescription, AgentState, Tool
+from coding_assistant.agents.types import Tool
 from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
@@ -181,9 +181,9 @@ async def run_chat_session(
     tool_callbacks: ConfirmationToolCallbacks,
 ):
     # Build a simple root agent for chat mode (no finish_task)
-    params: list[Parameter] = []
+    chat_parameters: list[Parameter] = []
     if instructions:
-        params.append(
+        chat_parameters.append(
             Parameter(
                 name="instructions",
                 description="General instructions for the agent.",
@@ -191,32 +191,25 @@ async def run_chat_session(
             )
         )
 
-    desc = AgentDescription(
-        name="Orchestrator",
-        model=config.model,
-        parameters=params,
-        tools=[
-            CompactConversation(),
-            *tools,
-        ],
-    )
-
-    state = AgentState(history=history or [])
+    chat_history = history or []
 
     try:
         await run_chat_loop(
-            history=state.history,
+            history=chat_history,
             model=config.model,
-            tools=desc.tools,
-            parameters=params,
+            tools=[
+                CompactConversation(),
+                *tools,
+            ],
+            parameters=chat_parameters,
             callbacks=progress_callbacks,
             tool_callbacks=tool_callbacks,
             completer=complete,
             ui=PromptToolkitUI(),
-            context_name=desc.name,
+            context_name="Orchestrator",
         )
     finally:
-        save_orchestrator_history(working_directory, state.history)
+        save_orchestrator_history(working_directory, chat_history)
 
 
 async def _main(args):
