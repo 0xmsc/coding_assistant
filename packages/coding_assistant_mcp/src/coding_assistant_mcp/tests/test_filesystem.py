@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from coding_assistant_mcp.filesystem import TextEdit, edit_file, write_file
+from coding_assistant_mcp.filesystem import edit_file, write_file
 
 
 @pytest.mark.asyncio
@@ -44,7 +44,7 @@ async def test_edit_file_unique_replace_and_diff(tmp_path: Path):
     original = "hello world\nsecond line\n"
     await write_file(p, original)
 
-    diff = await edit_file(p, TextEdit(old_text="world", new_text="Earth"))
+    diff = await edit_file(p, old_text="world", new_text="Earth")
 
     # File content updated
     assert p.read_text(encoding="utf-8") == "hello Earth\nsecond line\n"
@@ -61,7 +61,7 @@ async def test_edit_file_no_match_raises(tmp_path: Path):
     await write_file(p, "abc\n")
 
     with pytest.raises(ValueError) as ei:
-        await edit_file(p, TextEdit(old_text="zzz", new_text="yyy"))
+        await edit_file(p, old_text="zzz", new_text="yyy")
     assert "not found" in str(ei.value)
 
 
@@ -71,7 +71,7 @@ async def test_edit_file_multiple_matches_raises(tmp_path: Path):
     await write_file(p, "foo bar foo\n")
 
     with pytest.raises(ValueError) as ei:
-        await edit_file(p, TextEdit(old_text="foo", new_text="baz"))
+        await edit_file(p, old_text="foo", new_text="baz")
     assert "multiple times" in str(ei.value)
 
 
@@ -81,9 +81,9 @@ async def test_edit_file_multiple_edits_success(tmp_path: Path):
     original = "alpha beta gamma\n"
     await write_file(p, original)
 
-    # Apply edits sequentially since edit_file now only handles one edit at a time
-    diff1 = await edit_file(p, TextEdit(old_text="beta", new_text="BETA"))
-    diff2 = await edit_file(p, TextEdit(old_text="gamma", new_text="GAMMA"))
+    # Apply edits sequentially
+    diff1 = await edit_file(p, old_text="beta", new_text="BETA")
+    diff2 = await edit_file(p, old_text="gamma", new_text="GAMMA")
 
     assert p.read_text(encoding="utf-8") == "alpha BETA GAMMA\n"
     # Check that diffs show the changes from each edit
@@ -97,8 +97,8 @@ async def test_edit_file_order_applies_sequentially(tmp_path: Path):
     await write_file(p, "foo bar\n")
 
     # Apply edits sequentially to demonstrate ordering
-    await edit_file(p, TextEdit(old_text="foo", new_text="baz"))
-    diff2 = await edit_file(p, TextEdit(old_text="baz", new_text="FOO"))
+    await edit_file(p, old_text="foo", new_text="baz")
+    diff2 = await edit_file(p, old_text="baz", new_text="FOO")
 
     assert p.read_text(encoding="utf-8") == "FOO bar\n"
     assert "+FOO bar" in diff2
@@ -111,11 +111,11 @@ async def test_edit_file_atomicity_on_failure(tmp_path: Path):
     await write_file(p, original)
 
     # First edit succeeds
-    await edit_file(p, TextEdit(old_text="one", new_text="ONE"))
+    await edit_file(p, old_text="one", new_text="ONE")
 
     # Second edit should fail ("two" occurs twice)
     with pytest.raises(ValueError) as ei:
-        await edit_file(p, TextEdit(old_text="two", new_text="TWO"))
+        await edit_file(p, old_text="two", new_text="TWO")
     assert "multiple times" in str(ei.value)
 
     # File should have the first edit but not the second (atomicity per edit)
@@ -130,7 +130,7 @@ async def test_edit_file_empty_string_replacement(tmp_path: Path):
     await write_file(p, original)
 
     # Replace entire content with empty string
-    diff = await edit_file(p, TextEdit(old_text=original, new_text=""))
+    diff = await edit_file(p, old_text=original, new_text="")
 
     # Content should be empty
     assert p.read_text(encoding="utf-8") == ""
@@ -143,7 +143,7 @@ async def test_edit_file_replace_with_empty_string(tmp_path: Path):
     original = "keep delete keep\n"
     await write_file(p, original)
 
-    diff = await edit_file(p, TextEdit(old_text=" delete", new_text=""))
+    diff = await edit_file(p, old_text=" delete", new_text="")
 
     assert p.read_text(encoding="utf-8") == "keep delete keep\n".replace(" delete", "")
     assert "-keep delete keep" in diff and "+keep keep" in diff
@@ -155,7 +155,7 @@ async def test_edit_file_unicode_replacement(tmp_path: Path):
     original = "こんにちは世界\n"
     await write_file(p, original)
 
-    diff = await edit_file(p, TextEdit(old_text="世界", new_text="World 🌍"))
+    diff = await edit_file(p, old_text="世界", new_text="World 🌍")
 
     assert p.read_text(encoding="utf-8") == "こんにちはWorld 🌍\n"
     assert "-こんにちは世界" in diff and "+こんにちはWorld 🌍" in diff
@@ -167,107 +167,8 @@ async def test_edit_file_replace_entire_content(tmp_path: Path):
     original = "entire content\n"
     await write_file(p, original)
 
-    diff = await edit_file(p, TextEdit(old_text=original, new_text=""))
+    diff = await edit_file(p, old_text=original, new_text="")
 
     assert p.read_text(encoding="utf-8") == ""
     # Diff shows full removal
     assert f"-{original.strip()}" in diff and "+" not in diff.splitlines()[-1]
-
-
-@pytest.mark.asyncio
-async def test_edit_file_with_json_string_edits(tmp_path: Path):
-    """Test that edit_file accepts edits as a JSON string."""
-    p = tmp_path / "json_string.txt"
-    original = "hello world\nsecond line\n"
-    await write_file(p, original)
-
-    # Pass edit as JSON string (simulating what models might do)
-    json_edits = '{"old_text": "world", "new_text": "Earth"}'
-    diff = await edit_file(p, json_edits)
-
-    # File content should be updated correctly
-    assert p.read_text(encoding="utf-8") == "hello Earth\nsecond line\n"
-    assert "-hello world" in diff
-    assert "+hello Earth" in diff
-
-
-@pytest.mark.asyncio
-async def test_edit_file_with_json_string_multiple_edits(tmp_path: Path):
-    """Test that edit_file applies multiple edits sequentially from JSON strings."""
-    p = tmp_path / "json_multi.txt"
-    original = "alpha beta gamma\n"
-    await write_file(p, original)
-
-    # Apply multiple edits sequentially as JSON strings
-    json_edit1 = '{"old_text": "beta", "new_text": "BETA"}'
-    json_edit2 = '{"old_text": "gamma", "new_text": "GAMMA"}'
-    await edit_file(p, json_edit1)
-    diff2 = await edit_file(p, json_edit2)
-
-    assert p.read_text(encoding="utf-8") == "alpha BETA GAMMA\n"
-    assert "+alpha BETA GAMMA" in diff2
-
-
-@pytest.mark.asyncio
-async def test_edit_file_with_json_string_escaped_newlines(tmp_path: Path):
-    """Test JSON string with escaped newlines (common from models)."""
-    p = tmp_path / "json_escaped.txt"
-    original = "line1\nline2\nline3\n"
-    await write_file(p, original)
-
-    # JSON string with escaped newlines (as models often generate)
-    json_edits = '{"old_text": "line1\\nline2", "new_text": "REPLACED"}'
-    await edit_file(p, json_edits)
-
-    assert p.read_text(encoding="utf-8") == "REPLACED\nline3\n"
-
-
-@pytest.mark.asyncio
-async def test_edit_file_json_string_invalid_format(tmp_path: Path):
-    """Test that invalid JSON string raises a helpful error."""
-    p = tmp_path / "invalid_json.txt"
-    await write_file(p, "content\n")
-
-    # Invalid JSON
-    with pytest.raises(ValueError) as ei:
-        await edit_file(p, "{invalid json}")
-    assert "Invalid JSON format" in str(ei.value)
-
-
-@pytest.mark.asyncio
-async def test_edit_file_json_string_missing_keys(tmp_path: Path):
-    """Test that JSON missing required keys raises a helpful error."""
-    p = tmp_path / "missing_keys.txt"
-    await write_file(p, "content\n")
-
-    # Valid JSON but missing 'old_text' key
-    with pytest.raises(ValueError) as ei:
-        await edit_file(p, '{"new_text": "value"}')
-    assert "Invalid JSON format" in str(ei.value)
-
-
-@pytest.mark.asyncio
-async def test_edit_file_json_string_malformed_object(tmp_path: Path):
-    """Test that malformed JSON raises a helpful error."""
-    p = tmp_path / "malformed.txt"
-    await write_file(p, "content\n")
-
-    # JSON array instead of object
-    with pytest.raises(ValueError) as ei:
-        await edit_file(p, '["old_text"]')
-    assert "Invalid JSON format" in str(ei.value)
-
-
-@pytest.mark.asyncio
-async def test_edit_file_objects_still_work(tmp_path: Path):
-    """Ensure backward compatibility: TextEdit objects still work."""
-    p = tmp_path / "objects.txt"
-    original = "hello world\n"
-    await write_file(p, original)
-
-    # Pass edits as TextEdit objects (new behavior: single object instead of list)
-    diff = await edit_file(p, TextEdit(old_text="world", new_text="Earth"))
-
-    assert p.read_text(encoding="utf-8") == "hello Earth\n"
-    assert "-hello world" in diff
-    assert "+hello Earth" in diff
