@@ -130,6 +130,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
     def __init__(self):
         self._state: ProgressState = None
+        self._left_padding = (0, 0, 0, 2)
 
     def on_user_message(self, context_name: str, content: str, force: bool = False):
         if not force:
@@ -153,9 +154,45 @@ class DenseProgressCallbacks(ProgressCallbacks):
         # Don't print - reasoning is already printed via chunks
         pass
 
+    def _print_arguments_fancy(self, symbol: str, tool_name: str, arguments: dict, lang_map: dict[str, str]):
+        print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}")
+        for key, value in arguments.items():
+            if key in lang_map and "\n" in value:
+                print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
+                print(Padding(Markdown(f"```{lang_map[key]}\n{value}\n```"), self._left_padding))
+            else:
+                print(Padding(f"[dim]{key}:[/dim] {json.dumps(value)}", self._left_padding))
+
+    def _special_handle_arguments(self, symbol: str, tool_name: str, arguments: dict) -> bool:
+        if tool_name == "mcp_coding_assistant_mcp_shell_execute":
+            if "\n" in arguments["command"]:
+                self._print_arguments_fancy(symbol, tool_name, arguments, {"command": "bash"})
+                return True
+        elif tool_name == "mcp_coding_assistant_mcp_python_execute":
+            if "\n" in arguments["code"]:
+                self._print_arguments_fancy(symbol, tool_name, arguments, {"code": "python"})
+                return True
+        elif tool_name == "mcp_coding_assistant_mcp_filesystem_write_file":
+            if "\n" in arguments["content"]:
+                path = arguments["path"]
+                lang = path.split(".")[-1] if "." in path else ""
+                self._print_arguments_fancy(symbol, tool_name, arguments, {"content": lang})
+                return True
+        elif tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
+            old = arguments["old_text"]
+            new = arguments["new_text"]
+            if "\n" in old or "\n" in new:
+                path = arguments["path"]
+                lang = path.split(".")[-1] if "." in path else ""
+                self._print_arguments_fancy(symbol, tool_name, arguments, {"old_text": lang, "new_text": lang})
+                return True
+
+        return False
+
     def _print_tool_start(self, symbol, tool_name: str, arguments: dict):
-        args_str = self._format_arguments(arguments)
-        print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
+        if not self._special_handle_arguments(symbol, tool_name, arguments):
+            args_str = self._format_arguments(arguments)
+            print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
     def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         self._finalize_state()
@@ -164,16 +201,14 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._state = ToolState(tool_call_id=tool_call_id)
 
     def _special_handle_full_result(self, tool_call_id: str, tool_name: str, result: str) -> bool:
-        left_padding = (0, 0, 0, 1)
-
         if tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
             diff_body = result.strip("\n")
             rendered_result = Markdown(f"```diff\n{diff_body}\n```")
             print()
-            print(Padding(rendered_result, left_padding))
+            print(Padding(rendered_result, self._left_padding))
             return True
         elif tool_name.startswith("mcp_coding_assistant_mcp_todo_"):
-            print(Padding(Markdown(result), left_padding))
+            print(Padding(Markdown(result), self._left_padding))
             return True
 
         return False

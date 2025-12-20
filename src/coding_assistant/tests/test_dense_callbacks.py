@@ -133,3 +133,47 @@ def test_dense_callbacks_empty_line_logic():
                 found_newline = True
                 break
         assert found_newline, "Expected newline when switching from reasoning to content"
+
+def test_dense_callbacks_multiline_tool_formatting(capsys):
+    cb = DenseProgressCallbacks()
+
+    # 1. Unknown tool with multiline -> compact one-liner
+    cb.on_tool_start("TestAgent", "call_1", "unknown_tool", {"arg": "line1\nline2"})
+    captured = capsys.readouterr()
+    assert 'unknown_tool(arg="line1\\nline2")' in captured.out
+    
+    # 2. Known special tool (shell_execute) with multiline -> fancy layout
+    cb.on_tool_start("TestAgent", "call_2", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls\npwd"})
+    captured = capsys.readouterr()
+    assert '▶ mcp_coding_assistant_mcp_shell_execute' in captured.out
+    assert '  command:' in captured.out
+    assert '  ls' in captured.out
+    assert '  pwd' in captured.out
+    
+    # 3. Known special tool (shell_execute) but SINGLE line -> compact one-liner
+    cb.on_tool_start("TestAgent", "call_3", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"})
+    captured = capsys.readouterr()
+    assert 'mcp_coding_assistant_mcp_shell_execute(command="ls")' in captured.out
+
+    # 4. Known special tool (filesystem_write_file) with multiline -> fancy layout
+    cb.on_tool_start("TestAgent", "call_4", "mcp_coding_assistant_mcp_filesystem_write_file", {
+        "path": "test.py",
+        "content": "def hello():\n    pass"
+    })
+    captured = capsys.readouterr()
+    assert '  path: "test.py"' in captured.out
+    assert '  content:' in captured.out
+    assert '  def hello():' in captured.out
+
+    # 5. Known special tool (filesystem_edit_file) with multiline on one of the keys
+    cb.on_tool_start("TestAgent", "call_5", "mcp_coding_assistant_mcp_filesystem_edit_file", {
+        "path": "test.txt",
+        "old_text": "line1",
+        "new_text": "line1\nline2"
+    })
+    captured = capsys.readouterr()
+    assert '  path: "test.txt"' in captured.out
+    assert '  old_text: "line1"' in captured.out
+    assert '  new_text:' in captured.out
+    assert '  line1' in captured.out
+    assert '  line2' in captured.out
