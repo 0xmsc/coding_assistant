@@ -53,6 +53,12 @@ class ToolMessage(LLMMessage):
     role: Literal["tool"] = "tool"
 
 
+@dataclass
+class Completion:
+    message: LLMMessage
+    tokens: int
+
+
 def message_from_dict(d: dict[str, Any]) -> LLMMessage:
     # Ensure role is set for the Literal types in the dataclasses
     role = d["role"]

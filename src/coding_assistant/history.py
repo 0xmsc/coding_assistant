@@ -2,7 +2,7 @@ import logging
 import json
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
-from coding_assistant.framework.models import message_from_dict
+from coding_assistant.llm.types import message_from_dict
 
 logger = logging.getLogger("coding_assistant.cache")
 

@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from coding_assistant.framework.models import UserMessage
+from coding_assistant.llm.types import UserMessage
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FakeFunction,

@@ -3,13 +3,13 @@ import functools
 import json
 import logging
 import re
-from dataclasses import asdict, dataclass
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 import litellm
 
 from coding_assistant.framework.callbacks import ProgressCallbacks
-from coding_assistant.framework.models import (
+from coding_assistant.llm.types import (
+    Completion,
     LLMMessage,
     message_from_dict,
     message_to_dict,
@@ -21,12 +21,6 @@ logger = logging.getLogger(__name__)
 litellm.telemetry = False
 litellm.modify_params = True
 litellm.drop_params = True
-
-
-@dataclass
-class Completion:
-    message: LLMMessage
-    tokens: int
 
 
 def _map_litellm_message_to_internal(litellm_message: litellm.Message) -> LLMMessage:

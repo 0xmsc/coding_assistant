@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-from coding_assistant.framework.models import (
+from coding_assistant.llm.types import (
     AssistantMessage,
     FunctionCall,
     ToolCall,
@@ -144,6 +144,8 @@ def test_save_orchestrator_history_strips_trailing_assistant_tool_calls(tmp_path
     latest = get_latest_orchestrator_history_file(wd)
     assert latest is not None
     fixed = load_orchestrator_history(latest)
+    assert fixed is not None
     assert len(fixed) == 1
+    assert isinstance(fixed, list)
     assert fixed[0].role == "user"
     assert fixed[0].content == "hi"

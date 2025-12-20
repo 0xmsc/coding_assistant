@@ -11,9 +11,9 @@ from coding_assistant.framework.tests.helpers import (
     FakeToolCall,
     make_test_agent,
     make_ui_mock,
-    message_to_dict,
 )
 from coding_assistant.framework.types import AgentContext, TextResult, Tool, AgentOutput
+from coding_assistant.llm.types import message_to_dict
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 

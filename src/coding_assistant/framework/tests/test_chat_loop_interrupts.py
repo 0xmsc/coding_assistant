@@ -8,7 +8,7 @@ from unittest.mock import patch
 from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.interrupts import InterruptController
-from coding_assistant.framework.models import UserMessage
+from coding_assistant.llm.types import UserMessage
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FakeFunction,

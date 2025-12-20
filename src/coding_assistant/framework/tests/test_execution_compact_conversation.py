@@ -14,7 +14,7 @@ from coding_assistant.framework.agent import (
     _handle_compact_conversation_result,
     _handle_finish_task_result,
 )
-from coding_assistant.framework.models import UserMessage, AssistantMessage
+from coding_assistant.llm.types import UserMessage, AssistantMessage, message_to_dict
 from coding_assistant.framework.tests.helpers import (
     FakeFunction,
     FakeMessage,
@@ -22,7 +22,6 @@ from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     make_test_agent,
     make_ui_mock,
-    message_to_dict,
 )
 from coding_assistant.framework.types import ToolResult, FinishTaskResult, CompactConversationResult, TextResult
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation

@@ -10,7 +10,7 @@ from coding_assistant.framework.callbacks import (
 )
 from coding_assistant.framework.execution import handle_tool_calls
 from coding_assistant.framework.agent import _handle_finish_task_result
-from coding_assistant.framework.models import (
+from coding_assistant.llm.types import (
     AssistantMessage,
     FunctionCall,
     ToolCall,
