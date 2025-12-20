@@ -9,8 +9,6 @@ from coding_assistant.framework.types import (
     AgentContext,
     AgentDescription,
     AgentState,
-    CompactConversationResult,
-    FinishTaskResult,
     TextResult,
     Tool,
 )
@@ -119,5 +117,3 @@ class AgentTool(Tool):
             return TextResult(content=state.output.result)
         finally:
             self.history = state.history
-
-
