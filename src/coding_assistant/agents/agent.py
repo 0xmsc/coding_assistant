@@ -137,9 +137,7 @@ async def run_agent_loop(
                 tool_callbacks,
                 ui=ui,
                 context_name=desc.name,
-                handle_tool_result=lambda result: handle_tool_result_agent(
-                    result, desc, state, progress_callbacks
-                ),
+                handle_tool_result=lambda result: handle_tool_result_agent(result, desc, state, progress_callbacks),
             )
         else:
             # Handle assistant steps without tool calls: inject corrective message
