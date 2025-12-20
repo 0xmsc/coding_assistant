@@ -1,6 +1,7 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Optional
 
+
 from dacite import from_dict
 
 
@@ -58,55 +59,9 @@ class ToolMessage(LLMMessage):
     role: Literal["tool"] = "tool"
 
 
-def message_from_dict(d: Any) -> LLMMessage:
-    def get_val(obj, key, default=None):
-        if isinstance(obj, dict):
-            return obj.get(key, default)
-        return getattr(obj, key, default)
-
-    # Convert to actual dict if it's a litellm.Message or similar object
-    if not isinstance(d, dict):
-        role = get_val(d, "role")
-        content = get_val(d, "content")
-        name = get_val(d, "name")
-        provider_specific_fields = get_val(d, "provider_specific_fields")
-        reasoning_content = get_val(d, "reasoning_content")
-        tool_call_id = get_val(d, "tool_call_id")
-
-        tool_calls = []
-        raw_tool_calls = get_val(d, "tool_calls", [])
-        for tc in raw_tool_calls or []:
-            tc_id = get_val(tc, "id")
-            func = get_val(tc, "function")
-            func_name = get_val(func, "name")
-            func_args = get_val(func, "arguments")
-            tool_calls.append(
-                {
-                    "id": tc_id,
-                    "function": {"name": func_name, "arguments": func_args},
-                    "type": "function",
-                }
-            )
-
-        d = {
-            "role": role,
-            "content": content,
-            "name": name,
-            "provider_specific_fields": provider_specific_fields or {},
-            "reasoning_content": reasoning_content,
-            "tool_calls": tool_calls,
-            "tool_call_id": tool_call_id,
-        }
-
+def message_from_dict(d: dict[str, Any]) -> LLMMessage:
     # Ensure role is set for the Literal types in the dataclasses
-    if "role" not in d or d["role"] is None:
-        # We don't have enough info here to be sure, but usually message_from_dict
-        # is called on things that should have a role.
-        # However, from_dict will fail if the Literal role is None.
-        pass
-
-    role = d.get("role") or "assistant"
-    d["role"] = role
+    role = d["role"]
 
     # Filter out None values to avoid dacite WrongTypeError for fields with defaults
     # or Literals.

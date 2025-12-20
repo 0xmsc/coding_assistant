@@ -2,6 +2,7 @@ import logging
 import json
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
+from coding_assistant.framework.models import message_from_dict
 
 logger = logging.getLogger("coding_assistant.cache")
 
@@ -77,4 +78,5 @@ def load_orchestrator_history(file: str | Path) -> list | None:
         logger.error(f"Specified history file {file_path} does not exist.")
         return None
     logger.info(f"Loading orchestrator history from {file_path}.")
-    return json.loads(file_path.read_text())
+    data = json.loads(file_path.read_text())
+    return [message_from_dict(m) for m in data]
