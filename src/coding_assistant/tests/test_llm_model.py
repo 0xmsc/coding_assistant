@@ -10,12 +10,6 @@ class _CB(ProgressCallbacks):
         self.end = False
         self.reasoning = []
 
-    def on_agent_start(self, context_name: str, model: str, is_resuming: bool = False):
-        pass
-
-    def on_agent_end(self, context_name: str, result: str, summary: str):
-        pass
-
     def on_user_message(self, context_name: str, content: str, force: bool = False):
         pass
 

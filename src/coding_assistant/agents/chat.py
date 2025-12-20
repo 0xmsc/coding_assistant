@@ -136,7 +136,6 @@ async def run_chat_loop(
     command_names = list(command_map.keys())
 
     start_message = _create_chat_start_message(parameters)
-    callbacks.on_agent_start(context_name, model, is_resuming=bool(history))
     append_user_message(history, callbacks, context_name, start_message)
 
     while True:
