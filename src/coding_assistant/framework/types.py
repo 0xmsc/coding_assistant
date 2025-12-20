@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Protocol
 
 from coding_assistant.framework.callbacks import ProgressCallbacks
+from coding_assistant.framework.models import LLMMessage
 from coding_assistant.framework.parameters import Parameter
 from coding_assistant.llm.model import Completion
 
@@ -78,7 +79,7 @@ class AgentOutput:
 # Mutable state for an agent's execution
 @dataclass
 class AgentState:
-    history: list = field(default_factory=list)
+    history: list[LLMMessage] = field(default_factory=list)
     output: AgentOutput | None = None
 
 
@@ -92,7 +93,7 @@ class AgentContext:
 class Completer(Protocol):
     def __call__(
         self,
-        messages: list[dict],
+        messages: list[LLMMessage],
         *,
         model: str,
         tools: list,

@@ -7,12 +7,10 @@ from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.callbacks import NullToolCallbacks
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
-    FakeFunction,
-    FakeMessage,
-    FakeToolCall,
     make_test_agent,
     make_ui_mock,
 )
+from coding_assistant.framework.models import AssistantMessage, ToolCall, FunctionCall
 from coding_assistant.framework.types import TextResult, Tool, AgentContext
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
@@ -34,8 +32,8 @@ class EchoTool(Tool):
 @pytest.mark.asyncio
 async def test_agent_loop_runs_successfully():
     callbacks = Mock()
-    finish = FakeToolCall("f1", FakeFunction("finish_task", json.dumps({"result": "r", "summary": "s"})))
-    completer = FakeCompleter([FakeMessage(tool_calls=[finish])])
+    finish = ToolCall("f1", FunctionCall("finish_task", json.dumps({"result": "r", "summary": "s"})))
+    completer = FakeCompleter([AssistantMessage(tool_calls=[finish])])
     desc, state = make_test_agent(tools=[FinishTaskTool(), CompactConversation()])
 
     await run_agent_loop(
@@ -53,9 +51,9 @@ async def test_agent_loop_runs_successfully():
 @pytest.mark.asyncio
 async def test_on_tool_message_called_with_arguments_and_result():
     callbacks = Mock()
-    call = FakeToolCall("1", FakeFunction("echo", json.dumps({"text": "hello"})))
-    finish = FakeToolCall("2", FakeFunction("finish_task", json.dumps({"result": "ok", "summary": "s"})))
-    completer = FakeCompleter([FakeMessage(tool_calls=[call]), FakeMessage(tool_calls=[finish])])
+    call = ToolCall("1", FunctionCall("echo", json.dumps({"text": "hello"})))
+    finish = ToolCall("2", FunctionCall("finish_task", json.dumps({"result": "ok", "summary": "s"})))
+    completer = FakeCompleter([AssistantMessage(tool_calls=[call]), AssistantMessage(tool_calls=[finish])])
     desc, state = make_test_agent(tools=[EchoTool(), FinishTaskTool(), CompactConversation()])
 
     await run_agent_loop(

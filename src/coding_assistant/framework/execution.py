@@ -6,6 +6,7 @@ from json import JSONDecodeError
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.history import append_tool_message
+from coding_assistant.framework.models import AssistantMessage, LLMMessage, ToolCall
 from coding_assistant.framework.types import Tool, ToolResult
 from coding_assistant.framework.types import (
     Completer,
@@ -19,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 async def handle_tool_call(
-    tool_call,
+    tool_call: ToolCall,
     tools: list[Tool],
-    history: list,
+    history: list[LLMMessage],
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
     *,
@@ -82,9 +83,9 @@ async def handle_tool_call(
 
 
 async def handle_tool_calls(
-    message,
+    message: LLMMessage,
     tools: list[Tool],
-    history: list,
+    history: list[LLMMessage],
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
     *,
@@ -93,7 +94,10 @@ async def handle_tool_calls(
     task_created_callback: Callable[[str, asyncio.Task], None] | None = None,
     handle_tool_result: Callable[[ToolResult], str] | None = None,
 ):
-    tool_calls = message.tool_calls
+    if isinstance(message, AssistantMessage):
+        tool_calls = message.tool_calls
+    else:
+        tool_calls = []
 
     if not tool_calls:
         return
@@ -163,7 +167,7 @@ async def handle_tool_calls(
 
 
 async def do_single_step(
-    history: list,
+    history: list[LLMMessage],
     model: str,
     tools: list[Tool],
     progress_callbacks: ProgressCallbacks,
@@ -184,7 +188,7 @@ async def do_single_step(
     )
     message = completion.message
 
-    if hasattr(message, "reasoning_content") and message.reasoning_content:
+    if isinstance(message, AssistantMessage) and message.reasoning_content:
         progress_callbacks.on_assistant_reasoning(context_name, message.reasoning_content)
 
     return message, completion.tokens

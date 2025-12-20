@@ -1,7 +1,7 @@
+import asyncio
 import functools
 import json
 import logging
-import asyncio
 import re
 from dataclasses import dataclass
 from typing import Literal, cast
@@ -9,6 +9,15 @@ from typing import Literal, cast
 import litellm
 
 from coding_assistant.framework.callbacks import ProgressCallbacks
+from coding_assistant.framework.models import (
+    AssistantMessage,
+    FunctionCall,
+    LLMMessage,
+    SystemMessage,
+    ToolCall,
+    ToolMessage,
+    UserMessage,
+)
 from coding_assistant.trace import trace_data
 
 logger = logging.getLogger(__name__)
@@ -20,8 +29,57 @@ litellm.drop_params = True
 
 @dataclass
 class Completion:
-    message: litellm.Message
+    message: LLMMessage
     tokens: int
+
+
+def _map_litellm_message_to_internal(litellm_message: litellm.Message) -> LLMMessage:
+    tool_calls = []
+    if hasattr(litellm_message, "tool_calls") and litellm_message.tool_calls:
+        for tc in litellm_message.tool_calls:
+            tool_calls.append(
+                ToolCall(
+                    id=tc.id,
+                    function=FunctionCall(
+                        name=tc.function.name or "",
+                        arguments=tc.function.arguments or "",
+                    ),
+                )
+            )
+
+    return AssistantMessage(
+        content=getattr(litellm_message, "content", None),
+        reasoning_content=getattr(litellm_message, "reasoning_content", None),
+        tool_calls=tool_calls,
+    )
+
+
+def _map_internal_message_to_litellm(msg: LLMMessage) -> dict:
+    d: dict = {"role": msg.role}
+    if msg.content is not None:
+        d["content"] = msg.content
+    if msg.name:
+        d["name"] = msg.name
+
+    if isinstance(msg, AssistantMessage):
+        if msg.reasoning_content is not None:
+            d["reasoning_content"] = msg.reasoning_content
+        if msg.tool_calls:
+            d["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in msg.tool_calls
+            ]
+    elif isinstance(msg, ToolMessage):
+        d["tool_call_id"] = msg.tool_call_id
+
+    return d
 
 
 @functools.cache
@@ -45,14 +103,16 @@ def _parse_model_and_reasoning(
 
 
 async def _try_completion(
-    messages: list[dict],
+    messages: list[LLMMessage],
     tools: list,
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
 ):
+    litellm_messages = [_map_internal_message_to_litellm(m) for m in messages]
+
     response = await litellm.acompletion(
-        messages=messages,
+        messages=litellm_messages,
         tools=tools,
         model=model,
         stream=True,
@@ -87,7 +147,7 @@ async def _try_completion(
             {
                 "model": model,
                 "reasoning_effort": reasoning_effort,
-                "messages": messages,
+                "messages": litellm_messages,
                 "tools": tools,
                 "completion": completion.model_dump(),
             },
@@ -96,14 +156,16 @@ async def _try_completion(
         ),
     )
 
+    litellm_message = completion["choices"][0]["message"]
+
     return Completion(
-        message=completion["choices"][0]["message"],
+        message=_map_litellm_message_to_internal(litellm_message),
         tokens=completion["usage"]["total_tokens"],
     )
 
 
 async def _try_completion_with_retry(
-    messages: list[dict],
+    messages: list[LLMMessage],
     tools: list,
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
@@ -127,14 +189,60 @@ async def _try_completion_with_retry(
 
 
 async def complete(
-    messages: list[dict],
+    messages: list[LLMMessage] | list[dict],
     model: str,
     tools: list,
     callbacks: ProgressCallbacks,
 ):
+    # Support both list[dict] and list[LLMMessage] during migration
+    internal_messages: list[LLMMessage] = []
+    for m in messages:
+        if isinstance(m, (SystemMessage, UserMessage, AssistantMessage, ToolMessage)):
+            internal_messages.append(m)
+        elif isinstance(m, dict):
+            # Fallback for dicts
+            tool_calls = []
+            if "tool_calls" in m:
+                for tc in m["tool_calls"]:
+                    tool_calls.append(
+                        ToolCall(
+                            id=tc["id"],
+                            function=FunctionCall(
+                                name=tc["function"]["name"],
+                                arguments=tc["function"]["arguments"],
+                            ),
+                        )
+                    )
+            role = m["role"]
+            content = m.get("content")
+            name = m.get("name")
+            if role == "system":
+                internal_messages.append(SystemMessage(content=content or "", name=name))
+            elif role == "user":
+                internal_messages.append(UserMessage(content=content or "", name=name))
+            elif role == "assistant":
+                internal_messages.append(
+                    AssistantMessage(
+                        content=content,
+                        reasoning_content=m.get("reasoning_content"),
+                        tool_calls=tool_calls,
+                        name=name,
+                    )
+                )
+            elif role == "tool":
+                internal_messages.append(
+                    ToolMessage(
+                        content=content or "",
+                        tool_call_id=m.get("tool_call_id", ""),
+                        name=name,
+                    )
+                )
+            else:
+                raise ValueError(f"Unknown role {role}")
+
     try:
         model, reasoning_effort = _parse_model_and_reasoning(model)
-        return await _try_completion_with_retry(messages, tools, model, reasoning_effort, callbacks)
+        return await _try_completion_with_retry(internal_messages, tools, model, reasoning_effort, callbacks)
     except Exception as e:
-        logger.error(f"Error during model completion: {e}, last messages: {messages[-5:]}")
+        logger.error(f"Error during model completion: {e}, last messages: {internal_messages[-5:]}")
         raise e

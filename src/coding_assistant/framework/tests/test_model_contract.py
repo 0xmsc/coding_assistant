@@ -6,11 +6,15 @@ from coding_assistant.framework.execution import do_single_step, handle_tool_cal
 from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
-    FakeMessage,
-    FakeToolCall,
-    FakeFunction,
     make_test_agent,
     make_ui_mock,
+)
+from coding_assistant.framework.models import (
+    AssistantMessage,
+    FunctionCall,
+    ToolCall,
+    ToolMessage,
+    UserMessage,
 )
 from coding_assistant.framework.types import AgentContext, TextResult, Tool
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
@@ -33,12 +37,13 @@ class DummyTool(Tool):
 @pytest.mark.asyncio
 async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
     # Make the assistant respond with a tool call so the "no tool calls" warning is not added
-    tool_call = FakeToolCall(id="call_1", function=FakeFunction(name="dummy", arguments="{}"))
-    fake_message = FakeMessage(content=("h" * 2000), tool_calls=[tool_call])
+    tool_call = ToolCall(id="call_1", function=FunctionCall(name="dummy", arguments="{}"))
+    fake_message = AssistantMessage(content=("h" * 2000), tool_calls=[tool_call])
     completer = FakeCompleter([fake_message])
 
     desc, state = make_test_agent(
-        tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[{"role": "user", "content": "start"}]
+        tools=[DummyTool(), FinishTaskTool(), CompactConversation()],
+        history=[UserMessage(content="start")],
     )
 
     msg, tokens = await do_single_step(
@@ -69,40 +74,36 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
     )
     if tokens > 1000:
         state.history.append(
-            {
-                "role": "user",
-                "content": (
+            UserMessage(
+                content=(
                     "Your conversation history has grown too large. "
                     "Please summarize it by using the `compact_conversation` tool."
                 ),
-            }
+            )
         )
 
     expected_history = [
-        {"role": "user", "content": "start"},
-        {
-            "role": "assistant",
-            "content": fake_message.content,
-            "tool_calls": [
-                {
-                    "id": "call_1",
-                    "function": {"name": "dummy", "arguments": "{}"},
-                }
+        UserMessage(content="start"),
+        AssistantMessage(
+            content=fake_message.content,
+            tool_calls=[
+                ToolCall(
+                    id="call_1",
+                    function=FunctionCall(name="dummy", arguments="{}"),
+                )
             ],
-        },
-        {
-            "tool_call_id": "call_1",
-            "role": "tool",
-            "name": "dummy",
-            "content": "ok",
-        },
-        {
-            "role": "user",
-            "content": (
+        ),
+        ToolMessage(
+            tool_call_id="call_1",
+            name="dummy",
+            content="ok",
+        ),
+        UserMessage(
+            content=(
                 "Your conversation history has grown too large. "
                 "Please summarize it by using the `compact_conversation` tool."
             ),
-        },
+        ),
     ]
 
     assert state.history == expected_history
@@ -111,15 +112,18 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
 @pytest.mark.asyncio
 async def test_reasoning_is_forwarded_and_not_stored():
     # Prepare a message that includes reasoning_content and a tool call to avoid the no-tool-calls warning
-    tool_call = FakeToolCall(id="call_reason", function=FakeFunction(name="dummy", arguments="{}"))
-    msg = FakeMessage(content="Hello", tool_calls=[tool_call])
-    msg.reasoning_content = "These are my private thoughts"
+    tool_call = ToolCall(id="call_reason", function=FunctionCall(name="dummy", arguments="{}"))
+    msg = AssistantMessage(
+        content="Hello",
+        tool_calls=[tool_call],
+        reasoning_content="These are my private thoughts",
+    )
 
     completer = FakeCompleter([msg])
 
     desc, state = make_test_agent(
         tools=[DummyTool(), FinishTaskTool(), CompactConversation()],
-        history=[{"role": "user", "content": "start"}],
+        history=[UserMessage(content="start")],
     )
 
     callbacks = Mock(spec=ProgressCallbacks)
@@ -138,7 +142,7 @@ async def test_reasoning_is_forwarded_and_not_stored():
 
     # Assert reasoning is not stored in history anywhere
     for entry in state.history:
-        assert "reasoning_content" not in entry
+        assert getattr(entry, "reasoning_content", None) is None
 
 
 # Guard rails for do_single_step
@@ -149,7 +153,7 @@ async def test_auto_inject_builtin_tools():
     # Tools are empty initially
     desc, state = make_test_agent(
         tools=[],
-        history=[{"role": "user", "content": "start"}],
+        history=[UserMessage(content="start")],
     )
     ctx = AgentContext(desc=desc, state=state)
 
@@ -158,10 +162,15 @@ async def test_auto_inject_builtin_tools():
     # Second message: finish_task -> stop
     completer = FakeCompleter(
         [
-            FakeMessage(content="no tools yet"),
-            FakeMessage(
+            AssistantMessage(content="no tools yet"),
+            AssistantMessage(
                 content="done",
-                tool_calls=[FakeToolCall(id="c1", function=FakeFunction(name="finish_task", arguments='{"result": "ok", "summary": "done"}'))],
+                tool_calls=[
+                    ToolCall(
+                        id="c1",
+                        function=FunctionCall(name="finish_task", arguments='{"result": "ok", "summary": "done"}'),
+                    )
+                ],
             ),
         ]
     )
@@ -179,7 +188,6 @@ async def test_auto_inject_builtin_tools():
     assert state.output.result == "ok"
 
 
-
 @pytest.mark.asyncio
 async def test_requires_non_empty_history():
     # Empty history should raise
@@ -190,6 +198,6 @@ async def test_requires_non_empty_history():
             desc.model,
             desc.tools,
             NullProgressCallbacks(),
-            completer=FakeCompleter([FakeMessage(content="hi")]),
+            completer=FakeCompleter([AssistantMessage(content="hi")]),
             context_name=desc.name,
         )

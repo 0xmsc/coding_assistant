@@ -11,6 +11,7 @@ from coding_assistant.framework.agent import (
     _handle_compact_conversation_result,
     _handle_finish_task_result,
 )
+from coding_assistant.framework.models import UserMessage, AssistantMessage
 from coding_assistant.framework.tests.helpers import (
     FakeFunction,
     FakeMessage,
@@ -29,8 +30,8 @@ async def test_compact_conversation_resets_history():
     desc, state = make_test_agent(
         tools=[FinishTaskTool(), CompactConversation()],
         history=[
-            {"role": "user", "content": "old start"},
-            {"role": "assistant", "content": "old reply"},
+            UserMessage(content="old start"),
+            AssistantMessage(content="old reply"),
         ],
     )
 
@@ -76,16 +77,16 @@ async def test_compact_conversation_resets_history():
 
     # History should be reset to keeping the first message + summary message, followed by the tool result message
     assert len(state.history) >= 3
-    assert state.history[0] == {"role": "user", "content": "old start"}
+    assert state.history[0] == UserMessage(content="old start")
 
-    assert state.history[1] == {
+    assert state.history[1].to_dict() == {
         "role": "user",
         "content": (
             f"A summary of your conversation with the client until now:\n\n{summary_text}\n\nPlease continue your work."
         ),
     }
 
-    assert state.history[2] == {
+    assert state.history[2].to_dict() == {
         "tool_call_id": "shorten-1",
         "role": "tool",
         "name": "compact_conversation",
@@ -136,7 +137,7 @@ async def test_compact_conversation_resets_history():
     )
 
     # Verify the assistant tool call and finish result were appended after the reset messages
-    assert state.history[-2] == {
+    assert state.history[-2].to_dict() == {
         "role": "assistant",
         "tool_calls": [
             {
@@ -148,7 +149,7 @@ async def test_compact_conversation_resets_history():
             }
         ],
     }
-    assert state.history[-1] == {
+    assert state.history[-1].to_dict() == {
         "tool_call_id": "finish-1",
         "role": "tool",
         "name": "finish_task",
