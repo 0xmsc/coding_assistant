@@ -25,12 +25,6 @@ class LLMMessage:
     name: Optional[str] = None
     provider_specific_fields: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
-        def factory(data):
-            return {k: v for k, v in data if v is not None and v != [] and v != {}}
-
-        return asdict(self, dict_factory=factory)
-
 
 @dataclass(frozen=True, kw_only=True)
 class SystemMessage(LLMMessage):
@@ -57,6 +51,13 @@ class ToolMessage(LLMMessage):
     content: str
     tool_call_id: str
     role: Literal["tool"] = "tool"
+
+
+def message_to_dict(msg: LLMMessage) -> dict[str, Any]:
+    def factory(data):
+        return {k: v for k, v in data if v is not None and v != [] and v != {}}
+
+    return asdict(msg, dict_factory=factory)
 
 
 def message_from_dict(d: dict[str, Any]) -> LLMMessage:
