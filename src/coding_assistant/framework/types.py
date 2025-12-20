@@ -3,11 +3,11 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Protocol
 
 from coding_assistant.framework.callbacks import ProgressCallbacks
-from coding_assistant.llm.types import LLMMessage, Completion
+from coding_assistant.llm.types import LLMMessage, Completion, Tool as LLMTool, ToolResult as LLMToolResult
 from coding_assistant.framework.parameters import Parameter
 
 
-class ToolResult(ABC):
+class ToolResult(LLMToolResult, ABC):
     """Base class for all tool results."""
 
     @abstractmethod
@@ -45,7 +45,7 @@ class CompactConversationResult(ToolResult):
         return {"summary": self.summary}
 
 
-class Tool(ABC):
+class Tool(LLMTool, ABC):
     @abstractmethod
     def name(self) -> str: ...
 
