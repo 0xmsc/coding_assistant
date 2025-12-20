@@ -1,8 +1,16 @@
 from dataclasses import asdict, dataclass, field
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Protocol
 
 
 from dacite import from_dict
+
+
+class ProgressCallbacks(Protocol):
+    """Protocol for LLM progress callbacks."""
+
+    def on_content_chunk(self, chunk: str) -> None: ...
+    def on_reasoning_chunk(self, chunk: str) -> None: ...
+    def on_chunks_end(self) -> None: ...
 
 
 @dataclass(frozen=True)

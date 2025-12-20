@@ -7,10 +7,10 @@ from typing import Literal, cast
 
 import litellm
 
-from coding_assistant.framework.callbacks import ProgressCallbacks
 from coding_assistant.llm.types import (
     Completion,
     LLMMessage,
+    ProgressCallbacks,
     message_from_dict,
     message_to_dict,
 )
