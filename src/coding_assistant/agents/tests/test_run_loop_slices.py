@@ -58,7 +58,7 @@ async def test_tool_selection_then_finish():
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,
@@ -134,7 +134,7 @@ async def test_unknown_tool_error_then_finish(monkeypatch):
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,
@@ -205,7 +205,7 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,
@@ -256,7 +256,7 @@ async def test_errors_if_output_already_set():
     with pytest.raises(RuntimeError, match="Agent already has a result or summary."):
         await run_agent_loop(
             AgentContext(desc=desc, state=state),
-            agent_callbacks=NullProgressCallbacks(),
+            progress_callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             compact_conversation_at_tokens=200_000,
             completer=FakeCompleter([FakeMessage(content="irrelevant")]),
@@ -280,7 +280,7 @@ async def test_feedback_ok_does_not_reloop():
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,
@@ -315,7 +315,7 @@ async def test_multiple_tool_calls_processed_in_order():
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,
@@ -411,7 +411,7 @@ async def test_feedback_loop_then_finish():
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,

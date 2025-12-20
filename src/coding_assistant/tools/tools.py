@@ -43,7 +43,7 @@ class AgentTool(Tool):
         config: Config,
         tools: list[Tool],
         ui: UI,
-        agent_callbacks: ProgressCallbacks,
+        progress_callbacks: ProgressCallbacks,
         tool_callbacks: ToolCallbacks,
         name: str = "launch_agent",
         history: list | None = None,
@@ -52,7 +52,7 @@ class AgentTool(Tool):
         self._config = config
         self._tools = tools
         self._ui = ui
-        self._agent_callbacks = agent_callbacks
+        self._progress_callbacks = progress_callbacks
         self._tool_callbacks = tool_callbacks
         self._name = name
         self._history = history
@@ -107,7 +107,7 @@ class AgentTool(Tool):
         try:
             await run_agent_loop(
                 ctx,
-                agent_callbacks=self._agent_callbacks,
+                progress_callbacks=self._progress_callbacks,
                 tool_callbacks=self._tool_callbacks,
                 compact_conversation_at_tokens=self._config.compact_conversation_at_tokens,
                 completer=complete,

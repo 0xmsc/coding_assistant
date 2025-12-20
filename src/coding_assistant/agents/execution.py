@@ -98,13 +98,13 @@ def _handle_compact_conversation_result(
     result: CompactConversationResult,
     desc: AgentDescription,
     state: AgentState,
-    agent_callbacks: ProgressCallbacks,
+    progress_callbacks: ProgressCallbacks,
 ):
     _clear_history(state)
 
     append_user_message(
         state.history,
-        agent_callbacks,
+        progress_callbacks,
         desc.name,
         f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work.",
         force=True,
@@ -117,7 +117,7 @@ async def handle_tool_call(
     tool_call,
     tools: list[Tool],
     history: list,
-    agent_callbacks: ProgressCallbacks,
+    progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
     *,
     ui: UI,
@@ -141,7 +141,7 @@ async def handle_tool_call(
     logger.debug(f"[{tool_call.id}] [{context_name}] Calling tool '{function_name}' with arguments {function_args}")
 
     # Notify callbacks that tool is starting
-    agent_callbacks.on_tool_start(context_name, tool_call.id, function_name, function_args)
+    progress_callbacks.on_tool_start(context_name, tool_call.id, function_name, function_args)
 
     try:
         if callback_result := await tool_callbacks.before_tool_execution(
@@ -180,7 +180,7 @@ async def handle_tool_calls(
     message,
     tools: list[Tool],
     history: list,
-    agent_callbacks: ProgressCallbacks,
+    progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
     *,
     ui: UI,
@@ -201,7 +201,7 @@ async def handle_tool_calls(
                 tool_call,
                 tools,
                 history,
-                agent_callbacks,
+                progress_callbacks,
                 tool_callbacks,
                 ui=ui,
                 context_name=context_name,
@@ -244,7 +244,7 @@ async def handle_tool_calls(
 
         append_tool_message(
             history,
-            agent_callbacks,
+            progress_callbacks,
             context_name,
             tool_call.id,
             tool_call.function.name,
@@ -261,7 +261,7 @@ async def do_single_step(
     history: list,
     model: str,
     tools: list[Tool],
-    agent_callbacks: ProgressCallbacks,
+    progress_callbacks: ProgressCallbacks,
     *,
     completer: Completer,
     context_name: str,
@@ -275,12 +275,12 @@ async def do_single_step(
         history,
         model=model,
         tools=wrapped_tools,
-        callbacks=agent_callbacks,
+        callbacks=progress_callbacks,
     )
     message = completion.message
 
     if hasattr(message, "reasoning_content") and message.reasoning_content:
-        agent_callbacks.on_assistant_reasoning(context_name, message.reasoning_content)
+        progress_callbacks.on_assistant_reasoning(context_name, message.reasoning_content)
 
     return message, completion.tokens
 
@@ -288,7 +288,7 @@ async def do_single_step(
 async def run_agent_loop(
     ctx: AgentContext,
     *,
-    agent_callbacks: ProgressCallbacks,
+    progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
     completer: Completer,
     ui: UI,
@@ -307,21 +307,21 @@ async def run_agent_loop(
         raise RuntimeError("Agent needs to have a `compact_conversation` tool in order to run.")
 
     start_message = _create_start_message(desc)
-    agent_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
-    append_user_message(state.history, agent_callbacks, desc.name, start_message)
+    progress_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
+    append_user_message(state.history, progress_callbacks, desc.name, start_message)
 
     while state.output is None:
         message, tokens = await do_single_step(
             state.history,
             desc.model,
             desc.tools,
-            agent_callbacks,
+            progress_callbacks,
             completer=completer,
             context_name=desc.name,
         )
 
         # Append assistant message to history
-        append_assistant_message(state.history, agent_callbacks, desc.name, message)
+        append_assistant_message(state.history, progress_callbacks, desc.name, message)
 
         if getattr(message, "tool_calls", []):
 
@@ -329,7 +329,7 @@ async def run_agent_loop(
                 if isinstance(result, FinishTaskResult):
                     return _handle_finish_task_result(result, state)
                 if isinstance(result, CompactConversationResult):
-                    return _handle_compact_conversation_result(result, desc, state, agent_callbacks)
+                    return _handle_compact_conversation_result(result, desc, state, progress_callbacks)
                 if isinstance(result, TextResult):
                     return result.content
                 return f"Tool produced result of type {type(result).__name__}"
@@ -338,7 +338,7 @@ async def run_agent_loop(
                 message,
                 desc.tools,
                 state.history,
-                agent_callbacks,
+                progress_callbacks,
                 tool_callbacks,
                 ui=ui,
                 context_name=desc.name,
@@ -348,21 +348,21 @@ async def run_agent_loop(
             # Handle assistant steps without tool calls: inject corrective message
             append_user_message(
                 state.history,
-                agent_callbacks,
+                progress_callbacks,
                 desc.name,
                 "I detected a step from you without any tool calls. This is not allowed. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
             )
         if tokens > compact_conversation_at_tokens:
             append_user_message(
                 state.history,
-                agent_callbacks,
+                progress_callbacks,
                 desc.name,
                 "Your conversation history has grown too large. Compact it immediately by using the `compact_conversation` tool.",
             )
 
     assert state.output is not None
 
-    agent_callbacks.on_agent_end(desc.name, state.output.result, state.output.summary)
+    progress_callbacks.on_agent_end(desc.name, state.output.result, state.output.summary)
 
 
 class ChatCommandResult(Enum):

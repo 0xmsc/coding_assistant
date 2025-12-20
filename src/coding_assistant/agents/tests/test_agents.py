@@ -27,7 +27,7 @@ async def test_orchestrator_tool():
         config=config,
         tools=[],
         history=None,
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         ui=NullUI(),
         tool_callbacks=NullToolCallbacks(),
     )
@@ -43,7 +43,7 @@ async def test_orchestrator_tool_resume():
         config=config,
         tools=[],
         history=None,
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         ui=NullUI(),
         tool_callbacks=NullToolCallbacks(),
     )
@@ -55,7 +55,7 @@ async def test_orchestrator_tool_resume():
         config=config,
         tools=[],
         history=first.history,
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         ui=NullUI(),
         tool_callbacks=NullToolCallbacks(),
     )
@@ -73,7 +73,7 @@ async def test_orchestrator_tool_instructions():
         config=config,
         tools=[],
         history=None,
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         ui=NullUI(),
         tool_callbacks=NullToolCallbacks(),
     )

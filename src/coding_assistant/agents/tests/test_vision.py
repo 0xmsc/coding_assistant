@@ -30,7 +30,7 @@ async def test_model_vision_recognizes_car_image():
         config=config,
         tools=[],
         history=history,
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         ui=NullUI(),
         tool_callbacks=NullToolCallbacks(),
     )

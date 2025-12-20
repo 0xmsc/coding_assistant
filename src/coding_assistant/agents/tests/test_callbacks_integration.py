@@ -40,7 +40,7 @@ async def test_on_agent_start_end_called_with_expected_args():
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
-        agent_callbacks=callbacks,
+        progress_callbacks=callbacks,
         tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,
@@ -61,7 +61,7 @@ async def test_on_tool_message_called_with_arguments_and_result():
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
-        agent_callbacks=callbacks,
+        progress_callbacks=callbacks,
         tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,
