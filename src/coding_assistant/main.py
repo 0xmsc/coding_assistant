@@ -142,14 +142,14 @@ async def run_orchestrator_agent(
     history: list | None,
     instructions: str | None,
     working_directory: Path,
-    agent_callbacks: ProgressCallbacks,
+    progress_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
 ):
     tool = AgentTool(
         config=config,
         tools=tools,
         history=history,
-        callbacks=agent_callbacks,
+        callbacks=progress_callbacks,
         ui=PromptToolkitUI(),
         tool_callbacks=tool_callbacks,
         name="launch_orchestrator_agent",
@@ -177,7 +177,7 @@ async def run_chat_session(
     history: list | None,
     instructions: str | None,
     working_directory: Path,
-    agent_callbacks: ProgressCallbacks,
+    progress_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
 ):
     # Build a simple root agent for chat mode (no finish_task)
@@ -208,7 +208,7 @@ async def run_chat_session(
             model=config.model,
             tools=desc.tools,
             parameters=params,
-            callbacks=agent_callbacks,
+            callbacks=progress_callbacks,
             tool_callbacks=tool_callbacks,
             completer=complete,
             ui=PromptToolkitUI(),
@@ -288,7 +288,7 @@ async def _main(args):
             rich_print(Panel(Markdown(instructions), title="Instructions"))
             return
 
-        agent_callbacks = DenseProgressCallbacks()
+        progress_callbacks = DenseProgressCallbacks()
 
         tool_callbacks = ConfirmationToolCallbacks(
             tool_confirmation_patterns=args.tool_confirmation_patterns,
@@ -302,7 +302,7 @@ async def _main(args):
                 history=resume_history,
                 instructions=instructions,
                 working_directory=working_directory,
-                callbacks=agent_callbacks,
+                callbacks=progress_callbacks,
                 tool_callbacks=tool_callbacks,
             )
         else:
@@ -315,7 +315,7 @@ async def _main(args):
                 history=resume_history,
                 instructions=instructions,
                 working_directory=working_directory,
-                callbacks=agent_callbacks,
+                callbacks=progress_callbacks,
                 tool_callbacks=tool_callbacks,
             )
 

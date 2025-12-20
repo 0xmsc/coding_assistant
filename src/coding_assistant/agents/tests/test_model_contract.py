@@ -154,7 +154,7 @@ async def test_requires_finish_tool():
     with pytest.raises(RuntimeError, match="Agent needs to have a `finish_task` tool in order to run."):
         await run_agent_loop(
             ctx,
-            agent_callbacks=NullProgressCallbacks(),
+            progress_callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
             ui=make_ui_mock(),
@@ -173,7 +173,7 @@ async def test_requires_shorten_tool():
     with pytest.raises(RuntimeError, match="Agent needs to have a `compact_conversation` tool in order to run."):
         await run_agent_loop(
             ctx,
-            agent_callbacks=NullProgressCallbacks(),
+            progress_callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             completer=FakeCompleter([FakeMessage(content="hi")]),
             ui=make_ui_mock(),
