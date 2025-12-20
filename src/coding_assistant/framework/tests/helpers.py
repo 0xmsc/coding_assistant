@@ -8,6 +8,7 @@ from coding_assistant.framework.models import (
     FunctionCall,
     LLMMessage,
     ToolCall,
+    message_to_dict,
 )
 from coding_assistant.llm.model import Completion
 from coding_assistant.ui import UI

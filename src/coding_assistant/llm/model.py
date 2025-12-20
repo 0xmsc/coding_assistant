@@ -29,13 +29,6 @@ class Completion:
     tokens: int
 
 
-def message_to_dict(msg: LLMMessage) -> dict[str, Any]:
-    def factory(data):
-        return {k: v for k, v in data if v is not None and v != [] and v != {}}
-
-    return asdict(msg, dict_factory=factory)
-
-
 def _map_litellm_message_to_internal(litellm_message: litellm.Message) -> LLMMessage:
     d = litellm_message.model_dump()
     return message_from_dict(d)
