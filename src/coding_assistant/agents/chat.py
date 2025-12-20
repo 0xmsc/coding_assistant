@@ -121,8 +121,6 @@ async def run_chat_loop(
         return ChatCommandResult.PROCEED_WITH_MODEL
 
     async def _clear_cmd():
-        # history reset logic - we need a way to clear history that is passed in
-        # for now we can just clear the list if it's a list
         clear_history(history)
         print("History cleared.")
         return ChatCommandResult.PROCEED_WITH_PROMPT
