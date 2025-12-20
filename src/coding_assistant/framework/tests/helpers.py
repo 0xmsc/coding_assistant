@@ -1,71 +1,41 @@
-import json
-from dataclasses import dataclass
-from typing import Iterable, Sequence, Any, cast
+from typing import Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.framework.parameters import Parameter
 from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext, Tool
+from coding_assistant.framework.models import (
+    AssistantMessage,
+    FunctionCall,
+    LLMMessage,
+    ToolCall,
+)
 from coding_assistant.llm.model import Completion
 from coding_assistant.ui import UI
 
 
-@dataclass
-class FakeFunction:
-    name: str
-    arguments: str
+def FakeFunction(name: str, arguments: str) -> FunctionCall:
+    return FunctionCall(name=name, arguments=arguments)
 
 
-@dataclass
-class FakeToolCall:
-    id: str
-    function: FakeFunction
-
-    def model_dump_json(self) -> str:
-        return json.dumps(
-            {
-                "id": self.id,
-                "function": {"name": self.function.name, "arguments": self.function.arguments},
-            }
-        )
+def FakeToolCall(id: str, function: FunctionCall) -> ToolCall:
+    return ToolCall(id=id, function=function)
 
 
-class FakeMessage:
-    def __init__(
-        self,
-        content: str | None = None,
-        tool_calls: list[FakeToolCall] | None = None,
-        reasoning_content: str | None = None,
-    ) -> None:
-        self.role = "assistant"
-        self.content = content
-        self.tool_calls = tool_calls or []
-        # Optional field used to simulate models that return separate reasoning content
-        if reasoning_content is not None:
-            self.reasoning_content = reasoning_content
-
-    def model_dump(self) -> dict[str, object]:
-        data: dict[str, object] = {"role": self.role}
-        if self.content is not None:
-            data["content"] = self.content
-        if self.tool_calls:
-            data["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                }
-                for tc in self.tool_calls
-            ]
-        if hasattr(self, "reasoning_content"):
-            data["reasoning_content"] = getattr(self, "reasoning_content")
-        return data
-
-    def model_dump_json(self) -> str:
-        return json.dumps(self.model_dump())
+def FakeMessage(
+    content: str | None = None,
+    tool_calls: list[ToolCall] | None = None,
+    reasoning_content: str | None = None,
+) -> AssistantMessage:
+    return AssistantMessage(
+        content=content,
+        tool_calls=tool_calls or [],
+        reasoning_content=reasoning_content,
+    )
 
 
 class FakeCompleter:
-    def __init__(self, script: Iterable[FakeMessage | Exception]) -> None:
-        self.script: list[FakeMessage | Exception] = list(script)
+    def __init__(self, script: Iterable[AssistantMessage | Exception]) -> None:
+        self.script: list[AssistantMessage | Exception] = list(script)
         self._total_tokens = 0
 
     async def __call__(self, messages, *, model, tools, callbacks) -> Completion:
@@ -80,12 +50,12 @@ class FakeCompleter:
         if isinstance(action, Exception):
             raise action
 
-        text = action.model_dump_json()
+        # Simple mockup for token calculation
+        text = str(action)
         toks = len(text)
         self._total_tokens += toks
 
-        # Cast to Any since tests use FakeMessage to stand in for the model's message type
-        return Completion(message=cast(Any, action), tokens=self._total_tokens)
+        return Completion(message=action, tokens=self._total_tokens)
 
 
 def make_ui_mock(
@@ -137,7 +107,7 @@ def make_test_agent(
     model: str = "TestMode",
     parameters: Sequence[Parameter] | None = None,
     tools: Iterable[Tool] | None = None,
-    history: list[dict] | None = None,
+    history: list[LLMMessage] | None = None,
 ) -> tuple[AgentDescription, AgentState]:
     desc = AgentDescription(
         name=name,
@@ -155,7 +125,7 @@ def make_test_context(
     model: str = "TestMode",
     parameters: Sequence[Parameter] | None = None,
     tools: Iterable[Tool] | None = None,
-    history: list[dict] | None = None,
+    history: list[LLMMessage] | None = None,
 ) -> AgentContext:
     desc, state = make_test_agent(
         name=name,

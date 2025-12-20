@@ -1,6 +1,7 @@
 import json
 import pytest
 
+from coding_assistant.framework.models import UserMessage
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FakeFunction,
@@ -36,7 +37,7 @@ class FakeEchoTool(Tool):
 async def test_chat_step_prompts_user_on_no_tool_calls_once():
     # Assistant emits no tool calls -> in chat mode we should prompt the user once and append reply
     completer = FakeCompleter([FakeMessage(content="Hello")])
-    desc, state = make_test_agent(tools=[], history=[{"role": "user", "content": "start"}])
+    desc, state = make_test_agent(tools=[], history=[UserMessage(content="start")])
 
     ui = make_ui_mock(ask_sequence=[("> ", "User reply"), ("> ", "User reply 2")])
 
@@ -55,7 +56,7 @@ async def test_chat_step_prompts_user_on_no_tool_calls_once():
         )
 
     # Should prompt first, then assistant responds, then prompt again
-    roles = [m.get("role") for m in state.history[-2:]]
+    roles = [m.role for m in state.history[-2:]]
     assert roles == ["assistant", "user"]
 
 
@@ -65,7 +66,7 @@ async def test_chat_step_executes_tools_without_prompt():
     completer = FakeCompleter([FakeMessage(tool_calls=[echo_call])])
 
     echo_tool = FakeEchoTool()
-    desc, state = make_test_agent(tools=[echo_tool], history=[{"role": "user", "content": "start"}])
+    desc, state = make_test_agent(tools=[echo_tool], history=[UserMessage(content="start")])
 
     ui = make_ui_mock(ask_sequence=[("> ", "Hi")])
 
@@ -90,7 +91,7 @@ async def test_chat_step_executes_tools_without_prompt():
 async def test_chat_mode_does_not_require_finish_task_tool():
     # No finish_task tool; chat mode should still allow a step
     completer = FakeCompleter([FakeMessage(content="Hi there")])
-    desc, state = make_test_agent(tools=[], history=[{"role": "user", "content": "start"}])
+    desc, state = make_test_agent(tools=[], history=[UserMessage(content="start")])
 
     ui = make_ui_mock(ask_sequence=[("> ", "Ack"), ("> ", "Ack 2")])
 
@@ -108,7 +109,7 @@ async def test_chat_mode_does_not_require_finish_task_tool():
         )
 
     # Should be assistant followed by next user prompt
-    roles = [m.get("role") for m in state.history[-2:]]
+    roles = [m.role for m in state.history[-2:]]
     assert roles == ["assistant", "user"]
 
 
@@ -116,7 +117,7 @@ async def test_chat_mode_does_not_require_finish_task_tool():
 async def test_chat_exit_command_stops_loop_without_appending_command():
     # Assistant sends a normal message, user replies with /exit which should stop the loop
     completer = FakeCompleter([FakeMessage(content="Hello chat")])
-    desc, state = make_test_agent(tools=[], history=[{"role": "user", "content": "start"}])
+    desc, state = make_test_agent(tools=[], history=[UserMessage(content="start")])
 
     ui = make_ui_mock(ask_sequence=[("> ", "/exit")])
 
@@ -134,9 +135,9 @@ async def test_chat_exit_command_stops_loop_without_appending_command():
     )
 
     # Verify that '/exit' was not appended to history
-    assert not any(m.get("role") == "user" and (m.get("content") or "").strip() == "/exit" for m in state.history)
+    assert not any(m.role == "user" and (m.content or "").strip() == "/exit" for m in state.history)
     # No assistant step should have happened; last message remains the start message
-    assert state.history[-1]["role"] == "user"
+    assert state.history[-1].role == "user"
 
 
 @pytest.mark.asyncio
@@ -159,7 +160,7 @@ async def test_chat_loop_prompts_after_compact_command():
     )
 
     compact_tool = CompactConversation()
-    desc, state = make_test_agent(tools=[compact_tool], history=[{"role": "user", "content": "start"}])
+    desc, state = make_test_agent(tools=[compact_tool], history=[UserMessage(content="start")])
 
     # Mock UI: first is /compact, second is /exit to stop the loop after verifying it prompted
     ui = make_ui_mock(ask_sequence=[("> ", "/compact"), ("> ", "/exit")])
@@ -179,5 +180,5 @@ async def test_chat_loop_prompts_after_compact_command():
     # If the logic works, ui.prompt was called twice
     assert ui.prompt.call_count == 2
     # Most recent history should be the tool result summary
-    assert state.history[-1]["role"] == "tool"
-    assert "compacted" in state.history[-1]["content"].lower()
+    assert state.history[-1].role == "tool"
+    assert "compacted" in state.history[-1].content.lower()

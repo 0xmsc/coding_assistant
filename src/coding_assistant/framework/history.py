@@ -1,8 +1,9 @@
 from coding_assistant.framework.callbacks import ProgressCallbacks
+from coding_assistant.framework.models import LLMMessage, ToolMessage, UserMessage
 
 
 def append_tool_message(
-    history: list,
+    history: list[LLMMessage],
     callbacks: ProgressCallbacks,
     context_name: str,
     tool_call_id: str,
@@ -13,39 +14,44 @@ def append_tool_message(
     callbacks.on_tool_message(context_name, tool_call_id, function_name, function_args, function_call_result)
 
     history.append(
-        {
-            "tool_call_id": tool_call_id,
-            "role": "tool",
-            "name": function_name,
-            "content": function_call_result,
-        }
+        ToolMessage(
+            tool_call_id=tool_call_id,
+            name=function_name,
+            content=function_call_result,
+        )
     )
 
 
 def append_user_message(
-    history: list, callbacks: ProgressCallbacks, context_name: str, content: str, force: bool = False
+    history: list[LLMMessage],
+    callbacks: ProgressCallbacks,
+    context_name: str,
+    content: str,
+    force: bool = False,
 ):
     callbacks.on_user_message(context_name, content, force=force)
 
     history.append(
-        {
-            "role": "user",
-            "content": content,
-        }
+        UserMessage(
+            content=content,
+        )
     )
 
 
 def append_assistant_message(
-    history: list, callbacks: ProgressCallbacks, context_name: str, message, force: bool = False
+    history: list[LLMMessage],
+    callbacks: ProgressCallbacks,
+    context_name: str,
+    message: LLMMessage,
+    force: bool = False,
 ):
     if message.content:
         callbacks.on_assistant_message(context_name, message.content, force=force)
 
-    message_dump = message.model_dump()
-    history.append(message_dump)
+    history.append(message)
 
 
-def clear_history(history: list):
+def clear_history(history: list[LLMMessage]):
     """Resets the history to the first message (the start message) in-place."""
     if history:
         history[:] = [history[0]]
