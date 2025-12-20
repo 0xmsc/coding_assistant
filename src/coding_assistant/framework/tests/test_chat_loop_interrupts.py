@@ -11,9 +11,9 @@ from coding_assistant.framework.interrupts import InterruptController
 from coding_assistant.llm.types import UserMessage
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
-    FakeFunction,
+    FunctionCall,
     FakeMessage,
-    FakeToolCall,
+    ToolCall,
     make_test_agent,
     make_ui_mock,
 )
@@ -61,7 +61,7 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
     """Test that interrupting during tool execution returns to user prompt."""
     interrupt_event = asyncio.Event()
     tool = InterruptibleTool(delay=0.5, interrupt_event=interrupt_event)
-    tool_call = FakeToolCall("1", FakeFunction("interruptible_tool", json.dumps({})))
+    tool_call = ToolCall("1", FunctionCall("interruptible_tool", json.dumps({})))
 
     # Completer returns tool call, then response after interrupt
     completer = FakeCompleter(
@@ -133,7 +133,7 @@ async def test_interrupt_during_do_single_step():
     interrupt_event = asyncio.Event()
     # Longer delay to ensure interrupt happens before completion
     tool = InterruptibleTool(delay=1.0, interrupt_event=interrupt_event)
-    tool_call = FakeToolCall("1", FakeFunction("interruptible_tool", json.dumps({})))
+    tool_call = ToolCall("1", FunctionCall("interruptible_tool", json.dumps({})))
 
     completer = FakeCompleter(
         [
@@ -203,8 +203,8 @@ async def test_multiple_tool_calls_with_interrupt():
     tool1 = InterruptibleTool(delay=0.5, interrupt_event=interrupt_event)
     tool2 = InterruptibleTool(delay=0.5)
 
-    tool_call1 = FakeToolCall("1", FakeFunction("interruptible_tool", json.dumps({})))
-    tool_call2 = FakeToolCall("2", FakeFunction("interruptible_tool", json.dumps({})))
+    tool_call1 = ToolCall("1", FunctionCall("interruptible_tool", json.dumps({})))
+    tool_call2 = ToolCall("2", FunctionCall("interruptible_tool", json.dumps({})))
 
     completer = FakeCompleter(
         [
@@ -264,7 +264,7 @@ async def test_multiple_tool_calls_with_interrupt():
 async def test_chat_loop_without_interrupts_works_normally():
     """Test that chat loop works normally without any interrupts."""
     tool = InterruptibleTool(delay=0.05)
-    tool_call = FakeToolCall("1", FakeFunction("interruptible_tool", json.dumps({})))
+    tool_call = ToolCall("1", FunctionCall("interruptible_tool", json.dumps({})))
 
     completer = FakeCompleter(
         [
@@ -309,7 +309,7 @@ async def test_interrupt_recovery_continues_conversation():
     """Test that after interrupt recovery, the conversation continues properly."""
     interrupt_event = asyncio.Event()
     tool = InterruptibleTool(delay=0.5, interrupt_event=interrupt_event)
-    tool_call = FakeToolCall("1", FakeFunction("interruptible_tool", json.dumps({})))
+    tool_call = ToolCall("1", FunctionCall("interruptible_tool", json.dumps({})))
 
     completer = FakeCompleter(
         [
@@ -384,8 +384,8 @@ async def test_interrupt_during_second_tool_call():
     tool = InterruptibleTool(delay=0.5, interrupt_event=interrupt_event)
 
     # Two calls to the same tool
-    call1 = FakeToolCall("1", FakeFunction("interruptible_tool", json.dumps({})))
-    call2 = FakeToolCall("2", FakeFunction("interruptible_tool", json.dumps({})))
+    call1 = ToolCall("1", FunctionCall("interruptible_tool", json.dumps({})))
+    call2 = ToolCall("2", FunctionCall("interruptible_tool", json.dumps({})))
 
     completer = FakeCompleter(
         [
@@ -452,7 +452,7 @@ async def test_sigint_interrupts_tool_execution():
     """E2E test: SIGINT (CTRL-C) interrupts tool execution and returns to user prompt."""
     interrupt_event = asyncio.Event()
     tool = InterruptibleTool(delay=1.0, interrupt_event=interrupt_event)
-    tool_call = FakeToolCall("1", FakeFunction("interruptible_tool", json.dumps({})))
+    tool_call = ToolCall("1", FunctionCall("interruptible_tool", json.dumps({})))
 
     completer = FakeCompleter(
         [
