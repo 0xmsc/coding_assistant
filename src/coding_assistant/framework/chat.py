@@ -3,6 +3,9 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
 
+from coding_assistant.framework.builtin_tools import (
+    CompactConversationTool,
+)
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
 from coding_assistant.framework.history import (
@@ -94,6 +97,11 @@ async def run_chat_loop(
     ui: UI,
     context_name: str,
 ):
+    # Inject required tools
+    tools = list(tools)
+    if not any(tool.name() == "compact_conversation" for tool in tools):
+        tools.append(CompactConversationTool())
+
     if history:
         for message in history:
             if message.get("role") == "assistant":

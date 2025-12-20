@@ -27,7 +27,6 @@ from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
 from coding_assistant.tools.tools import AgentTool
-from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
 from coding_assistant.ui import PromptToolkitUI
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
@@ -198,10 +197,7 @@ async def run_chat_session(
         await run_chat_loop(
             history=chat_history,
             model=config.model,
-            tools=[
-                CompactConversation(),
-                *tools,
-            ],
+            tools=tools,
             parameters=chat_parameters,
             callbacks=progress_callbacks,
             tool_callbacks=tool_callbacks,
