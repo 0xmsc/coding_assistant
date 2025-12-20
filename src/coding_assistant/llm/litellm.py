@@ -3,14 +3,17 @@ import functools
 import json
 import logging
 import re
+from collections.abc import Sequence
 from typing import Literal, cast
 
 import litellm
 
+from coding_assistant.llm.adapters import get_tools
 from coding_assistant.llm.types import (
     Completion,
     LLMMessage,
     ProgressCallbacks,
+    Tool,
     message_from_dict,
     message_to_dict,
 )
@@ -54,16 +57,17 @@ def _parse_model_and_reasoning(
 
 async def _try_completion(
     messages: list[LLMMessage],
-    tools: list,
+    tools: Sequence[Tool],
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
 ):
     litellm_messages = [_map_internal_message_to_litellm(m) for m in messages]
+    litellm_tools = await get_tools(tools)
 
     response = await litellm.acompletion(
         messages=litellm_messages,
-        tools=tools,
+        tools=litellm_tools,
         model=model,
         stream=True,
         reasoning_effort=reasoning_effort,
@@ -98,7 +102,7 @@ async def _try_completion(
                 "model": model,
                 "reasoning_effort": reasoning_effort,
                 "messages": litellm_messages,
-                "tools": tools,
+                "tools": litellm_tools,
                 "completion": completion.model_dump(),
             },
             indent=2,
@@ -116,7 +120,7 @@ async def _try_completion(
 
 async def _try_completion_with_retry(
     messages: list[LLMMessage],
-    tools: list,
+    tools: Sequence[Tool],
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
@@ -141,7 +145,7 @@ async def _try_completion_with_retry(
 async def complete(
     messages: list[LLMMessage],
     model: str,
-    tools: list,
+    tools: Sequence[Tool],
     callbacks: ProgressCallbacks,
 ):
     try:
