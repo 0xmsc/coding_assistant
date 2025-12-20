@@ -6,6 +6,8 @@ from coding_assistant.framework.execution import do_single_step, handle_tool_cal
 from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
+    FakeFunction,
+    FakeToolCall,
     make_test_agent,
     make_ui_mock,
 )
@@ -165,9 +167,9 @@ async def test_auto_inject_builtin_tools():
             AssistantMessage(
                 content="done",
                 tool_calls=[
-                    ToolCall(
+                    FakeToolCall(
                         id="c1",
-                        function=FunctionCall(name="finish_task", arguments='{"result": "ok", "summary": "done"}'),
+                        function=FakeFunction(name="finish_task", arguments='{"result": "ok", "summary": "done"}'),
                     )
                 ],
             ),
