@@ -47,10 +47,11 @@ Your client has provided the following parameters for your task:
 CHAT_START_MESSAGE_TEMPLATE = """
 ## General
 
-- You are an agent named `{name}`.
+- You are an agent named.
 - You are in chat mode.
   - Use tools only when they materially advance the work.
-  - When you do not know what to do next, reply without any tool calls to return control to the user. 
+  - When you have finished your task, reply without any tool calls to return control to the user.
+  - When you want to ask the user a question, create a message without any tool calls to return control to the user.
 
 ## Parameters
 
