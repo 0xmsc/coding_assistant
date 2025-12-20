@@ -1,15 +1,14 @@
 import asyncio
 import time
-import json
 import pytest
 
 from coding_assistant.agents.callbacks import (
     ToolCallbacks,
-    ProgressCallbacks,
     NullProgressCallbacks,
     NullToolCallbacks,
 )
-from coding_assistant.agents.execution import handle_tool_call, handle_tool_calls, _handle_finish_task_result
+from coding_assistant.agents.execution import handle_tool_calls
+from coding_assistant.agents.agent import _handle_finish_task_result
 from coding_assistant.agents.tests.helpers import (
     FakeFunction,
     FakeMessage,
@@ -18,7 +17,6 @@ from coding_assistant.agents.tests.helpers import (
     make_ui_mock,
 )
 from coding_assistant.agents.types import (
-    AgentContext,
     FinishTaskResult,
     TextResult,
     Tool,
@@ -128,7 +126,13 @@ async def test_unknown_result_type_raises() -> None:
     tool_call = FakeToolCall(id="1", function=FakeFunction(name="weird", arguments="{}"))
     msg = FakeMessage(tool_calls=[tool_call])
     await handle_tool_calls(
-        msg, desc.tools, state.history, NullProgressCallbacks(), NullToolCallbacks(), ui=make_ui_mock(), context_name=desc.name
+        msg,
+        desc.tools,
+        state.history,
+        NullProgressCallbacks(),
+        NullToolCallbacks(),
+        ui=make_ui_mock(),
+        context_name=desc.name,
     )
     assert "WeirdResult" in state.history[-1]["content"]
 
@@ -388,14 +392,38 @@ async def test_multiple_tool_calls_are_parallel() -> None:
 
     start = time.monotonic()
     msg1 = FakeMessage(tool_calls=[msg.tool_calls[0]])
-    await handle_tool_calls(msg1, desc.tools, state.history, NullProgressCallbacks(), tool_callbacks=NullToolCallbacks(), ui=make_ui_mock(), context_name=desc.name)
+    await handle_tool_calls(
+        msg1,
+        desc.tools,
+        state.history,
+        NullProgressCallbacks(),
+        tool_callbacks=NullToolCallbacks(),
+        ui=make_ui_mock(),
+        context_name=desc.name,
+    )
     msg2 = FakeMessage(tool_calls=[msg.tool_calls[1]])
-    await handle_tool_calls(msg2, desc.tools, state.history, NullProgressCallbacks(), tool_callbacks=NullToolCallbacks(), ui=make_ui_mock(), context_name=desc.name)
+    await handle_tool_calls(
+        msg2,
+        desc.tools,
+        state.history,
+        NullProgressCallbacks(),
+        tool_callbacks=NullToolCallbacks(),
+        ui=make_ui_mock(),
+        context_name=desc.name,
+    )
     # Above would be sequential; now test real parallel variant using handle_tool_calls
     desc, state = make_test_agent(tools=[t1, t2])  # reset agent history
     events.clear()
     start = time.monotonic()
-    await handle_tool_calls(msg, desc.tools, state.history, NullProgressCallbacks(), tool_callbacks=NullToolCallbacks(), ui=make_ui_mock(), context_name=desc.name)
+    await handle_tool_calls(
+        msg,
+        desc.tools,
+        state.history,
+        NullProgressCallbacks(),
+        tool_callbacks=NullToolCallbacks(),
+        ui=make_ui_mock(),
+        context_name=desc.name,
+    )
     elapsed = time.monotonic() - start
 
     # Assert total runtime significantly less than sequential (~0.4s)

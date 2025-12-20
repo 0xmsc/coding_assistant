@@ -6,6 +6,8 @@ from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCal
 from coding_assistant.agents.execution import (
     do_single_step,
     handle_tool_calls,
+)
+from coding_assistant.agents.agent import (
     _handle_compact_conversation_result,
     _handle_finish_task_result,
 )
@@ -17,7 +19,7 @@ from coding_assistant.agents.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.agents.types import AgentContext, ToolResult, FinishTaskResult, CompactConversationResult, TextResult
+from coding_assistant.agents.types import ToolResult, FinishTaskResult, CompactConversationResult, TextResult
 from coding_assistant.tools.tools import FinishTaskTool, CompactConversation
 
 
@@ -52,21 +54,21 @@ async def test_compact_conversation_resets_history():
     )
 
     msg = FakeMessage(tool_calls=[tool_call])
-    
+
     def handle_tool_result(result: ToolResult) -> str:
         if isinstance(result, CompactConversationResult):
             return _handle_compact_conversation_result(result, desc, state, callbacks)
         return str(result)
 
     await handle_tool_calls(
-        msg, 
-        desc.tools, 
-        state.history, 
-        callbacks, 
-        tool_callbacks=NullToolCallbacks(), 
-        ui=make_ui_mock(), 
+        msg,
+        desc.tools,
+        state.history,
+        callbacks,
+        tool_callbacks=NullToolCallbacks(),
+        ui=make_ui_mock(),
         context_name=desc.name,
-        handle_tool_result=handle_tool_result
+        handle_tool_result=handle_tool_result,
     )
 
     # Verify that the summary user message was forced
@@ -123,14 +125,14 @@ async def test_compact_conversation_resets_history():
         return str(result)
 
     await handle_tool_calls(
-        msg, 
-        desc.tools, 
-        state.history, 
-        callbacks, 
-        NullToolCallbacks(), 
-        ui=make_ui_mock(), 
+        msg,
+        desc.tools,
+        state.history,
+        callbacks,
+        NullToolCallbacks(),
+        ui=make_ui_mock(),
         context_name=desc.name,
-        handle_tool_result=handle_tool_result_2
+        handle_tool_result=handle_tool_result_2,
     )
 
     # Verify the assistant tool call and finish result were appended after the reset messages

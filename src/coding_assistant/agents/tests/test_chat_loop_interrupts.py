@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import patch
 
 from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.agents.execution import run_chat_loop
+from coding_assistant.agents.chat import run_chat_loop
 from coding_assistant.agents.interrupts import InterruptController
 from coding_assistant.agents.tests.helpers import (
     FakeCompleter,

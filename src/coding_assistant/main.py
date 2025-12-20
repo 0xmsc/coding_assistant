@@ -12,9 +12,9 @@ from rich.panel import Panel
 
 from coding_assistant.agents.callbacks import ProgressCallbacks
 from coding_assistant.llm.model import complete
-from coding_assistant.agents.execution import run_chat_loop
+from coding_assistant.agents.chat import run_chat_loop
 from coding_assistant.agents.parameters import Parameter
-from coding_assistant.agents.types import AgentContext, AgentDescription, AgentState, Tool
+from coding_assistant.agents.types import AgentDescription, AgentState, Tool
 from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
@@ -149,7 +149,7 @@ async def run_orchestrator_agent(
         config=config,
         tools=tools,
         history=history,
-        callbacks=progress_callbacks,
+        progress_callbacks=progress_callbacks,
         ui=PromptToolkitUI(),
         tool_callbacks=tool_callbacks,
         name="launch_orchestrator_agent",
