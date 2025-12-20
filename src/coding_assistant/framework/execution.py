@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from json import JSONDecodeError
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 async def handle_tool_call(
     tool_call: ToolCall,
-    tools: list[Tool],
+    tools: Sequence[Tool],
     history: list[LLMMessage],
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
@@ -49,6 +49,7 @@ async def handle_tool_call(
     # Notify callbacks that tool is starting
     progress_callbacks.on_tool_start(context_name, tool_call.id, function_name, function_args)
 
+    function_call_result: ToolResult
     try:
         if callback_result := await tool_callbacks.before_tool_execution(
             context_name,
@@ -62,7 +63,12 @@ async def handle_tool_call(
             )
             function_call_result = callback_result
         else:
-            function_call_result = await execute_tool_call(function_name, function_args, tools)
+            # We cast here because execute_tool_call returns the LLM Protocol version of ToolResult,
+            # but we know that since we passed in Framework Tool objects, it will return
+            # Framework ToolResult objects.
+            from typing import cast
+
+            function_call_result = cast(ToolResult, await execute_tool_call(function_name, function_args, tools))
     except Exception as e:
         function_call_result = TextResult(content=f"Error executing tool: {e}")
 
@@ -84,7 +90,7 @@ async def handle_tool_call(
 
 async def handle_tool_calls(
     message: LLMMessage,
-    tools: list[Tool],
+    tools: Sequence[Tool],
     history: list[LLMMessage],
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
@@ -169,7 +175,7 @@ async def handle_tool_calls(
 async def do_single_step(
     history: list[LLMMessage],
     model: str,
-    tools: list[Tool],
+    tools: Sequence[Tool],
     progress_callbacks: ProgressCallbacks,
     *,
     completer: Completer,

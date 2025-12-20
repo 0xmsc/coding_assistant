@@ -1,4 +1,5 @@
-from coding_assistant.framework.types import Tool, ToolResult
+from collections.abc import Sequence
+from coding_assistant.llm.types import Tool, ToolResult
 
 
 def fix_input_schema(input_schema: dict):
@@ -14,7 +15,7 @@ def fix_input_schema(input_schema: dict):
             prop.pop("format", None)
 
 
-async def get_tools(tools: list[Tool]) -> list[dict]:
+async def get_tools(tools: Sequence[Tool]) -> list[dict]:
     """Convert Tool instances to LiteLLM format."""
     result: list[dict] = []
     for tool in tools:
@@ -33,7 +34,7 @@ async def get_tools(tools: list[Tool]) -> list[dict]:
     return result
 
 
-async def execute_tool_call(function_name: str, function_args: dict, tools: list[Tool]) -> ToolResult:
+async def execute_tool_call(function_name: str, function_args: dict, tools: Sequence[Tool]) -> ToolResult:
     for tool in tools:
         if tool.name() == function_name:
             return await tool.execute(function_args)
