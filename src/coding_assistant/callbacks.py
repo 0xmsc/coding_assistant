@@ -159,7 +159,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         symbol: str,
         tool_name: str,
         arguments: dict,
-        lang_map: dict[str, str],
+        lang_map: dict[str, str] = dict(),
     ):
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}")
         for key, value in arguments.items():
@@ -180,15 +180,13 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 return True
         elif tool_name == "mcp_coding_assistant_mcp_filesystem_write_file":
             if "\n" in arguments["content"]:
-                self._print_arguments_fancy(symbol, tool_name, arguments, {"content": ""})
+                self._print_arguments_fancy(symbol, tool_name, arguments)
                 return True
         elif tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
             old = arguments["old_text"]
             new = arguments["new_text"]
             if "\n" in old or "\n" in new:
-                path = arguments["path"]
-                lang = path.split(".")[-1] if "." in path else ""
-                self._print_arguments_fancy(symbol, tool_name, arguments, {"old_text": lang, "new_text": lang})
+                self._print_arguments_fancy(symbol, tool_name, arguments)
                 return True
 
         return False
