@@ -7,11 +7,8 @@ from json import JSONDecodeError
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.history import append_tool_message
 from coding_assistant.llm.types import AssistantMessage, LLMMessage, ToolCall
-from coding_assistant.framework.types import Tool, ToolResult
-from coding_assistant.framework.types import (
-    Completer,
-    TextResult,
-)
+from coding_assistant.framework.types import Tool, Completer
+from coding_assistant.framework.results import ToolResult, TextResult
 from coding_assistant.trace import trace_data
 from coding_assistant.ui import UI
 

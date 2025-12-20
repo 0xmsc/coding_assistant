@@ -1,10 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Optional, TYPE_CHECKING
-
-if TYPE_CHECKING:  # pragma: no cover
-    from coding_assistant.framework.types import ToolResult  # for type hints only
-else:  # At runtime we avoid importing to prevent circular import
-    ToolResult = object  # type: ignore
+from typing import Optional
+from coding_assistant.framework.results import ToolResult
 
 
 class ProgressCallbacks(ABC):
@@ -89,12 +85,12 @@ class ToolCallbacks(ABC):
         arguments: dict,
         *,
         ui,
-    ) -> Optional[ToolResult]:  # pragma: no cover - interface
+    ) -> Optional[ToolResult]:
         pass
 
 
 class NullToolCallbacks(ToolCallbacks):
-    async def before_tool_execution(  # type: ignore[override]
+    async def before_tool_execution(
         self,
         context_name: str,
         tool_call_id: str,
@@ -102,5 +98,5 @@ class NullToolCallbacks(ToolCallbacks):
         arguments: dict,
         *,
         ui,
-    ) -> None:
+    ) -> Optional[ToolResult]:
         return None
