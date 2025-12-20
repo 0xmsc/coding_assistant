@@ -1,4 +1,4 @@
-from typing import Any, Iterable, Sequence
+from typing import Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.framework.parameters import Parameter
