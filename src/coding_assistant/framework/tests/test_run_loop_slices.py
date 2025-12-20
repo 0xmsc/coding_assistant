@@ -78,6 +78,7 @@ async def test_tool_selection_then_finish():
             "tool_calls": [
                 {
                     "id": "1",
+                    "type": "function",
                     "function": {
                         "name": "fake.echo",
                         "arguments": '{"text": "hi"}',
@@ -96,6 +97,7 @@ async def test_tool_selection_then_finish():
             "tool_calls": [
                 {
                     "id": "2",
+                    "type": "function",
                     "function": {
                         "name": "finish_task",
                         "arguments": '{"result": "done", "summary": "sum"}',
@@ -149,6 +151,7 @@ async def test_unknown_tool_error_then_finish(monkeypatch):
             "tool_calls": [
                 {
                     "id": "1",
+                    "type": "function",
                     "function": {
                         "name": "unknown.tool",
                         "arguments": "{}",
@@ -167,6 +170,7 @@ async def test_unknown_tool_error_then_finish(monkeypatch):
             "tool_calls": [
                 {
                     "id": "2",
+                    "type": "function",
                     "function": {
                         "name": "finish_task",
                         "arguments": '{"result": "ok", "summary": "s"}',
@@ -228,6 +232,7 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
             "tool_calls": [
                 {
                     "id": "2",
+                    "type": "function",
                     "function": {
                         "name": "finish_task",
                         "arguments": '{"result": "r", "summary": "s"}',
@@ -331,6 +336,7 @@ async def test_multiple_tool_calls_processed_in_order():
             "tool_calls": [
                 {
                     "id": "1",
+                    "type": "function",
                     "function": {
                         "name": "fake.echo",
                         "arguments": '{"text": "first"}',
@@ -338,6 +344,7 @@ async def test_multiple_tool_calls_processed_in_order():
                 },
                 {
                     "id": "2",
+                    "type": "function",
                     "function": {
                         "name": "fake.echo",
                         "arguments": '{"text": "second"}',
@@ -366,6 +373,7 @@ async def test_multiple_tool_calls_processed_in_order():
         "tool_calls": [
             {
                 "id": "3",
+                "type": "function",
                 "function": {
                     "name": "finish_task",
                     "arguments": '{"result": "ok", "summary": "s"}',
@@ -429,6 +437,7 @@ async def test_feedback_loop_then_finish():
             "tool_calls": [
                 {
                     "id": "1",
+                    "type": "function",
                     "function": {
                         "name": "finish_task",
                         "arguments": '{"result": "first", "summary": "s1"}',

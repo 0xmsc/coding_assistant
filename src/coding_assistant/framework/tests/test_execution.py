@@ -180,8 +180,6 @@ async def test_tool_call_malformed_arguments_records_error() -> None:
     )
 
     assert state.history, "Expected an error tool message appended to history"
-    from coding_assistant.framework.models import ToolMessage
-
     tool_msg = cast(ToolMessage, state.history[-1])
     assert tool_msg.role == "tool"
     assert tool_msg.name == "bad_tool"
@@ -225,8 +223,6 @@ async def test_tool_execution_value_error_records_error() -> None:
 
     # Tool execute should have been invoked (setting executed True) then error captured
     assert tool.executed is True
-    from coding_assistant.framework.models import ToolMessage
-
     tool_msg = cast(ToolMessage, state.history[-1])
     assert tool_msg.role == "tool"
     assert tool_msg.name == "err_tool"
@@ -264,7 +260,6 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
     # First denied
     call1 = ToolCall(id="s1", function=FunctionCall(name="mcp_coding_assistant_mcp_shell_execute", arguments=args_json))
     msg1 = AssistantMessage(tool_calls=[call1])
-    from coding_assistant.callbacks import ConfirmationToolCallbacks  # local import to avoid circular
 
     await handle_tool_calls(
         msg1,

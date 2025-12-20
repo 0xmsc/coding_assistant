@@ -23,7 +23,7 @@ def enable_tracing() -> None:
     if trace_path.exists():
         for f in trace_path.iterdir():
             if f.is_file():
-                f.unlink()
+                f.unlink(missing_ok=True)
 
     logger.info(f"Tracing to {trace_path}")
 

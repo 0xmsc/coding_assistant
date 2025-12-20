@@ -3,6 +3,9 @@ import json
 import pytest
 
 from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.history import (
+    append_assistant_message,
+)
 from coding_assistant.framework.execution import (
     do_single_step,
     handle_tool_calls,
@@ -115,8 +118,6 @@ async def test_compact_conversation_resets_history():
     )
 
     # Append assistant message to history
-    from coding_assistant.framework.history import append_assistant_message
-
     append_assistant_message(state.history, callbacks, desc.name, msg)
 
     def handle_tool_result_2(result: ToolResult) -> str:
@@ -143,6 +144,7 @@ async def test_compact_conversation_resets_history():
         "tool_calls": [
             {
                 "id": "finish-1",
+                "type": "function",
                 "function": {
                     "name": "finish_task",
                     "arguments": '{"result": "done", "summary": "sum"}',

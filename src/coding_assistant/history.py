@@ -1,6 +1,7 @@
 import logging
 import json
 from pathlib import Path
+from dataclasses import asdict, is_dataclass
 
 logger = logging.getLogger("coding_assistant.cache")
 
@@ -28,7 +29,14 @@ def _fix_invalid_history(history: list) -> list:
     fixed_history = list(history)
     while fixed_history:
         last_message = fixed_history[-1]
-        if last_message["role"] == "assistant" and "tool_calls" in last_message:
+        if isinstance(last_message, dict):
+            role = last_message.get("role")
+            has_tool_calls = bool(last_message.get("tool_calls"))
+        else:
+            role = getattr(last_message, "role", None)
+            has_tool_calls = bool(getattr(last_message, "tool_calls", None))
+
+        if role == "assistant" and has_tool_calls:
             fixed_history.pop()
         else:
             break
@@ -39,7 +47,20 @@ def save_orchestrator_history(working_directory: Path, agent_history: list):
     """Save orchestrator agent history for crash recovery. Only saves agent_history."""
     history_file = get_orchestrator_history_file(working_directory)
     fixed_history = _fix_invalid_history(agent_history)
-    history_file.write_text(json.dumps(fixed_history, indent=2))
+
+    serializable_history = []
+    # Argument 1 to "asdict" has incompatible type "DataclassInstance | type[DataclassInstance]"; expected "DataclassInstance"
+    # is_dataclass(msg) checks if msg is a dataclass instance or class.
+    # We want to ensure it's an instance.
+    for msg in fixed_history:
+        if isinstance(msg, dict):
+            serializable_history.append(msg)
+        elif is_dataclass(msg) and not isinstance(msg, type):
+            serializable_history.append(asdict(msg))
+        else:
+            serializable_history.append(msg)
+
+    history_file.write_text(json.dumps(serializable_history, indent=2))
 
     logger.info(f"Saved orchestrator history for {working_directory} to {history_file}.")
 
