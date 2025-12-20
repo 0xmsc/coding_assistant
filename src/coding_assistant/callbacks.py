@@ -131,19 +131,6 @@ class DenseProgressCallbacks(ProgressCallbacks):
     def __init__(self):
         self._state: ProgressState = None
 
-    def on_agent_start(self, context_name: str, model: str, is_resuming: bool = False):
-        status = "resuming" if is_resuming else "starting"
-        print()
-        print(f"[bold red]▶[/bold red] Agent {context_name} ({model}) {status}")
-        self._state = IdleState()
-
-    def on_agent_end(self, context_name: str, result: str, summary: str):
-        self._finalize_state()
-        print()
-        print(f"[bold red]◀[/bold red] Agent {context_name} complete")
-        print(f"[dim]Summary: {summary}[/dim]")
-        self._state = IdleState()
-
     def on_user_message(self, context_name: str, content: str, force: bool = False):
         if not force:
             return

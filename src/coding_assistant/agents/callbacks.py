@@ -11,16 +11,6 @@ class ProgressCallbacks(ABC):
     """Abstract interface for agent callbacks."""
 
     @abstractmethod
-    def on_agent_start(self, context_name: str, model: str, is_resuming: bool = False):
-        """Handle agent start events."""
-        pass
-
-    @abstractmethod
-    def on_agent_end(self, context_name: str, result: str, summary: str):
-        """Handle agent end events."""
-        pass
-
-    @abstractmethod
     def on_user_message(self, context_name: str, content: str, force: bool = False):
         """Handle messages with role: user."""
         pass
@@ -63,12 +53,6 @@ class ProgressCallbacks(ABC):
 
 class NullProgressCallbacks(ProgressCallbacks):
     """Null object implementation that does nothing."""
-
-    def on_agent_start(self, context_name: str, model: str, is_resuming: bool = False):
-        pass
-
-    def on_agent_end(self, context_name: str, result: str, summary: str):
-        pass
 
     def on_user_message(self, context_name: str, content: str, force: bool = False):
         pass

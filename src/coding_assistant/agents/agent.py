@@ -112,7 +112,6 @@ async def run_agent_loop(
         raise RuntimeError("Agent needs to have a `compact_conversation` tool in order to run.")
 
     start_message = _create_start_message(desc)
-    progress_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
     append_user_message(state.history, progress_callbacks, desc.name, start_message)
 
     while state.output is None:
@@ -156,5 +155,3 @@ async def run_agent_loop(
             )
 
     assert state.output is not None
-
-    progress_callbacks.on_agent_end(desc.name, state.output.result, state.output.summary)

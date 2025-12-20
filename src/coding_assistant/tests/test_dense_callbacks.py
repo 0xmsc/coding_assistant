@@ -6,9 +6,8 @@ def test_dense_callbacks_lifecycle():
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
-        # 1. Start agent
-        cb.on_agent_start("TestAgent", "gpt-4")
-        assert isinstance(cb._state, IdleState)
+        # 1. Idle
+        assert cb._state is None
 
         # 2. Reasoning
         cb.on_reasoning_chunk("Thinking...")
@@ -35,9 +34,6 @@ def test_dense_callbacks_lifecycle():
         cb.on_content_chunk("Final bit")
         cb.on_chunks_end()
         assert isinstance(cb._state, IdleState)
-
-        # 6. End agent
-        cb.on_agent_end("TestAgent", "Result", "Summary")
 
     # Verify that print was called
     assert mock_print.called
@@ -112,9 +108,6 @@ def test_dense_callbacks_empty_line_logic():
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
-        # 1. Start agent
-        cb.on_agent_start("TestAgent", "gpt-4")
-
         # 2. First reasoning chunk
         cb.on_reasoning_chunk("Thinking")
 
@@ -132,9 +125,6 @@ def test_dense_callbacks_empty_line_logic():
 
         # Capture calls to print
         print_calls = [c for c in mock_print.call_args_list]
-
-        # Initial agent start has a print() then agent info
-        assert call() in print_calls
 
         # Verify newline when switching from reasoning to content
         found_newline = False
