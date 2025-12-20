@@ -9,7 +9,7 @@ from coding_assistant.framework.models import (
     LLMMessage,
     ToolCall,
 )
-from coding_assistant.llm.model import Completion
+from coding_assistant.llm.model import Completion, message_to_dict
 from coding_assistant.ui import UI
 
 
@@ -135,7 +135,3 @@ def make_test_context(
         history=history,
     )
     return AgentContext(desc=desc, state=state)
-
-
-def message_to_dict(msg: LLMMessage) -> dict[str, Any]:
-    return msg.to_dict()
