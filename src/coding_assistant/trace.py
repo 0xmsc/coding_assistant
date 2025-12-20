@@ -1,8 +1,13 @@
 from datetime import datetime
+from pathlib import Path
 
 from coding_assistant.paths import get_app_cache_dir
 
 _trace_enabled = False
+
+
+def _get_trace_dir() -> Path:
+    return get_app_cache_dir() / "traces"
 
 
 def enable_tracing() -> None:
@@ -11,7 +16,7 @@ def enable_tracing() -> None:
     _trace_enabled = True
 
     # Empty the traces directory
-    trace_path = get_app_cache_dir() / "traces"
+    trace_path = _get_trace_dir()
     if trace_path.exists():
         for f in trace_path.iterdir():
             if f.is_file():
@@ -34,7 +39,7 @@ def trace_data(name: str, content: str) -> None:
     if not trace_enabled():
         return
 
-    trace_path = get_app_cache_dir() / "traces"
+    trace_path = _get_trace_dir()
     trace_path.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
