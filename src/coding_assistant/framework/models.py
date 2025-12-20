@@ -1,6 +1,8 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Optional
 
+from dacite import from_dict
+
 
 @dataclass(frozen=True)
 class FunctionCall:
@@ -62,48 +64,60 @@ def message_from_dict(d: Any) -> LLMMessage:
             return obj.get(key, default)
         return getattr(obj, key, default)
 
-    role = get_val(d, "role") or "assistant"
-    name = get_val(d, "name")
-    content = get_val(d, "content")
-    provider_specific_fields = get_val(d, "provider_specific_fields") or {}
+    # Convert to actual dict if it's a litellm.Message or similar object
+    if not isinstance(d, dict):
+        role = get_val(d, "role")
+        content = get_val(d, "content")
+        name = get_val(d, "name")
+        provider_specific_fields = get_val(d, "provider_specific_fields")
+        reasoning_content = get_val(d, "reasoning_content")
+        tool_call_id = get_val(d, "tool_call_id")
 
-    common: dict[str, Any] = {
-        "name": name,
-        "provider_specific_fields": provider_specific_fields,
-    }
-
-    if role == "system":
-        return SystemMessage(content=content or "", **common)
-    if role == "user":
-        return UserMessage(content=content or "", **common)
-    if role == "assistant":
         tool_calls = []
         raw_tool_calls = get_val(d, "tool_calls", [])
         for tc in raw_tool_calls or []:
-            tc_id = get_val(tc, "id", "")
+            tc_id = get_val(tc, "id")
             func = get_val(tc, "function")
-            func_name = get_val(func, "name", "")
-            func_args = get_val(func, "arguments", "")
-
+            func_name = get_val(func, "name")
+            func_args = get_val(func, "arguments")
             tool_calls.append(
-                ToolCall(
-                    id=tc_id,
-                    function=FunctionCall(
-                        name=func_name,
-                        arguments=func_args,
-                    ),
-                )
+                {
+                    "id": tc_id,
+                    "function": {"name": func_name, "arguments": func_args},
+                    "type": "function",
+                }
             )
-        return AssistantMessage(
-            content=content,
-            reasoning_content=get_val(d, "reasoning_content"),
-            tool_calls=tool_calls,
-            **common,
-        )
+
+        d = {
+            "role": role,
+            "content": content,
+            "name": name,
+            "provider_specific_fields": provider_specific_fields or {},
+            "reasoning_content": reasoning_content,
+            "tool_calls": tool_calls,
+            "tool_call_id": tool_call_id,
+        }
+
+    # Ensure role is set for the Literal types in the dataclasses
+    if "role" not in d or d["role"] is None:
+        # We don't have enough info here to be sure, but usually message_from_dict
+        # is called on things that should have a role.
+        # However, from_dict will fail if the Literal role is None.
+        pass
+
+    role = d.get("role") or "assistant"
+    d["role"] = role
+
+    # Filter out None values to avoid dacite WrongTypeError for fields with defaults
+    # or Literals.
+    d = {k: v for k, v in d.items() if v is not None}
+
+    if role == "system":
+        return from_dict(data_class=SystemMessage, data=d)
+    if role == "user":
+        return from_dict(data_class=UserMessage, data=d)
+    if role == "assistant":
+        return from_dict(data_class=AssistantMessage, data=d)
     if role == "tool":
-        return ToolMessage(
-            content=content or "",
-            tool_call_id=get_val(d, "tool_call_id", ""),
-            **common,
-        )
+        return from_dict(data_class=ToolMessage, data=d)
     raise ValueError(f"Unknown role: {role}")
