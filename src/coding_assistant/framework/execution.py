@@ -3,6 +3,7 @@ import json
 import logging
 from collections.abc import Callable, Sequence
 from json import JSONDecodeError
+from typing import cast
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.history import append_tool_message
@@ -66,7 +67,6 @@ async def handle_tool_call(
             # We cast here because execute_tool_call returns the LLM Protocol version of ToolResult,
             # but we know that since we passed in Framework Tool objects, it will return
             # Framework ToolResult objects.
-            from typing import cast
 
             function_call_result = cast(ToolResult, await execute_tool_call(function_name, function_args, tools))
     except Exception as e:
