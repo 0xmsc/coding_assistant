@@ -3,12 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.agents.tests.test_agents import create_test_config
+from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.tests.test_agents import create_test_config
 from coding_assistant.tools.tools import AgentTool
 from coding_assistant.ui import NullUI
 
-TEST_MODEL = "openai/gpt-5-mini"
+TEST_MODEL = "openrouter/openai/gpt-5-mini"
 
 
 @pytest.mark.slow
@@ -30,7 +30,7 @@ async def test_model_vision_recognizes_car_image():
         config=config,
         tools=[],
         history=history,
-        agent_callbacks=NullProgressCallbacks(),
+        progress_callbacks=NullProgressCallbacks(),
         ui=NullUI(),
         tool_callbacks=NullToolCallbacks(),
     )
