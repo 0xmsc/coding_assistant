@@ -13,6 +13,24 @@ class ProgressCallbacks(Protocol):
     def on_chunks_end(self) -> None: ...
 
 
+class ToolResult(Protocol):
+    """Protocol for tool results."""
+
+    def to_dict(self) -> dict: ...
+
+
+class Tool(Protocol):
+    """Protocol for tools."""
+
+    def name(self) -> str: ...
+
+    def description(self) -> str: ...
+
+    def parameters(self) -> dict: ...
+
+    async def execute(self, parameters: Any) -> ToolResult: ...
+
+
 @dataclass(frozen=True)
 class FunctionCall:
     name: str
