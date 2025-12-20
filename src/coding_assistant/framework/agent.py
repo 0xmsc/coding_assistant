@@ -17,8 +17,10 @@ from coding_assistant.framework.types import (
     AgentDescription,
     AgentOutput,
     AgentState,
-    CompactConversationResult,
     Completer,
+)
+from coding_assistant.framework.results import (
+    CompactConversationResult,
     FinishTaskResult,
     TextResult,
     ToolResult,

@@ -12,7 +12,7 @@ from rich.markdown import Markdown
 from rich.padding import Padding
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
-from coding_assistant.framework.types import TextResult, ToolResult
+from coding_assistant.framework.results import TextResult, ToolResult
 
 logger = logging.getLogger(__name__)
 

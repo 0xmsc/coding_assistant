@@ -3,47 +3,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Awaitable, Protocol
 
-from coding_assistant.framework.callbacks import ProgressCallbacks
-from coding_assistant.llm.types import LLMMessage, Completion, Tool as LLMTool, ToolResult as LLMToolResult
+from coding_assistant.llm.types import (
+    LLMMessage,
+    Completion,
+    Tool as LLMTool,
+    ProgressCallbacks as LLMProgressCallbacks,
+)
 from coding_assistant.framework.parameters import Parameter
-
-
-class ToolResult(LLMToolResult, ABC):
-    """Base class for all tool results."""
-
-    @abstractmethod
-    def to_dict(self) -> dict: ...
-
-
-@dataclass
-class TextResult(ToolResult):
-    """Represents a simple text result from a tool."""
-
-    content: str
-
-    def to_dict(self):
-        return {"content": self.content}
-
-
-@dataclass
-class FinishTaskResult(ToolResult):
-    """Signals that the agent's task is complete."""
-
-    result: str
-    summary: str
-
-    def to_dict(self):
-        return {"result": self.result, "summary": self.summary}
-
-
-@dataclass
-class CompactConversationResult(ToolResult):
-    """Signals that the conversation history should be summarized."""
-
-    summary: str
-
-    def to_dict(self):
-        return {"summary": self.summary}
+from coding_assistant.framework.results import ToolResult
 
 
 class Tool(LLMTool, ABC):
@@ -97,5 +64,10 @@ class Completer(Protocol):
         *,
         model: str,
         tools: Sequence[LLMTool],
-        callbacks: ProgressCallbacks,
+        callbacks: LLMProgressCallbacks,
     ) -> Awaitable[Completion]: ...
+
+# Re-export ToolResult types for convenience if needed, 
+# but better to import from results.py directly.
+# However, many files might expect them here.
+from coding_assistant.framework.results import TextResult, FinishTaskResult, CompactConversationResult
