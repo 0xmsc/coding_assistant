@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Optional
 
 
@@ -70,3 +70,10 @@ def message_from_dict(d: dict[str, Any]) -> LLMMessage:
     if role == "tool":
         return from_dict(data_class=ToolMessage, data=d)
     raise ValueError(f"Unknown role: {role}")
+
+
+def message_to_dict(msg: LLMMessage) -> dict[str, Any]:
+    def factory(data):
+        return {k: v for k, v in data if v is not None and v != [] and v != {}}
+
+    return asdict(msg, dict_factory=factory)
