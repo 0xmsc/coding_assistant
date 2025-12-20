@@ -3,9 +3,8 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Protocol
 
 from coding_assistant.framework.callbacks import ProgressCallbacks
-from coding_assistant.llm.types import LLMMessage
+from coding_assistant.llm.types import LLMMessage, Completion
 from coding_assistant.framework.parameters import Parameter
-from coding_assistant.llm.litellm import Completion
 
 
 class ToolResult(ABC):
