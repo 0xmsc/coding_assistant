@@ -1,6 +1,6 @@
 import pytest
 
-from coding_assistant.agents.callbacks import ProgressCallbacks
+from coding_assistant.framework.callbacks import ProgressCallbacks
 from coding_assistant.llm import model as llm_model
 
 

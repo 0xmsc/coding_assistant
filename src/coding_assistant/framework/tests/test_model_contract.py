@@ -1,10 +1,10 @@
 import pytest
 from unittest.mock import Mock
 
-from coding_assistant.agents.callbacks import ProgressCallbacks, NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.agents.execution import do_single_step, handle_tool_calls
-from coding_assistant.agents.agent import run_agent_loop
-from coding_assistant.agents.tests.helpers import (
+from coding_assistant.framework.callbacks import ProgressCallbacks, NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.execution import do_single_step, handle_tool_calls
+from coding_assistant.framework.agent import run_agent_loop
+from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FakeMessage,
     FakeToolCall,
@@ -12,7 +12,7 @@ from coding_assistant.agents.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.agents.types import AgentContext, TextResult, Tool
+from coding_assistant.framework.types import AgentContext, TextResult, Tool
 from coding_assistant.tools.tools import FinishTaskTool, CompactConversation
 
 
@@ -53,7 +53,7 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
     assert msg.content == fake_message.content
 
     # Append assistant message to history (simulating loop behavior)
-    from coding_assistant.agents.history import append_assistant_message
+    from coding_assistant.framework.history import append_assistant_message
 
     append_assistant_message(state.history, NullProgressCallbacks(), desc.name, msg)
 

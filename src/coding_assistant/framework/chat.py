@@ -3,16 +3,16 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
 
-from coding_assistant.agents.callbacks import ProgressCallbacks, ToolCallbacks
-from coding_assistant.agents.execution import do_single_step, handle_tool_calls
-from coding_assistant.agents.history import (
+from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
+from coding_assistant.framework.execution import do_single_step, handle_tool_calls
+from coding_assistant.framework.history import (
     append_assistant_message,
     append_user_message,
     clear_history,
 )
-from coding_assistant.agents.interrupts import InterruptController
-from coding_assistant.agents.parameters import Parameter, format_parameters
-from coding_assistant.agents.types import (
+from coding_assistant.framework.interrupts import InterruptController
+from coding_assistant.framework.parameters import Parameter, format_parameters
+from coding_assistant.framework.types import (
     CompactConversationResult,
     Completer,
     TextResult,

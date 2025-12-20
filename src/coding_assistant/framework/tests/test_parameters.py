@@ -1,7 +1,7 @@
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
-from coding_assistant.agents.parameters import parameters_from_model, format_parameters
+from coding_assistant.framework.parameters import parameters_from_model, format_parameters
 
 
 class ExampleSchema(BaseModel):

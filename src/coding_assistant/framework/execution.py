@@ -4,10 +4,10 @@ import logging
 from collections.abc import Callable
 from json import JSONDecodeError
 
-from coding_assistant.agents.callbacks import ProgressCallbacks, ToolCallbacks
-from coding_assistant.agents.history import append_tool_message
-from coding_assistant.agents.types import Tool, ToolResult
-from coding_assistant.agents.types import (
+from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
+from coding_assistant.framework.history import append_tool_message
+from coding_assistant.framework.types import Tool, ToolResult
+from coding_assistant.framework.types import (
     Completer,
     TextResult,
 )

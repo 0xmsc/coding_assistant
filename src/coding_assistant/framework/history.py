@@ -1,4 +1,4 @@
-from coding_assistant.agents.callbacks import ProgressCallbacks
+from coding_assistant.framework.callbacks import ProgressCallbacks
 
 
 def append_tool_message(

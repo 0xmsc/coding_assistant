@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
-    from coding_assistant.agents.types import ToolResult  # for type hints only
+    from coding_assistant.framework.types import ToolResult  # for type hints only
 else:  # At runtime we avoid importing to prevent circular import
     ToolResult = object  # type: ignore
 

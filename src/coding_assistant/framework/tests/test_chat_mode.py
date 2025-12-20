@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from coding_assistant.agents.tests.helpers import (
+from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FakeFunction,
     FakeMessage,
@@ -9,9 +9,9 @@ from coding_assistant.agents.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.agents.chat import run_chat_loop
-from coding_assistant.agents.types import Tool, TextResult
-from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.chat import run_chat_loop
+from coding_assistant.framework.types import Tool, TextResult
+from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
 
 
 class FakeEchoTool(Tool):

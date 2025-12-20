@@ -8,7 +8,7 @@ from typing import Literal, cast
 
 import litellm
 
-from coding_assistant.agents.callbacks import ProgressCallbacks
+from coding_assistant.framework.callbacks import ProgressCallbacks
 from coding_assistant.trace import trace_data
 
 logger = logging.getLogger(__name__)

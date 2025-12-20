@@ -1,14 +1,14 @@
 import logging
 
-from coding_assistant.agents.callbacks import ProgressCallbacks, ToolCallbacks
-from coding_assistant.agents.execution import do_single_step, handle_tool_calls
-from coding_assistant.agents.history import (
+from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
+from coding_assistant.framework.execution import do_single_step, handle_tool_calls
+from coding_assistant.framework.history import (
     append_assistant_message,
     append_user_message,
     clear_history,
 )
-from coding_assistant.agents.parameters import format_parameters
-from coding_assistant.agents.types import (
+from coding_assistant.framework.parameters import format_parameters
+from coding_assistant.framework.types import (
     AgentContext,
     AgentDescription,
     AgentOutput,

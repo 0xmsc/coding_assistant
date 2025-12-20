@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.agents.tests.test_agents import create_test_config
+from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.tests.test_agents import create_test_config
 from coding_assistant.tools.tools import AgentTool
 from coding_assistant.ui import NullUI
 

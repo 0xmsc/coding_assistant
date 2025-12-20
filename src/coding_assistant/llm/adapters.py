@@ -1,4 +1,4 @@
-from coding_assistant.agents.types import Tool, ToolResult
+from coding_assistant.framework.types import Tool, ToolResult
 
 
 def fix_input_schema(input_schema: dict):
