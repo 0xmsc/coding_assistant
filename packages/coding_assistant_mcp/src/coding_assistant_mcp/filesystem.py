@@ -13,12 +13,6 @@ from pydantic import Field
 filesystem_server = FastMCP()
 
 
-@dataclass
-class TextEdit:
-    old_text: Annotated[str, Field(description="The text to be replaced.")]
-    new_text: Annotated[str, Field(description="The text to replace with.")]
-
-
 async def write_file(
     path: Annotated[Path, "The file path to write (will be created or overwritten)."],
     content: Annotated[str, "The content to write to the file."],
@@ -34,7 +28,8 @@ async def write_file(
 
 async def edit_file(
     path: Annotated[Path, "The file to edit."],
-    edit: Annotated[TextEdit | str, "A text edit operation (as an object or JSON string)."],
+    old_text: Annotated[str, "The text to be replaced."],
+    new_text: Annotated[str, "The text to replace with."],
 ) -> str:
     """
     Apply a single text replacement to a file and return a unified diff.
@@ -43,25 +38,10 @@ async def edit_file(
     - The edit is validated against the current content.
     - The old_text must occur exactly once; otherwise a ValueError is raised.
     - If validation fails, no changes are written.
-    - The edit parameter can be a TextEdit object or a JSON string representation.
     """
-
-    # Parse edit if provided as a JSON string
-    if isinstance(edit, str):
-        try:
-            parsed_data = json.loads(edit)
-            edit = TextEdit(old_text=parsed_data["old_text"], new_text=parsed_data["new_text"])
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
-            raise ValueError(
-                f"Invalid JSON format for edit: {e}. Expected a JSON string representing "
-                "an object with 'old_text' and 'new_text' keys."
-            )
 
     async with aiofiles.open(path, "r", encoding="utf-8") as f:
         original = await f.read()
-
-    old_text = edit.old_text
-    new_text = edit.new_text
 
     count = original.count(old_text)
 
