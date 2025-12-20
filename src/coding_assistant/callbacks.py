@@ -154,12 +154,18 @@ class DenseProgressCallbacks(ProgressCallbacks):
         # Don't print - reasoning is already printed via chunks
         pass
 
-    def _print_arguments_fancy(self, symbol: str, tool_name: str, arguments: dict, lang_map: dict[str, str]):
+    def _print_arguments_fancy(
+        self,
+        symbol: str,
+        tool_name: str,
+        arguments: dict,
+        lang_map: dict[str, str],
+    ):
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}")
         for key, value in arguments.items():
             if key in lang_map and "\n" in value:
                 print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
-                print(Padding(Markdown(f"```{lang_map[key]}\n{value}\n```"), self._left_padding))
+                print(Padding(Markdown(f"```{lang_map.get(key, '')}\n{value}\n```"), self._left_padding))
             else:
                 print(Padding(f"[dim]{key}:[/dim] {json.dumps(value)}", self._left_padding))
 
@@ -174,9 +180,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 return True
         elif tool_name == "mcp_coding_assistant_mcp_filesystem_write_file":
             if "\n" in arguments["content"]:
-                path = arguments["path"]
-                lang = path.split(".")[-1] if "." in path else ""
-                self._print_arguments_fancy(symbol, tool_name, arguments, {"content": lang})
+                self._print_arguments_fancy(symbol, tool_name, arguments, {"content": ""})
                 return True
         elif tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
             old = arguments["old_text"]
