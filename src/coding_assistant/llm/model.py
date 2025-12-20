@@ -12,6 +12,7 @@ from coding_assistant.framework.callbacks import ProgressCallbacks
 from coding_assistant.framework.models import (
     LLMMessage,
     message_from_dict,
+    message_to_dict,
 )
 from coding_assistant.trace import trace_data
 
