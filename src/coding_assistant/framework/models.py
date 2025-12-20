@@ -16,14 +16,14 @@ class ToolCall:
 
 @dataclass(frozen=True)
 class SystemMessage:
-    content: str
+    content: str | list[dict]
     role: Literal["system"] = "system"
     name: Optional[str] = None
 
 
 @dataclass(frozen=True)
 class UserMessage:
-    content: str
+    content: str | list[dict]
     role: Literal["user"] = "user"
     name: Optional[str] = None
 
