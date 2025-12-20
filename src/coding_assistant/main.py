@@ -190,6 +190,7 @@ async def run_chat_session(
                 value=instructions,
             )
         )
+
     desc = AgentDescription(
         name="Orchestrator",
         model=config.model,
@@ -199,8 +200,8 @@ async def run_chat_session(
             *tools,
         ],
     )
+
     state = AgentState(history=history or [])
-    ctx = history=state.history, model=desc.model, tools=desc.tools, parameters=desc.parameters, context_name=desc.name
 
     try:
         await run_chat_loop(
@@ -302,7 +303,7 @@ async def _main(args):
                 history=resume_history,
                 instructions=instructions,
                 working_directory=working_directory,
-                callbacks=progress_callbacks,
+                progress_callbacks=progress_callbacks,
                 tool_callbacks=tool_callbacks,
             )
         else:
@@ -315,7 +316,7 @@ async def _main(args):
                 history=resume_history,
                 instructions=instructions,
                 working_directory=working_directory,
-                callbacks=progress_callbacks,
+                progress_callbacks=progress_callbacks,
                 tool_callbacks=tool_callbacks,
             )
 
