@@ -10,7 +10,7 @@ from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from coding_assistant.agents.callbacks import AgentProgressCallbacks
+from coding_assistant.agents.callbacks import ProgressCallbacks
 from coding_assistant.llm.model import complete
 from coding_assistant.agents.execution import run_chat_loop
 from coding_assistant.agents.parameters import Parameter
@@ -142,14 +142,14 @@ async def run_orchestrator_agent(
     history: list | None,
     instructions: str | None,
     working_directory: Path,
-    agent_callbacks: AgentProgressCallbacks,
+    agent_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
 ):
     tool = AgentTool(
         config=config,
         tools=tools,
         history=history,
-        agent_callbacks=agent_callbacks,
+        callbacks=agent_callbacks,
         ui=PromptToolkitUI(),
         tool_callbacks=tool_callbacks,
         name="launch_orchestrator_agent",
@@ -177,7 +177,7 @@ async def run_chat_session(
     history: list | None,
     instructions: str | None,
     working_directory: Path,
-    agent_callbacks: AgentProgressCallbacks,
+    agent_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
 ):
     # Build a simple root agent for chat mode (no finish_task)
@@ -200,15 +200,19 @@ async def run_chat_session(
         ],
     )
     state = AgentState(history=history or [])
-    ctx = AgentContext(desc=desc, state=state)
+    ctx = history=state.history, model=desc.model, tools=desc.tools, parameters=desc.parameters, context_name=desc.name
 
     try:
         await run_chat_loop(
-            ctx,
-            agent_callbacks=agent_callbacks,
+            history=state.history,
+            model=config.model,
+            tools=desc.tools,
+            parameters=params,
+            callbacks=agent_callbacks,
             tool_callbacks=tool_callbacks,
             completer=complete,
             ui=PromptToolkitUI(),
+            context_name=desc.name,
         )
     finally:
         save_orchestrator_history(working_directory, state.history)
@@ -298,7 +302,7 @@ async def _main(args):
                 history=resume_history,
                 instructions=instructions,
                 working_directory=working_directory,
-                agent_callbacks=agent_callbacks,
+                callbacks=agent_callbacks,
                 tool_callbacks=tool_callbacks,
             )
         else:
@@ -311,7 +315,7 @@ async def _main(args):
                 history=resume_history,
                 instructions=instructions,
                 working_directory=working_directory,
-                agent_callbacks=agent_callbacks,
+                callbacks=agent_callbacks,
                 tool_callbacks=tool_callbacks,
             )
 

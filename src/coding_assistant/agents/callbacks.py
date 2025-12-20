@@ -7,41 +7,41 @@ else:  # At runtime we avoid importing to prevent circular import
     ToolResult = object  # type: ignore
 
 
-class AgentProgressCallbacks(ABC):
+class ProgressCallbacks(ABC):
     """Abstract interface for agent callbacks."""
 
     @abstractmethod
-    def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
+    def on_agent_start(self, context_name: str, model: str, is_resuming: bool = False):
         """Handle agent start events."""
         pass
 
     @abstractmethod
-    def on_agent_end(self, agent_name: str, result: str, summary: str):
+    def on_agent_end(self, context_name: str, result: str, summary: str):
         """Handle agent end events."""
         pass
 
     @abstractmethod
-    def on_user_message(self, agent_name: str, content: str, force: bool = False):
+    def on_user_message(self, context_name: str, content: str, force: bool = False):
         """Handle messages with role: user."""
         pass
 
     @abstractmethod
-    def on_assistant_message(self, agent_name: str, content: str, force: bool = False):
+    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
         """Handle messages with role: assistant."""
         pass
 
     @abstractmethod
-    def on_assistant_reasoning(self, agent_name: str, content: str):
+    def on_assistant_reasoning(self, context_name: str, content: str):
         """Handle reasoning content from assistant."""
         pass
 
     @abstractmethod
-    def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict):
+    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         """Handle tool start events."""
         pass
 
     @abstractmethod
-    def on_tool_message(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
+    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         """Handle messages with role: tool."""
         pass
 
@@ -61,28 +61,28 @@ class AgentProgressCallbacks(ABC):
         pass
 
 
-class NullProgressCallbacks(AgentProgressCallbacks):
+class NullProgressCallbacks(ProgressCallbacks):
     """Null object implementation that does nothing."""
 
-    def on_agent_start(self, agent_name: str, model: str, is_resuming: bool = False):
+    def on_agent_start(self, context_name: str, model: str, is_resuming: bool = False):
         pass
 
-    def on_agent_end(self, agent_name: str, result: str, summary: str):
+    def on_agent_end(self, context_name: str, result: str, summary: str):
         pass
 
-    def on_user_message(self, agent_name: str, content: str, force: bool = False):
+    def on_user_message(self, context_name: str, content: str, force: bool = False):
         pass
 
-    def on_assistant_message(self, agent_name: str, content: str, force: bool = False):
+    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
         pass
 
-    def on_assistant_reasoning(self, agent_name: str, content: str):
+    def on_assistant_reasoning(self, context_name: str, content: str):
         pass
 
-    def on_tool_start(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict):
+    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         pass
 
-    def on_tool_message(self, agent_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
+    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         pass
 
     def on_content_chunk(self, chunk: str):
@@ -95,11 +95,11 @@ class NullProgressCallbacks(AgentProgressCallbacks):
         pass
 
 
-class AgentToolCallbacks(ABC):
+class ToolCallbacks(ABC):
     @abstractmethod
     async def before_tool_execution(
         self,
-        agent_name: str,
+        context_name: str,
         tool_call_id: str,
         tool_name: str,
         arguments: dict,
@@ -109,10 +109,10 @@ class AgentToolCallbacks(ABC):
         pass
 
 
-class NullToolCallbacks(AgentToolCallbacks):
+class NullToolCallbacks(ToolCallbacks):
     async def before_tool_execution(  # type: ignore[override]
         self,
-        agent_name: str,
+        context_name: str,
         tool_call_id: str,
         tool_name: str,
         arguments: dict,

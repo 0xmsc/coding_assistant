@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from json import JSONDecodeError
 
-from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
+from coding_assistant.agents.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
 from coding_assistant.agents.types import Tool, ToolResult
 from coding_assistant.agents.interrupts import InterruptController
@@ -90,15 +90,15 @@ def _handle_text_result(result: TextResult) -> str:
 
 
 def _clear_history(state: AgentState):
-    """Resets the history to the first message (start message)."""
-    state.history = [state.history[0]]
+    """Resets the history to the first message (start message) in-place."""
+    state.history[:] = [state.history[0]]
 
 
 def _handle_compact_conversation_result(
     result: CompactConversationResult,
     desc: AgentDescription,
     state: AgentState,
-    agent_callbacks: AgentProgressCallbacks,
+    agent_callbacks: ProgressCallbacks,
 ):
     _clear_history(state)
 
@@ -117,8 +117,8 @@ async def handle_tool_call(
     tool_call,
     tools: list[Tool],
     history: list,
-    agent_callbacks: AgentProgressCallbacks,
-    tool_callbacks: AgentToolCallbacks,
+    agent_callbacks: ProgressCallbacks,
+    tool_callbacks: ToolCallbacks,
     *,
     ui: UI,
     context_name: str,
@@ -180,8 +180,8 @@ async def handle_tool_calls(
     message,
     tools: list[Tool],
     history: list,
-    agent_callbacks: AgentProgressCallbacks,
-    tool_callbacks: AgentToolCallbacks,
+    agent_callbacks: ProgressCallbacks,
+    tool_callbacks: ToolCallbacks,
     *,
     ui: UI,
     context_name: str,
@@ -228,7 +228,10 @@ async def handle_tool_calls(
         if handle_tool_result:
             result_summary = handle_tool_result(result)
         else:
-            result_summary = result.content
+            if isinstance(result, TextResult):
+                result_summary = result.content
+            else:
+                result_summary = f"Tool produced result of type {type(result).__name__}"
 
         if not result_summary:
             raise RuntimeError(f"Tool call {tool_call.id} produced empty result summary.")
@@ -258,7 +261,7 @@ async def do_single_step(
     history: list,
     model: str,
     tools: list[Tool],
-    agent_callbacks: AgentProgressCallbacks,
+    agent_callbacks: ProgressCallbacks,
     *,
     completer: Completer,
     context_name: str,
@@ -285,8 +288,8 @@ async def do_single_step(
 async def run_agent_loop(
     ctx: AgentContext,
     *,
-    agent_callbacks: AgentProgressCallbacks,
-    tool_callbacks: AgentToolCallbacks,
+    agent_callbacks: ProgressCallbacks,
+    tool_callbacks: ToolCallbacks,
     completer: Completer,
     ui: UI,
     compact_conversation_at_tokens: int = 200_000,
@@ -376,24 +379,25 @@ class ChatCommand:
 
 
 async def run_chat_loop(
-    ctx: AgentContext,
+    history: list,
+    model: str,
+    tools: list[Tool],
+    parameters: list[Parameter],
     *,
-    agent_callbacks: AgentProgressCallbacks,
-    tool_callbacks: AgentToolCallbacks,
+    callbacks: ProgressCallbacks,
+    tool_callbacks: ToolCallbacks,
     completer: Completer,
     ui: UI,
+    context_name: str,
 ):
-    desc = ctx.desc
-    state = ctx.state
-
-    if state.history:
-        for message in state.history:
+    if history:
+        for message in history:
             if message.get("role") == "assistant":
                 if content := message.get("content"):
-                    agent_callbacks.on_assistant_message(desc.name, content, force=True)
+                    callbacks.on_assistant_message(context_name, content, force=True)
             elif message.get("role") == "user":
                 if content := message.get("content"):
-                    agent_callbacks.on_user_message(desc.name, content, force=True)
+                    callbacks.on_user_message(context_name, content, force=True)
 
     need_user_input = True
 
@@ -402,9 +406,9 @@ async def run_chat_loop(
 
     async def _compact_cmd():
         append_user_message(
-            state.history,
-            agent_callbacks,
-            desc.name,
+            history,
+            callbacks,
+            context_name,
             "Immediately compact our conversation so far by using the `compact_conversation` tool.",
             force=True,
         )
@@ -415,7 +419,9 @@ async def run_chat_loop(
         return ChatCommandResult.PROCEED_WITH_MODEL
 
     async def _clear_cmd():
-        _clear_history(state)
+        # history reset logic - we need a way to clear history that is passed in
+        # for now we can just clear the list if it's a list
+        history.clear()
         print("History cleared.")
         return ChatCommandResult.PROCEED_WITH_PROMPT
 
@@ -427,9 +433,9 @@ async def run_chat_loop(
     command_map = {cmd.name: cmd for cmd in commands}
     command_names = list(command_map.keys())
 
-    start_message = _create_chat_start_message(desc.parameters)
-    agent_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
-    append_user_message(state.history, agent_callbacks, desc.name, start_message)
+    start_message = _create_chat_start_message(parameters)
+    callbacks.on_agent_start(context_name, model, is_resuming=bool(history))
+    append_user_message(history, callbacks, context_name, start_message)
 
     while True:
         if need_user_input:
@@ -449,44 +455,54 @@ async def run_chat_loop(
                 elif result == ChatCommandResult.PROCEED_WITH_MODEL:
                     pass
             else:
-                append_user_message(state.history, agent_callbacks, desc.name, answer)
+                append_user_message(history, callbacks, context_name, answer)
 
         loop = asyncio.get_running_loop()
         with InterruptController(loop) as interrupt_controller:
             try:
                 do_single_step_task = loop.create_task(
                     do_single_step(
-                        state.history,
-                        desc.model,
-                        desc.tools,
-                        agent_callbacks,
+                        history,
+                        model,
+                        tools,
+                        callbacks,
                         completer=completer,
-                        context_name=desc.name,
+                        context_name=context_name,
                     ),
                     name="do_single_step",
                 )
                 interrupt_controller.register_task("do_single_step", do_single_step_task)
 
                 message, _ = await do_single_step_task
-                append_assistant_message(state.history, agent_callbacks, desc.name, message)
+                append_assistant_message(history, callbacks, context_name, message)
 
                 if getattr(message, "tool_calls", []):
 
                     def handle_tool_result(result: ToolResult) -> str:
                         if isinstance(result, CompactConversationResult):
-                            return _handle_compact_conversation_result(result, desc, state, agent_callbacks)
+                            # This one still needs to be able to reset history
+                            # We'll pass a lambda that captures the things it needs
+                            history.clear()
+                            append_user_message(
+                                history,
+                                callbacks,
+                                context_name,
+                                f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work.",
+                                force=True,
+                            )
+                            return "Conversation compacted and history reset."
                         if isinstance(result, TextResult):
                             return result.content
                         return f"Tool produced result of type {type(result).__name__}"
 
                     await handle_tool_calls(
                         message,
-                        desc.tools,
-                        state.history,
-                        agent_callbacks,
+                        tools,
+                        history,
+                        callbacks,
                         tool_callbacks,
                         ui=ui,
-                        context_name=desc.name,
+                        context_name=context_name,
                         task_created_callback=interrupt_controller.register_task,
                         handle_tool_result=handle_tool_result,
                     )

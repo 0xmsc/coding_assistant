@@ -14,7 +14,7 @@ from coding_assistant.agents.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.agents.types import AgentContext, TextResult, Tool
+from coding_assistant.agents.types import TextResult, Tool
 
 
 class InterruptibleTool(Tool):
@@ -77,8 +77,6 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
         ]
     )
 
-    ctx = AgentContext(desc=desc, state=state)
-
     # Capture interrupt controller via patch
     captured_controller = []
 
@@ -93,11 +91,15 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    ctx,
-                    agent_callbacks=NullProgressCallbacks(),
+                    history=state.history,
+                    model=desc.model,
+                    tools=desc.tools,
+                    parameters=desc.parameters,
+                    callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
+                    context_name=desc.name,
                 )
             )
 
@@ -146,8 +148,6 @@ async def test_interrupt_during_do_single_step():
         ]
     )
 
-    ctx = AgentContext(desc=desc, state=state)
-
     captured_controller = []
 
     original_init = InterruptController.__init__
@@ -161,11 +161,15 @@ async def test_interrupt_during_do_single_step():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    ctx,
-                    agent_callbacks=NullProgressCallbacks(),
+                    history=state.history,
+                    model=desc.model,
+                    tools=desc.tools,
+                    parameters=desc.parameters,
+                    callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
+                    context_name=desc.name,
                 )
             )
 
@@ -215,8 +219,6 @@ async def test_multiple_tool_calls_with_interrupt():
         ]
     )
 
-    ctx = AgentContext(desc=desc, state=state)
-
     captured_controller = []
 
     original_init = InterruptController.__init__
@@ -230,11 +232,15 @@ async def test_multiple_tool_calls_with_interrupt():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    ctx,
-                    agent_callbacks=NullProgressCallbacks(),
+                    history=state.history,
+                    model=desc.model,
+                    tools=desc.tools,
+                    parameters=desc.parameters,
+                    callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
+                    context_name=desc.name,
                 )
             )
 
@@ -273,15 +279,17 @@ async def test_chat_loop_without_interrupts_works_normally():
         ]
     )
 
-    ctx = AgentContext(desc=desc, state=state)
-
     # Should complete without errors
     await run_chat_loop(
-        ctx,
-        agent_callbacks=NullProgressCallbacks(),
+        history=state.history,
+        model=desc.model,
+        tools=desc.tools,
+        parameters=desc.parameters,
+        callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         completer=completer,
         ui=ui,
+        context_name=desc.name,
     )
 
     # Verify tool completed successfully
@@ -318,8 +326,6 @@ async def test_interrupt_recovery_continues_conversation():
         ]
     )
 
-    ctx = AgentContext(desc=desc, state=state)
-
     captured_controller = []
 
     original_init = InterruptController.__init__
@@ -333,11 +339,15 @@ async def test_interrupt_recovery_continues_conversation():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    ctx,
-                    agent_callbacks=NullProgressCallbacks(),
+                    history=state.history,
+                    model=desc.model,
+                    tools=desc.tools,
+                    parameters=desc.parameters,
+                    callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
+                    context_name=desc.name,
                 )
             )
 
@@ -390,8 +400,6 @@ async def test_interrupt_during_second_tool_call():
         ]
     )
 
-    ctx = AgentContext(desc=desc, state=state)
-
     captured_controller = []
 
     original_init = InterruptController.__init__
@@ -405,11 +413,15 @@ async def test_interrupt_during_second_tool_call():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    ctx,
-                    agent_callbacks=NullProgressCallbacks(),
+                    history=state.history,
+                    model=desc.model,
+                    tools=desc.tools,
+                    parameters=desc.parameters,
+                    callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
+                    context_name=desc.name,
                 )
             )
 
@@ -458,16 +470,18 @@ async def test_sigint_interrupts_tool_execution():
         ]
     )
 
-    ctx = AgentContext(desc=desc, state=state)
-
     async def run_with_sigint():
         task = asyncio.create_task(
             run_chat_loop(
-                ctx,
-                agent_callbacks=NullProgressCallbacks(),
+                history=state.history,
+                model=desc.model,
+                tools=desc.tools,
+                parameters=desc.parameters,
+                callbacks=NullProgressCallbacks(),
                 tool_callbacks=NullToolCallbacks(),
                 completer=completer,
                 ui=ui,
+                context_name=desc.name,
             )
         )
 
@@ -492,10 +506,6 @@ async def test_sigint_interrupts_tool_execution():
     assert any("recovered from SIGINT" in m.get("content", "") for m in user_messages)
 
 
-# Note: Multiple SIGINT behavior is tested in test_interrupts.py::test_interrupt_controller_handles_multiple_sigints
-# With proper interrupt handling, multiple SIGINTs no longer cause sys.exit()
-
-
 @pytest.mark.asyncio
 async def test_interrupt_during_llm_call():
     """Test that CTRL-C during LLM call (not tool execution) cancels immediately."""
@@ -510,7 +520,6 @@ async def test_interrupt_during_llm_call():
         return FakeCompleter([FakeMessage(content="Response from LLM")])._completions[0]
 
     desc, state = make_test_agent(history=[{"role": "user", "content": "test"}])
-    ctx = AgentContext(desc=desc, state=state)
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -532,11 +541,15 @@ async def test_interrupt_during_llm_call():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    ctx,
-                    agent_callbacks=NullProgressCallbacks(),
+                    history=state.history,
+                    model=desc.model,
+                    tools=desc.tools,
+                    parameters=desc.parameters,
+                    callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=slow_completer,
                     ui=ui,
+                    context_name=desc.name,
                 )
             )
 
