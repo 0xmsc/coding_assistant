@@ -16,9 +16,9 @@ from coding_assistant.framework.agent import (
 )
 from coding_assistant.llm.types import UserMessage, AssistantMessage, message_to_dict
 from coding_assistant.framework.tests.helpers import (
-    FakeFunction,
+    FunctionCall,
     FakeMessage,
-    FakeToolCall,
+    ToolCall,
     FakeCompleter,
     make_test_agent,
     make_ui_mock,
@@ -49,9 +49,9 @@ async def test_compact_conversation_resets_history():
 
     # Invoke compact_conversation tool directly
     summary_text = "This is the summary of prior conversation."
-    tool_call = FakeToolCall(
+    tool_call = ToolCall(
         id="shorten-1",
-        function=FakeFunction(
+        function=FunctionCall(
             name="compact_conversation",
             arguments=json.dumps({"summary": summary_text}),
         ),
@@ -97,9 +97,9 @@ async def test_compact_conversation_resets_history():
     }
 
     # Subsequent steps should continue from the new history
-    finish_call = FakeToolCall(
+    finish_call = ToolCall(
         "finish-1",
-        FakeFunction(
+        FunctionCall(
             "finish_task",
             json.dumps({"result": "done", "summary": "sum"}),
         ),

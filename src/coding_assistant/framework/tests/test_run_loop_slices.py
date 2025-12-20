@@ -6,9 +6,9 @@ from coding_assistant.framework.callbacks import NullProgressCallbacks, NullTool
 from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
-    FakeFunction,
+    FunctionCall,
     FakeMessage,
-    FakeToolCall,
+    ToolCall,
     make_test_agent,
     make_ui_mock,
 )
@@ -37,10 +37,10 @@ class FakeEchoTool(Tool):
 
 @pytest.mark.asyncio
 async def test_tool_selection_then_finish():
-    echo_call = FakeToolCall("1", FakeFunction("fake.echo", json.dumps({"text": "hi"})))
-    finish_call = FakeToolCall(
+    echo_call = ToolCall("1", FunctionCall("fake.echo", json.dumps({"text": "hi"})))
+    finish_call = ToolCall(
         "2",
-        FakeFunction(
+        FunctionCall(
             "finish_task",
             json.dumps({"result": "done", "summary": "sum"}),
         ),
@@ -116,10 +116,10 @@ async def test_tool_selection_then_finish():
 
 @pytest.mark.asyncio
 async def test_unknown_tool_error_then_finish(monkeypatch):
-    unknown_call = FakeToolCall("1", FakeFunction("unknown.tool", "{}"))
-    finish_call = FakeToolCall(
+    unknown_call = ToolCall("1", FunctionCall("unknown.tool", "{}"))
+    finish_call = ToolCall(
         "2",
-        FakeFunction(
+        FunctionCall(
             "finish_task",
             json.dumps({"result": "ok", "summary": "s"}),
         ),
@@ -191,9 +191,9 @@ async def test_unknown_tool_error_then_finish(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_assistant_message_without_tool_calls_prompts_correction(monkeypatch):
-    finish_call = FakeToolCall(
+    finish_call = ToolCall(
         "2",
-        FakeFunction(
+        FunctionCall(
             "finish_task",
             json.dumps({"result": "r", "summary": "s"}),
         ),
@@ -272,9 +272,9 @@ async def test_errors_if_output_already_set():
 
 @pytest.mark.asyncio
 async def test_feedback_ok_does_not_reloop():
-    finish_call = FakeToolCall(
+    finish_call = ToolCall(
         "1",
-        FakeFunction(
+        FunctionCall(
             "finish_task",
             json.dumps({"result": "final", "summary": "sum"}),
         ),
@@ -298,11 +298,11 @@ async def test_feedback_ok_does_not_reloop():
 
 @pytest.mark.asyncio
 async def test_multiple_tool_calls_processed_in_order():
-    call1 = FakeToolCall("1", FakeFunction("fake.echo", json.dumps({"text": "first"})))
-    call2 = FakeToolCall("2", FakeFunction("fake.echo", json.dumps({"text": "second"})))
-    finish_call = FakeToolCall(
+    call1 = ToolCall("1", FunctionCall("fake.echo", json.dumps({"text": "first"})))
+    call2 = ToolCall("2", FunctionCall("fake.echo", json.dumps({"text": "second"})))
+    finish_call = ToolCall(
         "3",
-        FakeFunction(
+        FunctionCall(
             "finish_task",
             json.dumps({"result": "ok", "summary": "s"}),
         ),
@@ -392,17 +392,17 @@ async def test_multiple_tool_calls_processed_in_order():
 
 @pytest.mark.asyncio
 async def test_feedback_loop_then_finish():
-    finish_call_1 = FakeToolCall(
+    finish_call_1 = ToolCall(
         "1",
-        FakeFunction(
+        FunctionCall(
             "finish_task",
             json.dumps({"result": "first", "summary": "s1"}),
         ),
     )
 
-    finish_call_2 = FakeToolCall(
+    finish_call_2 = ToolCall(
         "2",
-        FakeFunction(
+        FunctionCall(
             "finish_task",
             json.dumps({"result": "second", "summary": "s2"}),
         ),

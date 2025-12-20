@@ -5,20 +5,12 @@ from coding_assistant.framework.parameters import Parameter
 from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext, Tool
 from coding_assistant.llm.types import (
     AssistantMessage,
-    FunctionCall,
+    FunctionCall as FunctionCall,
     LLMMessage,
-    ToolCall,
+    ToolCall as ToolCall,
 )
 from coding_assistant.llm.litellm import Completion
 from coding_assistant.ui import UI
-
-
-def FakeFunction(name: str, arguments: str) -> FunctionCall:
-    return FunctionCall(name=name, arguments=arguments)
-
-
-def FakeToolCall(id: str, function: FunctionCall) -> ToolCall:
-    return ToolCall(id=id, function=function)
 
 
 def FakeMessage(

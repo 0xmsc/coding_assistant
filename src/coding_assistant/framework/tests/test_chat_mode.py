@@ -4,9 +4,9 @@ import pytest
 from coding_assistant.llm.types import UserMessage
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
-    FakeFunction,
+    FunctionCall,
     FakeMessage,
-    FakeToolCall,
+    ToolCall,
     make_test_agent,
     make_ui_mock,
 )
@@ -63,7 +63,7 @@ async def test_chat_step_prompts_user_on_no_tool_calls_once():
 
 @pytest.mark.asyncio
 async def test_chat_step_executes_tools_without_prompt():
-    echo_call = FakeToolCall("1", FakeFunction("fake.echo", json.dumps({"text": "hi"})))
+    echo_call = ToolCall("1", FunctionCall("fake.echo", json.dumps({"text": "hi"})))
     completer = FakeCompleter([FakeMessage(tool_calls=[echo_call])])
 
     echo_tool = FakeEchoTool()
@@ -152,7 +152,7 @@ async def test_chat_loop_prompts_after_compact_command():
     # 3. Tool executes
     # 4. LOOP SHOULD PROMPT USER
 
-    compact_call = FakeToolCall("1", FakeFunction("compact_conversation", json.dumps({"summary": "Compacted"})))
+    compact_call = ToolCall("1", FunctionCall("compact_conversation", json.dumps({"summary": "Compacted"})))
     # The first message comes from the model in response to the injected compact message
     # The second message is to check if it tries to loop again automatically (it shouldn't)
     completer = FakeCompleter(
