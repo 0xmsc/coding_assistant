@@ -2,7 +2,8 @@ import pytest
 from unittest.mock import Mock
 
 from coding_assistant.agents.callbacks import ProgressCallbacks, NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.agents.execution import do_single_step, handle_tool_calls, run_agent_loop
+from coding_assistant.agents.execution import do_single_step, handle_tool_calls
+from coding_assistant.agents.agent import run_agent_loop
 from coding_assistant.agents.tests.helpers import (
     FakeCompleter,
     FakeMessage,

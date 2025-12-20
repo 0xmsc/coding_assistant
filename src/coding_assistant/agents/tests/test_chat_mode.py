@@ -9,8 +9,8 @@ from coding_assistant.agents.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.agents.execution import run_chat_loop
-from coding_assistant.agents.types import Tool, TextResult, AgentContext
+from coding_assistant.agents.chat import run_chat_loop
+from coding_assistant.agents.types import Tool, TextResult
 from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
 
 
@@ -43,7 +43,11 @@ async def test_chat_step_prompts_user_on_no_tool_calls_once():
     # Run a single chat-loop iteration by exhausting the completer after one step
     with pytest.raises(AssertionError, match="FakeCompleter script exhausted"):
         await run_chat_loop(
-            history=state.history, model=desc.model, tools=desc.tools, parameters=desc.parameters, context_name=desc.name,
+            history=state.history,
+            model=desc.model,
+            tools=desc.tools,
+            parameters=desc.parameters,
+            context_name=desc.name,
             callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             completer=completer,
@@ -67,7 +71,11 @@ async def test_chat_step_executes_tools_without_prompt():
 
     with pytest.raises(AssertionError, match="FakeCompleter script exhausted"):
         await run_chat_loop(
-            history=state.history, model=desc.model, tools=desc.tools, parameters=desc.parameters, context_name=desc.name,
+            history=state.history,
+            model=desc.model,
+            tools=desc.tools,
+            parameters=desc.parameters,
+            context_name=desc.name,
             callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             completer=completer,
@@ -88,7 +96,11 @@ async def test_chat_mode_does_not_require_finish_task_tool():
 
     with pytest.raises(AssertionError, match="FakeCompleter script exhausted"):
         await run_chat_loop(
-            history=state.history, model=desc.model, tools=desc.tools, parameters=desc.parameters, context_name=desc.name,
+            history=state.history,
+            model=desc.model,
+            tools=desc.tools,
+            parameters=desc.parameters,
+            context_name=desc.name,
             callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             completer=completer,
@@ -110,7 +122,11 @@ async def test_chat_exit_command_stops_loop_without_appending_command():
 
     # Should return cleanly without exhausting the completer further
     await run_chat_loop(
-        history=state.history, model=desc.model, tools=desc.tools, parameters=desc.parameters, context_name=desc.name,
+        history=state.history,
+        model=desc.model,
+        tools=desc.tools,
+        parameters=desc.parameters,
+        context_name=desc.name,
         callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         completer=completer,
@@ -149,7 +165,11 @@ async def test_chat_loop_prompts_after_compact_command():
     ui = make_ui_mock(ask_sequence=[("> ", "/compact"), ("> ", "/exit")])
 
     await run_chat_loop(
-        history=state.history, model=desc.model, tools=desc.tools, parameters=desc.parameters, context_name=desc.name,
+        history=state.history,
+        model=desc.model,
+        tools=desc.tools,
+        parameters=desc.parameters,
+        context_name=desc.name,
         callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         completer=completer,

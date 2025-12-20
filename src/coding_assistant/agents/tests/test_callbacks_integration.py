@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from coding_assistant.agents.execution import run_agent_loop
+from coding_assistant.agents.agent import run_agent_loop
 from coding_assistant.agents.callbacks import NullToolCallbacks
 from coding_assistant.agents.tests.helpers import (
     FakeCompleter,
