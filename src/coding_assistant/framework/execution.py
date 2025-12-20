@@ -13,11 +13,18 @@ from coding_assistant.framework.types import (
     Completer,
     TextResult,
 )
-from coding_assistant.llm.adapters import execute_tool_call, get_tools
 from coding_assistant.trace import trace_data
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
+
+
+async def execute_tool_call(function_name: str, function_args: dict, tools: Sequence[Tool]) -> ToolResult:
+    """Execute a tool call by finding the matching tool and calling its execute method."""
+    for tool in tools:
+        if tool.name() == function_name:
+            return await tool.execute(function_args)
+    raise ValueError(f"Tool {function_name} not found in agent tools.")
 
 
 async def handle_tool_call(
@@ -64,11 +71,7 @@ async def handle_tool_call(
             )
             function_call_result = callback_result
         else:
-            # We cast here because execute_tool_call returns the LLM Protocol version of ToolResult,
-            # but we know that since we passed in Framework Tool objects, it will return
-            # Framework ToolResult objects.
-
-            function_call_result = cast(ToolResult, await execute_tool_call(function_name, function_args, tools))
+            function_call_result = await execute_tool_call(function_name, function_args, tools)
     except Exception as e:
         function_call_result = TextResult(content=f"Error executing tool: {e}")
 
@@ -181,15 +184,13 @@ async def do_single_step(
     completer: Completer,
     context_name: str,
 ):
-    wrapped_tools = await get_tools(tools)
-
     if not history:
         raise RuntimeError("History is required in order to run a step.")
 
     completion = await completer(
         history,
         model=model,
-        tools=wrapped_tools,
+        tools=tools,
         callbacks=progress_callbacks,
     )
     message = completion.message

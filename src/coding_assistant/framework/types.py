@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Awaitable, Protocol
 
@@ -95,6 +96,6 @@ class Completer(Protocol):
         messages: list[LLMMessage],
         *,
         model: str,
-        tools: list,
+        tools: Sequence[LLMTool],
         callbacks: ProgressCallbacks,
     ) -> Awaitable[Completion]: ...
