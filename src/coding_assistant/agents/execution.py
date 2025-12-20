@@ -9,7 +9,7 @@ from json import JSONDecodeError
 from coding_assistant.agents.callbacks import AgentProgressCallbacks, AgentToolCallbacks
 from coding_assistant.agents.history import append_assistant_message, append_tool_message, append_user_message
 from coding_assistant.agents.interrupts import InterruptController
-from coding_assistant.agents.parameters import format_parameters
+from coding_assistant.agents.parameters import format_parameters, Parameter
 from coding_assistant.agents.types import (
     AgentContext,
     AgentDescription,
@@ -114,15 +114,15 @@ def _handle_compact_conversation_result(
 
 async def handle_tool_call(
     tool_call,
-    ctx: AgentContext,
+    tools: list[Tool],
+    history: list,
     agent_callbacks: AgentProgressCallbacks,
     tool_callbacks: AgentToolCallbacks,
     *,
     ui: UI,
+    context_name: str,
 ) -> str:
     """Execute a single tool call and return result_summary."""
-    desc = ctx.desc
-    state = ctx.state
     function_name = tool_call.function.name
     if not function_name:
         raise RuntimeError(f"Tool call {tool_call.id} is missing function name.")
@@ -133,27 +133,29 @@ async def handle_tool_call(
         function_args = json.loads(args_str)
     except JSONDecodeError as e:
         logger.error(
-            f"[{desc.name}] [{tool_call.id}] Failed to parse tool '{function_name}' arguments as JSON: {e} | raw: {args_str}"
+            f"[{context_name}] [{tool_call.id}] Failed to parse tool '{function_name}' arguments as JSON: {e} | raw: {args_str}"
         )
         return f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}"
 
-    logger.debug(f"[{tool_call.id}] [{desc.name}] Calling tool '{function_name}' with arguments {function_args}")
+    logger.debug(f"[{tool_call.id}] [{context_name}] Calling tool '{function_name}' with arguments {function_args}")
 
     # Notify callbacks that tool is starting
-    agent_callbacks.on_tool_start(desc.name, tool_call.id, function_name, function_args)
+    agent_callbacks.on_tool_start(context_name, tool_call.id, function_name, function_args)
 
     try:
         if callback_result := await tool_callbacks.before_tool_execution(
-            desc.name,
+            context_name,
             tool_call.id,
             function_name,
             function_args,
             ui=ui,
         ):
-            logger.info(f"[{tool_call.id}] [{desc.name}] Tool '{function_name}' execution was prevented via callback.")
+            logger.info(
+                f"[{tool_call.id}] [{context_name}] Tool '{function_name}' execution was prevented via callback."
+            )
             function_call_result = callback_result
         else:
-            function_call_result = await execute_tool_call(function_name, function_args, desc.tools)
+            function_call_result = await execute_tool_call(function_name, function_args, tools)
     except Exception as e:
         function_call_result = TextResult(content=f"Error executing tool: {e}")
 
@@ -170,24 +172,32 @@ async def handle_tool_call(
         ),
     )
 
-    result_handlers = {
-        FinishTaskResult: lambda r: _handle_finish_task_result(r, state),
-        CompactConversationResult: lambda r: _handle_compact_conversation_result(r, desc, state, agent_callbacks),
-        TextResult: lambda r: _handle_text_result(r),
-    }
-
-    tool_return_summary = result_handlers[type(function_call_result)](function_call_result)
-    return tool_return_summary
+    if isinstance(function_call_result, FinishTaskResult):
+        # This is a bit tricky: FinishTaskResult specifically wants to set state.output
+        # We'll need to pass something back that indicates this.
+        # For now, let's keep the logic but we'll need to pass in a way to set output if we want to stay generic.
+        # Or let the caller handle it.
+        return function_call_result
+    elif isinstance(function_call_result, CompactConversationResult):
+        return function_call_result
+    elif isinstance(function_call_result, TextResult):
+        return function_call_result.content
+    else:
+        raise RuntimeError(f"Unknown tool result type: {type(function_call_result)}")
 
 
 async def handle_tool_calls(
     message,
-    ctx: AgentContext,
+    tools: list[Tool],
+    history: list,
     agent_callbacks: AgentProgressCallbacks,
     tool_callbacks: AgentToolCallbacks,
     *,
     ui: UI,
+    context_name: str,
     task_created_callback: Callable[[str, asyncio.Task], None] | None = None,
+    on_finish_task: Callable[[FinishTaskResult], None] | None = None,
+    on_compact_conversation: Callable[[CompactConversationResult], None] | None = None,
 ):
     tool_calls = message.tool_calls
 
@@ -200,10 +210,12 @@ async def handle_tool_calls(
         task = loop.create_task(
             handle_tool_call(
                 tool_call,
-                ctx,
+                tools,
+                history,
                 agent_callbacks,
                 tool_callbacks,
                 ui=ui,
+                context_name=context_name,
             ),
             name=f"{tool_call.function.name} ({tool_call.id})",
         )
@@ -218,11 +230,23 @@ async def handle_tool_calls(
     any_cancelled = False
     for tool_call, task in tasks_with_calls:
         try:
-            result_summary = await task
+            result = await task
         except asyncio.CancelledError:
             # Tool was cancelled
-            result_summary = "Tool execution was cancelled."
+            result = "Tool execution was cancelled."
             any_cancelled = True
+
+        result_summary = ""
+        if isinstance(result, FinishTaskResult):
+            if on_finish_task:
+                on_finish_task(result)
+            result_summary = "Agent output set."
+        elif isinstance(result, CompactConversationResult):
+            if on_compact_conversation:
+                on_compact_conversation(result)
+            result_summary = "Conversation compacted and history reset."
+        else:
+            result_summary = str(result)
 
         # Parse arguments from tool_call
         try:
@@ -231,9 +255,9 @@ async def handle_tool_calls(
             function_args = {}
 
         append_tool_message(
-            ctx.state.history,
+            history,
             agent_callbacks,
-            ctx.desc.name,
+            context_name,
             tool_call.id,
             tool_call.function.name,
             function_args,
@@ -311,10 +335,16 @@ async def run_agent_loop(
         if getattr(message, "tool_calls", []):
             await handle_tool_calls(
                 message,
-                ctx,
+                desc.tools,
+                state.history,
                 agent_callbacks,
                 tool_callbacks,
                 ui=ui,
+                context_name=desc.name,
+                on_finish_task=lambda r: _handle_finish_task_result(r, state),
+                on_compact_conversation=lambda r: _handle_compact_conversation_result(
+                    r, desc, state, agent_callbacks
+                ),
             )
         else:
             # Handle assistant steps without tool calls: inject corrective message
@@ -445,11 +475,16 @@ async def run_chat_loop(
                 if getattr(message, "tool_calls", []):
                     await handle_tool_calls(
                         message,
-                        ctx,
+                        desc.tools,
+                        state.history,
                         agent_callbacks,
                         tool_callbacks,
                         ui=ui,
+                        context_name=desc.name,
                         task_created_callback=interrupt_controller.register_task,
+                        on_compact_conversation=lambda r: _handle_compact_conversation_result(
+                            r, desc, state, agent_callbacks
+                        ),
                     )
                 else:
                     need_user_input = True
