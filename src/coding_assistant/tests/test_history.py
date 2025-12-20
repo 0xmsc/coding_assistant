@@ -106,13 +106,13 @@ def test_orchestrator_history_roundtrip(tmp_path: Path):
 
     data = load_orchestrator_history(latest)
     assert data is not None
-    assert isinstance(data, list) and data[-1]["content"] == "msg-1"
+    assert isinstance(data, list) and data[-1].content == "msg-1"
 
     # Overwrite
     save_orchestrator_history(wd, [{"role": "user", "content": "msg-2"}])
     data = load_orchestrator_history(latest)
     assert data is not None
-    assert isinstance(data, list) and data[-1]["content"] == "msg-2"
+    assert isinstance(data, list) and data[-1].content == "msg-2"
 
 
 def test_save_orchestrator_history_with_objects(tmp_path: Path):
@@ -124,8 +124,8 @@ def test_save_orchestrator_history_with_objects(tmp_path: Path):
     assert latest is not None
     data = load_orchestrator_history(latest)
     assert data is not None
-    assert data[0]["role"] == "user"
-    assert data[0]["content"] == "Hello"
+    assert data[0].role == "user"
+    assert data[0].content == "Hello"
 
 
 def test_save_orchestrator_history_strips_trailing_assistant_tool_calls(tmp_path: Path):
@@ -144,4 +144,6 @@ def test_save_orchestrator_history_strips_trailing_assistant_tool_calls(tmp_path
     latest = get_latest_orchestrator_history_file(wd)
     assert latest is not None
     fixed = load_orchestrator_history(latest)
-    assert fixed == [{"role": "user", "content": "hi"}]
+    assert len(fixed) == 1
+    assert fixed[0].role == "user"
+    assert fixed[0].content == "hi"
