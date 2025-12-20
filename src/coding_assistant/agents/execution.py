@@ -48,7 +48,10 @@ CHAT_START_MESSAGE_TEMPLATE = """
 ## General
 
 - You are an agent.
-- You are in chat mode. You may converse without using tools. When you do not know what to do next, reply without any tool calls to return control to the user. Use tools only when they materially advance the work.
+- You are in chat mode.
+  - Use tools only when they materially advance the work.
+  - When you have finished your task, reply without any tool calls to return control to the user.
+  - When you want to ask the user a question, create a message without any tool calls to return control to the user.
 
 ## Parameters
 
