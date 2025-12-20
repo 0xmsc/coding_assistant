@@ -1,4 +1,3 @@
-from dataclasses import fields
 from typing import Any, Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
 
@@ -139,20 +138,4 @@ def make_test_context(
 
 
 def message_to_dict(msg: LLMMessage) -> dict[str, Any]:
-    d: dict[str, Any] = {"role": msg.role}
-    for f in fields(msg):
-        if f.name == "role":
-            continue
-        val = getattr(msg, f.name)
-        if val:  # Only include if truthy
-            if f.name == "tool_calls":
-                d[f.name] = [
-                    {
-                        "id": tc.id,
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                    }
-                    for tc in val
-                ]
-            else:
-                d[f.name] = val
-    return d
+    return msg.to_dict()

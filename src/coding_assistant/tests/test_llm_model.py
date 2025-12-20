@@ -211,10 +211,14 @@ async def test_complete_forwards_image_url_openai_format(monkeypatch):
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
     monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
 
-    messages = [UserMessage(content=[
+    messages = [
+        UserMessage(
+            content=[
                 {"type": "text", "text": "What's in this image?"},
                 {"type": "image_url", "image_url": {"url": "https://example.com/cat.png", "detail": "high"}},
-            ])]
+            ]
+        )
+    ]
 
     cb = _CB()
     _ = await llm_model.complete(messages=messages, model="m", tools=[], callbacks=cb)
@@ -251,10 +255,14 @@ async def test_complete_forwards_base64_image_openai_format(monkeypatch):
     base64_payload = "AAAABASE64STRING"
 
     # Provide content using the OpenAI/LiteLLM standard format with a base64 data URL
-    messages = [UserMessage(content=[
+    messages = [
+        UserMessage(
+            content=[
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_payload}"}},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_payload}"}},
-            ])]
+            ]
+        )
+    ]
 
     cb = _CB()
     _ = await llm_model.complete(messages=messages, model="m", tools=[], callbacks=cb)

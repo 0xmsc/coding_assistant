@@ -1,3 +1,4 @@
+import argparse
 import logging
 import subprocess
 import sys
@@ -59,8 +60,6 @@ def sandbox(readable_directories: list[Path], writable_directories: list[Path]):
 
 def main():
     """Main function for CLI usage of sandbox."""
-    import argparse
-
     parser = argparse.ArgumentParser(
         description="Run a command in a sandboxed environment with restricted filesystem access"
     )
