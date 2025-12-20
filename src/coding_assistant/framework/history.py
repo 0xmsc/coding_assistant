@@ -1,5 +1,5 @@
 from coding_assistant.framework.callbacks import ProgressCallbacks
-from coding_assistant.framework.models import AssistantMessage, LLMMessage, ToolMessage, UserMessage
+from coding_assistant.llm.types import AssistantMessage, LLMMessage, ToolMessage, UserMessage
 
 
 def append_tool_message(
