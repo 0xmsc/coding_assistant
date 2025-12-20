@@ -1,5 +1,3 @@
-import pytest
-
 from coding_assistant.llm import adapters
 
 

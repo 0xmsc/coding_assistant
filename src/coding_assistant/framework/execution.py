@@ -3,7 +3,6 @@ import json
 import logging
 from collections.abc import Callable, Sequence
 from json import JSONDecodeError
-from typing import cast
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.history import append_tool_message
