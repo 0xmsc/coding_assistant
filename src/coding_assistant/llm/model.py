@@ -29,44 +29,7 @@ class Completion:
 
 
 def _map_litellm_message_to_internal(litellm_message: litellm.Message) -> LLMMessage:
-    def get_val(key, default=None):
-        try:
-            return getattr(litellm_message, key, default)
-        except AttributeError:
-            return litellm_message.get(key, default)
-
-    d = {
-        "role": get_val("role", "assistant"),
-        "content": get_val("content"),
-        "reasoning_content": get_val("reasoning_content"),
-        "name": get_val("name"),
-        "provider_specific_fields": get_val("provider_specific_fields", {}),
-    }
-
-    raw_tool_calls = get_val("tool_calls", [])
-    if raw_tool_calls:
-        tool_calls = []
-        for tc in raw_tool_calls:
-
-            def get_tc_val(obj, k, def_val=None):
-                try:
-                    return getattr(obj, k, def_val)
-                except AttributeError:
-                    return obj.get(k, def_val)
-
-            func = get_tc_val(tc, "function")
-            tool_calls.append(
-                {
-                    "id": get_tc_val(tc, "id"),
-                    "function": {
-                        "name": get_tc_val(func, "name"),
-                        "arguments": get_tc_val(func, "arguments"),
-                    },
-                    "type": get_tc_val(tc, "type", "function"),
-                }
-            )
-        d["tool_calls"] = tool_calls
-
+    d = litellm_message.model_dump()
     return message_from_dict(d)
 
 
