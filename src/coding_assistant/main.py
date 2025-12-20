@@ -11,7 +11,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from coding_assistant.framework.callbacks import ProgressCallbacks
-from coding_assistant.llm.model import complete
+from coding_assistant.llm.litellm import complete
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.parameters import Parameter
 from coding_assistant.framework.types import Tool
