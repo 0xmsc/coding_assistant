@@ -47,11 +47,8 @@ Your client has provided the following parameters for your task:
 CHAT_START_MESSAGE_TEMPLATE = """
 ## General
 
-- You are an agent named.
-- You are in chat mode.
-  - Use tools only when they materially advance the work.
-  - When you have finished your task, reply without any tool calls to return control to the user.
-  - When you want to ask the user a question, create a message without any tool calls to return control to the user.
+- You are an agent.
+- You are in chat mode. You may converse without using tools. When you do not know what to do next, reply without any tool calls to return control to the user. Use tools only when they materially advance the work.
 
 ## Parameters
 
@@ -71,10 +68,9 @@ def _create_start_message(desc: AgentDescription) -> str:
     return message
 
 
-def _create_chat_start_message(desc: AgentDescription) -> str:
-    parameters_str = format_parameters(desc.parameters)
+def _create_chat_start_message(parameters: list[Parameter]) -> str:
+    parameters_str = format_parameters(parameters)
     message = CHAT_START_MESSAGE_TEMPLATE.format(
-        name=desc.name,
         parameters=parameters_str,
     )
     return message
@@ -403,7 +399,7 @@ async def run_chat_loop(
     command_map = {cmd.name: cmd for cmd in commands}
     command_names = list(command_map.keys())
 
-    start_message = _create_chat_start_message(desc)
+    start_message = _create_chat_start_message(desc.parameters)
     agent_callbacks.on_agent_start(desc.name, desc.model, is_resuming=bool(state.history))
     append_user_message(state.history, agent_callbacks, desc.name, start_message)
 
