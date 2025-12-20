@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Optional
 
 
@@ -12,6 +12,7 @@ class FunctionCall:
 class ToolCall:
     id: str
     function: FunctionCall
+    type: str = "function"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -22,14 +23,10 @@ class LLMMessage:
     provider_specific_fields: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {"role": self.role}
-        if self.content is not None:
-            d["content"] = self.content
-        if self.name:
-            d["name"] = self.name
-        if self.provider_specific_fields:
-            d["provider_specific_fields"] = self.provider_specific_fields
-        return d
+        def factory(data):
+            return {k: v for k, v in data if v is not None and v != [] and v != {}}
+
+        return asdict(self, dict_factory=factory)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -51,35 +48,12 @@ class AssistantMessage(LLMMessage):
     tool_calls: list[ToolCall] = field(default_factory=list)
     role: Literal["assistant"] = "assistant"
 
-    def to_dict(self) -> dict[str, Any]:
-        d = super().to_dict()
-        if self.reasoning_content is not None:
-            d["reasoning_content"] = self.reasoning_content
-        if self.tool_calls:
-            d["tool_calls"] = [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
-                    },
-                }
-                for tc in self.tool_calls
-            ]
-        return d
-
 
 @dataclass(frozen=True, kw_only=True)
 class ToolMessage(LLMMessage):
     content: str
     tool_call_id: str
     role: Literal["tool"] = "tool"
-
-    def to_dict(self) -> dict[str, Any]:
-        d = super().to_dict()
-        d["tool_call_id"] = self.tool_call_id
-        return d
 
 
 def message_from_dict(d: Any) -> LLMMessage:
