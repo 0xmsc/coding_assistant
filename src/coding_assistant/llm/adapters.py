@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from coding_assistant.llm.types import Tool, ToolResult
+from coding_assistant.llm.types import Tool
 
 
 def fix_input_schema(input_schema: dict):
@@ -32,10 +32,3 @@ async def get_tools(tools: Sequence[Tool]) -> list[dict]:
             }
         )
     return result
-
-
-async def execute_tool_call(function_name: str, function_args: dict, tools: Sequence[Tool]) -> ToolResult:
-    for tool in tools:
-        if tool.name() == function_name:
-            return await tool.execute(function_args)
-    raise ValueError(f"Tool {function_name} not found in agent tools.")

@@ -8,7 +8,7 @@ from coding_assistant.framework.callbacks import (
     NullProgressCallbacks,
     NullToolCallbacks,
 )
-from coding_assistant.framework.execution import handle_tool_calls
+from coding_assistant.framework.execution import handle_tool_calls, execute_tool_call
 from coding_assistant.framework.agent import _handle_finish_task_result
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -45,6 +45,35 @@ class FakeConfirmTool(Tool):
     async def execute(self, parameters: dict) -> TextResult:
         self.calls.append(parameters)
         return TextResult(content=f"ran: {parameters['cmd']}")
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_regular_tool_and_not_found():
+    class DummyTool(Tool):
+        def __init__(self, name: str, result: str):
+            self._name = name
+            self._result = result
+
+        def name(self) -> str:
+            return self._name
+
+        def description(self) -> str:
+            return "desc"
+
+        def parameters(self) -> dict:
+            return {}
+
+        async def execute(self, parameters: dict) -> TextResult:
+            return TextResult(content=self._result)
+
+    tool = DummyTool("echo", "ok")
+
+    res = await execute_tool_call("echo", {}, tools=[tool])
+    assert isinstance(res, TextResult)
+    assert res.content == "ok"
+
+    with pytest.raises(ValueError, match="Tool missing not found"):
+        await execute_tool_call("missing", {}, tools=[tool])
 
 
 @pytest.mark.asyncio
