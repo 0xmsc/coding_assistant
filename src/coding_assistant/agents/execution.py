@@ -121,8 +121,8 @@ async def handle_tool_call(
     *,
     ui: UI,
     context_name: str,
-) -> str:
-    """Execute a single tool call and return result_summary."""
+) -> ToolResult:
+    """Execute a single tool call and return ToolResult."""
     function_name = tool_call.function.name
     if not function_name:
         raise RuntimeError(f"Tool call {tool_call.id} is missing function name.")
@@ -135,7 +135,7 @@ async def handle_tool_call(
         logger.error(
             f"[{context_name}] [{tool_call.id}] Failed to parse tool '{function_name}' arguments as JSON: {e} | raw: {args_str}"
         )
-        return f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}"
+        return TextResult(content=f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}")
 
     logger.debug(f"[{tool_call.id}] [{context_name}] Calling tool '{function_name}' with arguments {function_args}")
 
@@ -172,18 +172,7 @@ async def handle_tool_call(
         ),
     )
 
-    if isinstance(function_call_result, FinishTaskResult):
-        # This is a bit tricky: FinishTaskResult specifically wants to set state.output
-        # We'll need to pass something back that indicates this.
-        # For now, let's keep the logic but we'll need to pass in a way to set output if we want to stay generic.
-        # Or let the caller handle it.
-        return function_call_result
-    elif isinstance(function_call_result, CompactConversationResult):
-        return function_call_result
-    elif isinstance(function_call_result, TextResult):
-        return function_call_result.content
-    else:
-        raise RuntimeError(f"Unknown tool result type: {type(function_call_result)}")
+    return function_call_result
 
 
 async def handle_tool_calls(
@@ -196,8 +185,7 @@ async def handle_tool_calls(
     ui: UI,
     context_name: str,
     task_created_callback: Callable[[str, asyncio.Task], None] | None = None,
-    on_finish_task: Callable[[FinishTaskResult], None] | None = None,
-    on_compact_conversation: Callable[[CompactConversationResult], None] | None = None,
+    handle_tool_result: Callable[[ToolResult], str] | None = None,
 ):
     tool_calls = message.tool_calls
 
@@ -230,23 +218,19 @@ async def handle_tool_calls(
     any_cancelled = False
     for tool_call, task in tasks_with_calls:
         try:
-            result = await task
+            result: ToolResult = await task
         except asyncio.CancelledError:
             # Tool was cancelled
-            result = "Tool execution was cancelled."
+            result = TextResult(content="Tool execution was cancelled.")
             any_cancelled = True
 
-        result_summary = ""
-        if isinstance(result, FinishTaskResult):
-            if on_finish_task:
-                on_finish_task(result)
-            result_summary = "Agent output set."
-        elif isinstance(result, CompactConversationResult):
-            if on_compact_conversation:
-                on_compact_conversation(result)
-            result_summary = "Conversation compacted and history reset."
+        if handle_tool_result:
+            result_summary = handle_tool_result(result)
         else:
-            result_summary = str(result)
+            if isinstance(result, TextResult):
+                result_summary = result.content
+            else:
+                result_summary = f"Tool produced result of type {type(result).__name__}"
 
         # Parse arguments from tool_call
         try:
@@ -333,6 +317,16 @@ async def run_agent_loop(
         append_assistant_message(state.history, agent_callbacks, desc.name, message)
 
         if getattr(message, "tool_calls", []):
+
+            def handle_tool_result(result: ToolResult) -> str:
+                if isinstance(result, FinishTaskResult):
+                    return _handle_finish_task_result(result, state)
+                if isinstance(result, CompactConversationResult):
+                    return _handle_compact_conversation_result(result, desc, state, agent_callbacks)
+                if isinstance(result, TextResult):
+                    return result.content
+                return f"Tool produced result of type {type(result).__name__}"
+
             await handle_tool_calls(
                 message,
                 desc.tools,
@@ -341,10 +335,7 @@ async def run_agent_loop(
                 tool_callbacks,
                 ui=ui,
                 context_name=desc.name,
-                on_finish_task=lambda r: _handle_finish_task_result(r, state),
-                on_compact_conversation=lambda r: _handle_compact_conversation_result(
-                    r, desc, state, agent_callbacks
-                ),
+                handle_tool_result=handle_tool_result,
             )
         else:
             # Handle assistant steps without tool calls: inject corrective message
@@ -473,6 +464,14 @@ async def run_chat_loop(
                 append_assistant_message(state.history, agent_callbacks, desc.name, message)
 
                 if getattr(message, "tool_calls", []):
+
+                    def handle_tool_result(result: ToolResult) -> str:
+                        if isinstance(result, CompactConversationResult):
+                            return _handle_compact_conversation_result(result, desc, state, agent_callbacks)
+                        if isinstance(result, TextResult):
+                            return result.content
+                        return f"Tool produced result of type {type(result).__name__}"
+
                     await handle_tool_calls(
                         message,
                         desc.tools,
@@ -482,9 +481,7 @@ async def run_chat_loop(
                         ui=ui,
                         context_name=desc.name,
                         task_created_callback=interrupt_controller.register_task,
-                        on_compact_conversation=lambda r: _handle_compact_conversation_result(
-                            r, desc, state, agent_callbacks
-                        ),
+                        handle_tool_result=handle_tool_result,
                     )
                 else:
                     need_user_input = True
