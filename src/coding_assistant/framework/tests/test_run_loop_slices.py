@@ -11,6 +11,7 @@ from coding_assistant.framework.tests.helpers import (
     FakeToolCall,
     make_test_agent,
     make_ui_mock,
+    message_to_dict,
 )
 from coding_assistant.framework.types import AgentContext, TextResult, Tool, AgentOutput
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
@@ -71,7 +72,7 @@ async def test_tool_selection_then_finish():
     assert fake_tool.called_with == {"text": "hi"}
 
     desc, state = agent
-    assert [m.to_dict() for m in state.history[1:]] == [
+    assert [message_to_dict(m) for m in state.history[1:]] == [
         {
             "role": "assistant",
             "tool_calls": [
@@ -142,7 +143,7 @@ async def test_unknown_tool_error_then_finish(monkeypatch):
     )
 
     desc, state = agent
-    assert [m.to_dict() for m in state.history[1:]] == [
+    assert [message_to_dict(m) for m in state.history[1:]] == [
         {
             "role": "assistant",
             "tool_calls": [
@@ -213,7 +214,7 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
     )
 
     desc, state = agent
-    assert [m.to_dict() for m in state.history[1:]] == [
+    assert [message_to_dict(m) for m in state.history[1:]] == [
         {
             "role": "assistant",
             "content": "Hello",
@@ -324,7 +325,7 @@ async def test_multiple_tool_calls_processed_in_order():
     assert state.output is not None
     assert state.output.result == "ok"
     desc, state = agent
-    assert [m.to_dict() for m in state.history[1:4]] == [
+    assert [message_to_dict(m) for m in state.history[1:4]] == [
         {
             "role": "assistant",
             "tool_calls": [
@@ -360,7 +361,7 @@ async def test_multiple_tool_calls_processed_in_order():
 
     # Also verify the finish comes after both tool results
     desc, state = agent
-    assert state.history[4].to_dict() == {
+    assert message_to_dict(state.history[4]) == {
         "role": "assistant",
         "tool_calls": [
             {
@@ -373,7 +374,7 @@ async def test_multiple_tool_calls_processed_in_order():
         ],
     }
     desc, state = agent
-    assert state.history[5].to_dict() == {
+    assert message_to_dict(state.history[5]) == {
         "tool_call_id": "3",
         "role": "tool",
         "name": "finish_task",
@@ -422,7 +423,7 @@ async def test_feedback_loop_then_finish():
     assert state.output.summary == "s1"
 
     desc, state = agent
-    assert [m.to_dict() for m in state.history[1:]] == [
+    assert [message_to_dict(m) for m in state.history[1:]] == [
         {
             "role": "assistant",
             "tool_calls": [

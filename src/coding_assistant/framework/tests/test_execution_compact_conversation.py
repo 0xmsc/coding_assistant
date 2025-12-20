@@ -19,6 +19,7 @@ from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     make_test_agent,
     make_ui_mock,
+    message_to_dict,
 )
 from coding_assistant.framework.types import ToolResult, FinishTaskResult, CompactConversationResult, TextResult
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
@@ -79,14 +80,14 @@ async def test_compact_conversation_resets_history():
     assert len(state.history) >= 3
     assert state.history[0] == UserMessage(content="old start")
 
-    assert state.history[1].to_dict() == {
+    assert message_to_dict(state.history[1]) == {
         "role": "user",
         "content": (
             f"A summary of your conversation with the client until now:\n\n{summary_text}\n\nPlease continue your work."
         ),
     }
 
-    assert state.history[2].to_dict() == {
+    assert message_to_dict(state.history[2]) == {
         "tool_call_id": "shorten-1",
         "role": "tool",
         "name": "compact_conversation",
@@ -137,7 +138,7 @@ async def test_compact_conversation_resets_history():
     )
 
     # Verify the assistant tool call and finish result were appended after the reset messages
-    assert state.history[-2].to_dict() == {
+    assert message_to_dict(state.history[-2]) == {
         "role": "assistant",
         "tool_calls": [
             {
@@ -149,7 +150,7 @@ async def test_compact_conversation_resets_history():
             }
         ],
     }
-    assert state.history[-1].to_dict() == {
+    assert message_to_dict(state.history[-1]) == {
         "tool_call_id": "finish-1",
         "role": "tool",
         "name": "finish_task",

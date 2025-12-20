@@ -121,7 +121,7 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
 
     # Verify user was prompted after interrupt
     user_messages = [m for m in state.history if m.role == "user"]
-    resume_msg = next((m for m in user_messages if "Resume" in m.get("content", "")), None)
+    resume_msg = next((m for m in user_messages if "Resume" in (m.content or "")), None)
     assert resume_msg is not None, "User should have been prompted after interrupt"
 
 
@@ -442,7 +442,7 @@ async def test_interrupt_during_second_tool_call():
 
     # User should have been prompted after interrupt
     user_messages = [m for m in state.history if m.role == "user"]
-    assert any("after tool interrupt" in m.get("content", "") for m in user_messages)
+    assert any("after tool interrupt" in (m.content or "") for m in user_messages)
 
 
 @pytest.mark.asyncio
@@ -504,7 +504,7 @@ async def test_sigint_interrupts_tool_execution():
 
     # User should have been prompted after SIGINT
     user_messages = [m for m in state.history if m.role == "user"]
-    assert any("recovered from SIGINT" in m.get("content", "") for m in user_messages)
+    assert any("recovered from SIGINT" in (m.content or "") for m in user_messages)
 
 
 @pytest.mark.asyncio
@@ -569,8 +569,8 @@ async def test_interrupt_during_llm_call():
     # Verify LLM call was cancelled - no assistant message with "Response from LLM"
     assistant_messages = [m for m in state.history if m.role == "assistant"]
     for msg in assistant_messages:
-        assert "Response from LLM" not in msg.get("content", "")
+        assert "Response from LLM" not in (msg.content or "")
 
     # Verify user was prompted after interrupt
     user_messages = [m for m in state.history if m.role == "user"]
-    assert any("user input after interrupt" in m.get("content", "") for m in user_messages)
+    assert any("user input after interrupt" in (m.content or "") for m in user_messages)
