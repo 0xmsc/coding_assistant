@@ -4,7 +4,7 @@ import signal
 
 import pytest
 
-from coding_assistant.agents.interrupts import (
+from coding_assistant.framework.interrupts import (
     InterruptController,
     ToolCallCancellationManager,
 )

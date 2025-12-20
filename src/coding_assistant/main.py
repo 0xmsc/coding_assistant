@@ -10,11 +10,11 @@ from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from coding_assistant.agents.callbacks import AgentProgressCallbacks
+from coding_assistant.framework.callbacks import ProgressCallbacks
 from coding_assistant.llm.model import complete
-from coding_assistant.agents.execution import run_chat_loop
-from coding_assistant.agents.parameters import Parameter
-from coding_assistant.agents.types import AgentContext, AgentDescription, AgentState, Tool
+from coding_assistant.framework.chat import run_chat_loop
+from coding_assistant.framework.parameters import Parameter
+from coding_assistant.framework.types import Tool
 from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
@@ -26,7 +26,8 @@ from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
-from coding_assistant.tools.tools import AgentTool, CompactConversation
+from coding_assistant.tools.tools import AgentTool
+from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
 from coding_assistant.ui import PromptToolkitUI
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
@@ -142,14 +143,14 @@ async def run_orchestrator_agent(
     history: list | None,
     instructions: str | None,
     working_directory: Path,
-    agent_callbacks: AgentProgressCallbacks,
+    progress_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
 ):
     tool = AgentTool(
         config=config,
         tools=tools,
         history=history,
-        agent_callbacks=agent_callbacks,
+        progress_callbacks=progress_callbacks,
         ui=PromptToolkitUI(),
         tool_callbacks=tool_callbacks,
         name="launch_orchestrator_agent",
@@ -177,41 +178,39 @@ async def run_chat_session(
     history: list | None,
     instructions: str | None,
     working_directory: Path,
-    agent_callbacks: AgentProgressCallbacks,
+    progress_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
 ):
     # Build a simple root agent for chat mode (no finish_task)
-    params: list[Parameter] = []
+    chat_parameters: list[Parameter] = []
     if instructions:
-        params.append(
+        chat_parameters.append(
             Parameter(
                 name="instructions",
                 description="General instructions for the agent.",
                 value=instructions,
             )
         )
-    desc = AgentDescription(
-        name="Orchestrator",
-        model=config.model,
-        parameters=params,
-        tools=[
-            CompactConversation(),
-            *tools,
-        ],
-    )
-    state = AgentState(history=history or [])
-    ctx = AgentContext(desc=desc, state=state)
+
+    chat_history = history or []
 
     try:
         await run_chat_loop(
-            ctx,
-            agent_callbacks=agent_callbacks,
+            history=chat_history,
+            model=config.model,
+            tools=[
+                CompactConversation(),
+                *tools,
+            ],
+            parameters=chat_parameters,
+            callbacks=progress_callbacks,
             tool_callbacks=tool_callbacks,
             completer=complete,
             ui=PromptToolkitUI(),
+            context_name="Orchestrator",
         )
     finally:
-        save_orchestrator_history(working_directory, state.history)
+        save_orchestrator_history(working_directory, chat_history)
 
 
 async def _main(args):
@@ -284,7 +283,7 @@ async def _main(args):
             rich_print(Panel(Markdown(instructions), title="Instructions"))
             return
 
-        agent_callbacks = DenseProgressCallbacks()
+        progress_callbacks = DenseProgressCallbacks()
 
         tool_callbacks = ConfirmationToolCallbacks(
             tool_confirmation_patterns=args.tool_confirmation_patterns,
@@ -298,7 +297,7 @@ async def _main(args):
                 history=resume_history,
                 instructions=instructions,
                 working_directory=working_directory,
-                agent_callbacks=agent_callbacks,
+                progress_callbacks=progress_callbacks,
                 tool_callbacks=tool_callbacks,
             )
         else:
@@ -311,7 +310,7 @@ async def _main(args):
                 history=resume_history,
                 instructions=instructions,
                 working_directory=working_directory,
-                agent_callbacks=agent_callbacks,
+                progress_callbacks=progress_callbacks,
                 tool_callbacks=tool_callbacks,
             )
 

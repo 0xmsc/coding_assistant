@@ -1,6 +1,6 @@
 import pytest
 
-from coding_assistant.agents.types import TextResult, Tool
+from coding_assistant.framework.types import TextResult, Tool
 from coding_assistant.llm import adapters
 
 

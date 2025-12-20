@@ -2,8 +2,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Awaitable, Protocol
 
-from coding_assistant.agents.callbacks import AgentProgressCallbacks
-from coding_assistant.agents.parameters import Parameter
+from coding_assistant.framework.callbacks import ProgressCallbacks
+from coding_assistant.framework.parameters import Parameter
 from coding_assistant.llm.model import Completion
 
 
@@ -96,5 +96,5 @@ class Completer(Protocol):
         *,
         model: str,
         tools: list,
-        callbacks: AgentProgressCallbacks,
+        callbacks: ProgressCallbacks,
     ) -> Awaitable[Completion]: ...
