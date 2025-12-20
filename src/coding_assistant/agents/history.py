@@ -43,3 +43,9 @@ def append_assistant_message(
 
     message_dump = message.model_dump()
     history.append(message_dump)
+
+
+def clear_history(history: list):
+    """Resets the history to the first message (the start message) in-place."""
+    if history:
+        history[:] = [history[0]]
