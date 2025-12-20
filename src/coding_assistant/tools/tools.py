@@ -12,7 +12,6 @@ from coding_assistant.framework.types import (
     TextResult,
     Tool,
 )
-from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 from coding_assistant.config import Config
 from coding_assistant.llm.model import complete
 from coding_assistant.ui import DefaultAnswerUI, UI
@@ -88,8 +87,6 @@ class AgentTool(Tool):
             model=self.get_model(parameters),
             parameters=params,
             tools=[
-                FinishTaskTool(),
-                CompactConversation(),
                 AgentTool(
                     self._config,
                     self._tools,

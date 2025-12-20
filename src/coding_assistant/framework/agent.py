@@ -1,5 +1,9 @@
 import logging
 
+from coding_assistant.framework.builtin_tools import (
+    CompactConversationTool,
+    FinishTaskTool,
+)
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
 from coding_assistant.framework.history import (
@@ -105,11 +109,12 @@ async def run_agent_loop(
     if state.output is not None:
         raise RuntimeError("Agent already has a result or summary.")
 
-    # Validate tools required for the agent loop
-    if not any(tool.name() == "finish_task" for tool in desc.tools):
-        raise RuntimeError("Agent needs to have a `finish_task` tool in order to run.")
-    if not any(tool.name() == "compact_conversation" for tool in desc.tools):
-        raise RuntimeError("Agent needs to have a `compact_conversation` tool in order to run.")
+    # Inject required tools
+    tools = list(desc.tools)
+    if not any(tool.name() == "finish_task" for tool in tools):
+        tools.append(FinishTaskTool())
+    if not any(tool.name() == "compact_conversation" for tool in tools):
+        tools.append(CompactConversationTool())
 
     start_message = _create_start_message(desc)
     append_user_message(state.history, progress_callbacks, desc.name, start_message)
@@ -118,7 +123,7 @@ async def run_agent_loop(
         message, tokens = await do_single_step(
             state.history,
             desc.model,
-            desc.tools,
+            tools,
             progress_callbacks,
             completer=completer,
             context_name=desc.name,
@@ -130,7 +135,7 @@ async def run_agent_loop(
         if getattr(message, "tool_calls", []):
             await handle_tool_calls(
                 message,
-                desc.tools,
+                tools,
                 state.history,
                 progress_callbacks,
                 tool_callbacks,

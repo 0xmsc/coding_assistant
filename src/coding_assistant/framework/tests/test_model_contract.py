@@ -145,41 +145,39 @@ async def test_reasoning_is_forwarded_and_not_stored():
 
 
 @pytest.mark.asyncio
-async def test_requires_finish_tool():
-    # Missing finish_task tool should raise
+async def test_auto_inject_builtin_tools():
+    # Tools are empty initially
     desc, state = make_test_agent(
-        tools=[DummyTool(), CompactConversation()],
+        tools=[],
         history=[{"role": "user", "content": "start"}],
     )
     ctx = AgentContext(desc=desc, state=state)
-    with pytest.raises(RuntimeError, match="Agent needs to have a `finish_task` tool in order to run."):
-        await run_agent_loop(
-            ctx,
-            progress_callbacks=NullProgressCallbacks(),
-            tool_callbacks=NullToolCallbacks(),
-            completer=FakeCompleter([FakeMessage(content="hi")]),
-            ui=make_ui_mock(),
-            compact_conversation_at_tokens=1000,
-        )
 
-
-@pytest.mark.asyncio
-async def test_requires_shorten_tool():
-    # Missing compact_conversation tool should raise
-    desc, state = make_test_agent(
-        tools=[DummyTool(), FinishTaskTool()],
-        history=[{"role": "user", "content": "start"}],
+    # We need a completer that will eventually allow the loop to terminate
+    # First message: no tool calls -> warning
+    # Second message: finish_task -> stop
+    completer = FakeCompleter(
+        [
+            FakeMessage(content="no tools yet"),
+            FakeMessage(
+                content="done",
+                tool_calls=[FakeToolCall(id="c1", function=FakeFunction(name="finish_task", arguments='{"result": "ok", "summary": "done"}'))],
+            ),
+        ]
     )
-    ctx = AgentContext(desc=desc, state=state)
-    with pytest.raises(RuntimeError, match="Agent needs to have a `compact_conversation` tool in order to run."):
-        await run_agent_loop(
-            ctx,
-            progress_callbacks=NullProgressCallbacks(),
-            tool_callbacks=NullToolCallbacks(),
-            completer=FakeCompleter([FakeMessage(content="hi")]),
-            ui=make_ui_mock(),
-            compact_conversation_at_tokens=1000,
-        )
+
+    await run_agent_loop(
+        ctx,
+        progress_callbacks=NullProgressCallbacks(),
+        tool_callbacks=NullToolCallbacks(),
+        completer=completer,
+        ui=make_ui_mock(),
+        compact_conversation_at_tokens=1000,
+    )
+
+    assert state.output is not None
+    assert state.output.result == "ok"
+
 
 
 @pytest.mark.asyncio
