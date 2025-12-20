@@ -2,21 +2,21 @@ import asyncio
 import time
 import pytest
 
-from coding_assistant.agents.callbacks import (
+from coding_assistant.framework.callbacks import (
     ToolCallbacks,
     NullProgressCallbacks,
     NullToolCallbacks,
 )
-from coding_assistant.agents.execution import handle_tool_calls
-from coding_assistant.agents.agent import _handle_finish_task_result
-from coding_assistant.agents.tests.helpers import (
+from coding_assistant.framework.execution import handle_tool_calls
+from coding_assistant.framework.agent import _handle_finish_task_result
+from coding_assistant.framework.tests.helpers import (
     FakeFunction,
     FakeMessage,
     FakeToolCall,
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.agents.types import (
+from coding_assistant.framework.types import (
     FinishTaskResult,
     TextResult,
     Tool,
@@ -381,7 +381,7 @@ async def test_multiple_tool_calls_are_parallel() -> None:
 
     desc, state = make_test_agent(tools=[t1, t2])
 
-    from coding_assistant.agents.tests.helpers import FakeMessage  # local import to avoid circulars
+    from coding_assistant.framework.tests.helpers import FakeMessage  # local import to avoid circulars
 
     msg = FakeMessage(
         tool_calls=[

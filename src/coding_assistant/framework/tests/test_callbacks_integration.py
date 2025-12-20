@@ -3,9 +3,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from coding_assistant.agents.agent import run_agent_loop
-from coding_assistant.agents.callbacks import NullToolCallbacks
-from coding_assistant.agents.tests.helpers import (
+from coding_assistant.framework.agent import run_agent_loop
+from coding_assistant.framework.callbacks import NullToolCallbacks
+from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FakeFunction,
     FakeMessage,
@@ -13,7 +13,7 @@ from coding_assistant.agents.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.agents.types import TextResult, Tool, AgentContext
+from coding_assistant.framework.types import TextResult, Tool, AgentContext
 from coding_assistant.tools.tools import FinishTaskTool, CompactConversation
 
 

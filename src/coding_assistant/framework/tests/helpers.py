@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from typing import Iterable, Sequence, Any, cast
 from unittest.mock import AsyncMock, Mock
 
-from coding_assistant.agents.parameters import Parameter
-from coding_assistant.agents.types import AgentDescription, AgentState, AgentContext, Tool
+from coding_assistant.framework.parameters import Parameter
+from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext, Tool
 from coding_assistant.llm.model import Completion
 from coding_assistant.ui import UI
 

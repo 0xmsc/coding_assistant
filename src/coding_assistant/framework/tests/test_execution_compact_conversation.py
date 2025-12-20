@@ -2,16 +2,16 @@ import json
 
 import pytest
 
-from coding_assistant.agents.callbacks import NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.agents.execution import (
+from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.execution import (
     do_single_step,
     handle_tool_calls,
 )
-from coding_assistant.agents.agent import (
+from coding_assistant.framework.agent import (
     _handle_compact_conversation_result,
     _handle_finish_task_result,
 )
-from coding_assistant.agents.tests.helpers import (
+from coding_assistant.framework.tests.helpers import (
     FakeFunction,
     FakeMessage,
     FakeToolCall,
@@ -19,7 +19,7 @@ from coding_assistant.agents.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.agents.types import ToolResult, FinishTaskResult, CompactConversationResult, TextResult
+from coding_assistant.framework.types import ToolResult, FinishTaskResult, CompactConversationResult, TextResult
 from coding_assistant.tools.tools import FinishTaskTool, CompactConversation
 
 
@@ -113,7 +113,7 @@ async def test_compact_conversation_resets_history():
     )
 
     # Append assistant message to history
-    from coding_assistant.agents.history import append_assistant_message
+    from coding_assistant.framework.history import append_assistant_message
 
     append_assistant_message(state.history, callbacks, desc.name, msg)
 
