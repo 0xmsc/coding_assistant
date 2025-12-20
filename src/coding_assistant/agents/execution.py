@@ -138,7 +138,7 @@ async def handle_tool_calls(
             else:
                 result_summary = f"Tool produced result of type {type(result).__name__}"
 
-        if not result_summary:
+        if result_summary is None:
             raise RuntimeError(f"Tool call {tool_call.id} produced empty result summary.")
 
         # Parse arguments from tool_call
