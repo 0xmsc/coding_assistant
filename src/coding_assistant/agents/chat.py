@@ -62,9 +62,11 @@ def handle_tool_result_chat(
             force=True,
         )
         return "Conversation compacted and history reset."
+
     if isinstance(result, TextResult):
         return result.content
-    return f"Tool produced result of type {type(result).__name__}"
+
+    raise RuntimeError(f"Tool produced unexpected result of type {type(result).__name__}")
 
 
 class ChatCommandResult(Enum):
