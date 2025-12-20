@@ -163,7 +163,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
     ):
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}")
         for key, value in arguments.items():
-            if key in lang_map and "\n" in value:
+            if isinstance(value, str) and "\n" in value:
                 print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
                 print(Padding(Markdown(f"```{lang_map.get(key, '')}\n{value}\n```"), self._left_padding))
             else:
