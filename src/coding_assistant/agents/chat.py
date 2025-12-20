@@ -5,7 +5,11 @@ from enum import Enum
 
 from coding_assistant.agents.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.agents.execution import do_single_step, handle_tool_calls
-from coding_assistant.agents.history import append_assistant_message, append_user_message
+from coding_assistant.agents.history import (
+    append_assistant_message,
+    append_user_message,
+    clear_history,
+)
 from coding_assistant.agents.interrupts import InterruptController
 from coding_assistant.agents.parameters import Parameter, format_parameters
 from coding_assistant.agents.types import (
@@ -40,6 +44,27 @@ def _create_chat_start_message(parameters: list[Parameter]) -> str:
         parameters=parameters_str,
     )
     return message
+
+
+def handle_tool_result_chat(
+    result: ToolResult,
+    history: list,
+    callbacks: ProgressCallbacks,
+    context_name: str,
+) -> str:
+    if isinstance(result, CompactConversationResult):
+        clear_history(history)
+        append_user_message(
+            history,
+            callbacks,
+            context_name,
+            f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work.",
+            force=True,
+        )
+        return "Conversation compacted and history reset."
+    if isinstance(result, TextResult):
+        return result.content
+    return f"Tool produced result of type {type(result).__name__}"
 
 
 class ChatCommandResult(Enum):
@@ -98,7 +123,7 @@ async def run_chat_loop(
     async def _clear_cmd():
         # history reset logic - we need a way to clear history that is passed in
         # for now we can just clear the list if it's a list
-        history.clear()
+        clear_history(history)
         print("History cleared.")
         return ChatCommandResult.PROCEED_WITH_PROMPT
 
@@ -154,24 +179,6 @@ async def run_chat_loop(
                 append_assistant_message(history, callbacks, context_name, message)
 
                 if getattr(message, "tool_calls", []):
-
-                    def handle_tool_result(result: ToolResult) -> str:
-                        if isinstance(result, CompactConversationResult):
-                            # This one still needs to be able to reset history
-                            # We'll pass a lambda that captures the things it needs
-                            history.clear()
-                            append_user_message(
-                                history,
-                                callbacks,
-                                context_name,
-                                f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work.",
-                                force=True,
-                            )
-                            return "Conversation compacted and history reset."
-                        if isinstance(result, TextResult):
-                            return result.content
-                        return f"Tool produced result of type {type(result).__name__}"
-
                     await handle_tool_calls(
                         message,
                         tools,
@@ -181,7 +188,9 @@ async def run_chat_loop(
                         ui=ui,
                         context_name=context_name,
                         task_created_callback=interrupt_controller.register_task,
-                        handle_tool_result=handle_tool_result,
+                        handle_tool_result=lambda result: handle_tool_result_chat(
+                            result, history, callbacks, context_name
+                        ),
                     )
                 else:
                     need_user_input = True

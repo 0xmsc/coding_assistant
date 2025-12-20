@@ -2,7 +2,11 @@ import logging
 
 from coding_assistant.agents.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.agents.execution import do_single_step, handle_tool_calls
-from coding_assistant.agents.history import append_assistant_message, append_user_message
+from coding_assistant.agents.history import (
+    append_assistant_message,
+    append_user_message,
+    clear_history,
+)
 from coding_assistant.agents.parameters import format_parameters
 from coding_assistant.agents.types import (
     AgentContext,
@@ -52,18 +56,13 @@ def _handle_finish_task_result(result: FinishTaskResult, state: AgentState):
     return "Agent output set."
 
 
-def _clear_history(state: AgentState):
-    """Resets the history to the first message (start message) in-place."""
-    state.history[:] = [state.history[0]]
-
-
 def _handle_compact_conversation_result(
     result: CompactConversationResult,
     desc: AgentDescription,
     state: AgentState,
     progress_callbacks: ProgressCallbacks,
 ):
-    _clear_history(state)
+    clear_history(state.history)
 
     append_user_message(
         state.history,
@@ -74,6 +73,21 @@ def _handle_compact_conversation_result(
     )
 
     return "Conversation compacted and history reset."
+
+
+def handle_tool_result_agent(
+    result: ToolResult,
+    desc: AgentDescription,
+    state: AgentState,
+    progress_callbacks: ProgressCallbacks,
+) -> str:
+    if isinstance(result, FinishTaskResult):
+        return _handle_finish_task_result(result, state)
+    if isinstance(result, CompactConversationResult):
+        return _handle_compact_conversation_result(result, desc, state, progress_callbacks)
+    if isinstance(result, TextResult):
+        return result.content
+    return f"Tool produced result of type {type(result).__name__}"
 
 
 async def run_agent_loop(
@@ -115,16 +129,6 @@ async def run_agent_loop(
         append_assistant_message(state.history, progress_callbacks, desc.name, message)
 
         if getattr(message, "tool_calls", []):
-
-            def handle_tool_result(result: ToolResult) -> str:
-                if isinstance(result, FinishTaskResult):
-                    return _handle_finish_task_result(result, state)
-                if isinstance(result, CompactConversationResult):
-                    return _handle_compact_conversation_result(result, desc, state, progress_callbacks)
-                if isinstance(result, TextResult):
-                    return result.content
-                return f"Tool produced result of type {type(result).__name__}"
-
             await handle_tool_calls(
                 message,
                 desc.tools,
@@ -133,7 +137,9 @@ async def run_agent_loop(
                 tool_callbacks,
                 ui=ui,
                 context_name=desc.name,
-                handle_tool_result=handle_tool_result,
+                handle_tool_result=lambda result: handle_tool_result_agent(
+                    result, desc, state, progress_callbacks
+                ),
             )
         else:
             # Handle assistant steps without tool calls: inject corrective message
