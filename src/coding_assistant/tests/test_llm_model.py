@@ -2,6 +2,7 @@ import pytest
 
 from coding_assistant.framework.callbacks import ProgressCallbacks
 from coding_assistant.llm import model as llm_model
+from coding_assistant.framework.models import UserMessage
 
 
 class _CB(ProgressCallbacks):
@@ -155,7 +156,7 @@ async def test_complete_error_path_logs_and_raises(monkeypatch):
 
     cb = _CB()
     with pytest.raises(Boom):
-        await llm_model.complete(messages=[{"role": "user", "content": "x"}], model="m", tools=[], callbacks=cb)
+        await llm_model.complete(messages=[UserMessage(content="x")], model="m", tools=[], callbacks=cb)
 
 
 @pytest.mark.asyncio
@@ -210,15 +211,10 @@ async def test_complete_forwards_image_url_openai_format(monkeypatch):
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
     monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
 
-    messages = [
-        {
-            "role": "user",
-            "content": [
+    messages = [UserMessage(content=[
                 {"type": "text", "text": "What's in this image?"},
                 {"type": "image_url", "image_url": {"url": "https://example.com/cat.png", "detail": "high"}},
-            ],
-        }
-    ]
+            ])]
 
     cb = _CB()
     _ = await llm_model.complete(messages=messages, model="m", tools=[], callbacks=cb)
@@ -255,15 +251,10 @@ async def test_complete_forwards_base64_image_openai_format(monkeypatch):
     base64_payload = "AAAABASE64STRING"
 
     # Provide content using the OpenAI/LiteLLM standard format with a base64 data URL
-    messages = [
-        {
-            "role": "user",
-            "content": [
+    messages = [UserMessage(content=[
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_payload}"}},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_payload}"}},
-            ],
-        }
-    ]
+            ])]
 
     cb = _CB()
     _ = await llm_model.complete(messages=messages, model="m", tools=[], callbacks=cb)
