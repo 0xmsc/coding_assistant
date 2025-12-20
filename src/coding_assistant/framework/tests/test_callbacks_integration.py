@@ -14,7 +14,7 @@ from coding_assistant.framework.tests.helpers import (
     make_ui_mock,
 )
 from coding_assistant.framework.types import TextResult, Tool, AgentContext
-from coding_assistant.tools.tools import FinishTaskTool, CompactConversation
+from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 
 class EchoTool(Tool):
