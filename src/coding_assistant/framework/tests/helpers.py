@@ -3,12 +3,11 @@ from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.framework.parameters import Parameter
 from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext, Tool
-from coding_assistant.framework.models import (
+from coding_assistant.llm.types import (
     AssistantMessage,
     FunctionCall,
     LLMMessage,
     ToolCall,
-    message_to_dict,
 )
 from coding_assistant.llm.model import Completion
 from coding_assistant.ui import UI

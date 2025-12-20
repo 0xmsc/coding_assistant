@@ -9,7 +9,7 @@ from coding_assistant.framework.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.framework.models import (
+from coding_assistant.llm.types import (
     AssistantMessage,
     FunctionCall,
     ToolCall,
