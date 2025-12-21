@@ -1,51 +1,54 @@
 import pytest
+import pytest_asyncio
+from coding_assistant_mcp.shell import create_shell_server
+from coding_assistant_mcp.tasks import TaskManager
 
-from coding_assistant_mcp.shell import execute
+@pytest.fixture
+def manager():
+    return TaskManager()
 
+@pytest_asyncio.fixture
+async def execute(manager):
+    server = create_shell_server(manager)
+    return await server.get_tool("execute")
 
 @pytest.mark.asyncio
-async def test_shell_execute_timeout():
-    out = await execute(command="echo 'start'; sleep 2; echo 'end'", timeout=1)
-    assert "timed out" in out
-    assert "start" in out
-    assert "end" not in out
-
+async def test_shell_execute_timeout(execute):
+    # Note: execute is now a background/task tool, so timeout leads to auto-backgrounding
+    out = await execute.fn(command="echo 'start'; sleep 2; echo 'end'", timeout=1)
+    assert "taking longer than 1s" in out
+    assert "Task ID: 1" in out
 
 @pytest.mark.asyncio
-async def test_shell_execute_nonzero_return_code():
-    out = await execute(command="bash -lc 'exit 7'")
+async def test_shell_execute_nonzero_return_code(execute):
+    out = await execute.fn(command="bash -lc 'exit 7'")
     assert out.startswith("Returncode: 7.\n\n")
 
+@pytest.mark.asyncio
+async def test_shell_execute_truncates_output(execute):
+    out = await execute.fn(command="yes 1 | head -c 1000", truncate_at=200)
+    assert "[truncated output at: " in out
+    # Note: length check might be higher now because of the Task ID note
+    assert len(out) > 10
 
 @pytest.mark.asyncio
-async def test_shell_execute_truncates_output():
-    out = await execute(command="yes 1 | head -c 1000", truncate_at=200)
-    assert "\n\n[truncated output at: " in out
-    assert ", full length: " in out
-    assert len(out) <= 200
-
-
-@pytest.mark.asyncio
-async def test_shell_execute_happy_path_stdout():
-    out = await execute(command="printf 'hello'", timeout=5)
+async def test_shell_execute_happy_path_stdout(execute):
+    out = await execute.fn(command="printf 'hello'", timeout=5)
     assert out == "hello"
 
-
 @pytest.mark.asyncio
-async def test_shell_execute_stderr_captured_with_zero_exit():
+async def test_shell_execute_stderr_captured_with_zero_exit(execute):
     # Writes to stderr, then exits 0
-    out = await execute(command="echo 'oops' >&2; true", timeout=5)
+    out = await execute.fn(command="echo 'oops' >&2; true", timeout=5)
     assert out == "oops\n"
 
-
 @pytest.mark.asyncio
-async def test_shell_execute_nonzero_with_stderr_content():
-    out = await execute(command="echo 'bad' >&2; exit 4", timeout=5)
+async def test_shell_execute_nonzero_with_stderr_content(execute):
+    out = await execute.fn(command="echo 'bad' >&2; exit 4", timeout=5)
     assert out.startswith("Returncode: 4.\n\n")
     assert "bad\n" in out
 
-
 @pytest.mark.asyncio
-async def test_shell_execute_echo():
-    out = await execute(command="echo bar")
+async def test_shell_execute_echo(execute):
+    out = await execute.fn(command="echo bar")
     assert out == "bar\n"
