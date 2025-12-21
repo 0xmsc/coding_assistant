@@ -55,7 +55,6 @@ class ProcessHandle:
     async def wait(self, timeout: float | None = None) -> bool:
         try:
             await asyncio.wait_for(self.proc.wait(), timeout=timeout)
-            # Give the output buffer a moment to finish flushing
             await self.output.wait_for_finish()
             return True
         except asyncio.TimeoutError:
