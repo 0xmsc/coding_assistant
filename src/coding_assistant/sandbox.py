@@ -83,15 +83,24 @@ def allow_write(rs: Ruleset, paths: list[Path]):
             rs.allow(path, rules=_get_read_write_file_rule())
 
 
-def sandbox(readable_directories: list[Path], writable_directories: list[Path]):
+def sandbox(readable_directories: list[Path], writable_directories: list[Path], include_defaults: bool = True):
     rs = Ruleset()
 
+    for d in readable_directories:
+        if not d.exists():
+            raise FileNotFoundError(f"Directory {d} does not exist.")
+    for d in writable_directories:
+        if not d.exists():
+            raise FileNotFoundError(f"Directory {d} does not exist.")
+
     writable_directories = _to_paths(writable_directories)
-    writable_directories.extend(_to_paths(DEFAULT_WRITABLE_DIRECTORIES))
+    if include_defaults:
+        writable_directories.extend(_to_paths(DEFAULT_WRITABLE_DIRECTORIES))
     writable_directories = list(set(writable_directories))
 
     readable_directories = _to_paths(readable_directories)
-    readable_directories.extend(_to_paths(DEFAULT_READABLE_DIRECTORIES))
+    if include_defaults:
+        readable_directories.extend(_to_paths(DEFAULT_READABLE_DIRECTORIES))
     readable_directories = list(set(readable_directories) - set(writable_directories))
 
     logger.info(f"Writable sandbox directories: {writable_directories}")
