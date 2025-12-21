@@ -199,9 +199,15 @@ class DenseProgressCallbacks(ProgressCallbacks):
             "mcp_coding_assistant_mcp_filesystem_edit_file",
         }
         if tool_name in file_tools and "path" in arguments and isinstance(arguments["path"], str):
+            import os
             path = arguments["path"]
-            if "." in path:
-                return path.split(".")[-1]
+            # Get the filename from the path
+            basename = os.path.basename(path)
+            # Split filename into root and extension
+            _, ext = os.path.splitext(basename)
+            if ext:
+                # Remove the leading dot from the extension
+                return ext[1:]
         return None
 
     def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
