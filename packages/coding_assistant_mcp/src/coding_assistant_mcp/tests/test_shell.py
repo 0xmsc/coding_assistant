@@ -14,7 +14,7 @@ async def test_shell_execute_timeout():
 @pytest.mark.asyncio
 async def test_shell_execute_nonzero_return_code():
     out = await execute(command="bash -lc 'exit 7'")
-    assert out.startswith("Returncode: 7\n\n")
+    assert out.startswith("Returncode: 7.\n\n")
 
 
 @pytest.mark.asyncio
@@ -41,7 +41,7 @@ async def test_shell_execute_stderr_captured_with_zero_exit():
 @pytest.mark.asyncio
 async def test_shell_execute_nonzero_with_stderr_content():
     out = await execute(command="echo 'bad' >&2; exit 4", timeout=5)
-    assert out.startswith("Returncode: 4\n\n")
+    assert out.startswith("Returncode: 4.\n\n")
     assert "bad\n" in out
 
 
