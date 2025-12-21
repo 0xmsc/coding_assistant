@@ -346,3 +346,51 @@ def test_dense_callbacks_tool_lang_extension(capsys):
             if "````\nFROM alpine" in arg:
                 found_default = True
         assert found_default
+
+        mock_markdown.reset_mock()
+
+        # 5. Test dots in directory path (e.g., "dir.old/script") -> should have no extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_5",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": "dir.old/script", "content": "echo hello\nline2"},
+        )
+        found_none = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````\necho hello" in arg:
+                found_none = True
+        assert found_none
+
+        mock_markdown.reset_mock()
+
+        # 6. Test hidden file with no extension (e.g., ".gitignore") -> should have no extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_6",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": ".gitignore", "content": "node_modules/\nline2"},
+        )
+        found_none = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````\nnode_modules/" in arg:
+                found_none = True
+        assert found_none
+
+        mock_markdown.reset_mock()
+
+        # 7. Test trailing dot (e.g., "README.") -> should have no extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_7",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": "README.", "content": "content\nline2"},
+        )
+        found_none = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````\ncontent" in arg:
+                found_none = True
+        assert found_none
