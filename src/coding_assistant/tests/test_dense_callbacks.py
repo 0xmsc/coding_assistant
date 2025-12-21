@@ -168,7 +168,7 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     assert "  content:" in captured.out
     assert "  def hello():" in captured.out
 
-        # 5. Known special tool (filesystem_edit_file) with multiline on one of the keys
+    # 5. Known special tool (filesystem_edit_file) with multiline on one of the keys
     cb.on_tool_start(
         "TestAgent",
         "call_5",
