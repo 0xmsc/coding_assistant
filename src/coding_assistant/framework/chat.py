@@ -62,7 +62,7 @@ def handle_tool_result_chat(
             callbacks,
             context_name,
             f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work.",
-            force=False,
+            force=True,
         )
         return "Conversation compacted and history reset."
 
@@ -144,7 +144,7 @@ async def run_chat_loop(
     command_names = list(command_map.keys())
 
     start_message = _create_chat_start_message(parameters)
-    append_user_message(history, callbacks, context_name, start_message)
+    append_user_message(history, callbacks, context_name, start_message, force=True)
 
     while True:
         if need_user_input:
