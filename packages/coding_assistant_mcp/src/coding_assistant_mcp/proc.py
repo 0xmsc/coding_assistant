@@ -33,11 +33,6 @@ class OutputBuffer:
 
 
 class ProcessHandle:
-    """
-    A handle to a running or completed process that allows shared access
-    to its output.
-    """
-
     def __init__(
         self,
         proc: asyncio.subprocess.Process,
