@@ -315,7 +315,7 @@ def main():
     args = parse_args()
 
     if args.trace:
-        enable_tracing(clear=True)
+        enable_tracing(get_default_trace_dir(), clear=True)
 
     if args.wait_for_debugger:
         logger.info("Waiting for debugger to attach on port 1234")

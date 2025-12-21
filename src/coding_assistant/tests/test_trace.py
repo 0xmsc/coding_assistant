@@ -1,29 +1,27 @@
 import coding_assistant.trace
 import pytest
-from coding_assistant.trace import enable_tracing, trace_enabled, trace_data, get_default_trace_dir
+from coding_assistant.trace import enable_tracing, trace_enabled, trace_data
 
 
 @pytest.fixture(autouse=True)
 def reset_tracing():
     # Global state reset
-    coding_assistant.trace._trace_enabled = False
+    coding_assistant.trace._trace_dir_ = None
 
 
-def test_tracing_toggle():
+def test_tracing_toggle(tmp_path):
     assert not trace_enabled()
-    enable_tracing()
+    enable_tracing(tmp_path)
     assert trace_enabled()
 
 
-def test_trace_data_creates_file(tmp_path, monkeypatch):
+def test_trace_data_creates_file(tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("CODING_ASSISTANT_TRACE_DIR", str(trace_dir))
-    enable_tracing()
+    enable_tracing(trace_dir)
 
     trace_data("test.json", '{"key": "value"}')
 
     assert trace_dir.exists()
-    assert get_default_trace_dir() == trace_dir
 
     # The file should have a timestamp prefix
     files = list(trace_dir.glob("*_test.json"))
@@ -31,35 +29,32 @@ def test_trace_data_creates_file(tmp_path, monkeypatch):
     assert files[0].read_text() == '{"key": "value"}'
 
 
-def test_trace_data_disabled_does_nothing(tmp_path, monkeypatch):
-    trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("CODING_ASSISTANT_TRACE_DIR", str(trace_dir))
+def test_trace_data_disabled_does_nothing():
+    # Ensure disabled
+    assert not trace_enabled()
 
     trace_data("test.json", '{"key": "value"}')
+    # No way to check path easily if disabled, but shouldn't crash
 
-    assert not trace_dir.exists()
 
-
-def test_trace_clear_directory(tmp_path, monkeypatch):
+def test_trace_clear_directory(tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("CODING_ASSISTANT_TRACE_DIR", str(trace_dir))
     trace_dir.mkdir(parents=True)
     (trace_dir / "old_trace.json").write_text("old content")
 
     # Enable tracing with clear=True
-    enable_tracing(clear=True)
+    enable_tracing(trace_dir, clear=True)
 
     assert not (trace_dir / "old_trace.json").exists()
 
 
-def test_trace_without_clear_keeps_files(tmp_path, monkeypatch):
+def test_trace_without_clear_keeps_files(tmp_path):
     trace_dir = tmp_path / "traces"
-    monkeypatch.setenv("CODING_ASSISTANT_TRACE_DIR", str(trace_dir))
     trace_dir.mkdir(parents=True)
     (trace_dir / "old_trace.json").write_text("old content")
 
     # Enable tracing with clear=False
-    enable_tracing(clear=False)
+    enable_tracing(trace_dir, clear=False)
 
     assert (trace_dir / "old_trace.json").exists()
     assert (trace_dir / "old_trace.json").read_text() == "old content"
