@@ -152,21 +152,16 @@ class DenseProgressCallbacks(ProgressCallbacks):
     def on_assistant_reasoning(self, context_name: str, content: str):
         pass
 
-    def _print_arguments_multiline(
-        self,
-        symbol: str,
-        tool_name: str,
-        arguments: dict,
-        multiline_config: dict[str, str] = dict(),
-        exclude: list[str] | None = None,
-    ):
+    def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict):
+        config = self._SPECIAL_TOOLS.get(tool_name, {})
+        multiline_config = config.get("multiline", {})
+        exclude = set(config.get("exclude", []))
+
         single_line_params = []
         multi_line_params = []
 
-        exclude_set = set(exclude or [])
-
         for key, value in arguments.items():
-            if key in exclude_set:
+            if key in exclude:
                 continue
 
             # Only print multiline if explicitly allowed in config and has newlines
@@ -178,41 +173,13 @@ class DenseProgressCallbacks(ProgressCallbacks):
         args_str = f"({', '.join(single_line_params)})" if single_line_params else ""
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
-        for key, value in multi_line_params:
-            lang = multiline_config.get(key, "")
+        if multi_line_params:
+            for key, value in multi_line_params:
+                lang = multiline_config.get(key, "")
+                print()
+                print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
+                print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
             print()
-            print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
-            print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
-        print()
-
-    def _special_handle_arguments(self, symbol: str, tool_name: str, arguments: dict) -> bool:
-        config = self._SPECIAL_TOOLS.get(tool_name)
-        if not config:
-            return False
-
-        multiline_config = config.get("multiline", {})
-        exclude = config.get("exclude")
-
-        # Check if any argument *needs* to be printed as multiline
-        has_multiline = any(
-            key in multiline_config and isinstance(value, str) and "\n" in value for key, value in arguments.items()
-        )
-
-        if has_multiline:
-            self._print_arguments_multiline(
-                symbol, tool_name, arguments, multiline_config=multiline_config, exclude=exclude
-            )
-            return True
-
-        return False
-
-    def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict):
-        if not self._special_handle_arguments(symbol, tool_name, arguments):
-            config = self._SPECIAL_TOOLS.get(tool_name, {})
-            exclude = set(config.get("exclude", []))
-            formatted = ", ".join(f"{k}={json.dumps(v)}" for k, v in arguments.items() if k not in exclude)
-            args_str = f"({formatted})" if formatted else ""
-            print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
     def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         self._finalize_state()
