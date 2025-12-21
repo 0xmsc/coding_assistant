@@ -100,12 +100,9 @@ async def start_process(
 
     if stdin_input is not None:
         assert proc.stdin is not None
-        try:
-            proc.stdin.write(stdin_input.encode())
-            await proc.stdin.drain()
-            proc.stdin.close()
-            await proc.stdin.wait_closed()
-        except (BrokenPipeError, ConnectionResetError):
-            pass
+        proc.stdin.write(stdin_input.encode())
+        await proc.stdin.drain()
+        proc.stdin.close()
+        await proc.stdin.wait_closed()
 
     return ProcessHandle(proc, output)
