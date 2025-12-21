@@ -38,7 +38,7 @@ class ProcessHandle:
         self.output = output
 
     @property
-    def returncode(self) -> int | None:
+    def exit_code(self) -> int | None:
         return self.proc.returncode
 
     @property
@@ -47,7 +47,7 @@ class ProcessHandle:
 
     @property
     def is_running(self) -> bool:
-        return self.returncode is None
+        return self.exit_code is None
 
     async def wait(self, timeout: float | None = None) -> bool:
         try:

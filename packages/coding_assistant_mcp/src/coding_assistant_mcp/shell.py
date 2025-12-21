@@ -47,8 +47,8 @@ def create_shell_server(manager: TaskManager) -> FastMCP:
             if truncated:
                 output += f"\n\n[Full output available via `tasks_get_output(task_id={task_id})`]"
 
-            if handle.returncode != 0:
-                return f"Returncode: {handle.returncode}.\n\n{output}"
+            if handle.exit_code != 0:
+                return f"Exit code: {handle.exit_code}.\n\n{output}"
             else:
                 return output
 

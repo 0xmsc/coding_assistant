@@ -121,4 +121,4 @@ async def test_kill_task(shell_execute, tasks_kill_task, tasks_get_output):
     assert "Task 1 has been terminated" in kill_res
 
     status = await tasks_get_output.fn(task_id=1)
-    assert "FINISHED" in status
+    assert "finished" in status
