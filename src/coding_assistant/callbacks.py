@@ -7,9 +7,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional, Union
 
-from rich import print
+from rich.console import Console
 from rich.markdown import Markdown
 from rich.padding import Padding
+
+console = Console()
+print = console.print
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.results import TextResult, ToolResult
