@@ -7,9 +7,13 @@ from coding_assistant.instructions import get_instructions
 from coding_assistant.tools.mcp import MCPServer
 
 
+def _get_project_root() -> Path:
+    return Path(__file__).parent.parent.parent.parent.resolve()
+
+
 def test_get_instructions_base_and_user_instructions(tmp_path: Path):
     wd = tmp_path
-    root = Path(__file__).parent.parent.parent.parent.resolve()
+    root = _get_project_root()
     # No local file, no planning
     instr = get_instructions(working_directory=wd, root_directory=root, user_instructions=["  A  ", "B\n"])
 
