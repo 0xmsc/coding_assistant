@@ -1,4 +1,5 @@
 from unittest.mock import patch, call
+from coding_assistant import callbacks
 from coding_assistant.callbacks import DenseProgressCallbacks, ReasoningState, ContentState, ToolState, IdleState
 
 
@@ -137,6 +138,8 @@ def test_dense_callbacks_empty_line_logic():
 
 def test_dense_callbacks_multiline_tool_formatting(capsys):
     cb = DenseProgressCallbacks()
+    # Force a wide terminal to avoid wrapping of long tool call lines
+    callbacks.console.width = 200
 
     # 1. Unknown tool with multiline -> compact one-liner
     cb.on_tool_start("TestAgent", "call_1", "unknown_tool", {"arg": "line1\nline2"})
