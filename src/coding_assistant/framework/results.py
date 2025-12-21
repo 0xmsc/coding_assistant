@@ -4,16 +4,12 @@ from coding_assistant.llm.types import ToolResult as LLMToolResult
 
 
 class ToolResult(LLMToolResult, ABC):
-    """Base class for all tool results."""
-
     @abstractmethod
     def to_dict(self) -> dict: ...
 
 
 @dataclass
 class TextResult(ToolResult):
-    """Represents a simple text result from a tool."""
-
     content: str
 
     def to_dict(self):

@@ -14,12 +14,9 @@ def _get_project_root() -> Path:
 def test_get_instructions_base_and_user_instructions(tmp_path: Path):
     wd = tmp_path
     root = _get_project_root()
-    # No local file, no planning
     instr = get_instructions(working_directory=wd, root_directory=root, user_instructions=["  A  ", "B\n"])
 
-    # Key baseline rules should be present
     assert "Do not initialize a new git repository" in instr
-    # User instructions appended, trimmed and in order
     assert "\nA\n" in instr
     # Second item may be at end without trailing newline
     assert "\nB\n" in instr or instr.rstrip().endswith("\nB") or instr.endswith("B")
@@ -34,7 +31,6 @@ def test_get_instructions_with_planning_and_local_file(tmp_path: Path):
 
     instr = get_instructions(working_directory=wd, root_directory=root, user_instructions=[])
 
-    # Local instructions appended
     assert "LOCAL OVERRIDE" in instr
     assert "- extra rule" in instr
 

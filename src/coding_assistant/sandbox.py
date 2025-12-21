@@ -17,13 +17,11 @@ DEFAULT_READABLE_PATHS = [
     "/run",
     "/sys",
     "/mnt/wsl",
-    # To commit.
     "~/.ssh",
     "~/.rustup",
     "~/.config",
     "~/.local",
     "~/.cache",
-    # To run uv.
     "~/.cargo",
     "~/.local/bin",
     "~/.cfg",
@@ -33,11 +31,9 @@ DEFAULT_WRITABLE_PATHS = [
     "/tmp",
     "/dev/null",
     "/dev/shm",
-    # To install MCP servers.
     "~/.npm",
     "~/.cache/uv",
     "~/.local/share/uv",
-    # Trace files.
     "~/.cache/coding_assistant",
     # prompt_toolkit allows using nvim to edit the prompt.
     "~/.cache/nvim",
@@ -103,7 +99,6 @@ def sandbox(readable_paths: list[Path], writable_paths: list[Path], include_defa
 
 
 def main():
-    """Main function for CLI usage of sandbox."""
     parser = argparse.ArgumentParser(
         description="Run a command in a sandboxed environment with restricted filesystem access"
     )
@@ -129,14 +124,11 @@ def main():
 
     args = parser.parse_args()
 
-    # Convert string paths to Path objects
     readable_dirs = [Path(d).resolve() for d in args.readable_directories]
     writable_dirs = [Path(d).resolve() for d in args.writable_directories]
 
-    # Apply sandbox
     sandbox(readable_paths=readable_dirs, writable_paths=writable_dirs)
 
-    # Execute the command
     result = subprocess.run(args.command, capture_output=False)
     sys.exit(result.returncode)
 

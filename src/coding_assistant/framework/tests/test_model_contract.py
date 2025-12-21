@@ -58,7 +58,6 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
 
     assert msg.content == fake_message.content
 
-    # Append assistant message to history (simulating loop behavior)
     append_assistant_message(state.history, NullProgressCallbacks(), desc.name, msg)
 
     # Simulate loop behavior: execute tools and then append shorten prompt due to tokens
@@ -189,7 +188,6 @@ async def test_auto_inject_builtin_tools():
 
 @pytest.mark.asyncio
 async def test_requires_non_empty_history():
-    # Empty history should raise
     desc, state = make_test_agent(tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[])
     with pytest.raises(RuntimeError, match="History is required in order to run a step."):
         await do_single_step(

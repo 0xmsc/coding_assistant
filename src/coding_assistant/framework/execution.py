@@ -50,7 +50,6 @@ async def handle_tool_call(
 
     logger.debug(f"[{tool_call.id}] [{context_name}] Calling tool '{function_name}' with arguments {function_args}")
 
-    # Notify callbacks that tool is starting
     progress_callbacks.on_tool_start(context_name, tool_call.id, function_name, function_args)
 
     function_call_result: ToolResult
@@ -129,13 +128,11 @@ async def handle_tool_calls(
     done, pending = await asyncio.wait([task for _, task in tasks_with_calls])
     assert len(pending) == 0
 
-    # Process results and append tool messages
     any_cancelled = False
     for tool_call, task in tasks_with_calls:
         try:
             result: ToolResult = await task
         except asyncio.CancelledError:
-            # Tool was cancelled
             result = TextResult(content="Tool execution was cancelled.")
             any_cancelled = True
 
@@ -150,7 +147,6 @@ async def handle_tool_calls(
         if result_summary is None:
             raise RuntimeError(f"Tool call {tool_call.id} produced empty result summary.")
 
-        # Parse arguments from tool_call
         try:
             function_args = json.loads(tool_call.function.arguments)
         except JSONDecodeError:
@@ -166,7 +162,6 @@ async def handle_tool_calls(
             result_summary,
         )
 
-    # Re-raise CancelledError if any tool was cancelled
     if any_cancelled:
         raise asyncio.CancelledError()
 

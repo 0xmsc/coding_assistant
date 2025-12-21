@@ -75,7 +75,6 @@ async def test_compact_conversation_resets_history():
         handle_tool_result=handle_tool_result,
     )
 
-    # Verify that the summary user message was forced
     assert any(force for content, force in callbacks.user_messages if summary_text in content)
 
     # History should be reset to keeping the first message + summary message, followed by the tool result message
@@ -116,7 +115,6 @@ async def test_compact_conversation_resets_history():
         context_name=desc.name,
     )
 
-    # Append assistant message to history
     append_assistant_message(state.history, callbacks, desc.name, msg)
 
     def handle_tool_result_2(result: ToolResult) -> str:
@@ -137,7 +135,6 @@ async def test_compact_conversation_resets_history():
         handle_tool_result=handle_tool_result_2,
     )
 
-    # Verify the assistant tool call and finish result were appended after the reset messages
     assert message_to_dict(state.history[-2]) == {
         "role": "assistant",
         "tool_calls": [
