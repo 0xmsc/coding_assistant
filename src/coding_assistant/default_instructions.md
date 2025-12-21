@@ -14,6 +14,10 @@
   Provide a default for each question that the user can accept by not answering.
   When the user answers with an empty message, you can interpret it as accepting all defaults.
 
+## Developing
+
+- Do not add obvious comments to the code.
+
 ## Tools
 
 - Call multiple tools in one step where appropriate, to parallelize their execution.
