@@ -13,5 +13,7 @@ lint:
     uv run --directory packages/coding_assistant_mcp mypy .
 
 test-integration:
-    ~/Scripts/ai/coding_assistant.fish \
+    uv run coding-assistant \
+        --model "openrouter/google/gemini-3-flash-preview (medium)" \
+        --no-chat-mode \
         --task "Test out your MCP functionalities. Functionality you should test are filesystem, python, shell. Also test your background task functionality. Try to test corner cases that you think could fail. Test how ergonomic your tools are. Prepare a test report."
