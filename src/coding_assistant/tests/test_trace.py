@@ -1,6 +1,6 @@
 import coding_assistant.trace
 import pytest
-from coding_assistant.trace import enable_tracing, trace_enabled, trace_data
+from coding_assistant.trace import enable_tracing, trace_enabled, trace_data, get_default_trace_dir
 
 
 @pytest.fixture(autouse=True)
@@ -16,24 +16,50 @@ def test_tracing_toggle():
 
 
 def test_trace_data_creates_file(tmp_path, monkeypatch):
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("CODING_ASSISTANT_TRACE_DIR", str(trace_dir))
     enable_tracing()
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
 
     trace_data("test.json", '{"key": "value"}')
 
-    trace_path = tmp_path / "coding_assistant" / "traces"
-    assert trace_path.exists()
+    assert trace_dir.exists()
+    assert get_default_trace_dir() == trace_dir
 
-    files = list(trace_path.glob("*_test.json"))
+    # The file should have a timestamp prefix
+    files = list(trace_dir.glob("*_test.json"))
     assert len(files) == 1
     assert files[0].read_text() == '{"key": "value"}'
 
 
 def test_trace_data_disabled_does_nothing(tmp_path, monkeypatch):
-    # Ensure disabled
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("CODING_ASSISTANT_TRACE_DIR", str(trace_dir))
 
     trace_data("test.json", '{"key": "value"}')
 
-    trace_path = tmp_path / "coding_assistant" / "traces"
-    assert not trace_path.exists()
+    assert not trace_dir.exists()
+
+
+def test_trace_clear_directory(tmp_path, monkeypatch):
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("CODING_ASSISTANT_TRACE_DIR", str(trace_dir))
+    trace_dir.mkdir(parents=True)
+    (trace_dir / "old_trace.json").write_text("old content")
+
+    # Enable tracing with clear=True
+    enable_tracing(clear=True)
+
+    assert not (trace_dir / "old_trace.json").exists()
+
+
+def test_trace_without_clear_keeps_files(tmp_path, monkeypatch):
+    trace_dir = tmp_path / "traces"
+    monkeypatch.setenv("CODING_ASSISTANT_TRACE_DIR", str(trace_dir))
+    trace_dir.mkdir(parents=True)
+    (trace_dir / "old_trace.json").write_text("old content")
+
+    # Enable tracing with clear=False
+    enable_tracing(clear=False)
+
+    assert (trace_dir / "old_trace.json").exists()
+    assert (trace_dir / "old_trace.json").read_text() == "old content"
