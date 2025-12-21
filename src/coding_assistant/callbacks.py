@@ -191,7 +191,6 @@ class DenseProgressCallbacks(ProgressCallbacks):
             basename = os.path.basename(path)
             _, ext = os.path.splitext(basename)
             if ext:
-                # Remove the leading dot from the extension
                 return ext[1:]
         return None
 

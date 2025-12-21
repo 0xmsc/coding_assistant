@@ -36,13 +36,11 @@ class FakeEchoTool(Tool):
 
 @pytest.mark.asyncio
 async def test_chat_step_prompts_user_on_no_tool_calls_once():
-    # Assistant emits no tool calls -> in chat mode we should prompt the user once and append reply
     completer = FakeCompleter([FakeMessage(content="Hello")])
     desc, state = make_test_agent(tools=[], history=[UserMessage(content="start")])
 
     ui = make_ui_mock(ask_sequence=[("> ", "User reply"), ("> ", "User reply 2")])
 
-    # Run a single chat-loop iteration by exhausting the completer after one step
     with pytest.raises(AssertionError, match="FakeCompleter script exhausted"):
         await run_chat_loop(
             history=state.history,
@@ -56,7 +54,6 @@ async def test_chat_step_prompts_user_on_no_tool_calls_once():
             ui=ui,
         )
 
-    # Should prompt first, then assistant responds, then prompt again
     roles = [m.role for m in state.history[-2:]]
     assert roles == ["assistant", "user"]
 
@@ -84,13 +81,11 @@ async def test_chat_step_executes_tools_without_prompt():
             ui=ui,
         )
 
-    # Tool must have executed
     assert echo_tool.called_with == {"text": "hi"}
 
 
 @pytest.mark.asyncio
 async def test_chat_mode_does_not_require_finish_task_tool():
-    # No finish_task tool; chat mode should still allow a step
     completer = FakeCompleter([FakeMessage(content="Hi there")])
     desc, state = make_test_agent(tools=[], history=[UserMessage(content="start")])
 
@@ -109,20 +104,17 @@ async def test_chat_mode_does_not_require_finish_task_tool():
             ui=ui,
         )
 
-    # Should be assistant followed by next user prompt
     roles = [m.role for m in state.history[-2:]]
     assert roles == ["assistant", "user"]
 
 
 @pytest.mark.asyncio
 async def test_chat_exit_command_stops_loop_without_appending_command():
-    # Assistant sends a normal message, user replies with /exit which should stop the loop
     completer = FakeCompleter([FakeMessage(content="Hello chat")])
     desc, state = make_test_agent(tools=[], history=[UserMessage(content="start")])
 
     ui = make_ui_mock(ask_sequence=[("> ", "/exit")])
 
-    # Should return cleanly without exhausting the completer further
     await run_chat_loop(
         history=state.history,
         model=desc.model,
@@ -136,15 +128,11 @@ async def test_chat_exit_command_stops_loop_without_appending_command():
     )
 
     assert not any(m.role == "user" and (m.content or "").strip() == "/exit" for m in state.history)
-    # No assistant step should have happened; last message remains the start message
     assert state.history[-1].role == "user"
 
 
 @pytest.mark.asyncio
 async def test_chat_loop_prompts_after_compact_command():
-    # Test that /compact command forces a user prompt after the next tool step
-    # Even if that logic is autonomous by default
-
     # Sequence:
     # 1. User enters /compact -> calls _compact_cmd -> appends message, returns PROCEED_WITH_MODEL
     # 2. Model responds with tool_call compact_conversation
@@ -152,8 +140,6 @@ async def test_chat_loop_prompts_after_compact_command():
     # 4. LOOP SHOULD PROMPT USER
 
     compact_call = ToolCall("1", FunctionCall("compact_conversation", json.dumps({"summary": "Compacted"})))
-    # The first message comes from the model in response to the injected compact message
-    # The second message is to check if it tries to loop again automatically (it shouldn't)
     completer = FakeCompleter(
         [FakeMessage(tool_calls=[compact_call]), FakeMessage(content="Should not be reached autonomously")]
     )
@@ -161,7 +147,6 @@ async def test_chat_loop_prompts_after_compact_command():
     compact_tool = CompactConversation()
     desc, state = make_test_agent(tools=[compact_tool], history=[UserMessage(content="start")])
 
-    # Mock UI: first is /compact, second is /exit to stop the loop after verifying it prompted
     ui = make_ui_mock(ask_sequence=[("> ", "/compact"), ("> ", "/exit")])
 
     await run_chat_loop(
@@ -176,16 +161,13 @@ async def test_chat_loop_prompts_after_compact_command():
         ui=ui,
     )
 
-    # If the logic works, ui.prompt was called twice
     assert ui.prompt.call_count == 2
-    # Most recent history should be the tool result summary
     assert state.history[-1].role == "tool"
     assert "compacted" in state.history[-1].content.lower()
 
 
 @pytest.mark.asyncio
 async def test_chat_compact_conversation_not_forced_in_callbacks():
-    # Test that when compact_conversation is called via model, its summary message is NOT forced in callbacks
     compact_call = ToolCall("1", FunctionCall("compact_conversation", json.dumps({"summary": "Compacted summary"})))
     completer = FakeCompleter([FakeMessage(tool_calls=[compact_call])])
 
@@ -202,17 +184,9 @@ async def test_chat_compact_conversation_not_forced_in_callbacks():
     callbacks = SpyCallbacks()
     ui = make_ui_mock(ask_sequence=[("> ", "/exit")])
 
-    # We expect one automated step from the model if we start with /compact,
     # or just use handle_tool_call logic via run_chat_loop.
-    # To trigger it, let's just make the completer provide the compact call immediately.
 
-    # Actually, we can just call run_chat_loop and it will call the model.
-    # But wait, run_chat_loop starts with ui.prompt if history is empty or after UserMessage.
-
-    # Let's trigger the loop by providing an initial history that ends with an assistant message,
     # or just let it start and provide a real message from UI.
-    # If history is empty, run_chat_loop sets need_user_input = True.
-    # If history has messages, it replays them and then need_user_input = True.
 
     ui = make_ui_mock(ask_sequence=[("> ", "Please compact"), ("> ", "/exit")])
 
@@ -229,6 +203,5 @@ async def test_chat_compact_conversation_not_forced_in_callbacks():
             ui=ui,
         )
 
-    # Find the summary message in callbacks
     summary_user_msg = next((c, f) for c, f in callbacks.user_messages if "Compacted summary" in c)
     assert summary_user_msg[1] is False, "Summary message should not be forced in chat mode"

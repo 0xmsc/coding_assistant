@@ -76,7 +76,6 @@ async def test_confirm_shell_if_needed_denied_and_allowed():
 @pytest.mark.asyncio
 async def test_confirm_shell_if_needed_ignores_other_tools_and_bad_command():
     ui = make_ui_mock()
-    # Wrong tool name -> ignored
     res = await confirm_shell_if_needed(
         tool_name="some_other_tool",
         arguments={"command": "rm -rf /tmp"},
@@ -85,7 +84,6 @@ async def test_confirm_shell_if_needed_ignores_other_tools_and_bad_command():
     )
     assert res is None
 
-    # Right tool name but command not a string -> ignored
     res2 = await confirm_shell_if_needed(
         tool_name="mcp_coding_assistant_mcp_shell_execute",
         arguments={"command": ["echo", "hi"]},
@@ -162,7 +160,6 @@ async def test_confirmation_tool_callbacks_shell_pattern():
 
 @pytest.mark.asyncio
 async def test_confirmation_tool_callbacks_both_patterns_shell_tool_two_prompts():
-    # When both tool + shell patterns match the special shell tool, we should see two confirmations if the first is allowed.
     tool_name = "mcp_coding_assistant_mcp_shell_execute"
     command = "do something risky"
     args = {"command": command}
@@ -175,7 +172,6 @@ async def test_confirmation_tool_callbacks_both_patterns_shell_tool_two_prompts(
         shell_confirmation_patterns=[r"risky"],
     )
 
-    # First confirmation allowed -> second confirmation (shell) denies -> early return denial message
     res = await callbacks.before_tool_execution(
         context_name="Agent",
         tool_call_id="1",

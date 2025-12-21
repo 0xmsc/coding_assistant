@@ -29,7 +29,6 @@ from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConv
 
 @pytest.mark.asyncio
 async def test_compact_conversation_resets_history():
-    # Prepare agent with some existing history that should be cleared
     desc, state = make_test_agent(
         tools=[FinishTaskTool(), CompactConversation()],
         history=[
@@ -47,7 +46,6 @@ async def test_compact_conversation_resets_history():
 
     callbacks = SpyCallbacks()
 
-    # Invoke compact_conversation tool directly
     summary_text = "This is the summary of prior conversation."
     tool_call = ToolCall(
         id="shorten-1",
@@ -77,7 +75,6 @@ async def test_compact_conversation_resets_history():
 
     assert any(force for content, force in callbacks.user_messages if summary_text in content)
 
-    # History should be reset to keeping the first message + summary message, followed by the tool result message
     assert len(state.history) >= 3
     assert state.history[0] == UserMessage(content="old start")
 
@@ -95,7 +92,6 @@ async def test_compact_conversation_resets_history():
         "content": "Conversation compacted and history reset.",
     }
 
-    # Subsequent steps should continue from the new history
     finish_call = ToolCall(
         "finish-1",
         FunctionCall(

@@ -47,14 +47,12 @@ def test_paragraph_buffer_split_newline():
 
 def test_paragraph_buffer_many_newlines():
     buffer = ParagraphBuffer()
-    # Three newlines should still split
     assert buffer.push("Para 1\n\n\nPara 2") == ["Para 1"]
     assert buffer.flush() == "Para 2"
 
 
 def test_paragraph_buffer_code_fence():
     buffer = ParagraphBuffer()
-    # Code fence containing double newlines
     code_chunk = "Here is code:\n\n```python\ndef hello():\n\n    print('world')\n```"
     assert buffer.push(code_chunk) == ["Here is code:"]
     # The entire code fence should be in the buffer still,

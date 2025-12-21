@@ -17,7 +17,6 @@ async def execute(manager):
 
 @pytest.mark.asyncio
 async def test_shell_execute_timeout(execute):
-    # Note: execute is now a background/task tool, so timeout leads to auto-backgrounding
     out = await execute.fn(command="echo 'start'; sleep 2; echo 'end'", timeout=1)
     assert "taking longer than 1s" in out
     assert "Task ID: 1" in out
@@ -33,7 +32,6 @@ async def test_shell_execute_nonzero_exit_code(execute):
 async def test_shell_execute_truncates_output(execute):
     out = await execute.fn(command="yes 1 | head -c 1000", truncate_at=200)
     assert "[truncated output at: " in out
-    # Note: length check might be higher now because of the Task ID note
     assert len(out) > 10
 
 

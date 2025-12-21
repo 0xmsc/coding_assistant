@@ -17,6 +17,8 @@
 ## Developing
 
 - Do not add obvious, redundant comments to the code.
+- Do not document what the code is doing, document why it is doing it.
+- Do not document trivial functions or classes.
 
 ## Tools
 

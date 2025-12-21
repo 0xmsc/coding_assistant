@@ -51,8 +51,6 @@ def save_orchestrator_history(working_directory: Path, agent_history: list):
 
     serializable_history = []
     # Argument 1 to "asdict" has incompatible type "DataclassInstance | type[DataclassInstance]"; expected "DataclassInstance"
-    # is_dataclass(msg) checks if msg is a dataclass instance or class.
-    # We want to ensure it's an instance.
     for msg in fixed_history:
         if isinstance(msg, dict):
             serializable_history.append(msg)
