@@ -225,6 +225,25 @@ def get_default_mcp_server_config(root_directory: Path) -> MCPServerConfig:
     )
 
 
+def enable_sandboxing(args, root):
+    if args.sandbox:
+        logger.info("Sandboxing is enabled.")
+
+        readable_sandbox_directories = [
+            *[Path(d).resolve() for d in args.readable_sandbox_directories],
+            root,
+        ]
+
+        writable_sandbox_directories = [
+            *[Path(d).resolve() for d in args.writable_sandbox_directories],
+            root,
+        ]
+
+        sandbox(readable_directories=readable_sandbox_directories, writable_directories=writable_sandbox_directories)
+    else:
+        logger.warning("Sandboxing is disabled")
+
+
 async def _main(args):
     logger.info(f"Starting Coding Assistant with arguments {args}")
 
@@ -254,24 +273,7 @@ async def _main(args):
     else:
         resume_history = None
 
-    if args.sandbox:
-        logger.info("Sandboxing is enabled.")
-
-        readable_sandbox_directories = [
-            *[Path(d).resolve() for d in args.readable_sandbox_directories],
-            coding_assistant_root,
-        ]
-        logger.info(f"Readable sandbox directories: {readable_sandbox_directories}")
-
-        writable_sandbox_directories = [
-            *[Path(d).resolve() for d in args.writable_sandbox_directories],
-            working_directory,
-        ]
-        logger.info(f"Writable sandbox directories: {writable_sandbox_directories}")
-
-        sandbox(readable_directories=readable_sandbox_directories, writable_directories=writable_sandbox_directories)
-    else:
-        logger.warning("Sandboxing is disabled")
+    enable_sandboxing(args, coding_assistant_root)
 
     mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
     mcp_server_configs.append(get_default_mcp_server_config(coding_assistant_root))
