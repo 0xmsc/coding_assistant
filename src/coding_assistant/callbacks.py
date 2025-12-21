@@ -181,11 +181,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
         if multi_line_params:
-            lang_override = None
-            if "path" in arguments and isinstance(arguments["path"], str):
-                path = arguments["path"]
-                if "." in path:
-                    lang_override = path.split(".")[-1]
+            lang_override = self._get_lang_override(tool_name, arguments)
 
             for key, value in multi_line_params:
                 lang = lang_override or multiline_config[key]
@@ -196,6 +192,17 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 else:
                     print(Padding(Markdown(f"````{lang}\n{value}\n````"), self._left_padding))
             print()
+
+    def _get_lang_override(self, tool_name: str, arguments: dict) -> Optional[str]:
+        file_tools = {
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            "mcp_coding_assistant_mcp_filesystem_edit_file",
+        }
+        if tool_name in file_tools and "path" in arguments and isinstance(arguments["path"], str):
+            path = arguments["path"]
+            if "." in path:
+                return path.split(".")[-1]
+        return None
 
     def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         self._finalize_state()
