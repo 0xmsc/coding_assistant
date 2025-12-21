@@ -1,4 +1,4 @@
-from unittest.mock import patch, call
+from unittest.mock import patch, call, MagicMock
 from coding_assistant import callbacks
 from coding_assistant.callbacks import DenseProgressCallbacks, ReasoningState, ContentState, ToolState, IdleState
 
@@ -166,6 +166,10 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         "mcp_coding_assistant_mcp_filesystem_write_file",
         {"path": "test.py", "content": "def hello():\n    pass"},
     )
+    # Verify it uses the extension
+    assert cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_write_file"]["content"] == ""
+    # We can directly inspect the behavior via a mock of Markdown if needed,
+    # but for now let's just make sure it runs without crashing and check captures.
     captured = capsys.readouterr()
     assert 'mcp_coding_assistant_mcp_filesystem_write_file(path="test.py", content)' in captured.out
     assert "  content:" in captured.out
@@ -176,13 +180,16 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         "TestAgent",
         "call_5",
         "mcp_coding_assistant_mcp_filesystem_edit_file",
-        {"path": "test.txt", "old_text": "line1", "new_text": "line1\nline2"},
+        {"path": "script.sh", "old_text": "line1\nold", "new_text": "line1\nline2"},
     )
+    # Verify it uses special handling for both keys
+    assert "old_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
+    assert "new_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
+
     captured = capsys.readouterr()
-    assert (
-        'mcp_coding_assistant_mcp_filesystem_edit_file(path="test.txt", old_text="line1", new_text="line1\\nline2")'
-        in captured.out
-    )
+    assert 'mcp_coding_assistant_mcp_filesystem_edit_file(path="script.sh", old_text, new_text)' in captured.out
+    assert "  old_text:" in captured.out
+    assert "  new_text:" in captured.out
 
     # 6. Known special tool (python_execute) with multiline
     cb.on_tool_start(
@@ -291,3 +298,120 @@ def test_dense_callbacks_tool_result_stripping():
                     found_todo = True
                     assert renderable.markup == "- [ ] Task 1"
         assert found_todo
+
+
+def test_dense_callbacks_tool_lang_extension(capsys):
+    cb = DenseProgressCallbacks()
+    # Force a wide terminal
+    callbacks.console.width = 200
+
+    with patch("coding_assistant.callbacks.Markdown", side_effect=callbacks.Markdown) as mock_markdown:
+        # 1. Test .py extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_1",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": "test.py", "content": "def hello():\n    pass"},
+        )
+        found_py = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````py\ndef hello():" in arg:
+                found_py = True
+        assert found_py
+
+        mock_markdown.reset_mock()
+
+        # 2. Test .sh extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_2",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": "script.sh", "content": "echo hello\nls"},
+        )
+        found_sh = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````sh\necho hello" in arg:
+                found_sh = True
+        assert found_sh
+
+        mock_markdown.reset_mock()
+
+        # 3. Test .js extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_3",
+            "mcp_coding_assistant_mcp_filesystem_edit_file",
+            {"path": "index.js", "old_text": "const x = 1\n", "new_text": "const x = 2\n"},
+        )
+        found_js = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````js\nconst x = " in arg:
+                found_js = True
+        assert found_js
+
+        mock_markdown.reset_mock()
+
+        # 4. Test no extension (fallback to default "")
+        cb.on_tool_start(
+            "TestAgent",
+            "call_4",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": "Dockerfile", "content": "FROM alpine\nRUN ls"},
+        )
+        found_default = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````\nFROM alpine" in arg:
+                found_default = True
+        assert found_default
+
+        mock_markdown.reset_mock()
+
+        # 5. Test dots in directory path (e.g., "dir.old/script") -> should have no extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_5",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": "dir.old/script", "content": "echo hello\nline2"},
+        )
+        found_none = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````\necho hello" in arg:
+                found_none = True
+        assert found_none
+
+        mock_markdown.reset_mock()
+
+        # 6. Test hidden file with no extension (e.g., ".gitignore") -> should have no extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_6",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": ".gitignore", "content": "node_modules/\nline2"},
+        )
+        found_none = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````\nnode_modules/" in arg:
+                found_none = True
+        assert found_none
+
+        mock_markdown.reset_mock()
+
+        # 7. Test trailing dot (e.g., "README.") -> should have no extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_7",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": "README.", "content": "content\nline2"},
+        )
+        found_none = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````\ncontent" in arg:
+                found_none = True
+        assert found_none
