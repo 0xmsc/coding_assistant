@@ -177,13 +177,9 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
         if multi_line_params:
             for key, value in multi_line_params:
-                lang = multiline_config.get(key, "")
+                lang = multiline_config["key"]
                 print()
                 print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
-                # If we formatted as JSON above, we use the 'json' language for highlighting
-                # if no tool-specific language was provided.
-                if not isinstance(arguments[key], str) and not lang:
-                    lang = "json"
                 print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
             print()
 
