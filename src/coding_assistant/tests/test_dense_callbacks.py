@@ -204,3 +204,24 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     assert "  descriptions:" in captured.out
     assert '"task 1"' in captured.out
     assert '"task 2"' in captured.out
+
+    # 8. Known special tool with key mismatch (multiline allowed but tool sends wrong key)
+    # This should stay in header
+    cb.on_tool_start(
+        "TestAgent",
+        "call_8",
+        "mcp_coding_assistant_mcp_python_execute",
+        {"not_code": "line1\nline2"},
+    )
+    captured = capsys.readouterr()
+    assert 'mcp_coding_assistant_mcp_python_execute(not_code="line1\\nline2")' in captured.out
+
+    # 9. Tool with key configured but NO multiline
+    cb.on_tool_start(
+        "TestAgent",
+        "call_9",
+        "mcp_coding_assistant_mcp_python_execute",
+        {"code": "print(1)"},
+    )
+    captured = capsys.readouterr()
+    assert 'mcp_coding_assistant_mcp_python_execute(code="print(1)")' in captured.out
