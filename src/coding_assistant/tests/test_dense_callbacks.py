@@ -228,3 +228,45 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     )
     captured = capsys.readouterr()
     assert 'mcp_coding_assistant_mcp_python_execute(code="print(1)")' in captured.out
+
+
+def test_dense_callbacks_tool_result_stripping():
+    cb = DenseProgressCallbacks()
+    with patch("coding_assistant.callbacks.print") as mock_print:
+        # Test filesystem_edit_file stripping
+        cb.on_tool_message(
+            "TestAgent",
+            "call_1",
+            "mcp_coding_assistant_mcp_filesystem_edit_file",
+            {"path": "test.py", "old_text": "old", "new_text": "new"},
+            "--- test.py\n+++ test.py\n-old\n+new\n",
+        )
+
+        # Verify the markup has no double newline
+        found_diff = False
+        for call_args in mock_print.call_args_list:
+            args = call_args.args
+            if args and hasattr(args[0], "renderable"):
+                renderable = args[0].renderable
+                if hasattr(renderable, "markup") and "```diff" in renderable.markup:
+                    found_diff = True
+                    # Should end with exactly one newline before the closing fence
+                    assert renderable.markup.endswith("\n```")
+                    assert not renderable.markup.endswith("\n\n```")
+        assert found_diff
+
+        # Reset mock
+        mock_print.reset_mock()
+
+        # Test todo stripping
+        cb.on_tool_message("TestAgent", "call_2", "mcp_coding_assistant_mcp_todo_list_todos", {}, "- [ ] Task 1\n")
+
+        found_todo = False
+        for call_args in mock_print.call_args_list:
+            args = call_args.args
+            if args and hasattr(args[0], "renderable"):
+                renderable = args[0].renderable
+                if hasattr(renderable, "markup") and "Task 1" in renderable.markup:
+                    found_todo = True
+                    assert renderable.markup == "- [ ] Task 1"
+        assert found_todo
