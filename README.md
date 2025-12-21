@@ -43,18 +43,11 @@ pip install -e .
 
 ## Quickstart
 
-The easiest way to run is with the uv command, which can be configured with the built-in Coding Assistant MCP server and sensible defaults like this:
+The easiest way to run is with the uv command:
 
 ```bash
 uv run coding-assistant \
-  --task "Say 'Hello World'" \
-  --mcp-servers '{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}'
-```
-
-A more realistic example:
-
-```bash
-uv run coding-assistant \
+  --model "openrouter/anthropic/claude-3.5-sonnet" \
   --task "Refactor all function names to snake_case." \
   --mcp-servers '{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}'
 ```
@@ -63,7 +56,8 @@ Resume the last session:
 
 ```bash
 uv run coding-assistant \
-  --task "Continue with the previous task." --resume \
+  --model "openrouter/anthropic/claude-3.5-sonnet" \
+  --resume \
   --mcp-servers '{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}'
 ```
 
@@ -73,27 +67,18 @@ Show available options:
 uv run coding-assistant --help
 ```
 
-### Direct uv Invocation
+### Advanced Examples
 
-You can invoke the CLI directly (e.g., using uv):
-
-```bash
-uv run coding-assistant \
-  --task "Say 'Hello World'" \
-  --model "openrouter/openai/gpt-4o-mini" \
-  --expert-model "openrouter/anthropic/claude-3.5-sonnet"
-```
-
-Or with external MCP servers (stdio or SSE/remote):
+You can invoke the CLI with multiple MCP servers (stdio or SSE/remote):
 
 ```bash
 uv run coding-assistant \
-  --task "Say 'Hello World'" \
   --model "openrouter/openai/gpt-4o-mini" \
+  --task "Say 'Hello World'" \
   --mcp-servers \
+    '{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}' \
     '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
-    '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}' \
-    '{"name": "remote-mcp", "url": "http://localhost:8000/sse"}'
+    '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}'
 ```
 
 Notes:
@@ -102,13 +87,15 @@ Notes:
 
 ## Usage Highlights
 
-- `--task` The task for the orchestrator agent (required unless in chat mode).
+- `--model` Select model for the orchestrator agent (required).
+- `--expert-model` Select model for expert tasks (defaults to the same value as `--model`).
+- `--tool-confirmation-patterns` / `--shell-confirmation-patterns` Regex patterns to require user confirmation before tool/shell execution.
 - `--chat-mode` / `--no-chat-mode` Enable/disable open-ended chat mode (default: **enabled**).
 - `--resume` / `--resume-file` Resume from the latest/specific orchestrator history in `.coding_assistant/history/`.
-- `--model` / `--expert-model` Select models for general/expert tasks (default: `gpt-5` for both).
 - `--instructions` Provide extra instructions that are composed with defaults. Can be repeated.
 - `--compact-conversation-at-tokens` Number of tokens after which conversation should be shortened (default: 200,000).
 - `--trace` / `--no-trace` Enable/disable tracing of model requests/responses.
+- `--sandbox` / `--no-sandbox` Enable/disable Landlock-based sandboxing (default: **enabled**).
 - `--wait-for-debugger` Wait for a debugger (debugpy) to attach on port 1234.
 
 Run `coding-assistant --help` to see all options.
@@ -213,7 +200,13 @@ The built-in MCP tools `shell_execute` and `python_execute`:
   just test
   ```
 
-  or
+  Run integration tests:
+
+  ```bash
+  just test-integration
+  ```
+
+  or manually:
 
   ```bash
   uv run pytest -n auto -m "not slow"
