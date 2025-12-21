@@ -69,17 +69,17 @@ def parse_args():
         help="Custom instructions for the agent.",
     )
     parser.add_argument(
-         "--readable-sandbox-directories",
-         nargs="*",
-         default=[],
-         help="Additional directories to include in the sandbox.",
-     )
-     parser.add_argument(
-         "--writable-sandbox-directories",
-         nargs="*",
-         default=[],
-         help="Additional directories to include in the sandbox.",
-     )
+        "--readable-sandbox-directories",
+        nargs="*",
+        default=[],
+        help="Additional directories to include in the sandbox.",
+    )
+    parser.add_argument(
+        "--writable-sandbox-directories",
+        nargs="*",
+        default=[],
+        help="Additional directories to include in the sandbox.",
+    )
     parser.add_argument(
         "--sandbox",
         action=BooleanOptionalAction,
@@ -208,6 +208,23 @@ async def run_chat_session(
         save_orchestrator_history(working_directory, chat_history)
 
 
+def get_default_mcp_server_config(root_directory: Path) -> MCPServerConfig:
+    mcp_project_dir = root_directory / "packages" / "coding_assistant_mcp"
+    if not mcp_project_dir.exists():
+        raise FileNotFoundError(f"{mcp_project_dir} does not exist")
+
+    return MCPServerConfig(
+        name="coding_assistant_mcp",
+        command="uv",
+        args=[
+            "--project",
+            str(mcp_project_dir),
+            "run",
+            "coding-assistant-mcp",
+        ],
+    )
+
+
 async def _main(args):
     logger.info(f"Starting Coding Assistant with arguments {args}")
 
@@ -216,6 +233,9 @@ async def _main(args):
 
     working_directory = Path(os.getcwd())
     logger.info(f"Running in working directory: {working_directory}")
+
+    # Assuming 'src' layout
+    coding_assistant_root = Path(__file__).parent.parent.parent.resolve()
 
     if args.resume_file:
         if not args.resume_file.exists():
@@ -243,13 +263,13 @@ async def _main(args):
         logger.info("Sandboxing is enabled.")
 
         readable_sandbox_directories = [
-            *[Path(d).expanduser().resolve() for d in args.readable_sandbox_directories],
+            *[Path(d).resolve() for d in args.readable_sandbox_directories],
             venv_directory,
         ]
         logger.info(f"Readable sandbox directories: {readable_sandbox_directories}")
 
         writable_sandbox_directories = [
-            *[Path(d).expanduser().resolve() for d in args.writable_sandbox_directories],
+            *[Path(d).resolve() for d in args.writable_sandbox_directories],
             working_directory,
         ]
         logger.info(f"Writable sandbox directories: {writable_sandbox_directories}")
@@ -259,24 +279,7 @@ async def _main(args):
         logger.warning("Sandboxing is disabled")
 
     mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
-
-    if not args.mcp_servers:
-        mcp_project_dir = working_directory / "packages" / "coding_assistant_mcp"
-        if not mcp_project_dir.exists():
-            raise FileNotFoundError(f"Default MCP server project directory not found: {mcp_project_dir}")
-
-        mcp_server_configs.append(
-            MCPServerConfig(
-                name="coding_assistant_mcp",
-                command="uv",
-                args=[
-                    "--project",
-                    str(mcp_project_dir),
-                    "run",
-                    "coding-assistant-mcp",
-                ],
-            )
-        )
+    mcp_server_configs.append(get_default_mcp_server_config(coding_assistant_root))
 
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
