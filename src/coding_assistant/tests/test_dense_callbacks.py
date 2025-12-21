@@ -166,6 +166,10 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         "mcp_coding_assistant_mcp_filesystem_write_file",
         {"path": "test.py", "content": "def hello():\n    pass"},
     )
+    # Verify it uses the extension
+    assert cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_write_file"]["content"] == ""
+    # We can directly inspect the behavior via a mock of Markdown if needed,
+    # but for now let's just make sure it runs without crashing and check captures.
     captured = capsys.readouterr()
     assert 'mcp_coding_assistant_mcp_filesystem_write_file(path="test.py", content)' in captured.out
     assert "  content:" in captured.out
@@ -176,13 +180,16 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         "TestAgent",
         "call_5",
         "mcp_coding_assistant_mcp_filesystem_edit_file",
-        {"path": "test.txt", "old_text": "line1", "new_text": "line1\nline2"},
+        {"path": "script.sh", "old_text": "line1\nold", "new_text": "line1\nline2"},
     )
+    # Verify it uses special handling for both keys
+    assert "old_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
+    assert "new_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
+
     captured = capsys.readouterr()
-    assert (
-        'mcp_coding_assistant_mcp_filesystem_edit_file(path="test.txt", old_text="line1", new_text="line1\\nline2")'
-        in captured.out
-    )
+    assert 'mcp_coding_assistant_mcp_filesystem_edit_file(path="script.sh", old_text, new_text)' in captured.out
+    assert "  old_text:" in captured.out
+    assert "  new_text:" in captured.out
 
     # 6. Known special tool (python_execute) with multiline
     cb.on_tool_start(
