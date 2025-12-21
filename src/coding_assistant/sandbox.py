@@ -9,6 +9,13 @@ from landlock import FSAccess, Ruleset  # type: ignore[import-untyped]
 logger = logging.getLogger(__name__)
 
 DEFAULT_READABLE_DIRECTORIES = [
+    "/usr",
+    "/lib",
+    "/etc",
+    "/proc",
+    "/run",
+    "/sys",
+    "/dev/urandom",
     "/mnt/wsl",
     "~/.ssh",
     "~/.rustup",
@@ -21,6 +28,7 @@ DEFAULT_READABLE_DIRECTORIES = [
 ]
 
 DEFAULT_WRITABLE_DIRECTORIES = [
+    "/dev/null",
     "~/.npm",
     "~/.cache/uv",
     "~/.local/share/uv",
@@ -46,16 +54,6 @@ def _get_read_only_file_rule():
 
 def sandbox(readable_directories: list[Path], writable_directories: list[Path]):
     rs = Ruleset()
-
-    # System directories
-    rs.allow(Path("/dev/null"), rules=_get_read_write_file_rule())
-    rs.allow(Path("/dev/urandom"), rules=_get_read_only_file_rule())
-    rs.allow(Path("/usr"), rules=_get_read_only_rule())
-    rs.allow(Path("/lib"), rules=_get_read_only_rule())
-    rs.allow(Path("/etc"), rules=_get_read_only_rule())
-    rs.allow(Path("/proc"), rules=_get_read_only_rule())
-    rs.allow(Path("/run"), rules=_get_read_only_rule())
-    rs.allow(Path("/sys"), rules=_get_read_only_rule())
 
     # Standard directories
     for path in DEFAULT_READABLE_DIRECTORIES:
