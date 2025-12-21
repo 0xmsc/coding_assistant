@@ -1,21 +1,50 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
 from typing import Sequence
 
 
+class OutputBuffer:
+    def __init__(self, stream: asyncio.StreamReader):
+        self._stream = stream
+        self._buf = bytearray()
+        self._read_task = asyncio.create_task(self._read_stream())
+
+    async def _read_stream(self):
+        while True:
+            try:
+                chunk = await self._stream.read(4096)
+                if not chunk:
+                    break
+                self._buf.extend(chunk)
+            except Exception:
+                break
+
+    @property
+    def text(self) -> str:
+        return self._buf.decode(errors="replace")
+
+    async def wait_for_finish(self, timeout: float | None = 1.0):
+        """Wait for the read task to finish processing the stream."""
+        try:
+            await asyncio.wait_for(self._read_task, timeout=timeout)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            pass
+
+
 class ProcessHandle:
+    """
+    A handle to a running or completed process that allows shared access
+    to its output.
+    """
+
     def __init__(
         self,
         proc: asyncio.subprocess.Process,
-        stdout_buf: bytearray,
-        read_task: asyncio.Task,
+        output: OutputBuffer,
     ):
         self.proc = proc
-        self.stdout_buf = stdout_buf
-        self.read_task = read_task
-        self._timed_out = False
+        self.output = output
 
     @property
     def returncode(self) -> int | None:
@@ -23,49 +52,40 @@ class ProcessHandle:
 
     @property
     def stdout(self) -> str:
-        return self.stdout_buf.decode(errors="replace")
+        return self.output.text
 
     @property
     def is_running(self) -> bool:
         return self.returncode is None
 
     async def wait(self, timeout: float | None = None) -> bool:
+        """
+        Wait for process to finish.
+        Returns True if process finished, False if timed out.
+        """
         try:
             await asyncio.wait_for(self.proc.wait(), timeout=timeout)
+            # Give the output buffer a moment to finish flushing
+            await self.output.wait_for_finish()
             return True
         except asyncio.TimeoutError:
             return False
-        finally:
-            try:
-                await asyncio.wait_for(self.read_task, timeout=5.0)
-            except asyncio.TimeoutError:
-                pass
 
     async def terminate(self):
-        if not self.is_running:
-            return
-
-        self.proc.terminate()
-        await self.wait(timeout=5.0)
-        if not self.is_running:
-            return
-
-        self.proc.kill()
-        await self.wait(timeout=5.0)
-
-
-async def _read_stream(buf: bytearray, stream: asyncio.StreamReader):
-    while True:
-        chunk = await stream.read(4096)
-        if not chunk:
-            break
-        buf.extend(chunk)
+        if self.is_running:
+            self.proc.terminate()
+            await self.wait(timeout=5.0)
+            if self.is_running:
+                self.proc.kill()
+                await self.wait()
 
 
 async def start_process(
     args: Sequence[str],
     stdin_input: str | None = None,
 ) -> ProcessHandle:
+    """Start a process and return a handle to it."""
+
     stdin = asyncio.subprocess.PIPE if stdin_input is not None else asyncio.subprocess.DEVNULL
 
     proc = await asyncio.create_subprocess_exec(
@@ -75,9 +95,8 @@ async def start_process(
         stdin=stdin,
     )
 
-    stdout_buf = bytearray()
     assert proc.stdout is not None
-    read_task = asyncio.create_task(_read_stream(stdout_buf, proc.stdout))
+    output = OutputBuffer(proc.stdout)
 
     if stdin_input is not None:
         assert proc.stdin is not None
@@ -89,4 +108,4 @@ async def start_process(
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    return ProcessHandle(proc, stdout_buf, read_task)
+    return ProcessHandle(proc, output)
