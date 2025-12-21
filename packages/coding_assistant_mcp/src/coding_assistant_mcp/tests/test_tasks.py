@@ -84,12 +84,14 @@ async def test_auto_cleanup(manager):
 
     await shell_execute_tool.fn(command="echo 'task 1'")
     await shell_execute_tool.fn(command="echo 'task 2'")
+    await shell_execute_tool.fn(command="echo 'task 3'")  # This will remove task 1
 
     tasks = await tasks_list_tasks_tool.fn()
     print(tasks)
 
     assert "ID: 1" not in tasks
     assert "ID: 2" in tasks
+    assert "ID: 3" in tasks
 
 
 @pytest.mark.asyncio
@@ -100,22 +102,18 @@ async def test_auto_cleanup_keeps_running(manager):
     task_server = create_task_server(manager)
     tasks_list_tasks_tool = await task_server.get_tool("list_tasks")
 
-    # Start a background task (running)
-    await shell_execute_tool.fn(command="sleep 2", background=True)  # ID 1
+    await shell_execute_tool.fn(command="sleep 2; echo 'task 1'", background=True)
+    await shell_execute_tool.fn(command="echo 'task 2'")
+    await shell_execute_tool.fn(command="echo 'task 3'")
+    await shell_execute_tool.fn(command="echo 'task 4'")
 
-    # Run two sync tasks (finished)
-    await shell_execute_tool.fn(command="echo 'task 2'")  # ID 2
-    await shell_execute_tool.fn(command="echo 'task 3'")  # ID 3
-
-    # Trigger cleanup for the finished tasks
     tasks = await tasks_list_tasks_tool.fn()
+    print(tasks)
 
-    # ID 1 should still be there because it's running
     assert "ID: 1" in tasks
-    # ID 2 should be gone because it was the oldest finished
     assert "ID: 2" not in tasks
-    # ID 3 should be there
     assert "ID: 3" in tasks
+    assert "ID: 4" in tasks
 
 
 @pytest.mark.asyncio
