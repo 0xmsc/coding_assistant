@@ -9,8 +9,10 @@
 - Before doing any non-trivial changes to the codebase, present a coherent plan to the user.
   When the user has follow-up questions or comments, update the plan accordingly.
   Do not start implementing the plan until the user has approved the plan.
+  When the user answers with an empty message, you can interpret it as approval.
 - Before creating a non-trivial plan, ask at least 3 clarifying questions to the user.
   Provide a default for each question that the user can accept by not answering.
+  When the user answers with an empty message, you can interpret it as accepting all defaults.
 
 ## Tools
 
