@@ -200,7 +200,7 @@ Example:
 The built-in MCP tools `shell_execute` and `python_execute`:
 - Support multi-line scripts
 - Merge stderr into stdout and return plain text (no JSON envelope)
-- Prefix output with `Returncode: N` only when the command/code exits non-zero
+- Prefix output with `Exit code: N` only when the command/code exits non-zero
 - Support `truncate_at` parameter to limit combined output size and append a note when truncation occurs
 - Support `timeout` parameter (default: 30 seconds)
 - Interactive commands (e.g., `git rebase -i`) are not supported and will block

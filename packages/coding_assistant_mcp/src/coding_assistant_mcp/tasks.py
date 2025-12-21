@@ -63,7 +63,7 @@ def create_task_server(manager: TaskManager) -> FastMCP:
 
         lines = []
         for t in tasks:
-            status = "Running" if t.handle.is_running else f"Finished (Exit code: {t.handle.returncode})"
+            status = "Running" if t.handle.is_running else f"Finished (Exit code: {t.handle.exit_code})"
             lines.append(f"ID: {t.id} | Name: {t.name} | Status: {status}")
 
         return "\n".join(lines)
@@ -87,7 +87,7 @@ def create_task_server(manager: TaskManager) -> FastMCP:
         if task.handle.is_running:
             result += "Status: running\n"
         else:
-            result += f"Status: finished (Return code: {task.handle.returncode})\n"
+            result += f"Status: finished (Exit code: {task.handle.exit_code})\n"
 
         result += "\n\n"
         output = task.handle.stdout
