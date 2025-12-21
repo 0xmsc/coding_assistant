@@ -64,8 +64,8 @@ def create_python_server(manager: TaskManager) -> FastMCP:
             if len(output) > truncate_at:
                 stdout_text += f"\n\nFull output available via `tasks_get_output(task_id={task_id})`"
 
-            if handle.returncode != 0:
-                return f"Exception (exit code {handle.returncode}):\n\n{handle.stdout}"
+            if handle.exit_code != 0:
+                return f"Exception (exit code {handle.exit_code}):\n\n{handle.stdout}"
 
             return stdout_text
 
