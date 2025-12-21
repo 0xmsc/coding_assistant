@@ -1,48 +1,80 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from typing import Sequence
 
 
-@dataclass
-class ProcessResult:
-    stdout: str
-    returncode: int | None
-    timed_out: bool
+class OutputBuffer:
+    def __init__(self, stream: asyncio.StreamReader):
+        self._stream = stream
+        self._buf = bytearray()
+        self._read_task = asyncio.create_task(self._read_stream())
 
-
-async def _wait_for_process(proc: asyncio.subprocess.Process, timeout: int) -> bool:
-    try:
-        await asyncio.wait_for(proc.wait(), timeout=timeout)
-        return False
-    except asyncio.TimeoutError:
-        proc.terminate()
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=5)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-        return True
-
-
-async def _read_stream(buf: bytearray, stream: asyncio.StreamReader):
-    while True:
-        try:
-            chunk = await stream.read(4096)
+    async def _read_stream(self):
+        while True:
+            chunk = await self._stream.read(4096)
             if not chunk:
                 break
-            buf.extend(chunk)
-        except Exception:
-            break
+            self._buf.extend(chunk)
+
+    @property
+    def text(self) -> str:
+        return self._buf.decode(errors="replace")
+
+    async def wait_for_finish(self, timeout: float | None = 5.0):
+        try:
+            await asyncio.wait_for(self._read_task, timeout=timeout)
+        except asyncio.TimeoutError:
+            pass
 
 
-async def execute_process(
+class ProcessHandle:
+    def __init__(
+        self,
+        proc: asyncio.subprocess.Process,
+        output: OutputBuffer,
+    ):
+        self.proc = proc
+        self.output = output
+
+    @property
+    def returncode(self) -> int | None:
+        return self.proc.returncode
+
+    @property
+    def stdout(self) -> str:
+        return self.output.text
+
+    @property
+    def is_running(self) -> bool:
+        return self.returncode is None
+
+    async def wait(self, timeout: float | None = None) -> bool:
+        try:
+            await asyncio.wait_for(self.proc.wait(), timeout=timeout)
+            await self.output.wait_for_finish()
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    async def terminate(self):
+        if not self.is_running:
+            return
+
+        self.proc.terminate()
+        await self.wait(timeout=5.0)
+        if not self.is_running:
+            return
+
+        self.proc.kill()
+        await self.wait(timeout=5.0)
+
+
+async def start_process(
     args: Sequence[str],
     stdin_input: str | None = None,
-    timeout: int = 30,
-) -> ProcessResult:
-    """Execute a process and return its output and status."""
+) -> ProcessHandle:
+    """Start a process and return a handle to it."""
 
     stdin = asyncio.subprocess.PIPE if stdin_input is not None else asyncio.subprocess.DEVNULL
 
@@ -53,9 +85,8 @@ async def execute_process(
         stdin=stdin,
     )
 
-    stdout_buf = bytearray()
     assert proc.stdout is not None
-    read_task = asyncio.create_task(_read_stream(stdout_buf, proc.stdout))
+    output = OutputBuffer(proc.stdout)
 
     if stdin_input is not None:
         assert proc.stdin is not None
@@ -64,17 +95,4 @@ async def execute_process(
         proc.stdin.close()
         await proc.stdin.wait_closed()
 
-    timed_out = await _wait_for_process(proc, timeout=timeout)
-
-    try:
-        await asyncio.wait_for(read_task, timeout=5)
-    except asyncio.TimeoutError:
-        pass
-
-    stdout = stdout_buf.decode(errors="replace")
-
-    return ProcessResult(
-        stdout=stdout,
-        returncode=proc.returncode,
-        timed_out=timed_out,
-    )
+    return ProcessHandle(proc, output)
