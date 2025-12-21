@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Protocol
 
 from coding_assistant.llm.types import (
-    LLMMessage,
+    BaseMessage,
     Completion,
     Tool as LLMTool,
     ProgressCallbacks as LLMProgressCallbacks,
@@ -48,7 +48,7 @@ class AgentOutput:
 
 @dataclass
 class AgentState:
-    history: list[LLMMessage] = field(default_factory=list)
+    history: list[BaseMessage] = field(default_factory=list)
     output: AgentOutput | None = None
 
 
@@ -61,7 +61,7 @@ class AgentContext:
 class Completer(Protocol):
     def __call__(
         self,
-        messages: list[LLMMessage],
+        messages: list[BaseMessage],
         *,
         model: str,
         tools: Sequence[LLMTool],

@@ -6,7 +6,7 @@ from coding_assistant.framework.types import AgentDescription, AgentState, Agent
 from coding_assistant.llm.types import (
     AssistantMessage,
     FunctionCall as FunctionCall,
-    LLMMessage,
+    BaseMessage,
     ToolCall as ToolCall,
 )
 from coding_assistant.llm.litellm import Completion
@@ -99,7 +99,7 @@ def make_test_agent(
     model: str = "TestMode",
     parameters: Sequence[Parameter] | None = None,
     tools: Iterable[Tool] | None = None,
-    history: list[LLMMessage] | None = None,
+    history: list[BaseMessage] | None = None,
 ) -> tuple[AgentDescription, AgentState]:
     desc = AgentDescription(
         name=name,
@@ -117,7 +117,7 @@ def make_test_context(
     model: str = "TestMode",
     parameters: Sequence[Parameter] | None = None,
     tools: Iterable[Tool] | None = None,
-    history: list[LLMMessage] | None = None,
+    history: list[BaseMessage] | None = None,
 ) -> AgentContext:
     desc, state = make_test_agent(
         name=name,
