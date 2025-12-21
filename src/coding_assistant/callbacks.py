@@ -132,6 +132,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         "mcp_coding_assistant_mcp_python_execute": {"code": "python"},
         "mcp_coding_assistant_mcp_filesystem_write_file": {"content": ""},
         "mcp_coding_assistant_mcp_todo_add": {"descriptions": "json"},
+        "compact_conversation": {"summary": ""},
     }
 
     def __init__(self):

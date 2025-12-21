@@ -182,3 +182,50 @@ async def test_chat_loop_prompts_after_compact_command():
     # Most recent history should be the tool result summary
     assert state.history[-1].role == "tool"
     assert "compacted" in state.history[-1].content.lower()
+
+
+@pytest.mark.asyncio
+async def test_chat_compact_conversation_not_forced_in_callbacks():
+    # Test that when compact_conversation is called via model, its summary message is NOT forced in callbacks
+    compact_call = ToolCall("1", FunctionCall("compact_conversation", json.dumps({"summary": "Compacted summary"})))
+    completer = FakeCompleter([FakeMessage(tool_calls=[compact_call])])
+
+    compact_tool = CompactConversation()
+    desc, state = make_test_agent(tools=[compact_tool], history=[UserMessage(content="start")])
+
+    class SpyCallbacks(NullProgressCallbacks):
+        def __init__(self):
+            self.user_messages = []
+
+        def on_user_message(self, context_name: str, content: str, force: bool = False):
+            self.user_messages.append((content, force))
+
+    callbacks = SpyCallbacks()
+    ui = make_ui_mock(ask_sequence=[("> ", "/exit")])
+
+    # We expect one automated step from the model if we start with /compact,
+    # or just use handle_tool_call logic via run_chat_loop.
+    # To trigger it, let's just make the completer provide the compact call immediately.
+
+    # Actually, we can just call run_chat_loop and it will call the model.
+    # But wait, run_chat_loop starts with ui.prompt if history is empty or after UserMessage.
+
+    # Let's mock the UI to just return /exit eventually.
+    # We'll trigger the loop by providing an initial message.
+
+    with pytest.raises(AssertionError, match="Script exhausted"):
+        await run_chat_loop(
+            history=state.history,
+            model=desc.model,
+            tools=desc.tools,
+            parameters=desc.parameters,
+            context_name=desc.name,
+            callbacks=callbacks,
+            tool_callbacks=NullToolCallbacks(),
+            completer=completer,
+            ui=ui,
+        )
+
+    # Find the summary message in callbacks
+    summary_user_msg = next((c, f) for c, f in callbacks.user_messages if "Compacted summary" in c)
+    assert summary_user_msg[1] is False, "Summary message should not be forced in chat mode"
