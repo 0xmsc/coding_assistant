@@ -15,7 +15,21 @@ async def execute(
     timeout: Annotated[int, "The timeout for execution in seconds."] = 30,
     truncate_at: Annotated[int, "Maximum number of characters to return in stdout/stderr combined."] = 50_000,
 ) -> str:
-    """Execute the given Python code using uv run - and return combined stdout/stderr."""
+    """
+    Execute the given Python code using uv run - and return combined stdout/stderr.
+
+    The execution supports PEP 723 inline script metadata, allowing you to specify dependencies
+    directly in the code block.
+
+    Example:
+    ```python
+    # /// script
+    # dependencies = ["requests"]
+    # ///
+    import requests
+    print(requests.get("https://github.com").status_code)
+    ```
+    """
 
     code = code.strip()
 
