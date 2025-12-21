@@ -7,25 +7,20 @@ def test_dense_callbacks_lifecycle():
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
-        # 1. Idle
         assert cb._state is None
 
-        # 2. Reasoning
         cb.on_reasoning_chunk("Thinking...")
         assert isinstance(cb._state, ReasoningState)
         cb.on_reasoning_chunk("\n\nDone thinking.")
 
-        # 3. Content
         cb.on_content_chunk("Hello")
         assert isinstance(cb._state, ContentState)
         cb.on_content_chunk(" world!\n\n")
 
-        # 4. Tool call
         cb.on_tool_start("TestAgent", "call_1", "test_tool", {"arg": "val"})
         assert isinstance(cb._state, ToolState)
         cb.on_tool_message("TestAgent", "call_1", "test_tool", {"arg": "val"}, "Tool result")
 
-        # 5. End chunks (flushes remaining)
         cb.on_content_chunk("Final bit")
         cb.on_chunks_end()
         assert isinstance(cb._state, IdleState)
@@ -52,8 +47,6 @@ def test_dense_callbacks_paragraph_flushing():
         cb.on_content_chunk("One")
         cb.on_content_chunk(" Two")
 
-        # (Though it's hard with just mock_print)
-
         cb.on_chunks_end()
 
     assert mock_print.called
@@ -76,7 +69,6 @@ def test_dense_callbacks_state_transition_flushes():
                 and "Thinking hard" in arg.renderable.markup
             ):
                 found_reasoning = True
-            # Alternative check: just look for the string in any way
             if "Thinking hard" in str(arg):
                 found_reasoning = True
 
@@ -87,19 +79,14 @@ def test_dense_callbacks_empty_line_logic():
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
-        # 2. First reasoning chunk
         cb.on_reasoning_chunk("Thinking")
 
-        # 3. Second reasoning chunk
         cb.on_reasoning_chunk(" more")
 
-        # 4. Content chunk
         cb.on_content_chunk("Hello")
 
-        # 5. Tool start
         cb.on_tool_start("TestAgent", "call_1", "test_tool", {"arg": 1})
 
-        # 6. Content chunk after tool
         cb.on_content_chunk("Result")
 
         print_calls = [c for c in mock_print.call_args_list]
@@ -116,12 +103,10 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     cb = DenseProgressCallbacks()
     callbacks.console.width = 200
 
-    # 1. Unknown tool with multiline -> compact one-liner
     cb.on_tool_start("TestAgent", "call_1", "unknown_tool", {"arg": "line1\nline2"})
     captured = capsys.readouterr()
     assert 'unknown_tool(arg="line1\\nline2")' in captured.out
 
-    # 2. Known special tool (shell_execute) with multiline -> fancy layout
     cb.on_tool_start("TestAgent", "call_2", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls\npwd"})
     captured = capsys.readouterr()
     assert "▶ mcp_coding_assistant_mcp_shell_execute(command)" in captured.out
@@ -129,12 +114,10 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     assert "  ls" in captured.out
     assert "  pwd" in captured.out
 
-    # 3. Known special tool (shell_execute) but SINGLE line -> compact one-liner
     cb.on_tool_start("TestAgent", "call_3", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"})
     captured = capsys.readouterr()
     assert 'mcp_coding_assistant_mcp_shell_execute(command="ls")' in captured.out
 
-    # 4. Known special tool (filesystem_write_file) with multiline -> fancy layout
     cb.on_tool_start(
         "TestAgent",
         "call_4",
@@ -147,7 +130,6 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     assert "  content:" in captured.out
     assert "  def hello():" in captured.out
 
-    # 5. Known special tool (filesystem_edit_file) with multiline on one of the keys
     cb.on_tool_start(
         "TestAgent",
         "call_5",
@@ -162,7 +144,6 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     assert "  old_text:" in captured.out
     assert "  new_text:" in captured.out
 
-    # 6. Known special tool (python_execute) with multiline
     cb.on_tool_start(
         "TestAgent",
         "call_6",
@@ -173,7 +154,6 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     assert "▶ mcp_coding_assistant_mcp_python_execute(code)" in captured.out
     assert "  code:" in captured.out
 
-    # 7. Known special tool with non-string multiline (todo_add)
     cb.on_tool_start(
         "TestAgent",
         "call_7",
@@ -186,7 +166,6 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     assert '"task 1"' in captured.out
     assert '"task 2"' in captured.out
 
-    # 8. Known special tool with key mismatch (multiline allowed but tool sends wrong key)
     cb.on_tool_start(
         "TestAgent",
         "call_8",
@@ -267,7 +246,6 @@ def test_dense_callbacks_tool_lang_extension(capsys):
     callbacks.console.width = 200
 
     with patch("coding_assistant.callbacks.Markdown", side_effect=callbacks.Markdown) as mock_markdown:
-        # 1. Test .py extension
         cb.on_tool_start(
             "TestAgent",
             "call_1",
@@ -283,7 +261,6 @@ def test_dense_callbacks_tool_lang_extension(capsys):
 
         mock_markdown.reset_mock()
 
-        # 2. Test .sh extension
         cb.on_tool_start(
             "TestAgent",
             "call_2",
@@ -299,7 +276,6 @@ def test_dense_callbacks_tool_lang_extension(capsys):
 
         mock_markdown.reset_mock()
 
-        # 3. Test .js extension
         cb.on_tool_start(
             "TestAgent",
             "call_3",
@@ -315,7 +291,6 @@ def test_dense_callbacks_tool_lang_extension(capsys):
 
         mock_markdown.reset_mock()
 
-        # 4. Test no extension (fallback to default "")
         cb.on_tool_start(
             "TestAgent",
             "call_4",
@@ -331,7 +306,6 @@ def test_dense_callbacks_tool_lang_extension(capsys):
 
         mock_markdown.reset_mock()
 
-        # 5. Test dots in directory path (e.g., "dir.old/script") -> should have no extension
         cb.on_tool_start(
             "TestAgent",
             "call_5",
@@ -347,7 +321,6 @@ def test_dense_callbacks_tool_lang_extension(capsys):
 
         mock_markdown.reset_mock()
 
-        # 6. Test hidden file with no extension (e.g., ".gitignore") -> should have no extension
         cb.on_tool_start(
             "TestAgent",
             "call_6",
@@ -363,7 +336,6 @@ def test_dense_callbacks_tool_lang_extension(capsys):
 
         mock_markdown.reset_mock()
 
-        # 7. Test trailing dot (e.g., "README.") -> should have no extension
         cb.on_tool_start(
             "TestAgent",
             "call_7",
