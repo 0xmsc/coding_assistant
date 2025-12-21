@@ -71,13 +71,26 @@ def parse_args():
     parser.add_argument(
         "--readable-sandbox-directories",
         nargs="*",
-        default=[],
+        default=[
+            "/mnt/wsl",
+            "~/.ssh",
+            "~/.rustup",
+            "~/.config",
+            "~/.local",
+            "~/.cache",
+        ],
         help="Additional directories to include in the sandbox.",
     )
     parser.add_argument(
         "--writable-sandbox-directories",
         nargs="*",
-        default=[],
+        default=[
+            "/tmp",
+            "/dev/shm",
+            "~/.cache/coding_assistant",
+            "~/.cache/nvim",
+            "~/.local/state/nvim",
+        ],
         help="Additional directories to include in the sandbox.",
     )
     parser.add_argument(
@@ -119,7 +132,7 @@ def parse_args():
     parser.add_argument(
         "--trace",
         action=BooleanOptionalAction,
-        default=bool(os.getenv("CODING_ASSISTANT_TRACE")),
+        default=True,
         help="Enable tracing of model requests and responses to a session folder in $XDG_STATE_HOME/coding-assistant/traces.",
     )
 
@@ -243,13 +256,13 @@ async def _main(args):
         logger.info("Sandboxing is enabled.")
 
         readable_sandbox_directories = [
-            *[Path(d).resolve() for d in args.readable_sandbox_directories],
+            *[Path(d).expanduser().resolve() for d in args.readable_sandbox_directories],
             venv_directory,
         ]
         logger.info(f"Readable sandbox directories: {readable_sandbox_directories}")
 
         writable_sandbox_directories = [
-            *[Path(d).resolve() for d in args.writable_sandbox_directories],
+            *[Path(d).expanduser().resolve() for d in args.writable_sandbox_directories],
             working_directory,
         ]
         logger.info(f"Writable sandbox directories: {writable_sandbox_directories}")
@@ -259,6 +272,25 @@ async def _main(args):
         logger.warning("Sandboxing is disabled")
 
     mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
+
+    if not args.mcp_servers:
+        mcp_project_dir = working_directory / "packages" / "coding_assistant_mcp"
+        if not mcp_project_dir.exists():
+            raise FileNotFoundError(f"Default MCP server project directory not found: {mcp_project_dir}")
+
+        mcp_server_configs.append(
+            MCPServerConfig(
+                name="coding_assistant_mcp",
+                command="uv",
+                args=[
+                    "--project",
+                    str(mcp_project_dir),
+                    "run",
+                    "coding-assistant-mcp",
+                ],
+            )
+        )
+
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
     async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
