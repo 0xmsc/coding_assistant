@@ -35,42 +35,36 @@ class ProcessHandle:
         return self.returncode is None
 
     async def wait(self, timeout: float | None = None) -> bool:
-        """
-        Wait for process to finish.
-        Returns True if process finished, False if timed out.
-        """
         try:
             await asyncio.wait_for(self.proc.wait(), timeout=timeout)
-            # Give the read task a moment to finish flushing
-            try:
-                await asyncio.wait_for(self.read_task, timeout=1.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                pass
             return True
         except asyncio.TimeoutError:
             return False
+        finally:
+            try:
+                await asyncio.wait_for(self.read_task, timeout=5.0)
+            except asyncio.TimeoutError:
+                pass
 
     async def terminate(self):
-        if self.is_running:
-            self.proc.terminate()
-            await self.wait(timeout=5.0)
-            if self.is_running:
-                self.proc.kill()
-                await self.wait()
+        if not self.is_running:
+            return
+
+        self.proc.terminate()
+        await self.wait(timeout=5.0)
+        if not self.is_running:
+            return
+
+        self.proc.kill()
+        await self.wait(timeout=5.0)
 
 
 async def _read_stream(buf: bytearray, stream: asyncio.StreamReader):
     while True:
-        try:
-            chunk = await stream.read(4096)
-            if not chunk:
-                break
-            buf.extend(chunk)
-            # Keep buffer size under control (100KB limit for background tasks)
-            if len(buf) > 100_000:
-                del buf[: len(buf) - 100_000]
-        except Exception:
+        chunk = await stream.read(4096)
+        if not chunk:
             break
+        buf.extend(chunk)
 
 
 async def start_process(

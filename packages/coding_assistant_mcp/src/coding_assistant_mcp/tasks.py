@@ -16,7 +16,6 @@ class Task:
     id: int
     name: str
     handle: ProcessHandle
-    start_time: datetime = field(default_factory=datetime.now)
 
 
 class TaskManager:
@@ -29,18 +28,13 @@ class TaskManager:
         task_id = self._next_id
         self._next_id += 1
         self._tasks[task_id] = Task(id=task_id, name=name, handle=handle)
-
         self._cleanup_finished_tasks()
         return task_id
 
     def _cleanup_finished_tasks(self):
-        # Refresh the finished tasks list based on current state
         current_finished = [tid for tid, task in self._tasks.items() if not task.handle.is_running]
-
-        # Sort by ID (chronological) to ensure we keep the NEWEST finished ones
         current_finished.sort()
 
-        # If we exceed the limit, remove the oldest finished ones
         if len(current_finished) > self._max_finished_tasks:
             to_remove = current_finished[: -self._max_finished_tasks]
             for tid in to_remove:
@@ -76,12 +70,9 @@ def create_task_server(manager: TaskManager) -> FastMCP:
             return "No tasks found."
 
         lines = []
-        # Show most recent first
         for t in reversed(tasks):
             status = "Running" if t.handle.is_running else f"Finished (Exit code: {t.handle.returncode})"
-            lines.append(
-                f"ID: {t.id} | Name: {t.name} | Status: {status} | Started: {t.start_time.strftime('%H:%M:%S')}"
-            )
+            lines.append(f"ID: {t.id} | Name: {t.name} | Status: {status}")
 
         return "\n".join(lines)
 
@@ -92,14 +83,9 @@ def create_task_server(manager: TaskManager) -> FastMCP:
         timeout: int = 30,
         truncate_at: int = 50_000,
     ) -> str:
-        """
-        Get the output of a task.
-        If wait=True, it will block until the task finishes or the timeout is reached.
-        Use this to retrieve full output if a previous tool call returned truncated results.
-        """
         task = manager.get_task(task_id)
         if not task:
-            return f"Error: Task {task_id} not found. (It might have been cleaned up if it was old)"
+            return f"Error: Task {task_id} not found."
 
         if wait and task.handle.is_running:
             await task.handle.wait(timeout=timeout)
