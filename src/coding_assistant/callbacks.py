@@ -159,10 +159,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         multi_line_params = []
 
         for key, value in arguments.items():
-            # If the tool is configured for special multiline rendering for this key.
             if key in multiline_config:
-                # For strings, we use the raw value (e.g. source code or shell commands).
-                # For other types (like list[str]), we format it as indented JSON.
                 if isinstance(value, str):
                     formatted_value = value
                 else:
@@ -173,7 +170,6 @@ class DenseProgressCallbacks(ProgressCallbacks):
                     header_params.append(key)
                     continue
 
-            # Default: Print in the header line using compact JSON representation.
             header_params.append(f"{key}={json.dumps(value)}")
 
         args_str = f"({', '.join(header_params)})" if header_params else ""
@@ -181,13 +177,9 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
         if multi_line_params:
             for key, value in multi_line_params:
-                lang = multiline_config.get(key, "")
+                lang = multiline_config["key"]
                 print()
                 print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
-                # If we formatted as JSON above, we use the 'json' language for highlighting
-                # if no tool-specific language was provided.
-                if not isinstance(arguments[key], str) and not lang:
-                    lang = "json"
                 print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
             print()
 
