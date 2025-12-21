@@ -10,59 +10,90 @@ from fastmcp import FastMCP
 from coding_assistant_mcp.proc import ProcessHandle
 from coding_assistant_mcp.utils import truncate_output
 
-bg_server = FastMCP()
+task_server = FastMCP()
 
 
 @dataclass
-class BackgroundTask:
+class Task:
     id: int
     name: str
     handle: ProcessHandle
     start_time: datetime = field(default_factory=datetime.now)
 
 
-class BackgroundTaskManager:
-    def __init__(self):
-        self._tasks: Dict[int, BackgroundTask] = {}
+class TaskManager:
+    def __init__(self, max_finished_tasks: int = 10):
+        self._tasks: Dict[int, Task] = {}
         self._next_id = 1
+        self._max_finished_tasks = max_finished_tasks
 
     def register_task(self, name: str, handle: ProcessHandle) -> int:
+        self._cleanup_finished_tasks()
+
         task_id = self._next_id
         self._next_id += 1
-        self._tasks[task_id] = BackgroundTask(id=task_id, name=name, handle=handle)
+        self._tasks[task_id] = Task(id=task_id, name=name, handle=handle)
         return task_id
 
-    def get_task(self, task_id: int) -> BackgroundTask | None:
+    def _cleanup_finished_tasks(self):
+        """Keep only the last N finished tasks; never remove running ones."""
+        # Refresh the finished tasks list based on current state
+        current_finished = [
+            tid for tid, task in self._tasks.items() 
+            if not task.handle.is_running
+        ]
+        
+        # Sort by ID (chronological) to ensure we keep the NEWEST finished ones
+        current_finished.sort()
+
+        # If we exceed the limit, remove the oldest finished ones
+        if len(current_finished) > self._max_finished_tasks:
+            to_remove = current_finished[:-self._max_finished_tasks]
+            for tid in to_remove:
+                self.remove_task(tid)
+
+    def get_task(self, task_id: int) -> Task | None:
         return self._tasks.get(task_id)
 
-    def list_tasks(self) -> list[BackgroundTask]:
+    def list_tasks(self) -> list[Task]:
+        # Always run cleanup before listing to ensure we respect the limit
+        self._cleanup_finished_tasks()
         return list(self._tasks.values())
 
     def remove_task(self, task_id: int):
         if task_id in self._tasks:
+            task = self._tasks[task_id]
+            if task.handle.is_running:
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(task.handle.terminate())
+                except RuntimeError:
+                    # No active loop (likely during test cleanup)
+                    pass
             del self._tasks[task_id]
 
 
 # Global manager instance
-manager = BackgroundTaskManager()
+manager = TaskManager()
 
 
-@bg_server.tool()
+@task_server.tool()
 async def list_tasks() -> str:
-    """List all background tasks and their current status."""
+    """List all recent tasks and their current status."""
     tasks = manager.list_tasks()
     if not tasks:
-        return "No background tasks running."
+        return "No tasks found."
 
     lines = []
-    for t in tasks:
+    # Show most recent first
+    for t in reversed(tasks):
         status = "Running" if t.handle.is_running else f"Finished (Exit code: {t.handle.returncode})"
         lines.append(f"ID: {t.id} | Name: {t.name} | Status: {status} | Started: {t.start_time.strftime('%H:%M:%S')}")
 
     return "\n".join(lines)
 
 
-@bg_server.tool()
+@task_server.tool()
 async def get_output(
     task_id: int,
     wait: bool = False,
@@ -70,12 +101,13 @@ async def get_output(
     truncate_at: int = 50_000,
 ) -> str:
     """
-    Get the output of a background task.
+    Get the output of a task.
     If wait=True, it will block until the task finishes or the timeout is reached.
+    Use this to retrieve full output if a previous tool call returned truncated results.
     """
     task = manager.get_task(task_id)
     if not task:
-        return f"Error: Task {task_id} not found."
+        return f"Error: Task {task_id} not found. (It might have been cleaned up if it was old)"
 
     if wait and task.handle.is_running:
         await task.handle.wait(timeout=timeout)
@@ -92,9 +124,9 @@ async def get_output(
     return result
 
 
-@bg_server.tool()
+@task_server.tool()
 async def kill_task(task_id: int) -> str:
-    """Terminate a background task."""
+    """Terminate a running task."""
     task = manager.get_task(task_id)
     if not task:
         return f"Error: Task {task_id} not found."
@@ -103,15 +135,12 @@ async def kill_task(task_id: int) -> str:
     return f"Task {task_id} has been terminated."
 
 
-@bg_server.tool()
+@task_server.tool()
 async def remove_task(task_id: int) -> str:
-    """Remove a background task from the manager. Use this to clean up finished tasks."""
+    """Remove a task from the manager history."""
     task = manager.get_task(task_id)
     if not task:
         return f"Error: Task {task_id} not found."
 
-    if task.handle.is_running:
-        return f"Error: Task {task_id} is still running. Kill it first."
-
     manager.remove_task(task_id)
-    return f"Task {task_id} removed."
+    return f"Task {task_id} removed from history."

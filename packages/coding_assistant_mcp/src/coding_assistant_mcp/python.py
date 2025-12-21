@@ -6,7 +6,7 @@ from fastmcp import FastMCP
 
 from coding_assistant_mcp.proc import start_process
 from coding_assistant_mcp.utils import truncate_output
-from coding_assistant_mcp.bg_tasks import manager
+from coding_assistant_mcp.tasks import manager
 
 python_server = FastMCP()
 
@@ -19,39 +19,41 @@ async def execute(
 ) -> str:
     """
     Execute the given Python code using uv run - and return combined stdout/stderr.
-
-    The execution supports PEP 723 inline script metadata, allowing you to specify dependencies
-    directly in the code block.
     """
 
     code = code.strip()
 
     try:
-        # We use 'uv run -' to execute the code from stdin.
         handle = await start_process(
             args=["uv", "run", "-q", "-"],
             stdin_input=code,
         )
 
+        task_name = "python script"
+        task_id = manager.register_task(task_name, handle)
+
         if background:
-            task_id = manager.register_task("python script", handle)
             return f"Task started in background with ID: {task_id}"
 
         finished = await handle.wait(timeout=timeout)
 
         if not finished:
-            # Auto-backgrounding on timeout
-            task_id = manager.register_task("python script (auto)", handle)
             return (
                 f"Python script is taking longer than {timeout}s. "
-                f"It has been moved to a background task with ID: {task_id}. "
-                "You can check its status later using `bg_get_output`."
+                f"It continues in the background with Task ID: {task_id}. "
+                "You can check its status later using `tasks_get_output`."
             )
+
+        output = handle.stdout
+        stdout_text = truncate_output(output, truncate_at)
+
+        if len(output) > truncate_at:
+            stdout_text += f"\n\nFull output available via `tasks_get_output(task_id={task_id})`"
 
         if handle.returncode != 0:
             return f"Exception (exit code {handle.returncode}):\n\n{handle.stdout}"
 
-        return truncate_output(handle.stdout, truncate_at)
+        return stdout_text
 
     except Exception as e:
         return f"Error executing script: {str(e)}"
