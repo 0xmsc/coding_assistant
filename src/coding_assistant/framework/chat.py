@@ -96,6 +96,7 @@ async def run_chat_loop(
     completer: Completer,
     ui: UI,
     context_name: str,
+    initial_prompt: str | None = None,
 ):
     # Inject required tools
     tools = list(tools)
@@ -110,8 +111,15 @@ async def run_chat_loop(
             elif message.role == "user":
                 if content := message.content:
                     callbacks.on_user_message(context_name, content, force=True)
+    else:
+        start_message = _create_chat_start_message(parameters)
+        append_user_message(history, callbacks, context_name, start_message)
 
     need_user_input = True
+
+    if initial_prompt:
+        append_user_message(history, callbacks, context_name, initial_prompt)
+        need_user_input = False
 
     async def _exit_cmd():
         return ChatCommandResult.EXIT
@@ -142,9 +150,6 @@ async def run_chat_loop(
     ]
     command_map = {cmd.name: cmd for cmd in commands}
     command_names = list(command_map.keys())
-
-    start_message = _create_chat_start_message(parameters)
-    append_user_message(history, callbacks, context_name, start_message)
 
     while True:
         if need_user_input:
