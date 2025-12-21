@@ -135,7 +135,7 @@ def create_config_from_args(args) -> Config:
     )
 
 
-async def run_orchestrator_agent(
+async def run_root_agent(
     task: str,
     config: Config,
     tools: list[Tool],
@@ -298,7 +298,7 @@ async def _main(args):
         else:
             if not args.task:
                 raise ValueError("Task must be provided. Use --task to specify the task for the orchestrator agent.")
-            await run_orchestrator_agent(
+            await run_root_agent(
                 task=args.task,
                 config=config,
                 tools=tools,
