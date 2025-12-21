@@ -164,11 +164,11 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         {"path": "test.py", "content": "def hello():\n    pass"},
     )
     captured = capsys.readouterr()
-    assert '  path: "test.py"' in captured.out
+    assert 'mcp_coding_assistant_mcp_filesystem_write_file(path="test.py")' in captured.out
     assert "  content:" in captured.out
     assert "  def hello():" in captured.out
 
-    # 5. Known special tool (filesystem_edit_file) with multiline on one of the keys
+        # 5. Known special tool (filesystem_edit_file) with multiline on one of the keys
     cb.on_tool_start(
         "TestAgent",
         "call_5",
@@ -176,8 +176,8 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         {"path": "test.txt", "old_text": "line1", "new_text": "line1\nline2"},
     )
     captured = capsys.readouterr()
-    assert '  path: "test.txt"' in captured.out
-    assert '  old_text: "line1"' in captured.out
-    assert "  new_text:" in captured.out
-    assert "  line1" in captured.out
-    assert "  line2" in captured.out
+    assert 'mcp_coding_assistant_mcp_filesystem_edit_file(path="test.txt")' in captured.out
+    assert 'old_text: "line1"' not in captured.out
+    assert "new_text:" not in captured.out
+    assert "line1" not in captured.out
+    assert "line2" not in captured.out
