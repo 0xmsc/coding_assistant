@@ -5,8 +5,10 @@ from coding_assistant_mcp.shell import execute
 
 @pytest.mark.asyncio
 async def test_shell_execute_timeout():
-    out = await execute(command="sleep 2", timeout=1)
+    out = await execute(command="echo 'start'; sleep 2; echo 'end'", timeout=1)
     assert "timed out" in out
+    assert "start" in out
+    assert "end" not in out
 
 
 @pytest.mark.asyncio
