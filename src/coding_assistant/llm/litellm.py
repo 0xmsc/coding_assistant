@@ -135,6 +135,7 @@ async def _try_completion_with_retry(
             litellm.Timeout,
             litellm.ServiceUnavailableError,
             litellm.InternalServerError,
+            litellm.BadRequestError,
         ) as e:
             if attempt == max_retries - 1:
                 raise
