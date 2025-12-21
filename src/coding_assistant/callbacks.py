@@ -128,7 +128,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         "mcp_coding_assistant_mcp_shell_execute": {"lang_map": {"command": "bash"}, "order": ["command"]},
         "mcp_coding_assistant_mcp_python_execute": {"lang_map": {"code": "python"}, "order": ["code"]},
         "mcp_coding_assistant_mcp_filesystem_write_file": {"order": ["path", "content"]},
-        "mcp_coding_assistant_mcp_filesystem_edit_file": {"order": ["path", "old_text", "new_text"]},
+        "mcp_coding_assistant_mcp_filesystem_edit_file": {"exclude": ["old_text", "new_text"]},
     }
 
     def __init__(self):
@@ -158,23 +158,28 @@ class DenseProgressCallbacks(ProgressCallbacks):
         tool_name: str,
         arguments: dict,
         lang_map: dict[str, str] = dict(),
-        order: list[str] | None = None,
+        exclude: list[str] | None = None,
     ):
-        print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}")
+        single_line_params = []
+        multi_line_params = []
 
-        keys = list(arguments.keys())
-        if order:
-            keys.sort(key=lambda k: order.index(k) if k in order else len(order))
+        exclude_set = set(exclude or [])
 
-        for key in keys:
-            value = arguments[key]
+        for key, value in arguments.items():
             if isinstance(value, str) and "\n" in value:
-                lang = lang_map.get(key, "")
-                print()
-                print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
-                print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
-            else:
-                print(Padding(f"[dim]{key}:[/dim] {json.dumps(value)}", self._left_padding))
+                if key not in exclude_set:
+                    multi_line_params.append((key, value))
+            elif key not in exclude_set:
+                single_line_params.append(f"{key}={json.dumps(value)}")
+
+        args_str = f"({', '.join(single_line_params)})" if single_line_params else ""
+        print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
+
+        for key, value in multi_line_params:
+            lang = lang_map.get(key, "")
+            print()
+            print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
+            print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
         print()
 
     def _special_handle_arguments(self, symbol: str, tool_name: str, arguments: dict) -> bool:
@@ -184,8 +189,8 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
         if any("\n" in str(v) for v in arguments.values()):
             lang_map = config.get("lang_map", {})
-            order = config.get("order")
-            self._print_arguments_multiline(symbol, tool_name, arguments, lang_map=lang_map, order=order)
+            exclude = config.get("exclude")
+            self._print_arguments_multiline(symbol, tool_name, arguments, lang_map=lang_map, exclude=exclude)
             return True
 
         return False
