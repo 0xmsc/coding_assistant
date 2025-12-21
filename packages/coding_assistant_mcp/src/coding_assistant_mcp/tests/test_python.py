@@ -11,9 +11,9 @@ async def test_python_run_timeout():
 
 @pytest.mark.asyncio
 async def test_python_run_exception_includes_traceback():
-    out = await execute(code="import sys; sys.exit(7)")
-    assert out.startswith("Exception:\n\n")
-    assert "SystemExit: 7" in out
+    out = await execute(code="raise ValueError('oops')")
+    assert out.startswith("Exception (exit code 1):\n\n")
+    assert "ValueError: oops" in out
 
 
 @pytest.mark.asyncio
@@ -53,5 +53,5 @@ cowsay.cow("moo")
 @pytest.mark.asyncio
 async def test_python_run_exception_with_stderr_content():
     out = await execute(code="import sys; sys.stderr.write('bad\\n'); sys.exit(4)")
-    assert out.startswith("Exception:\n\n")
+    assert out.startswith("Exception (exit code 4):\n\n")
     assert "bad\n" in out
