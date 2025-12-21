@@ -6,6 +6,8 @@
 - Do not run any binary using `uvx` or `npx` before asking the user.
 - Do not start a web search before asking the user.
 - Output text in markdown formatting, where appropriate.
+- Before doing any non-trivial changes to the codebase, present a coherent plan to the user.
+- Before creating a non-trivial plan, ask at least 3 clarifying questions to the user.
 
 ## Tools
 
