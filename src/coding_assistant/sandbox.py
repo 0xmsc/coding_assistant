@@ -41,8 +41,18 @@ def sandbox(readable_directories: list[Path], writable_directories: list[Path]):
 
     rs.allow(Path("~/.cargo").expanduser(), rules=_get_read_only_rule())
     rs.allow(Path("~/.local/bin").expanduser(), rules=_get_read_only_rule())
-    rs.allow(Path("~/.config").expanduser(), rules=_get_read_only_rule())
     rs.allow(Path("~/.cfg").expanduser(), rules=_get_read_only_rule())
+
+    # Additional standard directories
+    for path in ["/mnt/wsl", "~/.ssh", "~/.rustup", "~/.config", "~/.local", "~/.cache"]:
+        p = Path(path).expanduser()
+        if p.exists():
+            rs.allow(p, rules=_get_read_only_rule())
+
+    for path in ["/tmp", "/dev/shm", "~/.cache/coding_assistant", "~/.cache/nvim", "~/.local/state/nvim"]:
+        p = Path(path).expanduser()
+        if p.exists():
+            rs.allow(p, rules=FSAccess.all())
 
     # Allow each directory passed in the directories list
     for directory in readable_directories:
