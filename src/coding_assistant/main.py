@@ -37,6 +37,7 @@ logger.setLevel(logging.INFO)
 def parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant CLI")
     parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
+    parser.add_argument("--prompt", type=str, help="Initial prompt for chat mode.")
     parser.add_argument(
         "--resume",
         action="store_true",
@@ -179,6 +180,7 @@ async def run_chat_session(
     working_directory: Path,
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
+    initial_prompt: str | None = None,
 ):
     # Build a simple root agent for chat mode (no finish_task)
     chat_parameters: list[Parameter] = []
@@ -204,6 +206,7 @@ async def run_chat_session(
             completer=complete,
             ui=PromptToolkitUI(),
             context_name="Orchestrator",
+            initial_prompt=initial_prompt,
         )
     finally:
         save_orchestrator_history(working_directory, chat_history)
@@ -295,6 +298,7 @@ async def _main(args):
                 working_directory=working_directory,
                 progress_callbacks=progress_callbacks,
                 tool_callbacks=tool_callbacks,
+                initial_prompt=args.prompt,
             )
         else:
             if not args.task:

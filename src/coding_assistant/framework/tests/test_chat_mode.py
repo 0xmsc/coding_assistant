@@ -233,3 +233,46 @@ async def test_chat_compact_conversation_not_forced_in_callbacks():
     # Find the summary message in callbacks
     summary_user_msg = next((c, f) for c, f in callbacks.user_messages if "Compacted summary" in c)
     assert summary_user_msg[1] is False, "Summary message should not be forced in chat mode"
+
+
+@pytest.mark.asyncio
+async def test_chat_loop_with_initial_prompt():
+    # Setup:
+    # 1. The agent is started with an initial prompt "Initial Prompt".
+    # 2. The assistant responds with "Response".
+    # 3. Then the loop should wait for user input. We provide "/exit".
+
+    completer = FakeCompleter([FakeMessage(content="Response")])
+    desc, state = make_test_agent(tools=[], history=[])
+
+    # We expect ui.prompt to be called once for "/exit" because the initial prompt
+    # should bypass the first user input requirement.
+    ui = make_ui_mock(ask_sequence=[("> ", "/exit")])
+
+    await run_chat_loop(
+        history=state.history,
+        model=desc.model,
+        tools=desc.tools,
+        parameters=desc.parameters,
+        context_name=desc.name,
+        callbacks=NullProgressCallbacks(),
+        tool_callbacks=NullToolCallbacks(),
+        completer=completer,
+        ui=ui,
+        initial_prompt="Initial Prompt",
+    )
+
+    user_messages = [m for m in state.history if m.role == "user"]
+    assistant_messages = [m for m in state.history if m.role == "assistant"]
+
+    # First user message is setup instructions, second is our initial prompt.
+    assert len(user_messages) == 2
+    assert "You are in chat mode" in user_messages[0].content
+    assert user_messages[1].content == "Initial Prompt"
+
+    assert len(assistant_messages) == 1
+    assert assistant_messages[0].content == "Response"
+
+    # Verify ui.prompt was called only once for /exit
+    assert ui.prompt.call_count == 1
+
