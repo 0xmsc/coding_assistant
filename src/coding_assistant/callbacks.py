@@ -5,7 +5,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 from rich import print
 from rich.markdown import Markdown
@@ -178,6 +178,8 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
             else:
                 print(Padding(f"[dim]{key}:[/dim] {json.dumps(value)}", self._left_padding))
+
+        print()
 
     def _special_handle_arguments(self, symbol: str, tool_name: str, arguments: dict) -> bool:
         if tool_name == "mcp_coding_assistant_mcp_shell_execute":
