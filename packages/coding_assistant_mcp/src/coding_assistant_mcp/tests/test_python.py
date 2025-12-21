@@ -37,6 +37,20 @@ async def test_python_run_stderr_captured_with_zero_exit():
 
 
 @pytest.mark.asyncio
+async def test_python_run_with_dependencies():
+    code = """
+# /// script
+# dependencies = ["cowsay"]
+# ///
+import cowsay
+cowsay.cow("moo")
+"""
+    out = await execute(code=code, timeout=60)
+    assert "moo" in out
+    assert "^__^" in out
+
+
+@pytest.mark.asyncio
 async def test_python_run_exception_with_stderr_content():
     out = await execute(code="import sys; sys.stderr.write('bad\\n'); sys.exit(4)")
     assert out.startswith("Exception:\n\n")
