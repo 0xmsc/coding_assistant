@@ -10,8 +10,6 @@ from fastmcp import FastMCP
 from coding_assistant_mcp.proc import ProcessHandle
 from coding_assistant_mcp.utils import truncate_output
 
-task_server = FastMCP()
-
 
 @dataclass
 class Task:
@@ -38,17 +36,14 @@ class TaskManager:
     def _cleanup_finished_tasks(self):
         """Keep only the last N finished tasks; never remove running ones."""
         # Refresh the finished tasks list based on current state
-        current_finished = [
-            tid for tid, task in self._tasks.items() 
-            if not task.handle.is_running
-        ]
-        
+        current_finished = [tid for tid, task in self._tasks.items() if not task.handle.is_running]
+
         # Sort by ID (chronological) to ensure we keep the NEWEST finished ones
         current_finished.sort()
 
         # If we exceed the limit, remove the oldest finished ones
         if len(current_finished) > self._max_finished_tasks:
-            to_remove = current_finished[:-self._max_finished_tasks]
+            to_remove = current_finished[: -self._max_finished_tasks]
             for tid in to_remove:
                 self.remove_task(tid)
 
@@ -73,74 +68,74 @@ class TaskManager:
             del self._tasks[task_id]
 
 
-# Global manager instance
-manager = TaskManager()
+def create_task_server(manager: TaskManager) -> FastMCP:
+    task_server = FastMCP("TaskManager")
 
+    @task_server.tool()
+    async def list_tasks() -> str:
+        """List all recent tasks and their current status."""
+        tasks = manager.list_tasks()
+        if not tasks:
+            return "No tasks found."
 
-@task_server.tool()
-async def list_tasks() -> str:
-    """List all recent tasks and their current status."""
-    tasks = manager.list_tasks()
-    if not tasks:
-        return "No tasks found."
+        lines = []
+        # Show most recent first
+        for t in reversed(tasks):
+            status = "Running" if t.handle.is_running else f"Finished (Exit code: {t.handle.returncode})"
+            lines.append(
+                f"ID: {t.id} | Name: {t.name} | Status: {status} | Started: {t.start_time.strftime('%H:%M:%S')}"
+            )
 
-    lines = []
-    # Show most recent first
-    for t in reversed(tasks):
-        status = "Running" if t.handle.is_running else f"Finished (Exit code: {t.handle.returncode})"
-        lines.append(f"ID: {t.id} | Name: {t.name} | Status: {status} | Started: {t.start_time.strftime('%H:%M:%S')}")
+        return "\n".join(lines)
 
-    return "\n".join(lines)
+    @task_server.tool()
+    async def get_output(
+        task_id: int,
+        wait: bool = False,
+        timeout: int = 30,
+        truncate_at: int = 50_000,
+    ) -> str:
+        """
+        Get the output of a task.
+        If wait=True, it will block until the task finishes or the timeout is reached.
+        Use this to retrieve full output if a previous tool call returned truncated results.
+        """
+        task = manager.get_task(task_id)
+        if not task:
+            return f"Error: Task {task_id} not found. (It might have been cleaned up if it was old)"
 
+        if wait and task.handle.is_running:
+            await task.handle.wait(timeout=timeout)
 
-@task_server.tool()
-async def get_output(
-    task_id: int,
-    wait: bool = False,
-    timeout: int = 30,
-    truncate_at: int = 50_000,
-) -> str:
-    """
-    Get the output of a task.
-    If wait=True, it will block until the task finishes or the timeout is reached.
-    Use this to retrieve full output if a previous tool call returned truncated results.
-    """
-    task = manager.get_task(task_id)
-    if not task:
-        return f"Error: Task {task_id} not found. (It might have been cleaned up if it was old)"
+        output = task.handle.stdout
+        status = "RUNNING" if task.handle.is_running else "FINISHED"
+        result = f"Task {task_id} ({task.name}) - Status: {status}\n"
+        result += "-" * 20 + "\n"
+        result += truncate_output(output, truncate_at)
 
-    if wait and task.handle.is_running:
-        await task.handle.wait(timeout=timeout)
+        if not task.handle.is_running:
+            result += f"\n\nReturn code: {task.handle.returncode}"
 
-    output = task.handle.stdout
-    status = "RUNNING" if task.handle.is_running else "FINISHED"
-    result = f"Task {task_id} ({task.name}) - Status: {status}\n"
-    result += "-" * 20 + "\n"
-    result += truncate_output(output, truncate_at)
+        return result
 
-    if not task.handle.is_running:
-        result += f"\n\nReturn code: {task.handle.returncode}"
+    @task_server.tool()
+    async def kill_task(task_id: int) -> str:
+        """Terminate a running task."""
+        task = manager.get_task(task_id)
+        if not task:
+            return f"Error: Task {task_id} not found."
 
-    return result
+        await task.handle.terminate()
+        return f"Task {task_id} has been terminated."
 
+    @task_server.tool()
+    async def remove_task(task_id: int) -> str:
+        """Remove a task from the manager history."""
+        task = manager.get_task(task_id)
+        if not task:
+            return f"Error: Task {task_id} not found."
 
-@task_server.tool()
-async def kill_task(task_id: int) -> str:
-    """Terminate a running task."""
-    task = manager.get_task(task_id)
-    if not task:
-        return f"Error: Task {task_id} not found."
+        manager.remove_task(task_id)
+        return f"Task {task_id} removed from history."
 
-    await task.handle.terminate()
-    return f"Task {task_id} has been terminated."
-
-
-@task_server.tool()
-async def remove_task(task_id: int) -> str:
-    """Remove a task from the manager history."""
-    task = manager.get_task(task_id)
-    if not task:
-        return f"Error: Task {task_id} not found."
-
-    manager.remove_task(task_id)
-    return f"Task {task_id} removed from history."
+    return task_server
