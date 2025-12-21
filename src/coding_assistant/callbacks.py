@@ -177,7 +177,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
         if multi_line_params:
             for key, value in multi_line_params:
-                lang = multiline_config["key"]
+                lang = multiline_config[key]
                 print()
                 print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
                 print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
