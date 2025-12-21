@@ -177,7 +177,7 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     )
     captured = capsys.readouterr()
     assert (
-        'mcp_coding_assistant_mcp_filesystem_edit_file(path="test.txt", \nold_text="line1", new_text="line1\\nline2")'
+        'mcp_coding_assistant_mcp_filesystem_edit_file(path="test.txt", old_text="line1", new_text="line1\\nline2")'
         in captured.out
     )
 
