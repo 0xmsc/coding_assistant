@@ -63,17 +63,23 @@ def _to_paths(list):
 
 def allow_read(rs: Ruleset, paths: list[Path]):
     for path in paths:
-        if path.exists() and path.is_dir():
+        if not path.exists():
+            continue
+
+        if path.is_dir():
             rs.allow(path, rules=_get_read_only_rule())
-        if path.exists() and path.is_file():
+        if path.is_file() or path.is_char_device():
             rs.allow(path, rules=_get_read_only_file_rule())
 
 
 def allow_write(rs: Ruleset, paths: list[Path]):
     for path in paths:
-        if path.exists() and path.is_dir():
+        if not path.exists():
+            continue
+
+        if path.is_dir():
             rs.allow(path, rules=FSAccess.all())
-        if path.exists() and path.is_file():
+        if path.is_file():
             rs.allow(path, rules=_get_read_write_file_rule())
 
 
