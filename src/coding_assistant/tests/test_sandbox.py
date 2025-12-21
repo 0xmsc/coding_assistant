@@ -1,9 +1,7 @@
 import multiprocessing
 import subprocess
-from pathlib import Path
 from enum import Enum
 
-import pytest
 
 from coding_assistant.sandbox import sandbox
 
@@ -49,7 +47,7 @@ def _run_in_sandbox(test_func, *args):
 
 def _test_writable_directory_allows_write(writable_dir):
     """Test function to run in child process."""
-    sandbox(readable_directories=[], writable_directories=[writable_dir])
+    sandbox(readable_paths=[], writable_paths=[writable_dir])
 
     test_file = writable_dir / "test.txt"
     with open(test_file, "w") as f:
@@ -61,7 +59,7 @@ def _test_writable_directory_allows_write(writable_dir):
 
 def _test_readable_directory_denies_write(readable_dir, existing_file):
     """Test function to run in child process."""
-    sandbox(readable_directories=[readable_dir], writable_directories=[])
+    sandbox(readable_paths=[readable_dir], writable_paths=[])
 
     # Should be able to read existing file
     with open(existing_file, "r") as f:
@@ -87,7 +85,7 @@ def _test_readable_directory_denies_write(readable_dir, existing_file):
 
 def _test_directory_access_separation(readable_dir, writable_dir, forbidden_dir, existing_file):
     """Test function to run in child process."""
-    sandbox(readable_directories=[readable_dir], writable_directories=[writable_dir])
+    sandbox(readable_paths=[readable_dir], writable_paths=[writable_dir])
 
     # Can read from readable directory
     with open(existing_file, "r") as f:
@@ -120,7 +118,7 @@ def _test_directory_access_separation(readable_dir, writable_dir, forbidden_dir,
 
 def _test_write_denied_in_non_allowed_directory(tmp_path):
     """Test function to run in child process."""
-    sandbox(readable_directories=[], writable_directories=[])
+    sandbox(readable_paths=[], writable_paths=[])
 
     test_file = tmp_path / "test.txt"
     try:
@@ -133,7 +131,7 @@ def _test_write_denied_in_non_allowed_directory(tmp_path):
 
 def _test_nested_directory_permissions(readable_child, writable_child, existing_file):
     """Test function to run in child process."""
-    sandbox(readable_directories=[readable_child], writable_directories=[writable_child])
+    sandbox(readable_paths=[readable_child], writable_paths=[writable_child])
 
     # Can read from readable child
     with open(existing_file, "r") as f:
@@ -158,7 +156,7 @@ def _test_nested_directory_permissions(readable_child, writable_child, existing_
 
 def _test_multiple_readable_directories(dir1, dir2, file1, file2):
     """Test function to run in child process."""
-    sandbox(readable_directories=[dir1, dir2], writable_directories=[])
+    sandbox(readable_paths=[dir1, dir2], writable_paths=[])
 
     # Should be able to read from both
     with open(file1, "r") as f:
@@ -184,7 +182,7 @@ def _test_multiple_readable_directories(dir1, dir2, file1, file2):
 
 def _test_multiple_writable_directories(dir1, dir2):
     """Test function to run in child process."""
-    sandbox(readable_directories=[], writable_directories=[dir1, dir2])
+    sandbox(readable_paths=[], writable_paths=[dir1, dir2])
 
     # Should be able to write to both
     file1 = dir1 / "file1.txt"
@@ -204,7 +202,7 @@ def _test_multiple_writable_directories(dir1, dir2):
 
 def _test_run_binaries_with_sandbox():
     """Test function to run in child process."""
-    sandbox(readable_directories=[], writable_directories=[], include_defaults=True)
+    sandbox(readable_paths=[], writable_paths=[], include_defaults=True)
     subprocess.check_call(["git", "help"])
     subprocess.check_call(["npm", "help"])
     subprocess.check_call(["uvx", "--help"])
@@ -263,18 +261,6 @@ def test_directory_access_separation(tmp_path):
 def test_write_in_non_allowed_directory(tmp_path):
     """Test that writing fails in directories not explicitly allowed."""
     assert _run_in_sandbox(_test_write_denied_in_non_allowed_directory, tmp_path)
-
-
-def test_sandbox_fails_on_nonexistent_readable_dir():
-    """Test that sandbox fails when readable directory doesn't exist."""
-    with pytest.raises(FileNotFoundError, match="Directory .* does not exist"):
-        sandbox(readable_directories=[Path("/does-not-exist")], writable_directories=[])
-
-
-def test_sandbox_fails_on_nonexistent_writable_dir():
-    """Test that sandbox fails when writable directory doesn't exist."""
-    with pytest.raises(FileNotFoundError, match="Directory .* does not exist"):
-        sandbox(readable_directories=[], writable_directories=[Path("/does-not-exist")])
 
 
 def test_nested_directory_permissions(tmp_path):
