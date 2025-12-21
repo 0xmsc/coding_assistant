@@ -69,30 +69,17 @@ def parse_args():
         help="Custom instructions for the agent.",
     )
     parser.add_argument(
-        "--readable-sandbox-directories",
-        nargs="*",
-        default=[
-            "/mnt/wsl",
-            "~/.ssh",
-            "~/.rustup",
-            "~/.config",
-            "~/.local",
-            "~/.cache",
-        ],
-        help="Additional directories to include in the sandbox.",
-    )
-    parser.add_argument(
-        "--writable-sandbox-directories",
-        nargs="*",
-        default=[
-            "/tmp",
-            "/dev/shm",
-            "~/.cache/coding_assistant",
-            "~/.cache/nvim",
-            "~/.local/state/nvim",
-        ],
-        help="Additional directories to include in the sandbox.",
-    )
+         "--readable-sandbox-directories",
+         nargs="*",
+         default=[],
+         help="Additional directories to include in the sandbox.",
+     )
+     parser.add_argument(
+         "--writable-sandbox-directories",
+         nargs="*",
+         default=[],
+         help="Additional directories to include in the sandbox.",
+     )
     parser.add_argument(
         "--sandbox",
         action=BooleanOptionalAction,
