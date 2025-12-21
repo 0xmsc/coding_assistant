@@ -119,7 +119,7 @@ def parse_args():
     parser.add_argument(
         "--trace",
         action=BooleanOptionalAction,
-        default=True,
+        default=False,
         help="Enable tracing of model requests and responses to a session folder in $XDG_STATE_HOME/coding-assistant/traces.",
     )
 
