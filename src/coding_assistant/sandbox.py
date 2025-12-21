@@ -8,6 +8,29 @@ from landlock import FSAccess, Ruleset  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_READABLE_DIRECTORIES = [
+    "/mnt/wsl",
+    "~/.ssh",
+    "~/.rustup",
+    "~/.config",
+    "~/.local",
+    "~/.cache",
+    "~/.cargo",
+    "~/.local/bin",
+    "~/.cfg",
+]
+
+DEFAULT_WRITABLE_DIRECTORIES = [
+    "~/.npm",
+    "~/.cache/uv",
+    "~/.local/share/uv",
+    "/tmp",
+    "/dev/shm",
+    "~/.cache/coding_assistant",
+    "~/.cache/nvim",
+    "~/.local/state/nvim",
+]
+
 
 def _get_read_only_rule():
     return FSAccess.EXECUTE | FSAccess.READ_DIR | FSAccess.READ_FILE
@@ -34,22 +57,13 @@ def sandbox(readable_directories: list[Path], writable_directories: list[Path]):
     rs.allow(Path("/run"), rules=_get_read_only_rule())
     rs.allow(Path("/sys"), rules=_get_read_only_rule())
 
-    # User directories
-    rs.allow(Path("~/.npm").expanduser(), rules=FSAccess.all())
-    rs.allow(Path("~/.cache/uv").expanduser(), rules=FSAccess.all())
-    rs.allow(Path("~/.local/share/uv").expanduser(), rules=FSAccess.all())
-
-    rs.allow(Path("~/.cargo").expanduser(), rules=_get_read_only_rule())
-    rs.allow(Path("~/.local/bin").expanduser(), rules=_get_read_only_rule())
-    rs.allow(Path("~/.cfg").expanduser(), rules=_get_read_only_rule())
-
-    # Additional standard directories
-    for path in ["/mnt/wsl", "~/.ssh", "~/.rustup", "~/.config", "~/.local", "~/.cache"]:
+    # Standard directories
+    for path in DEFAULT_READABLE_DIRECTORIES:
         p = Path(path).expanduser()
         if p.exists():
             rs.allow(p, rules=_get_read_only_rule())
 
-    for path in ["/tmp", "/dev/shm", "~/.cache/coding_assistant", "~/.cache/nvim", "~/.local/state/nvim"]:
+    for path in DEFAULT_WRITABLE_DIRECTORIES:
         p = Path(path).expanduser()
         if p.exists():
             rs.allow(p, rules=FSAccess.all())
