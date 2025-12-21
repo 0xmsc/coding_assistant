@@ -1,9 +1,9 @@
 from coding_assistant.framework.callbacks import ProgressCallbacks
-from coding_assistant.llm.types import AssistantMessage, LLMMessage, ToolMessage, UserMessage
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolMessage, UserMessage
 
 
 def append_tool_message(
-    history: list[LLMMessage],
+    history: list[BaseMessage],
     callbacks: ProgressCallbacks,
     context_name: str,
     tool_call_id: str,
@@ -23,7 +23,7 @@ def append_tool_message(
 
 
 def append_user_message(
-    history: list[LLMMessage],
+    history: list[BaseMessage],
     callbacks: ProgressCallbacks,
     context_name: str,
     content: str,
@@ -39,7 +39,7 @@ def append_user_message(
 
 
 def append_assistant_message(
-    history: list[LLMMessage],
+    history: list[BaseMessage],
     callbacks: ProgressCallbacks,
     context_name: str,
     message: AssistantMessage,
@@ -51,7 +51,7 @@ def append_assistant_message(
     history.append(message)
 
 
-def clear_history(history: list[LLMMessage]):
+def clear_history(history: list[BaseMessage]):
     """Resets the history to the first message (the start message) in-place."""
     if history:
         history[:] = [history[0]]
