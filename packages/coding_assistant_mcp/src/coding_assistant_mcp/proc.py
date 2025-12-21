@@ -24,7 +24,7 @@ class OutputBuffer:
     async def wait_for_finish(self, timeout: float | None = 5.0):
         try:
             await asyncio.wait_for(self._read_task, timeout=timeout)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
+        except asyncio.TimeoutError:
             pass
 
 
