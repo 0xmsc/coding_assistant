@@ -125,9 +125,9 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
     # Configuration for special handling of multiline arguments
     _SPECIAL_TOOLS: dict[str, dict[str, Any]] = {
-        "mcp_coding_assistant_mcp_shell_execute": {"lang_map": {"command": "bash"}, "order": ["command"]},
-        "mcp_coding_assistant_mcp_python_execute": {"lang_map": {"code": "python"}, "order": ["code"]},
-        "mcp_coding_assistant_mcp_filesystem_write_file": {"order": ["path", "content"]},
+        "mcp_coding_assistant_mcp_shell_execute": {"multiline": {"command": "bash"}},
+        "mcp_coding_assistant_mcp_python_execute": {"multiline": {"code": "python"}},
+        "mcp_coding_assistant_mcp_filesystem_write_file": {"multiline": {"content": ""}},
         "mcp_coding_assistant_mcp_filesystem_edit_file": {"exclude": ["old_text", "new_text"]},
     }
 
@@ -157,7 +157,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         symbol: str,
         tool_name: str,
         arguments: dict,
-        lang_map: dict[str, str] = dict(),
+        multiline_config: dict[str, str] = dict(),
         exclude: list[str] | None = None,
     ):
         single_line_params = []
@@ -166,17 +166,20 @@ class DenseProgressCallbacks(ProgressCallbacks):
         exclude_set = set(exclude or [])
 
         for key, value in arguments.items():
-            if isinstance(value, str) and "\n" in value:
-                if key not in exclude_set:
-                    multi_line_params.append((key, value))
-            elif key not in exclude_set:
+            if key in exclude_set:
+                continue
+
+            # Only print multiline if explicitly allowed in config and has newlines
+            if key in multiline_config and isinstance(value, str) and "\n" in value:
+                multi_line_params.append((key, value))
+            else:
                 single_line_params.append(f"{key}={json.dumps(value)}")
 
         args_str = f"({', '.join(single_line_params)})" if single_line_params else ""
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
         for key, value in multi_line_params:
-            lang = lang_map.get(key, "")
+            lang = multiline_config.get(key, "")
             print()
             print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
             print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
@@ -187,17 +190,27 @@ class DenseProgressCallbacks(ProgressCallbacks):
         if not config:
             return False
 
-        if any("\n" in str(v) for v in arguments.values()):
-            lang_map = config.get("lang_map", {})
-            exclude = config.get("exclude")
-            self._print_arguments_multiline(symbol, tool_name, arguments, lang_map=lang_map, exclude=exclude)
+        multiline_config = config.get("multiline", {})
+        exclude = config.get("exclude")
+
+        # Check if any argument *needs* to be printed as multiline
+        has_multiline = any(
+            key in multiline_config and isinstance(value, str) and "\n" in value for key, value in arguments.items()
+        )
+
+        if has_multiline:
+            self._print_arguments_multiline(
+                symbol, tool_name, arguments, multiline_config=multiline_config, exclude=exclude
+            )
             return True
 
         return False
 
     def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict):
         if not self._special_handle_arguments(symbol, tool_name, arguments):
-            formatted = ", ".join(f"{k}={json.dumps(v)}" for k, v in arguments.items())
+            config = self._SPECIAL_TOOLS.get(tool_name, {})
+            exclude = set(config.get("exclude", []))
+            formatted = ", ".join(f"{k}={json.dumps(v)}" for k, v in arguments.items() if k not in exclude)
             args_str = f"({formatted})" if formatted else ""
             print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
