@@ -146,7 +146,7 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     # 2. Known special tool (shell_execute) with multiline -> fancy layout
     cb.on_tool_start("TestAgent", "call_2", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls\npwd"})
     captured = capsys.readouterr()
-    assert "▶ mcp_coding_assistant_mcp_shell_execute" in captured.out
+    assert "▶ mcp_coding_assistant_mcp_shell_execute(command)" in captured.out
     assert "  command:" in captured.out
     assert "  ls" in captured.out
     assert "  pwd" in captured.out
@@ -164,7 +164,7 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         {"path": "test.py", "content": "def hello():\n    pass"},
     )
     captured = capsys.readouterr()
-    assert 'mcp_coding_assistant_mcp_filesystem_write_file(path="test.py")' in captured.out
+    assert 'mcp_coding_assistant_mcp_filesystem_write_file(path="test.py", content)' in captured.out
     assert "  content:" in captured.out
     assert "  def hello():" in captured.out
 
@@ -180,3 +180,27 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         'mcp_coding_assistant_mcp_filesystem_edit_file(path="test.txt", \nold_text="line1", new_text="line1\\nline2")'
         in captured.out
     )
+
+    # 6. Known special tool (python_execute) with multiline
+    cb.on_tool_start(
+        "TestAgent",
+        "call_6",
+        "mcp_coding_assistant_mcp_python_execute",
+        {"code": "import os\nprint(os.getcwd())"},
+    )
+    captured = capsys.readouterr()
+    assert "▶ mcp_coding_assistant_mcp_python_execute(code)" in captured.out
+    assert "  code:" in captured.out
+
+    # 7. Known special tool with non-string multiline (todo_add)
+    cb.on_tool_start(
+        "TestAgent",
+        "call_7",
+        "mcp_coding_assistant_mcp_todo_add",
+        {"descriptions": ["task 1", "task 2"]},
+    )
+    captured = capsys.readouterr()
+    assert "▶ mcp_coding_assistant_mcp_todo_add(descriptions)" in captured.out
+    assert "  descriptions:" in captured.out
+    assert '"task 1"' in captured.out
+    assert '"task 2"' in captured.out
