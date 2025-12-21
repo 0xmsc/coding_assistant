@@ -239,7 +239,11 @@ def enable_sandboxing(args, root):
             root,
         ]
 
-        sandbox(readable_directories=readable_sandbox_directories, writable_directories=writable_sandbox_directories)
+        sandbox(
+            readable_directories=readable_sandbox_directories,
+            writable_directories=writable_sandbox_directories,
+            include_defaults=True,
+        )
     else:
         logger.warning("Sandboxing is disabled")
 
