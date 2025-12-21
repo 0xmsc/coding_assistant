@@ -68,7 +68,7 @@ def allow_read(rs: Ruleset, paths: list[Path]):
 
         if path.is_dir():
             rs.allow(path, rules=_get_read_only_rule())
-        if path.is_file() or path.is_char_device():
+        else:
             rs.allow(path, rules=_get_read_only_file_rule())
 
 
@@ -79,7 +79,7 @@ def allow_write(rs: Ruleset, paths: list[Path]):
 
         if path.is_dir():
             rs.allow(path, rules=FSAccess.all())
-        if path.is_file():
+        else:
             rs.allow(path, rules=_get_read_write_file_rule())
 
 
