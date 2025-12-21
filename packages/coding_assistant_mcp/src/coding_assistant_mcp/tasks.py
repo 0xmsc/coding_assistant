@@ -33,10 +33,8 @@ class TaskManager:
 
     def _cleanup_finished_tasks(self):
         current_finished = [tid for tid, task in self._tasks.items() if not task.handle.is_running]
-        current_finished.sort()
-
         if len(current_finished) > self._max_finished_tasks:
-            to_remove = current_finished[: -self._max_finished_tasks]
+            to_remove = current_finished[: self._max_finished_tasks]
             for tid in to_remove:
                 self.remove_task(tid)
 
@@ -49,13 +47,8 @@ class TaskManager:
     def remove_task(self, task_id: int):
         if task_id in self._tasks:
             task = self._tasks[task_id]
-            if task.handle.is_running:
-                try:
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(task.handle.terminate())
-                except RuntimeError:
-                    # No active loop (likely during test cleanup)
-                    pass
+            loop = asyncio.get_running_loop()
+            loop.create_task(task.handle.terminate())
             del self._tasks[task_id]
 
 
