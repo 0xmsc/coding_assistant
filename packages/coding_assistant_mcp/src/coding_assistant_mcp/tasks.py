@@ -63,7 +63,7 @@ def create_task_server(manager: TaskManager) -> FastMCP:
             return "No tasks found."
 
         lines = []
-        for t in reversed(tasks):
+        for t in tasks:
             status = "Running" if t.handle.is_running else f"Finished (Exit code: {t.handle.returncode})"
             lines.append(f"ID: {t.id} | Name: {t.name} | Status: {status}")
 

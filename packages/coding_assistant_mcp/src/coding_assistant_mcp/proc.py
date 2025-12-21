@@ -6,11 +6,6 @@ from typing import Sequence
 
 
 class ProcessHandle:
-    """
-    A handle to a running or completed process that allows shared access
-    to its output buffer and state.
-    """
-
     def __init__(
         self,
         proc: asyncio.subprocess.Process,
@@ -71,8 +66,6 @@ async def start_process(
     args: Sequence[str],
     stdin_input: str | None = None,
 ) -> ProcessHandle:
-    """Start a process and return a handle to it."""
-
     stdin = asyncio.subprocess.PIPE if stdin_input is not None else asyncio.subprocess.DEVNULL
 
     proc = await asyncio.create_subprocess_exec(
