@@ -11,7 +11,7 @@ import litellm
 from coding_assistant.llm.adapters import get_tools
 from coding_assistant.llm.types import (
     Completion,
-    LLMMessage,
+    BaseMessage,
     ProgressCallbacks,
     Tool,
     message_from_dict,
@@ -26,12 +26,12 @@ litellm.modify_params = True
 litellm.drop_params = True
 
 
-def _map_litellm_message_to_internal(litellm_message: litellm.Message) -> LLMMessage:
+def _map_litellm_message_to_internal(litellm_message: litellm.Message) -> BaseMessage:
     d = litellm_message.model_dump()
     return message_from_dict(d)
 
 
-def _map_internal_message_to_litellm(msg: LLMMessage) -> dict:
+def _map_internal_message_to_litellm(msg: BaseMessage) -> dict:
     return message_to_dict(msg)
 
 
@@ -56,7 +56,7 @@ def _parse_model_and_reasoning(
 
 
 async def _try_completion(
-    messages: list[LLMMessage],
+    messages: list[BaseMessage],
     tools: Sequence[Tool],
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
@@ -119,7 +119,7 @@ async def _try_completion(
 
 
 async def _try_completion_with_retry(
-    messages: list[LLMMessage],
+    messages: list[BaseMessage],
     tools: Sequence[Tool],
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
@@ -145,7 +145,7 @@ async def _try_completion_with_retry(
 
 
 async def complete(
-    messages: list[LLMMessage],
+    messages: list[BaseMessage],
     model: str,
     tools: Sequence[Tool],
     callbacks: ProgressCallbacks,

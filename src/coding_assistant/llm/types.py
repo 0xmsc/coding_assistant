@@ -36,7 +36,7 @@ class ToolCall:
 
 
 @dataclass(frozen=True, kw_only=True)
-class LLMMessage:
+class BaseMessage:
     role: str
     content: Optional[str | list[dict]] = None
     name: Optional[str] = None
@@ -44,19 +44,19 @@ class LLMMessage:
 
 
 @dataclass(frozen=True, kw_only=True)
-class SystemMessage(LLMMessage):
+class SystemMessage(BaseMessage):
     content: str | list[dict]
     role: Literal["system"] = "system"
 
 
 @dataclass(frozen=True, kw_only=True)
-class UserMessage(LLMMessage):
+class UserMessage(BaseMessage):
     content: str | list[dict]
     role: Literal["user"] = "user"
 
 
 @dataclass(frozen=True, kw_only=True)
-class AssistantMessage(LLMMessage):
+class AssistantMessage(BaseMessage):
     content: Optional[str] = None
     reasoning_content: Optional[str] = None
     tool_calls: list[ToolCall] = field(default_factory=list)
@@ -64,7 +64,7 @@ class AssistantMessage(LLMMessage):
 
 
 @dataclass(frozen=True, kw_only=True)
-class ToolMessage(LLMMessage):
+class ToolMessage(BaseMessage):
     content: str
     tool_call_id: str
     role: Literal["tool"] = "tool"
@@ -72,11 +72,11 @@ class ToolMessage(LLMMessage):
 
 @dataclass
 class Completion:
-    message: LLMMessage
+    message: BaseMessage
     tokens: int
 
 
-def message_from_dict(d: dict[str, Any]) -> LLMMessage:
+def message_from_dict(d: dict[str, Any]) -> BaseMessage:
     role = d["role"]
 
     d = {k: v for k, v in d.items() if v is not None}
@@ -92,7 +92,7 @@ def message_from_dict(d: dict[str, Any]) -> LLMMessage:
     raise ValueError(f"Unknown role: {role}")
 
 
-def message_to_dict(msg: LLMMessage) -> dict[str, Any]:
+def message_to_dict(msg: BaseMessage) -> dict[str, Any]:
     def factory(data):
         return {k: v for k, v in data if v is not None and v != [] and v != {}}
 

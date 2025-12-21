@@ -6,7 +6,7 @@ from json import JSONDecodeError
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.history import append_tool_message
-from coding_assistant.llm.types import AssistantMessage, LLMMessage, ToolCall
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolCall
 from coding_assistant.framework.types import Tool, Completer
 from coding_assistant.framework.results import ToolResult, TextResult
 from coding_assistant.trace import trace_data
@@ -26,7 +26,7 @@ async def execute_tool_call(function_name: str, function_args: dict, tools: Sequ
 async def handle_tool_call(
     tool_call: ToolCall,
     tools: Sequence[Tool],
-    history: list[LLMMessage],
+    history: list[BaseMessage],
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
     *,
@@ -87,9 +87,9 @@ async def handle_tool_call(
 
 
 async def handle_tool_calls(
-    message: LLMMessage,
+    message: BaseMessage,
     tools: Sequence[Tool],
-    history: list[LLMMessage],
+    history: list[BaseMessage],
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
     *,
@@ -167,7 +167,7 @@ async def handle_tool_calls(
 
 
 async def do_single_step(
-    history: list[LLMMessage],
+    history: list[BaseMessage],
     model: str,
     tools: Sequence[Tool],
     progress_callbacks: ProgressCallbacks,
