@@ -12,13 +12,10 @@ class OutputBuffer:
 
     async def _read_stream(self):
         while True:
-            try:
-                chunk = await self._stream.read(4096)
-                if not chunk:
-                    break
-                self._buf.extend(chunk)
-            except Exception:
+            chunk = await self._stream.read(4096)
+            if not chunk:
                 break
+            self._buf.extend(chunk)
 
     @property
     def text(self) -> str:
