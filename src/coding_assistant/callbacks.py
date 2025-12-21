@@ -154,7 +154,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         # Don't print - reasoning is already printed via chunks
         pass
 
-    def _print_arguments_fancy(
+    def _print_arguments_multiline(
         self,
         symbol: str,
         tool_name: str,
@@ -163,30 +163,29 @@ class DenseProgressCallbacks(ProgressCallbacks):
     ):
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}")
         for key, value in arguments.items():
-            if isinstance(value, str) and "\n" in value:
-                print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
-                print(Padding(Markdown(f"```{lang_map.get(key, '')}\n{value}\n```"), self._left_padding))
-            else:
-                print(Padding(f"[dim]{key}:[/dim] {json.dumps(value)}", self._left_padding))
+            lang = lang_map.get(key, "")
+            print()
+            print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
+            print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
 
     def _special_handle_arguments(self, symbol: str, tool_name: str, arguments: dict) -> bool:
         if tool_name == "mcp_coding_assistant_mcp_shell_execute":
             if "\n" in arguments["command"]:
-                self._print_arguments_fancy(symbol, tool_name, arguments, {"command": "bash"})
+                self._print_arguments_multiline(symbol, tool_name, arguments, {"command": "bash"})
                 return True
         elif tool_name == "mcp_coding_assistant_mcp_python_execute":
             if "\n" in arguments["code"]:
-                self._print_arguments_fancy(symbol, tool_name, arguments, {"code": "python"})
+                self._print_arguments_multiline(symbol, tool_name, arguments, {"code": "python"})
                 return True
         elif tool_name == "mcp_coding_assistant_mcp_filesystem_write_file":
             if "\n" in arguments["content"]:
-                self._print_arguments_fancy(symbol, tool_name, arguments)
+                self._print_arguments_multiline(symbol, tool_name, arguments)
                 return True
         elif tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
             old = arguments["old_text"]
             new = arguments["new_text"]
             if "\n" in old or "\n" in new:
-                self._print_arguments_fancy(symbol, tool_name, arguments)
+                self._print_arguments_multiline(symbol, tool_name, arguments)
                 return True
 
         return False
