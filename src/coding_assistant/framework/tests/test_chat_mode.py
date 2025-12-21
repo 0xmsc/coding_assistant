@@ -210,10 +210,14 @@ async def test_chat_compact_conversation_not_forced_in_callbacks():
     # Actually, we can just call run_chat_loop and it will call the model.
     # But wait, run_chat_loop starts with ui.prompt if history is empty or after UserMessage.
 
-    # Let's mock the UI to just return /exit eventually.
-    # We'll trigger the loop by providing an initial message.
+    # Let's trigger the loop by providing an initial history that ends with an assistant message,
+    # or just let it start and provide a real message from UI.
+    # If history is empty, run_chat_loop sets need_user_input = True.
+    # If history has messages, it replays them and then need_user_input = True.
 
-    with pytest.raises(AssertionError, match="Script exhausted"):
+    ui = make_ui_mock(ask_sequence=[("> ", "Please compact"), ("> ", "/exit")])
+
+    with pytest.raises(AssertionError, match="Completer script exhausted"):
         await run_chat_loop(
             history=state.history,
             model=desc.model,
