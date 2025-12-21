@@ -176,7 +176,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
             header_params.append(f"{key}={json.dumps(value)}")
 
-        args_str = f"({', '.join(header_params)})" if header_params else ""
+        args_str = f"({', '.join(header_params)})"
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
         if multi_line_params:
