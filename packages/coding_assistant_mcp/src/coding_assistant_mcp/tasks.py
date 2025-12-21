@@ -79,17 +79,19 @@ def create_task_server(manager: TaskManager) -> FastMCP:
         if not task:
             return f"Error: Task {task_id} not found."
 
-        if wait and task.handle.is_running:
+        if wait:
             await task.handle.wait(timeout=timeout)
 
-        output = task.handle.stdout
-        status = "RUNNING" if task.handle.is_running else "FINISHED"
-        result = f"Task {task_id} ({task.name}) - Status: {status}\n"
-        result += "-" * 20 + "\n"
-        result += truncate_output(output, truncate_at)
+        result = f"Task {task_id} ({task.name})\n"
 
-        if not task.handle.is_running:
-            result += f"\n\nReturn code: {task.handle.returncode}"
+        if task.handle.is_running:
+            result += "Status: running\n"
+        else:
+            result += f"Status: finished (Return code: {task.handle.returncode})\n"
+
+        result += "\n\n"
+        output = task.handle.stdout
+        result += truncate_output(output, truncate_at)
 
         return result
 
