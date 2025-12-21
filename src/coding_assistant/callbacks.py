@@ -128,6 +128,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         "mcp_coding_assistant_mcp_shell_execute": {"command": "bash"},
         "mcp_coding_assistant_mcp_python_execute": {"code": "python"},
         "mcp_coding_assistant_mcp_filesystem_write_file": {"content": ""},
+        "mcp_coding_assistant_mcp_todo_add": {"descriptions": "json"},
     }
 
     def __init__(self):
@@ -154,17 +155,28 @@ class DenseProgressCallbacks(ProgressCallbacks):
     def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict):
         multiline_config = self._SPECIAL_TOOLS.get(tool_name, {})
 
-        single_line_params = []
+        header_params = []
         multi_line_params = []
 
         for key, value in arguments.items():
-            # Only print multiline if explicitly allowed in config and has newlines
-            if key in multiline_config and isinstance(value, str) and "\n" in value:
-                multi_line_params.append((key, value))
-            else:
-                single_line_params.append(f"{key}={json.dumps(value)}")
+            # If the tool is configured for special multiline rendering for this key.
+            if key in multiline_config:
+                # For strings, we use the raw value (e.g. source code or shell commands).
+                # For other types (like list[str]), we format it as indented JSON.
+                if isinstance(value, str):
+                    formatted_value = value
+                else:
+                    formatted_value = json.dumps(value, indent=2)
 
-        args_str = f"({', '.join(single_line_params)})" if single_line_params else ""
+                if "\n" in formatted_value:
+                    multi_line_params.append((key, formatted_value))
+                    header_params.append(key)
+                    continue
+
+            # Default: Print in the header line using compact JSON representation.
+            header_params.append(f"{key}={json.dumps(value)}")
+
+        args_str = f"({', '.join(header_params)})" if header_params else ""
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
         if multi_line_params:
@@ -172,6 +184,10 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 lang = multiline_config.get(key, "")
                 print()
                 print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
+                # If we formatted as JSON above, we use the 'json' language for highlighting
+                # if no tool-specific language was provided.
+                if not isinstance(arguments[key], str) and not lang:
+                    lang = "json"
                 print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
             print()
 
