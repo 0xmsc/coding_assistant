@@ -8,8 +8,8 @@ from coding_assistant.tools.mcp import MCPServer
 logger = logging.getLogger(__name__)
 
 
-def _load_default_instructions() -> str:
-    default_instructions_path = Path(__file__).parent / "default_instructions.md"
+def _load_default_instructions(root_directory: Path) -> str:
+    default_instructions_path = root_directory / "src/coding_assistant/default_instructions.md"
     if not default_instructions_path.exists():
         raise FileNotFoundError("Could not find default_instructions.md")
     return default_instructions_path.read_text().strip()
@@ -17,6 +17,7 @@ def _load_default_instructions() -> str:
 
 def get_instructions(
     working_directory: Path,
+    root_directory: Path,
     user_instructions: list[str],
     mcp_servers: list[MCPServer] | None = None,
 ) -> str:
