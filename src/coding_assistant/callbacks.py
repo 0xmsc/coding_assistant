@@ -1,6 +1,7 @@
 from __future__ import annotations
 from rich.styled import Styled
 
+import os
 import json
 import logging
 import re
@@ -199,8 +200,6 @@ class DenseProgressCallbacks(ProgressCallbacks):
             "mcp_coding_assistant_mcp_filesystem_edit_file",
         }
         if tool_name in file_tools and "path" in arguments and isinstance(arguments["path"], str):
-            import os
-
             path = arguments["path"]
             # Get the filename from the path
             basename = os.path.basename(path)
