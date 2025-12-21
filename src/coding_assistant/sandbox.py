@@ -8,7 +8,7 @@ from landlock import FSAccess, Ruleset  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_READABLE_DIRECTORIES = [
+DEFAULT_READABLE_PATHS = [
     "/usr",
     "/lib",
     "/etc",
@@ -29,7 +29,7 @@ DEFAULT_READABLE_DIRECTORIES = [
     "~/.cfg",
 ]
 
-DEFAULT_WRITABLE_DIRECTORIES = [
+DEFAULT_WRITABLE_PATHS = [
     "/tmp",
     "/dev/null",
     "/dev/shm",
@@ -83,25 +83,15 @@ def allow_write(rs: Ruleset, paths: list[Path]):
             rs.allow(path, rules=_get_read_write_file_rule())
 
 
-def sandbox(readable_directories: list[Path], writable_directories: list[Path], include_defaults: bool = False):
+def sandbox(readable_paths: list[Path], writable_paths: list[Path], include_defaults: bool = False):
     rs = Ruleset()
 
-    for d in readable_directories:
-        if not d.exists():
-            raise FileNotFoundError(f"Directory {d} does not exist.")
-    for d in writable_directories:
-        if not d.exists():
-            raise FileNotFoundError(f"Directory {d} does not exist.")
-
-    writable_paths = _to_paths(writable_directories)
     if include_defaults:
-        writable_paths.extend(_to_paths(DEFAULT_WRITABLE_DIRECTORIES))
-    writable_paths = list(set(writable_paths))
+        writable_paths.extend(_to_paths(DEFAULT_WRITABLE_PATHS))
+        readable_paths.extend(_to_paths(DEFAULT_READABLE_PATHS))
 
-    readable_paths = _to_paths(readable_directories)
-    if include_defaults:
-        readable_paths.extend(_to_paths(DEFAULT_READABLE_DIRECTORIES))
-    readable_paths = list(set(readable_paths) - set(writable_paths))
+    writable_paths = list(set(_to_paths(writable_paths)))
+    readable_paths = list(set(_to_paths(readable_paths)) - set(writable_paths))
 
     logger.info(f"Writable sandbox directories: {writable_paths}")
     logger.info(f"Readable sandbox directories: {readable_paths}")
@@ -144,7 +134,7 @@ def main():
     writable_dirs = [Path(d).resolve() for d in args.writable_directories]
 
     # Apply sandbox
-    sandbox(readable_directories=readable_dirs, writable_directories=writable_dirs)
+    sandbox(readable_paths=readable_dirs, writable_paths=writable_dirs)
 
     # Execute the command
     result = subprocess.run(args.command, capture_output=False)
