@@ -5,7 +5,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from rich import print
 from rich.markdown import Markdown
@@ -124,7 +124,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
     """Dense progress callbacks with minimal formatting."""
 
     # Configuration for special handling of multiline arguments
-    _SPECIAL_TOOLS = {
+    _SPECIAL_TOOLS: dict[str, dict[str, Any]] = {
         "mcp_coding_assistant_mcp_shell_execute": {"lang_map": {"command": "bash"}, "order": ["command"]},
         "mcp_coding_assistant_mcp_python_execute": {"lang_map": {"code": "python"}, "order": ["code"]},
         "mcp_coding_assistant_mcp_filesystem_write_file": {"order": ["path", "content"]},
@@ -183,9 +183,9 @@ class DenseProgressCallbacks(ProgressCallbacks):
             return False
 
         if any("\n" in str(v) for v in arguments.values()):
-            self._print_arguments_multiline(
-                symbol, tool_name, arguments, lang_map=config.get("lang_map", {}), order=config.get("order")
-            )
+            lang_map = config.get("lang_map", {})
+            order = config.get("order")
+            self._print_arguments_multiline(symbol, tool_name, arguments, lang_map=lang_map, order=order)
             return True
 
         return False
@@ -228,12 +228,15 @@ class DenseProgressCallbacks(ProgressCallbacks):
     def on_content_chunk(self, chunk: str):
         self._handle_chunk(chunk, ContentState)
 
-    def _handle_chunk(self, chunk: str, state_class: type, style: str | None = None):
+    def _handle_chunk(
+        self, chunk: str, state_class: type[Union[ContentState, ReasoningState]], style: str | None = None
+    ):
         if not isinstance(self._state, state_class):
             self._finalize_state()
             print()
             self._state = state_class()
 
+        assert isinstance(self._state, (ContentState, ReasoningState))
         for paragraph in self._state.buffer.push(chunk):
             print()
             md = Markdown(paragraph)
