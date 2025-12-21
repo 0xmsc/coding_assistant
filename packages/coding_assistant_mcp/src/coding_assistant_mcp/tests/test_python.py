@@ -3,14 +3,17 @@ import pytest_asyncio
 from coding_assistant_mcp.python import create_python_server
 from coding_assistant_mcp.tasks import TaskManager
 
+
 @pytest.fixture
 def manager():
     return TaskManager()
+
 
 @pytest_asyncio.fixture
 async def execute(manager):
     server = create_python_server(manager)
     return await server.get_tool("execute")
+
 
 @pytest.mark.asyncio
 async def test_python_run_timeout(execute):
@@ -18,10 +21,12 @@ async def test_python_run_timeout(execute):
     assert "taking longer than 1s" in out
     assert "Task ID: 1" in out
 
+
 @pytest.mark.asyncio
 async def test_python_run_exception_includes_traceback(execute):
     out = await execute.fn(code="import sys; sys.exit(7)")
     assert out.startswith("Exception (exit code 7):\n\n")
+
 
 @pytest.mark.asyncio
 async def test_python_run_truncates_output(execute):
@@ -29,15 +34,18 @@ async def test_python_run_truncates_output(execute):
     assert "[truncated output at: " in out
     assert "Full output available" in out
 
+
 @pytest.mark.asyncio
 async def test_python_run_happy_path_stdout(execute):
     out = await execute.fn(code="print('hello', end='')", timeout=5)
     assert out == "hello"
 
+
 @pytest.mark.asyncio
 async def test_python_run_stderr_captured_with_zero_exit(execute):
     out = await execute.fn(code="import sys; sys.stderr.write('oops\\n')")
     assert out == "oops\n"
+
 
 @pytest.mark.asyncio
 async def test_python_run_with_dependencies(execute):
@@ -51,6 +59,7 @@ cowsay.cow("moo")
     out = await execute.fn(code=code, timeout=60)
     assert "moo" in out
     assert "^__^" in out
+
 
 @pytest.mark.asyncio
 async def test_python_run_exception_with_stderr_content(execute):
