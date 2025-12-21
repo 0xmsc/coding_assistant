@@ -131,6 +131,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         "mcp_coding_assistant_mcp_shell_execute": {"command": "bash"},
         "mcp_coding_assistant_mcp_python_execute": {"code": "python"},
         "mcp_coding_assistant_mcp_filesystem_write_file": {"content": ""},
+        "mcp_coding_assistant_mcp_filesystem_edit_file": {"old_text": "", "new_text": ""},
         "mcp_coding_assistant_mcp_todo_add": {"descriptions": "json"},
         "compact_conversation": {"summary": "markdown"},
     }
@@ -180,8 +181,14 @@ class DenseProgressCallbacks(ProgressCallbacks):
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
         if multi_line_params:
+            lang_override = None
+            if "path" in arguments and isinstance(arguments["path"], str):
+                path = arguments["path"]
+                if "." in path:
+                    lang_override = path.split(".")[-1]
+
             for key, value in multi_line_params:
-                lang = multiline_config[key]
+                lang = lang_override or multiline_config[key]
                 print()
                 print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
                 if lang == "markdown":
