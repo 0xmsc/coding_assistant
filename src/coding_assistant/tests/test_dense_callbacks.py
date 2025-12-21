@@ -248,7 +248,7 @@ def test_dense_callbacks_long_arg_parentheses(capsys):
     )
     captured = capsys.readouterr()
     # It should have parentheses and include both the key of the multiline arg and the normal args
-    assert '▶ mcp_coding_assistant_mcp_shell_execute(command, background=false)' in captured.out
+    assert "▶ mcp_coding_assistant_mcp_shell_execute(command, background=false)" in captured.out
 
 
 def test_dense_callbacks_tool_result_stripping():
