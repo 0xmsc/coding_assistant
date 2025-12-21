@@ -236,6 +236,7 @@ async def _main(args):
 
     # Assuming 'src' layout
     coding_assistant_root = Path(__file__).parent.parent.parent.resolve()
+    logger.info(f"Coding Assistant root directory: {coding_assistant_root}")
 
     if args.resume_file:
         if not args.resume_file.exists():
@@ -253,18 +254,12 @@ async def _main(args):
     else:
         resume_history = None
 
-    # We'll assemble final instructions after initializing MCP servers, so we can include
-    # any server-provided instruction banners.
-
-    venv_directory = Path(os.environ["VIRTUAL_ENV"])
-    logger.info(f"Using virtual environment directory: {venv_directory}")
-
     if args.sandbox:
         logger.info("Sandboxing is enabled.")
 
         readable_sandbox_directories = [
             *[Path(d).resolve() for d in args.readable_sandbox_directories],
-            venv_directory,
+            coding_assistant_root,
         ]
         logger.info(f"Readable sandbox directories: {readable_sandbox_directories}")
 
@@ -291,6 +286,7 @@ async def _main(args):
         tools = await get_mcp_wrapped_tools(mcp_servers)
 
         instructions = get_instructions(
+            root_directory=coding_assistant_root,
             working_directory=working_directory,
             user_instructions=args.instructions,
             mcp_servers=mcp_servers,
