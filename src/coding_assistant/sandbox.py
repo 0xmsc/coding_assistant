@@ -17,24 +17,29 @@ DEFAULT_READABLE_DIRECTORIES = [
     "/sys",
     "/dev/urandom",
     "/mnt/wsl",
+    # To commit.
     "~/.ssh",
     "~/.rustup",
     "~/.config",
     "~/.local",
     "~/.cache",
+    # To run uv.
     "~/.cargo",
     "~/.local/bin",
     "~/.cfg",
 ]
 
 DEFAULT_WRITABLE_DIRECTORIES = [
+    "/tmp",
     "/dev/null",
+    "/dev/shm",
+    # To install MCP servers.
     "~/.npm",
     "~/.cache/uv",
     "~/.local/share/uv",
-    "/tmp",
-    "/dev/shm",
+    # Trace files.
     "~/.cache/coding_assistant",
+    # prompt_toolkit allows using nvim to edit the prompt.
     "~/.cache/nvim",
     "~/.local/state/nvim",
 ]
