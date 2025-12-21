@@ -8,6 +8,7 @@
 - Output text in markdown formatting, where appropriate.
 - Before doing any non-trivial changes to the codebase, present a coherent plan to the user.
 - Before creating a non-trivial plan, ask at least 3 clarifying questions to the user.
+  Provide a default for each question that the user can accept by not answering.
 
 ## Tools
 

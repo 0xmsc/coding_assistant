@@ -132,7 +132,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         "mcp_coding_assistant_mcp_python_execute": {"code": "python"},
         "mcp_coding_assistant_mcp_filesystem_write_file": {"content": ""},
         "mcp_coding_assistant_mcp_todo_add": {"descriptions": "json"},
-        "compact_conversation": {"summary": ""},
+        "compact_conversation": {"summary": "markdown"},
     }
 
     def __init__(self):
@@ -184,7 +184,10 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 lang = multiline_config[key]
                 print()
                 print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
-                print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
+                if lang == "markdown":
+                    print(Padding(Markdown(value), self._left_padding))
+                else:
+                    print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
             print()
 
     def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
