@@ -25,7 +25,7 @@ class Tool(Protocol):
 @dataclass(frozen=True)
 class FunctionCall:
     name: str
-    arguments: str  # JSON string
+    arguments: str
 
 
 @dataclass(frozen=True)
