@@ -6,20 +6,24 @@ from fastmcp import FastMCP
 from fastmcp.utilities.logging import configure_logging
 
 from coding_assistant_mcp.filesystem import filesystem_server
-from coding_assistant_mcp.python import python_server
-from coding_assistant_mcp.shell import shell_server
+from coding_assistant_mcp.python import create_python_server
+from coding_assistant_mcp.shell import create_shell_server
 from coding_assistant_mcp.todo import create_todo_server
+from coding_assistant_mcp.tasks import create_task_server, TaskManager
 
 
 async def _main() -> None:
     # Set logging to CRITICAL to minimize output from FastMCP
     configure_logging(level="CRITICAL")
 
+    manager = TaskManager()
+
     mcp = FastMCP("Coding Assistant MCP", instructions="")
     await mcp.import_server(create_todo_server(), prefix="todo")
-    await mcp.import_server(shell_server, prefix="shell")
-    await mcp.import_server(python_server, prefix="python")
+    await mcp.import_server(create_shell_server(manager), prefix="shell")
+    await mcp.import_server(create_python_server(manager), prefix="python")
     await mcp.import_server(filesystem_server, prefix="filesystem")
+    await mcp.import_server(create_task_server(manager), prefix="tasks")
     await mcp.run_async(show_banner=False)
 
 
