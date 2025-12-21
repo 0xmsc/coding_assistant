@@ -5,7 +5,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 from rich import print
 from rich.markdown import Markdown
@@ -124,11 +124,10 @@ class DenseProgressCallbacks(ProgressCallbacks):
     """Dense progress callbacks with minimal formatting."""
 
     # Configuration for special handling of multiline arguments
-    _SPECIAL_TOOLS: dict[str, dict[str, Any]] = {
-        "mcp_coding_assistant_mcp_shell_execute": {"multiline": {"command": "bash"}},
-        "mcp_coding_assistant_mcp_python_execute": {"multiline": {"code": "python"}},
-        "mcp_coding_assistant_mcp_filesystem_write_file": {"multiline": {"content": ""}},
-        "mcp_coding_assistant_mcp_filesystem_edit_file": {"exclude": ["old_text", "new_text"]},
+    _SPECIAL_TOOLS: dict[str, dict[str, str]] = {
+        "mcp_coding_assistant_mcp_shell_execute": {"command": "bash"},
+        "mcp_coding_assistant_mcp_python_execute": {"code": "python"},
+        "mcp_coding_assistant_mcp_filesystem_write_file": {"content": ""},
     }
 
     def __init__(self):
@@ -153,17 +152,12 @@ class DenseProgressCallbacks(ProgressCallbacks):
         pass
 
     def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict):
-        config = self._SPECIAL_TOOLS.get(tool_name, {})
-        multiline_config = config.get("multiline", {})
-        exclude = set(config.get("exclude", []))
+        multiline_config = self._SPECIAL_TOOLS.get(tool_name, {})
 
         single_line_params = []
         multi_line_params = []
 
         for key, value in arguments.items():
-            if key in exclude:
-                continue
-
             # Only print multiline if explicitly allowed in config and has newlines
             if key in multiline_config and isinstance(value, str) and "\n" in value:
                 multi_line_params.append((key, value))
