@@ -1,11 +1,10 @@
 from datetime import datetime
 from pathlib import Path
 import logging
-import os
 
 from coding_assistant.paths import get_app_cache_dir
 
-trace_dir_ = Path | None
+_trace_dir_: Path | None = None
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +18,7 @@ def enable_tracing(directory: Path, clear: bool = False) -> None:
     Enable tracing globally.
 
     Args:
+        directory: The directory to store traces in.
         clear: Whether to clear the traces directory.
     """
     global _trace_dir_
@@ -26,24 +26,24 @@ def enable_tracing(directory: Path, clear: bool = False) -> None:
     _trace_dir_ = directory
     _trace_dir_.mkdir(parents=True, exist_ok=True)
 
-    if clear and trace_dir_.exists():
-        for f in trace_dir_.iterdir():
+    if clear:
+        for f in _trace_dir_.iterdir():
             if f.is_file():
                 f.unlink(missing_ok=True)
 
-    logger.info(f"Tracing to {trace_dir_}")
+    logger.info(f"Tracing to {_trace_dir_}")
 
 
 def trace_enabled() -> bool:
-    return _trace_dir_
+    return _trace_dir_ is not None
 
 
 def trace_data(name: str, content: str) -> None:
-    if not trace_enabled():
+    if _trace_dir_ is None:
         return
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
-    trace_file = trace_dir_ / f"{timestamp}_{name}"
+    trace_file = _trace_dir_ / f"{timestamp}_{name}"
     with open(trace_file, "w") as f:
         f.write(content)
