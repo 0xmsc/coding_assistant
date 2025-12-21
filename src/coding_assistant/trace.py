@@ -5,12 +5,13 @@ import logging
 from coding_assistant.paths import get_app_cache_dir
 
 _trace_dir_: Path | None = None
+_session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 logger = logging.getLogger(__name__)
 
 
 def get_default_trace_dir() -> Path:
-    return get_app_cache_dir() / "traces"
+    return get_app_cache_dir() / "traces" / _session_id
 
 
 def enable_tracing(directory: Path, clear: bool = False) -> None:
