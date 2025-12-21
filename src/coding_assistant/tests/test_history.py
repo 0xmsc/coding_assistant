@@ -79,7 +79,6 @@ def test_fix_invalid_history_with_objects():
         ),
         ToolMessage(content="Result", tool_call_id="123"),
     ]
-    # Should not remove anything because it's followed by a tool message
     assert _fix_invalid_history(history) == history
 
     history_invalid = [
@@ -87,18 +86,15 @@ def test_fix_invalid_history_with_objects():
             content="Thinking...", tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))]
         )
     ]
-    # Should remove the trailing assistant message
     assert _fix_invalid_history(history_invalid) == []
 
 
 def test_orchestrator_history_roundtrip(tmp_path: Path):
     wd = tmp_path
 
-    # Cache dir should exist
     cache_dir = get_project_cache_dir(wd)
     assert cache_dir.exists()
 
-    # Save and read back
     save_orchestrator_history(wd, [{"role": "user", "content": "msg-1"}])
     latest = get_latest_orchestrator_history_file(wd)
     assert latest is not None and latest.exists()
@@ -108,7 +104,6 @@ def test_orchestrator_history_roundtrip(tmp_path: Path):
     assert data is not None
     assert isinstance(data, list) and data[-1].content == "msg-1"
 
-    # Overwrite
     save_orchestrator_history(wd, [{"role": "user", "content": "msg-2"}])
     data = load_orchestrator_history(latest)
     assert data is not None
@@ -130,7 +125,6 @@ def test_save_orchestrator_history_with_objects(tmp_path: Path):
 
 def test_save_orchestrator_history_strips_trailing_assistant_tool_calls(tmp_path: Path):
     wd = tmp_path
-    # An invalid history with trailing assistant tool_call should be fixed on save
     invalid = [
         {"role": "user", "content": "hi"},
         {

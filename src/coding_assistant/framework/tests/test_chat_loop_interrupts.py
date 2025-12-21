@@ -251,7 +251,6 @@ async def test_multiple_tool_calls_with_interrupt():
 
         await run_with_interrupt()
 
-    # At least one tool should have been cancelled
     assert tool1.cancelled or tool2.cancelled
 
 
@@ -277,7 +276,6 @@ async def test_chat_loop_without_interrupts_works_normally():
         ]
     )
 
-    # Should complete without errors
     await run_chat_loop(
         history=state.history,
         model=desc.model,
@@ -370,10 +368,8 @@ async def test_interrupt_during_second_tool_call():
     """Test interrupting during handle_tool_calls with multiple concurrent tool calls."""
     interrupt_event = asyncio.Event()
 
-    # Create a tool that will signal when it's ready to be interrupted
     tool = InterruptibleTool(delay=0.5, interrupt_event=interrupt_event)
 
-    # Two calls to the same tool
     call1 = ToolCall("1", FunctionCall("interruptible_tool", json.dumps({})))
     call2 = ToolCall("2", FunctionCall("interruptible_tool", json.dumps({})))
 
@@ -418,7 +414,6 @@ async def test_interrupt_during_second_tool_call():
                 )
             )
 
-            # Wait for at least one tool to start
             await interrupt_event.wait()
 
             # Trigger interrupt
@@ -429,10 +424,8 @@ async def test_interrupt_during_second_tool_call():
 
         await run_with_interrupt()
 
-    # Tool should have been cancelled
     assert tool.cancelled
 
-    # User should have been prompted after interrupt
     user_messages = [m for m in state.history if m.role == "user"]
     assert any("after tool interrupt" in (m.content or "") for m in user_messages)
 
@@ -475,23 +468,18 @@ async def test_sigint_interrupts_tool_execution():
             )
         )
 
-        # Wait for tool to start
         await interrupt_event.wait()
 
-        # Send SIGINT to our own process (simulating CTRL-C)
         os.kill(os.getpid(), signal.SIGINT)
 
-        # Allow signal to be processed
         await asyncio.sleep(0.1)
 
         await task
 
     await run_with_sigint()
 
-    # Tool should have been cancelled
     assert tool.cancelled
 
-    # User should have been prompted after SIGINT
     user_messages = [m for m in state.history if m.role == "user"]
     assert any("recovered from SIGINT" in (m.content or "") for m in user_messages)
 
@@ -500,12 +488,10 @@ async def test_sigint_interrupts_tool_execution():
 async def test_interrupt_during_llm_call():
     """Test that CTRL-C during LLM call (not tool execution) cancels immediately."""
 
-    # Create a slow completer that signals when it starts
     llm_started = asyncio.Event()
 
     async def slow_completer(history, model, tools, callbacks):
         llm_started.set()
-        # Simulate slow LLM call
         await asyncio.sleep(2.0)
         return FakeCompleter([FakeMessage(content="Response from LLM")])._completions[0]
 
@@ -543,11 +529,9 @@ async def test_interrupt_during_llm_call():
                 )
             )
 
-            # Wait for LLM to start
             await llm_started.wait()
             await asyncio.sleep(0.1)
 
-            # Send interrupt while LLM is processing
             if captured_controller:
                 captured_controller[0].request_interrupt()
 
