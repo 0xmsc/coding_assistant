@@ -65,7 +65,6 @@ async def test_on_tool_message_called_with_arguments_and_result():
         ui=make_ui_mock(),
     )
 
-    # Verify at least one on_tool_message call with expected payload
     found = False
     for call_args in callbacks.on_tool_message.call_args_list:
         # on_tool_message is called positionally in code; args tuple

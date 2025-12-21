@@ -111,7 +111,6 @@ async def run_agent_loop(
     if state.output is not None:
         raise RuntimeError("Agent already has a result or summary.")
 
-    # Inject required tools
     tools = list(desc.tools)
     if not any(tool.name() == "finish_task" for tool in tools):
         tools.append(FinishTaskTool())
@@ -131,7 +130,6 @@ async def run_agent_loop(
             context_name=desc.name,
         )
 
-        # Append assistant message to history
         append_assistant_message(state.history, progress_callbacks, desc.name, message)
 
         if getattr(message, "tool_calls", []):
@@ -146,7 +144,6 @@ async def run_agent_loop(
                 handle_tool_result=lambda result: handle_tool_result_agent(result, desc, state, progress_callbacks),
             )
         else:
-            # Handle assistant steps without tool calls: inject corrective message
             append_user_message(
                 state.history,
                 progress_callbacks,

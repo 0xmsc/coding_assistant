@@ -165,7 +165,6 @@ async def test_complete_parses_reasoning_effort_from_model_string(monkeypatch):
 
     # Fake streaming completion that also asserts incoming args
     async def fake_acompletion(**kwargs):
-        # capture for assertion outside
         captured.update(kwargs)
 
         async def agen():

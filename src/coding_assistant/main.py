@@ -257,7 +257,6 @@ async def _main(args):
     working_directory = Path(os.getcwd())
     logger.info(f"Running in working directory: {working_directory}")
 
-    # Assuming 'src' layout
     coding_assistant_root = Path(__file__).parent.parent.parent.resolve()
     logger.info(f"Coding Assistant root directory: {coding_assistant_root}")
 

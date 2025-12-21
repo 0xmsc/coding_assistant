@@ -83,13 +83,11 @@ async def test_tool_confirmation_denied_and_allowed() -> None:
         tools=[tool],
     )
 
-    # Arguments will be parsed and shown as a Python dict in the confirm prompt
     args_json = '{"cmd": "echo 123"}'
     expected_prompt = "Execute tool `execute_shell_command` with arguments `{'cmd': 'echo 123'}`?"
 
     ui = make_ui_mock(confirm_sequence=[(expected_prompt, False), (expected_prompt, True)])
 
-    # First: denied
     call1 = ToolCall(id="1", function=FunctionCall(name="execute_shell_command", arguments=args_json))
     msg1 = AssistantMessage(tool_calls=[call1])
     await handle_tool_calls(
@@ -111,7 +109,6 @@ async def test_tool_confirmation_denied_and_allowed() -> None:
         content="Tool execution denied.",
     )
 
-    # Second: allowed
     call2 = ToolCall(id="2", function=FunctionCall(name="execute_shell_command", arguments=args_json))
     msg2 = AssistantMessage(tool_calls=[call2])
     await handle_tool_calls(

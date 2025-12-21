@@ -46,10 +46,8 @@ async def test_edit_file_unique_replace_and_diff(tmp_path: Path):
 
     diff = await edit_file(p, old_text="world", new_text="Earth")
 
-    # File content updated
     assert p.read_text(encoding="utf-8") == "hello Earth\nsecond line\n"
 
-    # Diff should contain headers and changed lines
     assert "@@" in diff
     assert "-hello world" in diff
     assert "+hello Earth" in diff
@@ -81,12 +79,10 @@ async def test_edit_file_multiple_edits_success(tmp_path: Path):
     original = "alpha beta gamma\n"
     await write_file(p, original)
 
-    # Apply edits sequentially
     diff1 = await edit_file(p, old_text="beta", new_text="BETA")
     diff2 = await edit_file(p, old_text="gamma", new_text="GAMMA")
 
     assert p.read_text(encoding="utf-8") == "alpha BETA GAMMA\n"
-    # Check that diffs show the changes from each edit
     assert "@@" in diff1 and "-alpha beta gamma" in diff1 and "+alpha BETA gamma" in diff1
     assert "@@" in diff2 and "-alpha BETA gamma" in diff2 and "+alpha BETA GAMMA" in diff2
 
@@ -96,7 +92,6 @@ async def test_edit_file_order_applies_sequentially(tmp_path: Path):
     p = tmp_path / "order.txt"
     await write_file(p, "foo bar\n")
 
-    # Apply edits sequentially to demonstrate ordering
     await edit_file(p, old_text="foo", new_text="baz")
     diff2 = await edit_file(p, old_text="baz", new_text="FOO")
 
@@ -110,15 +105,12 @@ async def test_edit_file_atomicity_on_failure(tmp_path: Path):
     original = "one two three two\n"
     await write_file(p, original)
 
-    # First edit succeeds
     await edit_file(p, old_text="one", new_text="ONE")
 
-    # Second edit should fail ("two" occurs twice)
     with pytest.raises(ValueError) as ei:
         await edit_file(p, old_text="two", new_text="TWO")
     assert "multiple times" in str(ei.value)
 
-    # File should have the first edit but not the second (atomicity per edit)
     assert p.read_text(encoding="utf-8") == "ONE two three two\n"
 
 
@@ -129,10 +121,8 @@ async def test_edit_file_empty_string_replacement(tmp_path: Path):
     original = "content\n"
     await write_file(p, original)
 
-    # Replace entire content with empty string
     diff = await edit_file(p, old_text=original, new_text="")
 
-    # Content should be empty
     assert p.read_text(encoding="utf-8") == ""
     assert "-content" in diff
 
@@ -170,5 +160,4 @@ async def test_edit_file_replace_entire_content(tmp_path: Path):
     diff = await edit_file(p, old_text=original, new_text="")
 
     assert p.read_text(encoding="utf-8") == ""
-    # Diff shows full removal
     assert f"-{original.strip()}" in diff and "+" not in diff.splitlines()[-1]

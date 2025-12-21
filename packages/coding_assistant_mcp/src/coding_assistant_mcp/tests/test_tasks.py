@@ -47,27 +47,22 @@ async def test_background_explicit(shell_execute, tasks_get_output, tasks_list_t
 
 @pytest.mark.asyncio
 async def test_all_tasks_registered(shell_execute, tasks_list_tasks, tasks_get_output):
-    # Run a sync task
     res = await shell_execute.fn(command="echo 'sync task'")
     assert res.strip() == "sync task"
 
-    # It should be in the task manager anyway
     tasks = await tasks_list_tasks.fn()
     assert "ID: 1" in tasks
 
-    # Retrieve it
     out = await tasks_get_output.fn(task_id=1)
     assert "sync task" in out
 
 
 @pytest.mark.asyncio
 async def test_truncation_note_with_id(shell_execute, tasks_get_output):
-    # Trigger truncation
     res = await shell_execute.fn(command="echo '1234567890'", truncate_at=5)
     assert "truncated" in res
     assert "Full output available via `tasks_get_output(task_id=1)`" in res
 
-    # Get full output
     full = await tasks_get_output.fn(task_id=1)
     assert "1234567890" in full
 

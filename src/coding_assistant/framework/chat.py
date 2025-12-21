@@ -97,7 +97,6 @@ async def run_chat_loop(
     ui: UI,
     context_name: str,
 ):
-    # Inject required tools
     tools = list(tools)
     if not any(tool.name() == "compact_conversation" for tool in tools):
         tools.append(CompactConversationTool())

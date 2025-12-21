@@ -135,7 +135,6 @@ async def test_chat_exit_command_stops_loop_without_appending_command():
         ui=ui,
     )
 
-    # Verify that '/exit' was not appended to history
     assert not any(m.role == "user" and (m.content or "").strip() == "/exit" for m in state.history)
     # No assistant step should have happened; last message remains the start message
     assert state.history[-1].role == "user"

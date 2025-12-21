@@ -45,7 +45,6 @@ async def test_shell_execute_happy_path_stdout(execute):
 
 @pytest.mark.asyncio
 async def test_shell_execute_stderr_captured_with_zero_exit(execute):
-    # Writes to stderr, then exits 0
     out = await execute.fn(command="echo 'oops' >&2; true", timeout=5)
     assert out == "oops\n"
 

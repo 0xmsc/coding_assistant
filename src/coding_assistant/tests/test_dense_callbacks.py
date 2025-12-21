@@ -36,7 +36,6 @@ def test_dense_callbacks_lifecycle():
         cb.on_chunks_end()
         assert isinstance(cb._state, IdleState)
 
-    # Verify that print was called
     assert mock_print.called
 
 
@@ -50,7 +49,6 @@ def test_dense_callbacks_tool_formatting():
             "TestAgent", "call_1", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"}, "file1\nfile2"
         )
 
-        # Verify it uses special handling for shell execute
         # We can check if Padding was called or just if print was called with certain arguments
         # Since we are mocking print, it's hard to see what's INSIDE the Padding/Panel/etc.
         # but we can at least ensure it doesn't crash.
@@ -124,10 +122,8 @@ def test_dense_callbacks_empty_line_logic():
         # 6. Content chunk after tool
         cb.on_content_chunk("Result")
 
-        # Capture calls to print
         print_calls = [c for c in mock_print.call_args_list]
 
-        # Verify newline when switching from reasoning to content
         found_newline = False
         for i in range(len(print_calls) - 1):
             if print_calls[i] == call():
@@ -166,7 +162,6 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         "mcp_coding_assistant_mcp_filesystem_write_file",
         {"path": "test.py", "content": "def hello():\n    pass"},
     )
-    # Verify it uses the extension
     assert cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_write_file"]["content"] == ""
     # We can directly inspect the behavior via a mock of Markdown if needed,
     # but for now let's just make sure it runs without crashing and check captures.
@@ -182,7 +177,6 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         "mcp_coding_assistant_mcp_filesystem_edit_file",
         {"path": "script.sh", "old_text": "line1\nold", "new_text": "line1\nline2"},
     )
-    # Verify it uses special handling for both keys
     assert "old_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
     assert "new_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
 
@@ -270,7 +264,6 @@ def test_dense_callbacks_tool_result_stripping():
             "--- test.py\n+++ test.py\n-old\n+new\n",
         )
 
-        # Verify the markup has no double newline
         found_diff = False
         for call_args in mock_print.call_args_list:
             args = call_args.args

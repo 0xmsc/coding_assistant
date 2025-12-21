@@ -80,7 +80,6 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
         ]
     )
 
-    # Capture interrupt controller via patch
     captured_controller = []
 
     original_init = InterruptController.__init__
@@ -117,11 +116,9 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
 
         await run_with_interrupt()
 
-    # Verify tool was cancelled
     assert tool.called
     assert tool.cancelled
 
-    # Verify user was prompted after interrupt
     user_messages = [m for m in state.history if m.role == "user"]
     resume_msg = next((m for m in user_messages if "Resume" in (m.content or "")), None)
     assert resume_msg is not None, "User should have been prompted after interrupt"
@@ -188,10 +185,8 @@ async def test_interrupt_during_do_single_step():
 
         await run_with_interrupt()
 
-    # Verify tool was cancelled due to interrupt
     assert tool.cancelled
 
-    # Verify user was prompted after interrupt
     user_messages = [m for m in state.history if m.role == "user"]
     assert len(user_messages) >= 2
 
@@ -295,12 +290,10 @@ async def test_chat_loop_without_interrupts_works_normally():
         context_name=desc.name,
     )
 
-    # Verify tool completed successfully
     assert tool.called
     assert tool.completed
     assert not tool.cancelled
 
-    # Verify conversation progressed normally
     assert len(state.history) > 2
 
 
@@ -363,14 +356,11 @@ async def test_interrupt_recovery_continues_conversation():
 
         await run_with_interrupt()
 
-    # Verify tool was cancelled
     assert tool.cancelled
 
-    # Verify conversation continued with multiple user inputs
     user_messages = [m for m in state.history if m.role == "user"]
     assert len(user_messages) >= 2
 
-    # Verify assistant responded after recovery
     assistant_messages = [m for m in state.history if m.role == "assistant"]
     assert len(assistant_messages) >= 1
 
@@ -565,11 +555,9 @@ async def test_interrupt_during_llm_call():
 
         await run_with_interrupt()
 
-    # Verify LLM call was cancelled - no assistant message with "Response from LLM"
     assistant_messages = [m for m in state.history if m.role == "assistant"]
     for msg in assistant_messages:
         assert "Response from LLM" not in (msg.content or "")
 
-    # Verify user was prompted after interrupt
     user_messages = [m for m in state.history if m.role == "user"]
     assert any("user input after interrupt" in (m.content or "") for m in user_messages)
