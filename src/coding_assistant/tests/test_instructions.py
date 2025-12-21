@@ -27,7 +27,7 @@ def test_get_instructions_base_and_user_instructions(tmp_path: Path):
 
 def test_get_instructions_with_planning_and_local_file(tmp_path: Path):
     wd = tmp_path
-    root = Path(__file__).parent.parent.parent.parent.resolve()
+    root = _get_project_root()
     local_dir = wd / ".coding_assistant"
     local_dir.mkdir()
     (local_dir / "instructions.md").write_text("LOCAL OVERRIDE\n- extra rule")
@@ -41,7 +41,7 @@ def test_get_instructions_with_planning_and_local_file(tmp_path: Path):
 
 def test_get_instructions_appends_mcp_instructions(tmp_path: Path):
     wd = tmp_path
-    root = Path(__file__).parent.parent.parent.parent.resolve()
+    root = _get_project_root()
 
     class _FakeServer:
         def __init__(self, name: str, instructions: str | None):
@@ -64,7 +64,7 @@ def test_get_instructions_appends_mcp_instructions(tmp_path: Path):
 
 def test_get_instructions_ignores_empty_or_missing_mcp_instructions(tmp_path: Path):
     wd = tmp_path
-    root = Path(__file__).parent.parent.parent.parent.resolve()
+    root = _get_project_root()
 
     class _BlankServer:
         def __init__(self, name: str, instructions: str | None):
