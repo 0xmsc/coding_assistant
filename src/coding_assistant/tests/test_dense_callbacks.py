@@ -251,8 +251,8 @@ def test_dense_callbacks_tool_result_stripping():
                 if hasattr(renderable, "markup") and "```diff" in renderable.markup:
                     found_diff = True
                     # Should end with exactly one newline before the closing fence
-                    assert renderable.markup.endswith("\n```")
-                    assert not renderable.markup.endswith("\n\n```")
+                    assert renderable.markup.endswith("\n````")
+                    assert not renderable.markup.endswith("\n\n````")
         assert found_diff
 
         # Reset mock
