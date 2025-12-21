@@ -76,7 +76,6 @@ async def test_truncation_note_with_id(shell_execute, tasks_get_output):
 
 @pytest.mark.asyncio
 async def test_auto_cleanup(manager):
-    # Set limit very low for testing: keep 1 finished task
     manager._max_finished_tasks = 1
     shell_server = create_shell_server(manager)
     shell_execute_tool = await shell_server.get_tool("execute")
@@ -84,11 +83,10 @@ async def test_auto_cleanup(manager):
     tasks_list_tasks_tool = await task_server.get_tool("list_tasks")
 
     await shell_execute_tool.fn(command="echo 'task 1'")
-    # Task 1 is finished now.
-
     await shell_execute_tool.fn(command="echo 'task 2'")
-    # Process is finished. We call list_tasks to trigger cleanup of Task 1.
+
     tasks = await tasks_list_tasks_tool.fn()
+    print(tasks)
 
     assert "ID: 1" not in tasks
     assert "ID: 2" in tasks
