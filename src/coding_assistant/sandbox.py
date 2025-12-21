@@ -12,10 +12,10 @@ DEFAULT_READABLE_DIRECTORIES = [
     "/usr",
     "/lib",
     "/etc",
+    "/dev/urandom",
     "/proc",
     "/run",
     "/sys",
-    "/dev/urandom",
     "/mnt/wsl",
     # To commit.
     "~/.ssh",
@@ -57,28 +57,42 @@ def _get_read_only_file_rule():
     return FSAccess.READ_FILE
 
 
+def _to_paths(list):
+    return [Path(entry).expanduser().resolve() for entry in list]
+
+
+def allow_read(rs: Ruleset, paths: list[Path]):
+    for path in paths:
+        if path.exists() and path.is_dir():
+            rs.allow(path, rules=_get_read_only_rule())
+        if path.exists() and path.is_file():
+            rs.allow(path, rules=_get_read_only_file_rule())
+
+
+def allow_write(rs: Ruleset, paths: list[Path]):
+    for path in paths:
+        if path.exists() and path.is_dir():
+            rs.allow(path, rules=FSAccess.all())
+        if path.exists() and path.is_file():
+            rs.allow(path, rules=_get_read_write_file_rule())
+
+
 def sandbox(readable_directories: list[Path], writable_directories: list[Path]):
     rs = Ruleset()
 
-    # Standard directories
-    for path in DEFAULT_READABLE_DIRECTORIES:
-        p = Path(path).expanduser()
-        if p.exists():
-            rs.allow(p, rules=_get_read_only_rule())
+    writable_directories = _to_paths(writable_directories)
+    writable_directories.extend(_to_paths(DEFAULT_WRITABLE_DIRECTORIES))
+    writable_directories = list(set(writable_directories))
 
-    for path in DEFAULT_WRITABLE_DIRECTORIES:
-        p = Path(path).expanduser()
-        if p.exists():
-            rs.allow(p, rules=FSAccess.all())
+    readable_directories = _to_paths(readable_directories)
+    readable_directories.extend(_to_paths(DEFAULT_READABLE_DIRECTORIES))
+    readable_directories = list(set(readable_directories) - set(writable_directories))
 
-    # Allow each directory passed in the directories list
-    for directory in readable_directories:
-        if directory.exists():
-            rs.allow(directory, rules=_get_read_only_rule())
+    logger.info(f"Writable sandbox directories: {writable_directories}")
+    logger.info(f"Readable sandbox directories: {readable_directories}")
 
-    for directory in writable_directories:
-        if directory.exists():
-            rs.allow(directory, rules=FSAccess.all())
+    allow_write(rs, writable_directories)
+    allow_read(rs, readable_directories)
 
     rs.apply()
 
