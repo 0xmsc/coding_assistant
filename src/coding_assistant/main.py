@@ -120,7 +120,7 @@ def parse_args():
         "--trace",
         action=BooleanOptionalAction,
         default=bool(os.getenv("CODING_ASSISTANT_TRACE")),
-        help="Enable tracing of model requests and responses to $XDG_STATE_HOME/coding-assistant/traces.",
+        help="Enable tracing of model requests and responses to a session folder in $XDG_STATE_HOME/coding-assistant/traces.",
     )
 
     return parser.parse_args()
@@ -315,7 +315,7 @@ def main():
     args = parse_args()
 
     if args.trace:
-        enable_tracing(get_default_trace_dir(), clear=True)
+        enable_tracing(get_default_trace_dir())
 
     if args.wait_for_debugger:
         logger.info("Waiting for debugger to attach on port 1234")
