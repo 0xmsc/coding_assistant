@@ -25,7 +25,6 @@ class OutputBuffer:
         return self._buf.decode(errors="replace")
 
     async def wait_for_finish(self, timeout: float | None = 1.0):
-        """Wait for the read task to finish processing the stream."""
         try:
             await asyncio.wait_for(self._read_task, timeout=timeout)
         except (asyncio.TimeoutError, asyncio.CancelledError):
