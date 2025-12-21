@@ -230,6 +230,27 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     assert 'mcp_coding_assistant_mcp_python_execute(code="print(1)")' in captured.out
 
 
+def test_dense_callbacks_empty_arg_parentheses(capsys):
+    cb = DenseProgressCallbacks()
+    cb.on_tool_start("TestAgent", "call_1", "mcp_coding_assistant_mcp_tasks_list_tasks", {})
+    captured = capsys.readouterr()
+    assert "▶ mcp_coding_assistant_mcp_tasks_list_tasks()" in captured.out
+
+
+def test_dense_callbacks_long_arg_parentheses(capsys):
+    cb = DenseProgressCallbacks()
+    # Special tool with multiline arg
+    cb.on_tool_start(
+        "TestAgent",
+        "call_1",
+        "mcp_coding_assistant_mcp_shell_execute",
+        {"command": "echo line1\necho line2", "background": False},
+    )
+    captured = capsys.readouterr()
+    # It should have parentheses and include both the key of the multiline arg and the normal args
+    assert '▶ mcp_coding_assistant_mcp_shell_execute(command, background=false)' in captured.out
+
+
 def test_dense_callbacks_tool_result_stripping():
     cb = DenseProgressCallbacks()
     with patch("coding_assistant.callbacks.print") as mock_print:
