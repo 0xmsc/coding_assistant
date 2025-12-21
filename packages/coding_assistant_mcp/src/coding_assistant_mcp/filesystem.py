@@ -50,11 +50,9 @@ async def edit_file(
 
     updated = original.replace(old_text, new_text, 1)
 
-    # Write back the updated content only after validation passes
     async with aiofiles.open(path, "w", encoding="utf-8") as f:
         await f.write(updated)
 
-    # Build unified diff for the operation
     diff_lines = difflib.unified_diff(
         original.splitlines(),
         updated.splitlines(),

@@ -56,7 +56,6 @@ def create_task_server(manager: TaskManager) -> FastMCP:
 
     @task_server.tool()
     async def list_tasks() -> str:
-        """List all recent tasks and their current status."""
         tasks = manager.list_tasks()
         if not tasks:
             return "No tasks found."

@@ -43,10 +43,8 @@ def parameters_from_model(model: BaseModel) -> list[Parameter]:
                 item_str = str(item)
                 if "\n" in item_str:
                     lines = item_str.splitlines()
-                    # First line as a bullet (preserve existing '- ' when present)
                     first = lines[0]
                     first_bulleted = first if first.startswith("- ") else f"- {first}"
-                    # Continuation lines are indented under the bullet text
                     continuation = [f"  {ln}" for ln in lines[1:]]
                     rendered_items.append(
                         "\n".join([first_bulleted, *continuation]) if continuation else first_bulleted
@@ -83,10 +81,8 @@ def format_parameters(parameters: list[Parameter]) -> str:
     for parameter in parameters:
         value_str = parameter.value
         if "\n" in value_str:
-            # Multiline: start on next line, indented; no trailing space after ':'
             value_str = "\n" + textwrap.indent(value_str, "    ")
         else:
-            # Single-line: keep a space after ':' before the value
             value_str = " " + value_str
         parts.append(
             PARAMETER_TEMPLATE.format(

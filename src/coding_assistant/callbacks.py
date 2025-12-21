@@ -31,7 +31,6 @@ class ParagraphBuffer:
     def push(self, chunk: str) -> list[str]:
         self._buffer += chunk
 
-        # If we are inside a code fence, we don't split yet
         if self._is_inside_code_fence(self._buffer):
             return []
 
@@ -45,11 +44,9 @@ class ParagraphBuffer:
                 prefix, suffix = remaining.split("\n\n", 1)
                 current_temp += prefix
                 if self._is_inside_code_fence(current_temp):
-                    # The double newline is inside a code fence, keep it
                     current_temp += "\n\n"
                     remaining = suffix
                 else:
-                    # Found a real paragraph boundary
                     paragraphs.append(current_temp)
                     current_temp = ""
                     remaining = suffix
@@ -118,9 +115,6 @@ async def confirm_shell_if_needed(*, tool_name: str, arguments: dict, patterns: 
 
 
 class DenseProgressCallbacks(ProgressCallbacks):
-    """Dense progress callbacks with minimal formatting."""
-
-    # Configuration for special handling of multiline arguments
     _SPECIAL_TOOLS: dict[str, dict[str, str]] = {
         "mcp_coding_assistant_mcp_shell_execute": {"command": "bash"},
         "mcp_coding_assistant_mcp_python_execute": {"code": "python"},
@@ -194,9 +188,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         }
         if tool_name in file_tools and "path" in arguments and isinstance(arguments["path"], str):
             path = arguments["path"]
-            # Get the filename from the path
             basename = os.path.basename(path)
-            # Split filename into root and extension
             _, ext = os.path.splitext(basename)
             if ext:
                 # Remove the leading dot from the extension

@@ -43,7 +43,6 @@ class TodoManager:
         return self.format()
 
     def list_todos(self) -> str:
-        """Return all TODO items as a markdown task list."""
         return self.format()
 
     def complete(
@@ -63,7 +62,6 @@ class TodoManager:
         return self.format()
 
     def reset(self) -> str:
-        """Reset the in-memory TODO list."""
         self._todos.clear()
         self._next_id = 1
         return "Reset TODO list (now empty)."

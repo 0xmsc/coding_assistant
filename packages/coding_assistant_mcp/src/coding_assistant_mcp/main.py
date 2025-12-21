@@ -13,7 +13,6 @@ from coding_assistant_mcp.tasks import create_task_server, TaskManager
 
 
 async def _main() -> None:
-    # Set logging to CRITICAL to minimize output from FastMCP
     configure_logging(level="CRITICAL")
 
     manager = TaskManager()

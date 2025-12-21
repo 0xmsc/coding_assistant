@@ -16,7 +16,6 @@ async def test_confirm_tool_if_needed_denied_and_allowed():
     prompt = f"Execute tool `{tool_name}` with arguments `{arguments}`?"
     ui = make_ui_mock(confirm_sequence=[(prompt, False), (prompt, True)])
 
-    # First: denied
     res = await confirm_tool_if_needed(
         tool_name=tool_name,
         arguments=arguments,
@@ -26,7 +25,6 @@ async def test_confirm_tool_if_needed_denied_and_allowed():
     assert isinstance(res, TextResult)
     assert res.content == "Tool execution denied."
 
-    # Second: allowed (returns None so caller proceeds)
     res2 = await confirm_tool_if_needed(
         tool_name=tool_name,
         arguments=arguments,
@@ -66,7 +64,6 @@ async def test_confirm_shell_if_needed_denied_and_allowed():
     assert isinstance(res, TextResult)
     assert res.content == "Shell command execution denied."
 
-    # Allowed
     res2 = await confirm_shell_if_needed(
         tool_name=tool_name,
         arguments=args,
@@ -120,7 +117,6 @@ async def test_confirmation_tool_callbacks_tool_pattern():
     assert isinstance(res, TextResult)
     assert res.content == "Tool execution denied."
 
-    # Allowed -> returns None
     res2 = await callbacks.before_tool_execution(
         context_name="Agent",
         tool_call_id="2",
@@ -154,7 +150,6 @@ async def test_confirmation_tool_callbacks_shell_pattern():
     assert isinstance(res, TextResult)
     assert res.content == "Shell command execution denied."
 
-    # Allowed
     res2 = await callbacks.before_tool_execution(
         context_name="Agent",
         tool_call_id="2",

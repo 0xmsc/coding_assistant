@@ -32,7 +32,6 @@ class Tool(LLMTool, ABC):
     async def execute(self, parameters) -> ToolResult: ...
 
 
-# Immutable description of an agent
 @dataclass(frozen=True)
 class AgentDescription:
     name: str
@@ -41,21 +40,18 @@ class AgentDescription:
     tools: list[Tool]
 
 
-# Final output of an agent run
 @dataclass
 class AgentOutput:
     result: str
     summary: str
 
 
-# Mutable state for an agent's execution
 @dataclass
 class AgentState:
     history: list[LLMMessage] = field(default_factory=list)
     output: AgentOutput | None = None
 
 
-# Combines the immutable description with the mutable state of an agent
 @dataclass
 class AgentContext:
     desc: AgentDescription
@@ -71,8 +67,3 @@ class Completer(Protocol):
         tools: Sequence[LLMTool],
         callbacks: LLMProgressCallbacks,
     ) -> Awaitable[Completion]: ...
-
-
-# Re-export ToolResult types for convenience if needed,
-# but better to import from results.py directly.
-# However, many files might expect them here.
