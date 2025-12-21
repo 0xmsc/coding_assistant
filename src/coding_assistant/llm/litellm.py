@@ -131,6 +131,7 @@ async def _try_completion_with_retry(
             return await _try_completion(messages, tools, model, reasoning_effort, callbacks)
         except (
             litellm.APIConnectionError,
+            litellm.APIError,
             litellm.RateLimitError,
             litellm.Timeout,
             litellm.ServiceUnavailableError,
