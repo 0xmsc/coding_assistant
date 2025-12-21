@@ -163,10 +163,13 @@ class DenseProgressCallbacks(ProgressCallbacks):
     ):
         print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}")
         for key, value in arguments.items():
-            lang = lang_map.get(key, "")
-            print()
-            print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
-            print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
+            if "\n" in value:
+                lang = lang_map.get(key, "")
+                print()
+                print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
+                print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
+            else:
+                print(Padding(f"[dim]{key}:[/dim] {value}", self._left_padding))
 
     def _special_handle_arguments(self, symbol: str, tool_name: str, arguments: dict) -> bool:
         if tool_name == "mcp_coding_assistant_mcp_shell_execute":
