@@ -240,8 +240,8 @@ def enable_sandboxing(args, root):
         ]
 
         sandbox(
-            readable_directories=readable_sandbox_directories,
-            writable_directories=writable_sandbox_directories,
+            readable_paths=readable_sandbox_directories,
+            writable_paths=writable_sandbox_directories,
             include_defaults=True,
         )
     else:
