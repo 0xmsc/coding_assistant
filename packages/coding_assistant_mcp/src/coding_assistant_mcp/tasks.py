@@ -33,7 +33,8 @@ class TaskManager:
     def _cleanup_finished_tasks(self):
         current_finished = [tid for tid, task in self._tasks.items() if not task.handle.is_running]
         if len(current_finished) > self._max_finished_tasks:
-            to_remove = current_finished[: self._max_finished_tasks]
+            num_to_remove = len(current_finished) - self._max_finished_tasks
+            to_remove = current_finished[:num_to_remove]
             for tid in to_remove:
                 self.remove_task(tid)
 
