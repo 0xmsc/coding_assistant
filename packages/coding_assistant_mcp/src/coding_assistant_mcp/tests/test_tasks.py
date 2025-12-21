@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 import pytest_asyncio
 from coding_assistant_mcp.shell import create_shell_server
@@ -104,32 +105,30 @@ async def test_auto_cleanup_keeps_running(manager):
     print(tasks)
 
     assert "ID: 1" in tasks
-    # IDs 2 and 3 might be gone if they finished quickly and were pushed out by subsequent registrations
+    assert "ID: 2" not in tasks
+    assert "ID: 3" in tasks
     assert "ID: 4" in tasks
 
 
 @pytest.mark.asyncio
 async def test_cleanup_exactly_max_finished(manager):
-    # Set limit to 5
     manager._max_finished_tasks = 5
     shell_server = create_shell_server(manager)
     shell_execute_tool = await shell_server.get_tool("execute")
-    task_server = create_task_server(manager)
-    tasks_list_tasks_tool = await task_server.get_tool("list_tasks")
 
-    # Register 6 finished tasks
-    for i in range(6):
-        await shell_execute_tool.fn(command=f"echo 'task {i}'")
+    for i in range(10):
+        await shell_execute_tool.fn(command=f"sleep 0.5; echo 'task {i + 1}'")
+
+    await asyncio.sleep(1)
+    await shell_execute_tool.fn(command="echo 'task 11'")  # Trigger cleanup
 
     tasks = manager.list_tasks()
     finished_tasks = [t for t in tasks if not t.handle.is_running]
 
-    # Should have exactly 6 left because of the "cleanup during registration" behavior
-    # where the task being registered is not yet finished.
     assert len(finished_tasks) == 6
-    # All IDs 1-6 should remain
+
     task_ids = [t.id for t in finished_tasks]
-    assert all(tid in task_ids for tid in range(1, 7))
+    assert task_ids == [6, 7, 8, 9, 10, 11]
 
 
 @pytest.mark.asyncio
