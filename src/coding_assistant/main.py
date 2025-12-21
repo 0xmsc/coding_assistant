@@ -225,7 +225,7 @@ def get_default_mcp_server_config(root_directory: Path) -> MCPServerConfig:
     )
 
 
-def enable_sandboxing(args, root):
+def enable_sandboxing(args, working_directory, root):
     if args.sandbox:
         logger.info("Sandboxing is enabled.")
 
@@ -236,7 +236,7 @@ def enable_sandboxing(args, root):
 
         writable_sandbox_directories = [
             *[Path(d).resolve() for d in args.writable_sandbox_directories],
-            root,
+            working_directory,
         ]
 
         sandbox(
@@ -276,7 +276,11 @@ async def _main(args):
     else:
         resume_history = None
 
-    enable_sandboxing(args, coding_assistant_root)
+    enable_sandboxing(
+        args,
+        working_directory=working_directory,
+        root=coding_assistant_root,
+    )
 
     mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
     mcp_server_configs.append(get_default_mcp_server_config(coding_assistant_root))
