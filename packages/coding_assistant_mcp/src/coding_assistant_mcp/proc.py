@@ -5,13 +5,6 @@ from dataclasses import dataclass, field
 from typing import Sequence
 
 
-@dataclass
-class ProcessResult:
-    stdout: str
-    returncode: int | None
-    timed_out: bool
-
-
 class ProcessHandle:
     """
     A handle to a running or completed process that allows shared access
@@ -110,27 +103,3 @@ async def start_process(
             pass
 
     return ProcessHandle(proc, stdout_buf, read_task)
-
-
-async def execute_process(
-    args: Sequence[str],
-    stdin_input: str | None = None,
-    timeout: int = 30,
-) -> ProcessResult:
-    """Execute a process and return its output and status (original API)."""
-    handle = await start_process(args, stdin_input=stdin_input)
-    finished = await handle.wait(timeout=timeout)
-
-    if not finished:
-        await handle.terminate()
-        return ProcessResult(
-            stdout=handle.stdout,
-            returncode=handle.returncode,
-            timed_out=True,
-        )
-
-    return ProcessResult(
-        stdout=handle.stdout,
-        returncode=handle.returncode,
-        timed_out=False,
-    )
