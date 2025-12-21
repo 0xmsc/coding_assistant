@@ -54,10 +54,6 @@ class ProcessHandle:
         return self.returncode is None
 
     async def wait(self, timeout: float | None = None) -> bool:
-        """
-        Wait for process to finish.
-        Returns True if process finished, False if timed out.
-        """
         try:
             await asyncio.wait_for(self.proc.wait(), timeout=timeout)
             # Give the output buffer a moment to finish flushing
