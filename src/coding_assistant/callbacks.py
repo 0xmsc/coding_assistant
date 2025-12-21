@@ -195,10 +195,10 @@ class DenseProgressCallbacks(ProgressCallbacks):
     def _special_handle_full_result(self, tool_name: str, result: str) -> bool:
         if tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
             print()
-            print(Padding(Markdown(f"```diff\n{result.strip('\\n')}\n```"), self._left_padding))
+            print(Padding(Markdown(f"```diff\n{result.strip()}\n```"), self._left_padding))
             return True
         if tool_name.startswith("mcp_coding_assistant_mcp_todo_"):
-            print(Padding(Markdown(result), self._left_padding))
+            print(Padding(Markdown(result.strip()), self._left_padding))
             return True
         return False
 
