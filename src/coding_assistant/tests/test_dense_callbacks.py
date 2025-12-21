@@ -1,4 +1,4 @@
-from unittest.mock import patch, call
+from unittest.mock import patch, call, MagicMock
 from coding_assistant import callbacks
 from coding_assistant.callbacks import DenseProgressCallbacks, ReasoningState, ContentState, ToolState, IdleState
 
@@ -277,3 +277,72 @@ def test_dense_callbacks_tool_result_stripping():
                     found_todo = True
                     assert renderable.markup == "- [ ] Task 1"
         assert found_todo
+
+
+def test_dense_callbacks_tool_lang_extension(capsys):
+    cb = DenseProgressCallbacks()
+    # Force a wide terminal
+    callbacks.console.width = 200
+
+    with patch("coding_assistant.callbacks.Markdown", side_effect=callbacks.Markdown) as mock_markdown:
+        # 1. Test .py extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_1",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": "test.py", "content": "def hello():\n    pass"},
+        )
+        found_py = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````py\ndef hello():" in arg:
+                found_py = True
+        assert found_py
+
+        mock_markdown.reset_mock()
+
+        # 2. Test .sh extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_2",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": "script.sh", "content": "echo hello\nls"},
+        )
+        found_sh = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````sh\necho hello" in arg:
+                found_sh = True
+        assert found_sh
+
+        mock_markdown.reset_mock()
+
+        # 3. Test .js extension
+        cb.on_tool_start(
+            "TestAgent",
+            "call_3",
+            "mcp_coding_assistant_mcp_filesystem_edit_file",
+            {"path": "index.js", "old_text": "const x = 1\n", "new_text": "const x = 2\n"},
+        )
+        found_js = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````js\nconst x = " in arg:
+                found_js = True
+        assert found_js
+
+        mock_markdown.reset_mock()
+
+        # 4. Test no extension (fallback to default "")
+        cb.on_tool_start(
+            "TestAgent",
+            "call_4",
+            "mcp_coding_assistant_mcp_filesystem_write_file",
+            {"path": "Dockerfile", "content": "FROM alpine\nRUN ls"},
+        )
+        found_default = False
+        for call_args in mock_markdown.call_args_list:
+            arg = call_args.args[0]
+            if "````\nFROM alpine" in arg:
+                found_default = True
+        assert found_default
