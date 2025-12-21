@@ -6,7 +6,7 @@ from fastmcp import FastMCP
 
 from coding_assistant_mcp.proc import start_process
 from coding_assistant_mcp.utils import truncate_output
-from coding_assistant_mcp.bg_tasks import manager
+from coding_assistant_mcp.tasks import manager
 
 shell_server = FastMCP()
 
@@ -23,22 +23,26 @@ async def execute(
     try:
         handle = await start_process(args=["bash", "-c", command])
 
+        task_name = f"shell: {command[:30]}..."
+        task_id = manager.register_task(task_name, handle)
+
         if background:
-            task_id = manager.register_task(f"shell: {command[:20]}...", handle)
             return f"Task started in background with ID: {task_id}"
 
         finished = await handle.wait(timeout=timeout)
 
         if not finished:
-            # Auto-backgrounding on timeout
-            task_id = manager.register_task(f"shell (auto): {command[:20]}...", handle)
             return (
                 f"Command is taking longer than {timeout}s. "
-                f"It has been moved to a background task with ID: {task_id}. "
-                "You can check its status later using `bg_get_output`."
+                f"It continues in the background with Task ID: {task_id}. "
+                "You can check its status later using `tasks_get_output`."
             )
 
-        stdout_text = truncate_output(handle.stdout, truncate_at)
+        output = handle.stdout
+        stdout_text = truncate_output(output, truncate_at)
+
+        if len(output) > truncate_at:
+            stdout_text += f"\n\nFull output available via `tasks_get_output(task_id={task_id})`"
 
         if handle.returncode != 0:
             return f"Returncode: {handle.returncode}.\n\n{stdout_text}"

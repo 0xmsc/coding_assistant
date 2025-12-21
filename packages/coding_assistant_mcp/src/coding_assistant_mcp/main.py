@@ -9,7 +9,7 @@ from coding_assistant_mcp.filesystem import filesystem_server
 from coding_assistant_mcp.python import python_server
 from coding_assistant_mcp.shell import shell_server
 from coding_assistant_mcp.todo import create_todo_server
-from coding_assistant_mcp.bg_tasks import bg_server
+from coding_assistant_mcp.tasks import task_server
 
 
 async def _main() -> None:
@@ -21,7 +21,7 @@ async def _main() -> None:
     await mcp.import_server(shell_server, prefix="shell")
     await mcp.import_server(python_server, prefix="python")
     await mcp.import_server(filesystem_server, prefix="filesystem")
-    await mcp.import_server(bg_server, prefix="bg")
+    await mcp.import_server(task_server, prefix="tasks")
     await mcp.run_async(show_banner=False)
 
 
