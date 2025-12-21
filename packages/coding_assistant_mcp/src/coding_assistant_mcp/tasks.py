@@ -26,15 +26,14 @@ class TaskManager:
         self._max_finished_tasks = max_finished_tasks
 
     def register_task(self, name: str, handle: ProcessHandle) -> int:
-        self._cleanup_finished_tasks()
-
         task_id = self._next_id
         self._next_id += 1
         self._tasks[task_id] = Task(id=task_id, name=name, handle=handle)
+
+        self._cleanup_finished_tasks()
         return task_id
 
     def _cleanup_finished_tasks(self):
-        """Keep only the last N finished tasks; never remove running ones."""
         # Refresh the finished tasks list based on current state
         current_finished = [tid for tid, task in self._tasks.items() if not task.handle.is_running]
 
@@ -51,8 +50,6 @@ class TaskManager:
         return self._tasks.get(task_id)
 
     def list_tasks(self) -> list[Task]:
-        # Always run cleanup before listing to ensure we respect the limit
-        self._cleanup_finished_tasks()
         return list(self._tasks.values())
 
     def remove_task(self, task_id: int):

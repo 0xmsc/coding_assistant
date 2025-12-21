@@ -75,9 +75,12 @@ async def test_auto_cleanup(manager):
     tasks_list_tasks_tool = await task_server.get_tool("list_tasks")
     
     await shell_execute_tool.fn(command="echo 'task 1'")
-    await shell_execute_tool.fn(command="echo 'task 2'")
+    # Task 1 is finished now.
     
+    await shell_execute_tool.fn(command="echo 'task 2'")
+    # Process is finished. We call list_tasks to trigger cleanup of Task 1.
     tasks = await tasks_list_tasks_tool.fn()
+    
     assert "ID: 1" not in tasks 
     assert "ID: 2" in tasks
 
@@ -96,6 +99,7 @@ async def test_auto_cleanup_keeps_running(manager):
     await shell_execute_tool.fn(command="echo 'task 2'") # ID 2
     await shell_execute_tool.fn(command="echo 'task 3'") # ID 3 
     
+    # Trigger cleanup for the finished tasks
     tasks = await tasks_list_tasks_tool.fn()
     
     # ID 1 should still be there because it's running
