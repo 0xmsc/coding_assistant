@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from typing import Annotated
-import functools
 
 from fastmcp import FastMCP
 
