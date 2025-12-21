@@ -48,8 +48,7 @@ The easiest way to run is with the uv command:
 ```bash
 uv run coding-assistant \
   --model "openrouter/anthropic/claude-3.5-sonnet" \
-  --task "Refactor all function names to snake_case." \
-  --mcp-servers '{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}'
+  --task "Refactor all function names to snake_case."
 ```
 
 Resume the last session:
@@ -57,8 +56,7 @@ Resume the last session:
 ```bash
 uv run coding-assistant \
   --model "openrouter/anthropic/claude-3.5-sonnet" \
-  --resume \
-  --mcp-servers '{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}'
+  --resume
 ```
 
 Show available options:
@@ -69,14 +67,13 @@ uv run coding-assistant --help
 
 ### Advanced Examples
 
-You can invoke the CLI with multiple MCP servers (stdio or SSE/remote):
+You can invoke the CLI with additional MCP servers (stdio or SSE/remote). The built-in `coding_assistant_mcp` is included by default.
 
 ```bash
 uv run coding-assistant \
   --model "openrouter/openai/gpt-4o-mini" \
   --task "Say 'Hello World'" \
   --mcp-servers \
-    '{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}' \
     '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
     '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}'
 ```
@@ -125,25 +122,15 @@ Pass MCP servers with repeated `--mcp-servers` flags as JSON strings. Support is
 
 ### Built-in: Coding Assistant MCP
 
-This repository includes a built-in MCP server (package `packages/coding_assistant_mcp`) that provides:
+This repository includes a built-in MCP server (package `packages/coding_assistant_mcp`) that is started automatically by default. It provides:
 
 - **shell**: `shell_execute` — Execute shell commands with timeout and output truncation
 - **python**: `python_execute` — Execute Python code with timeout and output truncation
 - **filesystem**: `filesystem_write_file`, `filesystem_edit_file` — Write new files or apply targeted edits
 - **todo**: `todo_add`, `todo_list_todos`, `todo_complete` — Simple in-memory TODO list management
 
-When connected, tools are exposed to the agent as fully-qualified names:
-- `mcp_coding_assistant_mcp_shell_execute`
-- `mcp_coding_assistant_mcp_python_execute`
-- `mcp_coding_assistant_mcp_filesystem_write_file`
-- `mcp_coding_assistant_mcp_filesystem_edit_file`
-- `mcp_coding_assistant_mcp_todo_add`
-- `mcp_coding_assistant_mcp_todo_list_todos`
-- `mcp_coding_assistant_mcp_todo_complete`
+When connected, tools are exposed to the agent as fully-qualified names (e.g., `mcp_coding_assistant_mcp_shell_execute`).
 
-This server can be started by passing its configuration in the `--mcp-servers` argument, for example: 
-
-'{"name": "coding_assistant_mcp", "command": "uv", "args": ["run", "--directory", "packages/coding_assistant_mcp", "coding-assistant-mcp"]}'
 
 ### External MCP Servers (Optional)
 
