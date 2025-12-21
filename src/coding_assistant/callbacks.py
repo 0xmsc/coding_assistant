@@ -22,11 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 class ParagraphBuffer:
-    """Buffers text and returns full paragraphs (separated by double newlines).
-
-    Handles code fences (```) by buffering the entire fence before splitting.
-    """
-
     def __init__(self):
         self._buffer = ""
 
@@ -34,7 +29,6 @@ class ParagraphBuffer:
         return text.count("```") % 2 != 0
 
     def push(self, chunk: str) -> list[str]:
-        """Push a chunk of text and return any complete paragraphs found."""
         self._buffer += chunk
 
         # If we are inside a code fence, we don't split yet
@@ -66,7 +60,6 @@ class ParagraphBuffer:
         return []
 
     def flush(self) -> Optional[str]:
-        """Flush the remaining buffer and return it as a paragraph if not empty."""
         remaining = self._buffer.strip()
         self._buffer = ""
         return remaining if remaining else None
