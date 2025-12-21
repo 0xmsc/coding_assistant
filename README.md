@@ -106,13 +106,9 @@ Notes:
 - `--chat-mode` / `--no-chat-mode` Enable/disable open-ended chat mode (default: **enabled**).
 - `--resume` / `--resume-file` Resume from the latest/specific orchestrator history in `.coding_assistant/history/`.
 - `--model` / `--expert-model` Select models for general/expert tasks (default: `gpt-5` for both).
-- `--instructions` Provide extra instructions that are composed with defaults.
-- `--dense` / `--no-dense` Use dense output mode with compact formatting (default: **enabled**).
-- `--print-chunks` / `--no-print-chunks` Control live model stream display (default: disabled, enabled in dense mode).
-- `--print-reasoning` / `--no-print-reasoning` Display model reasoning (default: **enabled**).
-- `--print-instructions` Print the final instruction bundle that will be given to the agent and exit.
-- `--shell-confirmation-patterns` Ask for confirmation before running matching shell commands.
-- `--tool-confirmation-patterns` Ask for confirmation before running matching tools.
+- `--instructions` Provide extra instructions that are composed with defaults. Can be repeated.
+- `--compact-conversation-at-tokens` Number of tokens after which conversation should be shortened (default: 200,000).
+- `--trace` / `--no-trace` Enable/disable tracing of model requests/responses.
 - `--wait-for-debugger` Wait for a debugger (debugpy) to attach on port 1234.
 
 Run `coding-assistant --help` to see all options.
@@ -230,7 +226,7 @@ The built-in MCP tools `shell_execute` and `python_execute`:
   just lint
   ```
 
-- Handy `just` recipes: `hello-world`, `commit`, `review`, `fixlint` (see `justfile`).
+- Handy `just` recipes: `test`, `lint` (see `justfile`).
 
 ## License
 
