@@ -3,10 +3,12 @@ import functools
 import json
 import logging
 import re
+import warnings
 from collections.abc import Sequence
 from typing import Literal, cast
 
 import litellm
+from pydantic import PydanticDeprecatedSince211
 
 from coding_assistant.llm.adapters import get_tools
 from coding_assistant.llm.types import (
@@ -20,6 +22,12 @@ from coding_assistant.llm.types import (
 from coding_assistant.trace import trace_data
 
 logger = logging.getLogger(__name__)
+
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    module="litellm.*",
+)
 
 litellm.telemetry = False
 litellm.modify_params = True
