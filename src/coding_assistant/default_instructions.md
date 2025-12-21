@@ -16,7 +16,7 @@
 
 ## Developing
 
-- Do not add obvious comments to the code.
+- Do not add obvious, redundant comments to the code.
 
 ## Tools
 
