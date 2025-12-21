@@ -39,11 +39,6 @@ class ParagraphBuffer:
 
         parts = self._buffer.split("\n\n")
         if len(parts) > 1:
-            # We need to make sure none of the parts (except maybe the last one which stays in buffer)
-            # start a code fence that isn't closed within that part.
-            # This is complex if a code fence spans multiple paragraphs.
-            # Let's refine: find double newlines only outside of code fences.
-
             paragraphs = []
             current_temp = ""
             remaining = self._buffer
@@ -128,30 +123,33 @@ async def confirm_shell_if_needed(*, tool_name: str, arguments: dict, patterns: 
 class DenseProgressCallbacks(ProgressCallbacks):
     """Dense progress callbacks with minimal formatting."""
 
+    # Configuration for special handling of multiline arguments
+    _SPECIAL_TOOLS = {
+        "mcp_coding_assistant_mcp_shell_execute": {"lang_map": {"command": "bash"}, "order": ["command"]},
+        "mcp_coding_assistant_mcp_python_execute": {"lang_map": {"code": "python"}, "order": ["code"]},
+        "mcp_coding_assistant_mcp_filesystem_write_file": {"order": ["path", "content"]},
+        "mcp_coding_assistant_mcp_filesystem_edit_file": {"order": ["path", "old_text", "new_text"]},
+    }
+
     def __init__(self):
         self._state: ProgressState = None
         self._left_padding = (0, 0, 0, 2)
 
     def on_user_message(self, context_name: str, content: str, force: bool = False):
-        if not force:
-            return
-
-        self._finalize_state()
-        print()
-        print(Markdown(f"## User\n\n{content}"))
-        self._state = IdleState()
+        if force:
+            self._print_banner("User", content)
 
     def on_assistant_message(self, context_name: str, content: str, force: bool = False):
-        if not force:
-            return
+        if force:
+            self._print_banner("Assistant", content)
 
+    def _print_banner(self, role: str, content: str):
         self._finalize_state()
         print()
-        print(Markdown(f"## Assistant\n\n{content}"))
+        print(Markdown(f"## {role}\n\n{content}"))
         self._state = IdleState()
 
     def on_assistant_reasoning(self, context_name: str, content: str):
-        # Don't print - reasoning is already printed via chunks
         pass
 
     def _print_arguments_multiline(
@@ -166,7 +164,6 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
         keys = list(arguments.keys())
         if order:
-            # Sort keys based on order, keeping unknown keys at the end
             keys.sort(key=lambda k: order.index(k) if k in order else len(order))
 
         for key in keys:
@@ -178,38 +175,25 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 print(Padding(Markdown(f"```{lang}\n{value}\n```"), self._left_padding))
             else:
                 print(Padding(f"[dim]{key}:[/dim] {json.dumps(value)}", self._left_padding))
-
         print()
 
     def _special_handle_arguments(self, symbol: str, tool_name: str, arguments: dict) -> bool:
-        if tool_name == "mcp_coding_assistant_mcp_shell_execute":
-            if "\n" in arguments["command"]:
-                self._print_arguments_multiline(
-                    symbol, tool_name, arguments, lang_map={"command": "bash"}, order=["command"]
-                )
-                return True
-        elif tool_name == "mcp_coding_assistant_mcp_python_execute":
-            if "\n" in arguments["code"]:
-                self._print_arguments_multiline(
-                    symbol, tool_name, arguments, lang_map={"code": "python"}, order=["code"]
-                )
-                return True
-        elif tool_name == "mcp_coding_assistant_mcp_filesystem_write_file":
-            if "\n" in arguments["content"]:
-                self._print_arguments_multiline(symbol, tool_name, arguments, order=["path", "content"])
-                return True
-        elif tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
-            old = arguments["old_text"]
-            new = arguments["new_text"]
-            if "\n" in old or "\n" in new:
-                self._print_arguments_multiline(symbol, tool_name, arguments, order=["path", "old_text", "new_text"])
-                return True
+        config = self._SPECIAL_TOOLS.get(tool_name)
+        if not config:
+            return False
+
+        if any("\n" in str(v) for v in arguments.values()):
+            self._print_arguments_multiline(
+                symbol, tool_name, arguments, lang_map=config.get("lang_map", {}), order=config.get("order")
+            )
+            return True
 
         return False
 
-    def _print_tool_start(self, symbol, tool_name: str, arguments: dict):
+    def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict):
         if not self._special_handle_arguments(symbol, tool_name, arguments):
-            args_str = self._format_arguments(arguments)
+            formatted = ", ".join(f"{k}={json.dumps(v)}" for k, v in arguments.items())
+            args_str = f"({formatted})" if formatted else ""
             print(f"[bold yellow]{symbol}[/bold yellow] {tool_name}{args_str}")
 
     def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
@@ -218,67 +202,51 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._print_tool_start("▶", tool_name, arguments)
         self._state = ToolState(tool_call_id=tool_call_id)
 
-    def _special_handle_full_result(self, tool_call_id: str, tool_name: str, result: str) -> bool:
+    def _special_handle_full_result(self, tool_name: str, result: str) -> bool:
         if tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
-            diff_body = result.strip("\n")
-            rendered_result = Markdown(f"```diff\n{diff_body}\n```")
             print()
-            print(Padding(rendered_result, self._left_padding))
+            print(Padding(Markdown(f"```diff\n{result.strip('\\n')}\n```"), self._left_padding))
             return True
-        elif tool_name.startswith("mcp_coding_assistant_mcp_todo_"):
+        if tool_name.startswith("mcp_coding_assistant_mcp_todo_"):
             print(Padding(Markdown(result), self._left_padding))
             return True
-
         return False
-
-    def _format_arguments(self, arguments: dict) -> str:
-        if not arguments:
-            return ""
-
-        formatted = ", ".join(f"{key}={json.dumps(value)}" for key, value in arguments.items())
-        return f"({formatted})"
 
     def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         if not isinstance(self._state, ToolState) or self._state.tool_call_id != tool_call_id:
             print()
             self._print_tool_start("◀", tool_name, arguments)
 
-        if not self._special_handle_full_result(tool_call_id, tool_name, result):
+        if not self._special_handle_full_result(tool_name, result):
             print(f"  [dim]→ {len(result.splitlines())} lines[/dim]")
 
-        # Reset state
         self._state = ToolState()
 
     def on_reasoning_chunk(self, chunk: str):
-        if not isinstance(self._state, ReasoningState):
-            self._finalize_state()
-            print()
-            self._state = ReasoningState()
-
-        for paragraph in self._state.buffer.push(chunk):
-            print()
-            print(Styled(Markdown(paragraph), "dim cyan"))
+        self._handle_chunk(chunk, ReasoningState, "dim cyan")
 
     def on_content_chunk(self, chunk: str):
-        if not isinstance(self._state, ContentState):
+        self._handle_chunk(chunk, ContentState)
+
+    def _handle_chunk(self, chunk: str, state_class: type, style: str | None = None):
+        if not isinstance(self._state, state_class):
             self._finalize_state()
             print()
-            self._state = ContentState()
+            self._state = state_class()
 
         for paragraph in self._state.buffer.push(chunk):
             print()
-            print(Markdown(paragraph))
+            md = Markdown(paragraph)
+            print(Styled(md, style) if style else md)
 
     def _finalize_state(self):
-        if isinstance(self._state, ContentState):
+        if isinstance(self._state, (ContentState, ReasoningState)):
             if flushed := self._state.buffer.flush():
                 print()
-                print(Markdown(flushed))
-        elif isinstance(self._state, ReasoningState):
-            if flushed := self._state.buffer.flush():
-                print()
-                print(Styled(Markdown(flushed), "dim cyan"))
-            else:
+                md = Markdown(flushed)
+                style = "dim cyan" if isinstance(self._state, ReasoningState) else None
+                print(Styled(md, style) if style else md)
+            elif isinstance(self._state, ReasoningState):
                 print()
 
     def on_chunks_end(self):
