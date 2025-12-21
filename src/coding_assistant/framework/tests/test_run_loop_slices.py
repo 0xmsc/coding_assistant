@@ -251,10 +251,6 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
     assert state.output.result == "r"
 
 
-# Note: Interrupt handling is now integrated into InterruptController and only used by run_chat_loop
-# run_agent_loop doesn't use interrupt handling, so no test needed here
-
-
 @pytest.mark.asyncio
 async def test_errors_if_output_already_set():
     desc, state = make_test_agent(tools=[FinishTaskTool(), CompactConversation()])
@@ -366,7 +362,6 @@ async def test_multiple_tool_calls_processed_in_order():
         },
     ]
 
-    # Also verify the finish comes after both tool results
     desc, state = agent
     assert message_to_dict(state.history[4]) == {
         "role": "assistant",

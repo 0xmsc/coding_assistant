@@ -45,7 +45,6 @@ class _Chunk:
 
     def __init__(self, data: dict):
         self._data = data
-        # include created_at to verify it's safe to pop
         self._hidden_params = {"created_at": 0}
 
     def __getitem__(self, key):
@@ -63,7 +62,6 @@ def _make_mock_response(data: dict):
     class _Response(dict):
         def model_dump(self):
             def _dump(o):
-                # Avoid infinite recursion: if it's the Response itself, dump its items
                 if o is self:
                     return {k: _dump(v) for k, v in self.items()}
                 if hasattr(o, "model_dump"):
@@ -76,7 +74,6 @@ def _make_mock_response(data: dict):
 
             return _dump(self)
 
-    # Wrap messages in _Msg if they are dicts
     if "choices" in data:
         for choice in data["choices"]:
             if "message" in choice and isinstance(choice["message"], dict):
@@ -87,7 +84,6 @@ def _make_mock_response(data: dict):
 
 @pytest.mark.asyncio
 async def test_complete_streaming_happy_path(monkeypatch):
-    # Build a fake async generator that yields chunks with delta.content
     async def fake_acompletion(**kwargs):
         async def agen():
             yield _Chunk({"choices": [{"delta": {"content": "Hello"}}]})
@@ -106,18 +102,15 @@ async def test_complete_streaming_happy_path(monkeypatch):
     cb = _CB()
     comp = await llm_model.complete(messages=[], model="m", tools=[], callbacks=cb)
 
-    # Chunks were forwarded and end signaled
     assert cb.chunks == ["Hello", " world"]
     assert cb.end is True
 
-    # Completion assembled
     assert comp.tokens == 42
     assert comp.message.content == "Hello world"
 
 
 @pytest.mark.asyncio
 async def test_complete_streaming_with_reasoning(monkeypatch):
-    # Build a fake async generator that yields chunks with delta.content
     async def fake_acompletion(**kwargs):
         async def agen():
             yield _Chunk({"choices": [{"delta": {"reasoning": "Thinking..."}}]})
@@ -134,12 +127,10 @@ async def test_complete_streaming_with_reasoning(monkeypatch):
     cb = _CB()
     comp = await llm_model.complete(messages=[], model="m", tools=[], callbacks=cb)
 
-    # Chunks were forwarded and end signaled
     assert cb.chunks == ["Hello"]
     assert cb.reasoning == ["Thinking..."]
     assert cb.end is True
 
-    # Completion assembled
     assert comp.tokens == 42
     assert comp.message.content == "Hello"
 
@@ -163,7 +154,6 @@ async def test_complete_error_path_logs_and_raises(monkeypatch):
 async def test_complete_parses_reasoning_effort_from_model_string(monkeypatch):
     captured = {}
 
-    # Fake streaming completion that also asserts incoming args
     async def fake_acompletion(**kwargs):
         captured.update(kwargs)
 
@@ -182,11 +172,9 @@ async def test_complete_parses_reasoning_effort_from_model_string(monkeypatch):
     cb = _CB()
     comp = await llm_model.complete(messages=[], model="openai/gpt-5 (low)", tools=[], callbacks=cb)
 
-    # Ensure model and reasoning_effort were parsed and forwarded
     assert captured.get("model") == "openai/gpt-5"
     assert captured.get("reasoning_effort") == "low"
 
-    # And content still streamed
     assert cb.chunks == ["A", "B"]
     assert comp.tokens == 2
     assert comp.message.content == "AB"
@@ -253,7 +241,6 @@ async def test_complete_forwards_base64_image_openai_format(monkeypatch):
 
     base64_payload = "AAAABASE64STRING"
 
-    # Provide content using the OpenAI/LiteLLM standard format with a base64 data URL
     messages = [
         UserMessage(
             content=[
@@ -269,7 +256,6 @@ async def test_complete_forwards_base64_image_openai_format(monkeypatch):
     sent = captured.get("messages")
     parts = sent[0]["content"]
 
-    # ensure we forwarded without modification
     assert parts[0]["type"] == "image_url"
     assert parts[0]["image_url"]["url"].startswith("data:image/jpeg;base64,")
     assert parts[0]["image_url"]["url"].endswith(base64_payload)

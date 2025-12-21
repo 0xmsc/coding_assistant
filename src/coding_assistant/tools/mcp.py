@@ -100,17 +100,14 @@ async def get_mcp_servers_from_config(
         servers: list[MCPServer] = []
 
         for server_config in config_servers:
-            # Format all arguments with available variables
             format_vars = {
                 "working_directory": str(working_directory),
                 "home_directory": str(Path.home()),
             }
             args = [arg.format(**format_vars) for arg in server_config.args]
 
-            # Merge environment variables with current environment and server-specific env
             env = {**get_default_env()}
 
-            # Add environment variables specified in server config
             for env_var in server_config.env:
                 if env_var not in os.environ:
                     raise ValueError(

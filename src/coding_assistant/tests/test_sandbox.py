@@ -61,11 +61,9 @@ def _test_readable_directory_denies_write(readable_dir, existing_file):
     """Test function to run in child process."""
     sandbox(readable_paths=[readable_dir], writable_paths=[])
 
-    # Should be able to read existing file
     with open(existing_file, "r") as f:
         assert f.read() == "Existing content"
 
-    # Should NOT be able to write new file
     new_file = readable_dir / "new.txt"
     try:
         with open(new_file, "w") as f:
@@ -74,7 +72,6 @@ def _test_readable_directory_denies_write(readable_dir, existing_file):
     except PermissionError:
         pass  # Expected
 
-    # Should NOT be able to modify existing file
     try:
         with open(existing_file, "w") as f:
             f.write("Modified content")
@@ -87,11 +84,9 @@ def _test_directory_access_separation(readable_dir, writable_dir, forbidden_dir,
     """Test function to run in child process."""
     sandbox(readable_paths=[readable_dir], writable_paths=[writable_dir])
 
-    # Can read from readable directory
     with open(existing_file, "r") as f:
         assert f.read() == "Read-only content"
 
-    # Cannot write to readable directory
     try:
         with open(readable_dir / "new.txt", "w") as f:
             f.write("Should fail")
@@ -107,7 +102,6 @@ def _test_directory_access_separation(readable_dir, writable_dir, forbidden_dir,
     with open(writable_file, "r") as f:
         assert f.read() == "Writable content"
 
-    # Cannot access forbidden directory
     try:
         with open(forbidden_dir / "forbidden.txt", "w") as f:
             f.write("Should fail")
@@ -133,11 +127,9 @@ def _test_nested_directory_permissions(readable_child, writable_child, existing_
     """Test function to run in child process."""
     sandbox(readable_paths=[readable_child], writable_paths=[writable_child])
 
-    # Can read from readable child
     with open(existing_file, "r") as f:
         assert f.read() == "Child content"
 
-    # Cannot write to readable child
     try:
         with open(readable_child / "new.txt", "w") as f:
             f.write("Should fail")
@@ -158,13 +150,11 @@ def _test_multiple_readable_directories(dir1, dir2, file1, file2):
     """Test function to run in child process."""
     sandbox(readable_paths=[dir1, dir2], writable_paths=[])
 
-    # Should be able to read from both
     with open(file1, "r") as f:
         assert f.read() == "Content 1"
     with open(file2, "r") as f:
         assert f.read() == "Content 2"
 
-    # Should not be able to write to either
     try:
         with open(dir1 / "new1.txt", "w") as f:
             f.write("Should fail")
@@ -184,7 +174,6 @@ def _test_multiple_writable_directories(dir1, dir2):
     """Test function to run in child process."""
     sandbox(readable_paths=[], writable_paths=[dir1, dir2])
 
-    # Should be able to write to both
     file1 = dir1 / "file1.txt"
     file2 = dir2 / "file2.txt"
 
@@ -193,7 +182,6 @@ def _test_multiple_writable_directories(dir1, dir2):
     with open(file2, "w") as f:
         f.write("Content 2")
 
-    # Should be able to read from both
     with open(file1, "r") as f:
         assert f.read() == "Content 1"
     with open(file2, "r") as f:
@@ -250,7 +238,6 @@ def test_directory_access_separation(tmp_path):
     writable_dir.mkdir()
     forbidden_dir.mkdir()
 
-    # Create existing file in readable directory
     existing_file = readable_dir / "existing.txt"
     with open(existing_file, "w") as f:
         f.write("Read-only content")
@@ -273,7 +260,6 @@ def test_nested_directory_permissions(tmp_path):
     readable_child.mkdir()
     writable_child.mkdir()
 
-    # Create existing file in readable child
     existing_file = readable_child / "existing.txt"
     with open(existing_file, "w") as f:
         f.write("Child content")
@@ -293,7 +279,6 @@ def test_multiple_readable_directories(tmp_path):
     dir1.mkdir()
     dir2.mkdir()
 
-    # Create files in both directories
     file1 = dir1 / "file1.txt"
     file2 = dir2 / "file2.txt"
 

@@ -12,9 +12,7 @@ async def test_get_mcp_servers_from_config_stdio():
     config = [MCPServerConfig(name="test-stdio", command="test-cmd", args=["--arg1"])]
     working_dir = Path("/tmp")
 
-    # Mock _get_mcp_server to avoid actual connection
     with patch("coding_assistant.tools.mcp._get_mcp_server") as mock_get_server:
-        # mock_get_server is an async context manager
         mock_server = MagicMock()
         mock_server.name = "test-stdio"
 

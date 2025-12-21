@@ -14,17 +14,11 @@ def test_dense_callbacks_lifecycle():
         cb.on_reasoning_chunk("Thinking...")
         assert isinstance(cb._state, ReasoningState)
         cb.on_reasoning_chunk("\n\nDone thinking.")
-        # ParagraphBuffer should have returned ["Thinking..."]
-        # Then it should have printed:
-        # 1. empty line (from on_reasoning_chunk start of state)
-        # 2. empty line (before printing paragraph)
-        # 3. Styled(Markdown("Thinking..."))
 
         # 3. Content
         cb.on_content_chunk("Hello")
         assert isinstance(cb._state, ContentState)
         cb.on_content_chunk(" world!\n\n")
-        # ParagraphBuffer should have returned ["Hello world!"]
 
         # 4. Tool call
         cb.on_tool_start("TestAgent", "call_1", "test_tool", {"arg": "val"})
@@ -43,15 +37,10 @@ def test_dense_callbacks_tool_formatting():
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
-        # Test tool call with different result types
         cb.on_tool_start("TestAgent", "call_1", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"})
         cb.on_tool_message(
             "TestAgent", "call_1", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"}, "file1\nfile2"
         )
-
-        # We can check if Padding was called or just if print was called with certain arguments
-        # Since we are mocking print, it's hard to see what's INSIDE the Padding/Panel/etc.
-        # but we can at least ensure it doesn't crash.
 
     assert mock_print.called
 
@@ -62,13 +51,10 @@ def test_dense_callbacks_paragraph_flushing():
     with patch("coding_assistant.callbacks.print") as mock_print:
         cb.on_content_chunk("One")
         cb.on_content_chunk(" Two")
-        # No newline yet, so no paragraph printed yet (only the initial newline for state change)
 
-        # Check that "One Two" hasn't been printed in a Markdown block yet
         # (Though it's hard with just mock_print)
 
         cb.on_chunks_end()
-        # Now it should be flushed
 
     assert mock_print.called
 
@@ -78,13 +64,8 @@ def test_dense_callbacks_state_transition_flushes():
 
     with patch("coding_assistant.callbacks.print") as mock_print:
         cb.on_reasoning_chunk("Thinking hard")
-        # Switch to content - should flush reasoning?
         cb.on_content_chunk("Actually here is the answer")
         cb.on_chunks_end()
-
-    # Let's see what was printed.
-    # If it didn't flush "Thinking hard", then it's a bug.
-    # We expect Styled(Markdown("Thinking hard"), "dim cyan") somewhere.
 
     found_reasoning = False
     for call_args in mock_print.call_args_list:
@@ -94,7 +75,6 @@ def test_dense_callbacks_state_transition_flushes():
                 and hasattr(arg.renderable, "markup")
                 and "Thinking hard" in arg.renderable.markup
             ):
-                # This is a bit brittle as it depends on how Styled/Markdown are structured
                 found_reasoning = True
             # Alternative check: just look for the string in any way
             if "Thinking hard" in str(arg):
@@ -134,7 +114,6 @@ def test_dense_callbacks_empty_line_logic():
 
 def test_dense_callbacks_multiline_tool_formatting(capsys):
     cb = DenseProgressCallbacks()
-    # Force a wide terminal to avoid wrapping of long tool call lines
     callbacks.console.width = 200
 
     # 1. Unknown tool with multiline -> compact one-liner
@@ -163,8 +142,6 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         {"path": "test.py", "content": "def hello():\n    pass"},
     )
     assert cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_write_file"]["content"] == ""
-    # We can directly inspect the behavior via a mock of Markdown if needed,
-    # but for now let's just make sure it runs without crashing and check captures.
     captured = capsys.readouterr()
     assert 'mcp_coding_assistant_mcp_filesystem_write_file(path="test.py", content)' in captured.out
     assert "  content:" in captured.out
@@ -210,7 +187,6 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     assert '"task 2"' in captured.out
 
     # 8. Known special tool with key mismatch (multiline allowed but tool sends wrong key)
-    # This should stay in header
     cb.on_tool_start(
         "TestAgent",
         "call_8",
@@ -220,7 +196,6 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     captured = capsys.readouterr()
     assert 'mcp_coding_assistant_mcp_python_execute(not_code="line1\\nline2")' in captured.out
 
-    # 9. Tool with key configured but NO multiline
     cb.on_tool_start(
         "TestAgent",
         "call_9",
@@ -240,7 +215,6 @@ def test_dense_callbacks_empty_arg_parentheses(capsys):
 
 def test_dense_callbacks_long_arg_parentheses(capsys):
     cb = DenseProgressCallbacks()
-    # Special tool with multiline arg
     cb.on_tool_start(
         "TestAgent",
         "call_1",
@@ -248,14 +222,12 @@ def test_dense_callbacks_long_arg_parentheses(capsys):
         {"command": "echo line1\necho line2", "background": False},
     )
     captured = capsys.readouterr()
-    # It should have parentheses and include both the key of the multiline arg and the normal args
     assert "▶ mcp_coding_assistant_mcp_shell_execute(command, background=false)" in captured.out
 
 
 def test_dense_callbacks_tool_result_stripping():
     cb = DenseProgressCallbacks()
     with patch("coding_assistant.callbacks.print") as mock_print:
-        # Test filesystem_edit_file stripping
         cb.on_tool_message(
             "TestAgent",
             "call_1",
@@ -271,15 +243,12 @@ def test_dense_callbacks_tool_result_stripping():
                 renderable = args[0].renderable
                 if hasattr(renderable, "markup") and "```diff" in renderable.markup:
                     found_diff = True
-                    # Should end with exactly one newline before the closing fence
                     assert renderable.markup.endswith("\n````")
                     assert not renderable.markup.endswith("\n\n````")
         assert found_diff
 
-        # Reset mock
         mock_print.reset_mock()
 
-        # Test todo stripping
         cb.on_tool_message("TestAgent", "call_2", "mcp_coding_assistant_mcp_todo_list_todos", {}, "- [ ] Task 1\n")
 
         found_todo = False
@@ -295,7 +264,6 @@ def test_dense_callbacks_tool_result_stripping():
 
 def test_dense_callbacks_tool_lang_extension(capsys):
     cb = DenseProgressCallbacks()
-    # Force a wide terminal
     callbacks.console.width = 200
 
     with patch("coding_assistant.callbacks.Markdown", side_effect=callbacks.Markdown) as mock_markdown:

@@ -77,11 +77,8 @@ class Completion:
 
 
 def message_from_dict(d: dict[str, Any]) -> LLMMessage:
-    # Ensure role is set for the Literal types in the dataclasses
     role = d["role"]
 
-    # Filter out None values to avoid dacite WrongTypeError for fields with defaults
-    # or Literals.
     d = {k: v for k, v in d.items() if v is not None}
 
     if role == "system":
