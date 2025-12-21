@@ -23,7 +23,7 @@ def get_instructions(
 ) -> str:
     sections: list[str] = []
 
-    sections.append(_load_default_instructions())
+    sections.append(_load_default_instructions(root_directory))
 
     for path in [
         working_directory / ".coding_assistant" / "instructions.md",
