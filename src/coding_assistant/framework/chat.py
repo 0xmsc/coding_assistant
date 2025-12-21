@@ -62,7 +62,7 @@ def handle_tool_result_chat(
             callbacks,
             context_name,
             f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work.",
-            force=True,
+            force=False,
         )
         return "Conversation compacted and history reset."
 
