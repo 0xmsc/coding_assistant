@@ -24,7 +24,7 @@ class OutputBuffer:
     def text(self) -> str:
         return self._buf.decode(errors="replace")
 
-    async def wait_for_finish(self, timeout: float | None = 1.0):
+    async def wait_for_finish(self, timeout: float | None = 5.0):
         try:
             await asyncio.wait_for(self._read_task, timeout=timeout)
         except (asyncio.TimeoutError, asyncio.CancelledError):
@@ -61,12 +61,16 @@ class ProcessHandle:
             return False
 
     async def terminate(self):
-        if self.is_running:
-            self.proc.terminate()
-            await self.wait(timeout=5.0)
-            if self.is_running:
-                self.proc.kill()
-                await self.wait()
+        if not self.is_running:
+            return
+
+        self.proc.terminate()
+        await self.wait(timeout=5.0)
+        if not self.is_running:
+            return
+
+        self.proc.kill()
+        await self.wait(timeout=5.0)
 
 
 async def start_process(
