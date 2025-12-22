@@ -129,7 +129,7 @@ This repository includes a built-in MCP server (package `packages/coding_assista
 - **filesystem**: `filesystem_write_file`, `filesystem_edit_file` — Write new files or apply targeted edits
 - **todo**: `todo_add`, `todo_list_todos`, `todo_complete` — Simple in-memory TODO list management
 
-When connected, tools are exposed to the agent as fully-qualified names (e.g., `mcp_coding_assistant_mcp_shell_execute`).
+When connected, tools are exposed to the agent as fully-qualified names (e.g., `shell_execute`).
 
 
 ### External MCP Servers (Optional)
