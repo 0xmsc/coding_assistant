@@ -32,10 +32,8 @@ def test_dense_callbacks_tool_formatting():
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
-        cb.on_tool_start("TestAgent", "call_1", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"})
-        cb.on_tool_message(
-            "TestAgent", "call_1", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"}, "file1\nfile2"
-        )
+        cb.on_tool_start("TestAgent", "call_1", "shell_execute", {"command": "ls"})
+        cb.on_tool_message("TestAgent", "call_1", "shell_execute", {"command": "ls"}, "file1\nfile2")
 
     assert mock_print.called
 
@@ -107,61 +105,61 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     captured = capsys.readouterr()
     assert 'unknown_tool(arg="line1\\nline2")' in captured.out
 
-    cb.on_tool_start("TestAgent", "call_2", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls\npwd"})
+    cb.on_tool_start("TestAgent", "call_2", "shell_execute", {"command": "ls\npwd"})
     captured = capsys.readouterr()
-    assert "▶ mcp_coding_assistant_mcp_shell_execute(command)" in captured.out
+    assert "▶ shell_execute(command)" in captured.out
     assert "  command:" in captured.out
     assert "  ls" in captured.out
     assert "  pwd" in captured.out
 
-    cb.on_tool_start("TestAgent", "call_3", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"})
+    cb.on_tool_start("TestAgent", "call_3", "shell_execute", {"command": "ls"})
     captured = capsys.readouterr()
-    assert 'mcp_coding_assistant_mcp_shell_execute(command="ls")' in captured.out
+    assert 'shell_execute(command="ls")' in captured.out
 
     cb.on_tool_start(
         "TestAgent",
         "call_4",
-        "mcp_coding_assistant_mcp_filesystem_write_file",
+        "filesystem_write_file",
         {"path": "test.py", "content": "def hello():\n    pass"},
     )
-    assert cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_write_file"]["content"] == ""
+    assert cb._SPECIAL_TOOLS["filesystem_write_file"]["content"] == ""
     captured = capsys.readouterr()
-    assert 'mcp_coding_assistant_mcp_filesystem_write_file(path="test.py", content)' in captured.out
+    assert 'filesystem_write_file(path="test.py", content)' in captured.out
     assert "  content:" in captured.out
     assert "  def hello():" in captured.out
 
     cb.on_tool_start(
         "TestAgent",
         "call_5",
-        "mcp_coding_assistant_mcp_filesystem_edit_file",
+        "filesystem_edit_file",
         {"path": "script.sh", "old_text": "line1\nold", "new_text": "line1\nline2"},
     )
-    assert "old_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
-    assert "new_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
+    assert "old_text" in cb._SPECIAL_TOOLS["filesystem_edit_file"]
+    assert "new_text" in cb._SPECIAL_TOOLS["filesystem_edit_file"]
 
     captured = capsys.readouterr()
-    assert 'mcp_coding_assistant_mcp_filesystem_edit_file(path="script.sh", old_text, new_text)' in captured.out
+    assert 'filesystem_edit_file(path="script.sh", old_text, new_text)' in captured.out
     assert "  old_text:" in captured.out
     assert "  new_text:" in captured.out
 
     cb.on_tool_start(
         "TestAgent",
         "call_6",
-        "mcp_coding_assistant_mcp_python_execute",
+        "python_execute",
         {"code": "import os\nprint(os.getcwd())"},
     )
     captured = capsys.readouterr()
-    assert "▶ mcp_coding_assistant_mcp_python_execute(code)" in captured.out
+    assert "▶ python_execute(code)" in captured.out
     assert "  code:" in captured.out
 
     cb.on_tool_start(
         "TestAgent",
         "call_7",
-        "mcp_coding_assistant_mcp_todo_add",
+        "todo_add",
         {"descriptions": ["task 1", "task 2"]},
     )
     captured = capsys.readouterr()
-    assert "▶ mcp_coding_assistant_mcp_todo_add(descriptions)" in captured.out
+    assert "▶ todo_add(descriptions)" in captured.out
     assert "  descriptions:" in captured.out
     assert '"task 1"' in captured.out
     assert '"task 2"' in captured.out
@@ -169,27 +167,27 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     cb.on_tool_start(
         "TestAgent",
         "call_8",
-        "mcp_coding_assistant_mcp_python_execute",
+        "python_execute",
         {"not_code": "line1\nline2"},
     )
     captured = capsys.readouterr()
-    assert 'mcp_coding_assistant_mcp_python_execute(not_code="line1\\nline2")' in captured.out
+    assert 'python_execute(not_code="line1\\nline2")' in captured.out
 
     cb.on_tool_start(
         "TestAgent",
         "call_9",
-        "mcp_coding_assistant_mcp_python_execute",
+        "python_execute",
         {"code": "print(1)"},
     )
     captured = capsys.readouterr()
-    assert 'mcp_coding_assistant_mcp_python_execute(code="print(1)")' in captured.out
+    assert 'python_execute(code="print(1)")' in captured.out
 
 
 def test_dense_callbacks_empty_arg_parentheses(capsys):
     cb = DenseProgressCallbacks()
-    cb.on_tool_start("TestAgent", "call_1", "mcp_coding_assistant_mcp_tasks_list_tasks", {})
+    cb.on_tool_start("TestAgent", "call_1", "tasks_list_tasks", {})
     captured = capsys.readouterr()
-    assert "▶ mcp_coding_assistant_mcp_tasks_list_tasks()" in captured.out
+    assert "▶ tasks_list_tasks()" in captured.out
 
 
 def test_dense_callbacks_long_arg_parentheses(capsys):
@@ -197,11 +195,11 @@ def test_dense_callbacks_long_arg_parentheses(capsys):
     cb.on_tool_start(
         "TestAgent",
         "call_1",
-        "mcp_coding_assistant_mcp_shell_execute",
+        "shell_execute",
         {"command": "echo line1\necho line2", "background": False},
     )
     captured = capsys.readouterr()
-    assert "▶ mcp_coding_assistant_mcp_shell_execute(command, background=false)" in captured.out
+    assert "▶ shell_execute(command, background=false)" in captured.out
 
 
 def test_dense_callbacks_tool_result_stripping():
@@ -210,7 +208,7 @@ def test_dense_callbacks_tool_result_stripping():
         cb.on_tool_message(
             "TestAgent",
             "call_1",
-            "mcp_coding_assistant_mcp_filesystem_edit_file",
+            "filesystem_edit_file",
             {"path": "test.py", "old_text": "old", "new_text": "new"},
             "--- test.py\n+++ test.py\n-old\n+new\n",
         )
@@ -228,7 +226,7 @@ def test_dense_callbacks_tool_result_stripping():
 
         mock_print.reset_mock()
 
-        cb.on_tool_message("TestAgent", "call_2", "mcp_coding_assistant_mcp_todo_list_todos", {}, "- [ ] Task 1\n")
+        cb.on_tool_message("TestAgent", "call_2", "todo_list_todos", {}, "- [ ] Task 1\n")
 
         found_todo = False
         for call_args in mock_print.call_args_list:
@@ -249,7 +247,7 @@ def test_dense_callbacks_tool_lang_extension(capsys):
         cb.on_tool_start(
             "TestAgent",
             "call_1",
-            "mcp_coding_assistant_mcp_filesystem_write_file",
+            "filesystem_write_file",
             {"path": "test.py", "content": "def hello():\n    pass"},
         )
         found_py = False
@@ -264,7 +262,7 @@ def test_dense_callbacks_tool_lang_extension(capsys):
         cb.on_tool_start(
             "TestAgent",
             "call_2",
-            "mcp_coding_assistant_mcp_filesystem_write_file",
+            "filesystem_write_file",
             {"path": "script.sh", "content": "echo hello\nls"},
         )
         found_sh = False
@@ -279,7 +277,7 @@ def test_dense_callbacks_tool_lang_extension(capsys):
         cb.on_tool_start(
             "TestAgent",
             "call_3",
-            "mcp_coding_assistant_mcp_filesystem_edit_file",
+            "filesystem_edit_file",
             {"path": "index.js", "old_text": "const x = 1\n", "new_text": "const x = 2\n"},
         )
         found_js = False
@@ -294,7 +292,7 @@ def test_dense_callbacks_tool_lang_extension(capsys):
         cb.on_tool_start(
             "TestAgent",
             "call_4",
-            "mcp_coding_assistant_mcp_filesystem_write_file",
+            "filesystem_write_file",
             {"path": "Dockerfile", "content": "FROM alpine\nRUN ls"},
         )
         found_default = False
@@ -309,7 +307,7 @@ def test_dense_callbacks_tool_lang_extension(capsys):
         cb.on_tool_start(
             "TestAgent",
             "call_5",
-            "mcp_coding_assistant_mcp_filesystem_write_file",
+            "filesystem_write_file",
             {"path": "dir.old/script", "content": "echo hello\nline2"},
         )
         found_none = False
@@ -324,7 +322,7 @@ def test_dense_callbacks_tool_lang_extension(capsys):
         cb.on_tool_start(
             "TestAgent",
             "call_6",
-            "mcp_coding_assistant_mcp_filesystem_write_file",
+            "filesystem_write_file",
             {"path": ".gitignore", "content": "node_modules/\nline2"},
         )
         found_none = False
@@ -339,7 +337,7 @@ def test_dense_callbacks_tool_lang_extension(capsys):
         cb.on_tool_start(
             "TestAgent",
             "call_7",
-            "mcp_coding_assistant_mcp_filesystem_write_file",
+            "filesystem_write_file",
             {"path": "README.", "content": "content\nline2"},
         )
         found_none = False

@@ -263,7 +263,7 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
             self.calls: list[dict] = []
 
         def name(self) -> str:
-            return "mcp_coding_assistant_mcp_shell_execute"
+            return "shell_execute"
 
         def description(self) -> str:
             return "shell"
@@ -280,11 +280,11 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
 
     command = "rm -rf /tmp"
     args_json = '{"command": "rm -rf /tmp"}'
-    expected_prompt = f"Execute shell command `{command}` for tool `mcp_coding_assistant_mcp_shell_execute`?"
+    expected_prompt = f"Execute shell command `{command}` for tool `shell_execute`?"
     ui = make_ui_mock(confirm_sequence=[(expected_prompt, False), (expected_prompt, True)])
 
     # First denied
-    call1 = ToolCall(id="s1", function=FunctionCall(name="mcp_coding_assistant_mcp_shell_execute", arguments=args_json))
+    call1 = ToolCall(id="s1", function=FunctionCall(name="shell_execute", arguments=args_json))
     msg1 = AssistantMessage(tool_calls=[call1])
 
     await handle_tool_calls(
@@ -301,12 +301,12 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
     assert tool.calls == []
     assert state.history[-1] == ToolMessage(
         tool_call_id="s1",
-        name="mcp_coding_assistant_mcp_shell_execute",
+        name="shell_execute",
         content="Shell command execution denied.",
     )
 
     # Then allowed
-    call2 = ToolCall(id="s2", function=FunctionCall(name="mcp_coding_assistant_mcp_shell_execute", arguments=args_json))
+    call2 = ToolCall(id="s2", function=FunctionCall(name="shell_execute", arguments=args_json))
     msg2 = AssistantMessage(tool_calls=[call2])
     await handle_tool_calls(
         msg2,
@@ -322,7 +322,7 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
     assert tool.calls == [{"command": command}]
     assert state.history[-1] == ToolMessage(
         tool_call_id="s2",
-        name="mcp_coding_assistant_mcp_shell_execute",
+        name="shell_execute",
         content=f"ran shell: {command}",
     )
 

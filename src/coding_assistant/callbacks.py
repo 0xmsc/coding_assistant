@@ -86,7 +86,7 @@ async def confirm_tool_if_needed(*, tool_name: str, arguments: dict, patterns: l
 
 
 async def confirm_shell_if_needed(*, tool_name: str, arguments: dict, patterns: list[str], ui) -> Optional[TextResult]:
-    if tool_name != "mcp_coding_assistant_mcp_shell_execute":
+    if tool_name != "shell_execute":
         return None
 
     command = arguments.get("command")
@@ -105,11 +105,11 @@ async def confirm_shell_if_needed(*, tool_name: str, arguments: dict, patterns: 
 
 class DenseProgressCallbacks(ProgressCallbacks):
     _SPECIAL_TOOLS: dict[str, dict[str, str]] = {
-        "mcp_coding_assistant_mcp_shell_execute": {"command": "bash"},
-        "mcp_coding_assistant_mcp_python_execute": {"code": "python"},
-        "mcp_coding_assistant_mcp_filesystem_write_file": {"content": ""},
-        "mcp_coding_assistant_mcp_filesystem_edit_file": {"old_text": "", "new_text": ""},
-        "mcp_coding_assistant_mcp_todo_add": {"descriptions": "json"},
+        "shell_execute": {"command": "bash"},
+        "python_execute": {"code": "python"},
+        "filesystem_write_file": {"content": ""},
+        "filesystem_edit_file": {"old_text": "", "new_text": ""},
+        "todo_add": {"descriptions": "json"},
         "compact_conversation": {"summary": "markdown"},
     }
 
@@ -172,8 +172,8 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
     def _get_lang_override(self, tool_name: str, arguments: dict) -> Optional[str]:
         file_tools = {
-            "mcp_coding_assistant_mcp_filesystem_write_file",
-            "mcp_coding_assistant_mcp_filesystem_edit_file",
+            "filesystem_write_file",
+            "filesystem_edit_file",
         }
         if tool_name in file_tools and "path" in arguments and isinstance(arguments["path"], str):
             path = arguments["path"]
@@ -190,11 +190,11 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._state = ToolState(tool_call_id=tool_call_id)
 
     def _special_handle_full_result(self, tool_name: str, result: str) -> bool:
-        if tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
+        if tool_name == "filesystem_edit_file":
             print()
             print(Padding(Markdown(f"````diff\n{result.strip()}\n````"), self._left_padding))
             return True
-        if tool_name.startswith("mcp_coding_assistant_mcp_todo_"):
+        if tool_name.startswith("todo_"):
             print(Padding(Markdown(result.strip()), self._left_padding))
             return True
         return False

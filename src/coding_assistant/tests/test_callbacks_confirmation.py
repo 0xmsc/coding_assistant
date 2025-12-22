@@ -48,7 +48,7 @@ async def test_confirm_tool_if_needed_no_match_no_prompt():
 
 @pytest.mark.asyncio
 async def test_confirm_shell_if_needed_denied_and_allowed():
-    tool_name = "mcp_coding_assistant_mcp_shell_execute"
+    tool_name = "shell_execute"
     command = "rm -rf /tmp"
     args = {"command": command}
     prompt = f"Execute shell command `{command}` for tool `{tool_name}`?"
@@ -85,7 +85,7 @@ async def test_confirm_shell_if_needed_ignores_other_tools_and_bad_command():
     assert res is None
 
     res2 = await confirm_shell_if_needed(
-        tool_name="mcp_coding_assistant_mcp_shell_execute",
+        tool_name="shell_execute",
         arguments={"command": ["echo", "hi"]},
         patterns=[r"echo"],
         ui=ui,
@@ -131,7 +131,7 @@ async def test_confirmation_tool_callbacks_shell_pattern():
         tool_confirmation_patterns=[],
         shell_confirmation_patterns=[r"danger"],
     )
-    tool_name = "mcp_coding_assistant_mcp_shell_execute"
+    tool_name = "shell_execute"
     command = "danger cmd"
     args = {"command": command}
     prompt = f"Execute shell command `{command}` for tool `{tool_name}`?"
@@ -160,7 +160,7 @@ async def test_confirmation_tool_callbacks_shell_pattern():
 
 @pytest.mark.asyncio
 async def test_confirmation_tool_callbacks_both_patterns_shell_tool_two_prompts():
-    tool_name = "mcp_coding_assistant_mcp_shell_execute"
+    tool_name = "shell_execute"
     command = "do something risky"
     args = {"command": command}
     tool_prompt = f"Execute tool `{tool_name}` with arguments `{args}`?"
@@ -168,7 +168,7 @@ async def test_confirmation_tool_callbacks_both_patterns_shell_tool_two_prompts(
     ui = make_ui_mock(confirm_sequence=[(tool_prompt, True), (shell_prompt, False)])
 
     callbacks = ConfirmationToolCallbacks(
-        tool_confirmation_patterns=[r"mcp_coding_assistant_mcp_shell_execute"],
+        tool_confirmation_patterns=[r"shell_execute"],
         shell_confirmation_patterns=[r"risky"],
     )
 
