@@ -22,8 +22,7 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         """
         Execute the given Python code using uv run - and return combined stdout/stderr.
 
-        The execution supports PEP 723 inline script metadata, allowing you to specify dependencies
-        directly in the code block.
+        The execution supports PEP 723 inline script metadata, allowing you to specify dependencies directly in the code block.
 
         Example:
         ```python
@@ -41,7 +40,7 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         import os
         from fastmcp import Client
 
-        async def check_tools():
+        async def use_mcp():
             mcp_url = os.environ.get("MCP_SERVER_URL")
             async with Client(mcp_url) as client:
                 # Example: List available tools
@@ -52,7 +51,7 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
                 result = await client.call_tool("shell_execute", {"command": "ls"})
                 print(result.content[0].text)
 
-        asyncio.run(check_tools())
+        asyncio.run(use_mcp())
         ```
         """
 

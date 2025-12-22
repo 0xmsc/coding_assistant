@@ -5,7 +5,10 @@ import signal
 import pytest
 from unittest.mock import patch
 
-from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.callbacks import (
+    NullProgressCallbacks,
+    NullToolCallbacks,
+)
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.interrupts import InterruptController
 from coding_assistant.llm.types import UserMessage
@@ -23,7 +26,9 @@ from coding_assistant.framework.types import TextResult, Tool
 class InterruptibleTool(Tool):
     """A tool that can be interrupted during execution."""
 
-    def __init__(self, delay: float = 0.5, interrupt_event: asyncio.Event | None = None):
+    def __init__(
+        self, delay: float = 0.5, interrupt_event: asyncio.Event | None = None
+    ):
         self.called = False
         self.completed = False
         self.cancelled = False
@@ -208,7 +213,9 @@ async def test_multiple_tool_calls_with_interrupt():
         ]
     )
 
-    desc, state = make_test_agent(tools=[tool1, tool2], history=[UserMessage(content="start")])
+    desc, state = make_test_agent(
+        tools=[tool1, tool2], history=[UserMessage(content="start")]
+    )
 
     ui = make_ui_mock(
         ask_sequence=[

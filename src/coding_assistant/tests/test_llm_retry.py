@@ -51,11 +51,20 @@ def _make_mock_response(content):
     class _Response(dict):
         def model_dump(self):
             return {
-                "choices": [{"message": {"role": "assistant", "content": self["choices"][0]["message"].content}}],
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": self["choices"][0]["message"].content,
+                        }
+                    }
+                ],
                 "usage": self["usage"],
             }
 
-    res = _Response({"choices": [{"message": _Msg(content)}], "usage": {"total_tokens": 10}})
+    res = _Response(
+        {"choices": [{"message": _Msg(content)}], "usage": {"total_tokens": 10}}
+    )
     return res
 
 
@@ -67,7 +76,9 @@ async def test_complete_retries_on_rate_limit(monkeypatch):
         nonlocal call_count
         call_count += 1
         if call_count < 3:
-            raise litellm.RateLimitError("Rate limit exceeded", model="m", llm_provider="openai")
+            raise litellm.RateLimitError(
+                "Rate limit exceeded", model="m", llm_provider="openai"
+            )
 
         async def agen():
             yield _Chunk({"choices": [{"delta": {"content": "Success"}}]})
@@ -78,7 +89,9 @@ async def test_complete_retries_on_rate_limit(monkeypatch):
         return _make_mock_response("Success")
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
-    monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
+    monkeypatch.setattr(
+        llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder
+    )
 
     # Mock sleep to speed up the test
     with patch("asyncio.sleep", AsyncMock()):
@@ -96,7 +109,9 @@ async def test_complete_raises_after_max_retries(monkeypatch):
     async def fake_acompletion(**kwargs):
         nonlocal call_count
         call_count += 1
-        raise litellm.ServiceUnavailableError("Service Down", model="m", llm_provider="openai")
+        raise litellm.ServiceUnavailableError(
+            "Service Down", model="m", llm_provider="openai"
+        )
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
 

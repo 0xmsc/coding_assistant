@@ -5,7 +5,6 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncGenerator
-from urllib.parse import urlparse
 
 import httpx
 from fastmcp import Client
@@ -77,26 +76,38 @@ def get_default_env():
     return default_env
 
 
-async def wait_for_server(url: str, process: asyncio.subprocess.Process, timeout: float = 10.0) -> None:
+async def wait_for_server(
+    url: str, process: asyncio.subprocess.Process, timeout: float = 10.0
+) -> None:
     """Wait for the server at the given URL to start and return 200 OK."""
     start_time = asyncio.get_event_loop().time()
     async with httpx.AsyncClient() as client:
         while asyncio.get_event_loop().time() - start_time < timeout:
             if process.returncode is not None:
-                raise RuntimeError(f"MCP server died with exit code {process.returncode}")
+                raise RuntimeError(
+                    f"MCP server died with exit code {process.returncode}"
+                )
 
             try:
                 response = await client.get(url)
                 if response.status_code == 200:
                     return
-            except (httpx.RequestError, httpx.HTTPSubprocessError, httpx.ConnectError, ConnectionRefusedError):
+            except (
+                httpx.RequestError,
+                httpx.ConnectError,
+                ConnectionRefusedError,
+            ):
                 await asyncio.sleep(0.05)
 
-    raise TimeoutError(f"MCP server at {url} did not respond with 200 OK within {timeout} seconds.")
+    raise TimeoutError(
+        f"MCP server at {url} did not respond with 200 OK within {timeout} seconds."
+    )
 
 
 @asynccontextmanager
-async def launch_coding_assistant_mcp(root_directory: Path, working_directory: Path) -> AsyncGenerator[str, None]:
+async def launch_coding_assistant_mcp(
+    root_directory: Path, working_directory: Path
+) -> AsyncGenerator[str, None]:
     port = 53675
     url = f"http://localhost:{port}/mcp"
 
@@ -183,7 +194,9 @@ async def get_mcp_servers_from_config(
                     cwd=str(working_directory),
                 )
             else:
-                raise ValueError(f"MCP server '{server_config.name}' must have either a command or a url.")
+                raise ValueError(
+                    f"MCP server '{server_config.name}' must have either a command or a url."
+                )
 
             server = await stack.enter_async_context(
                 _get_mcp_server(

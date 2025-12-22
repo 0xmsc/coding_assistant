@@ -1,6 +1,12 @@
 from unittest.mock import patch, call
 from coding_assistant import callbacks
-from coding_assistant.callbacks import DenseProgressCallbacks, ReasoningState, ContentState, ToolState, IdleState
+from coding_assistant.callbacks import (
+    DenseProgressCallbacks,
+    ReasoningState,
+    ContentState,
+    ToolState,
+    IdleState,
+)
 
 
 def test_dense_callbacks_lifecycle():
@@ -19,7 +25,9 @@ def test_dense_callbacks_lifecycle():
 
         cb.on_tool_start("TestAgent", "call_1", "test_tool", {"arg": "val"})
         assert isinstance(cb._state, ToolState)
-        cb.on_tool_message("TestAgent", "call_1", "test_tool", {"arg": "val"}, "Tool result")
+        cb.on_tool_message(
+            "TestAgent", "call_1", "test_tool", {"arg": "val"}, "Tool result"
+        )
 
         cb.on_content_chunk("Final bit")
         cb.on_chunks_end()
@@ -32,9 +40,18 @@ def test_dense_callbacks_tool_formatting():
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
-        cb.on_tool_start("TestAgent", "call_1", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"})
+        cb.on_tool_start(
+            "TestAgent",
+            "call_1",
+            "mcp_coding_assistant_mcp_shell_execute",
+            {"command": "ls"},
+        )
         cb.on_tool_message(
-            "TestAgent", "call_1", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"}, "file1\nfile2"
+            "TestAgent",
+            "call_1",
+            "mcp_coding_assistant_mcp_shell_execute",
+            {"command": "ls"},
+            "file1\nfile2",
         )
 
     assert mock_print.called
@@ -72,7 +89,9 @@ def test_dense_callbacks_state_transition_flushes():
             if "Thinking hard" in str(arg):
                 found_reasoning = True
 
-    assert found_reasoning, "Reasoning should have been flushed when switching to content"
+    assert found_reasoning, (
+        "Reasoning should have been flushed when switching to content"
+    )
 
 
 def test_dense_callbacks_empty_line_logic():
@@ -96,7 +115,9 @@ def test_dense_callbacks_empty_line_logic():
             if print_calls[i] == call():
                 found_newline = True
                 break
-        assert found_newline, "Expected newline when switching from reasoning to content"
+        assert found_newline, (
+            "Expected newline when switching from reasoning to content"
+        )
 
 
 def test_dense_callbacks_multiline_tool_formatting(capsys):
@@ -107,14 +128,24 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     captured = capsys.readouterr()
     assert 'unknown_tool(arg="line1\\nline2")' in captured.out
 
-    cb.on_tool_start("TestAgent", "call_2", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls\npwd"})
+    cb.on_tool_start(
+        "TestAgent",
+        "call_2",
+        "mcp_coding_assistant_mcp_shell_execute",
+        {"command": "ls\npwd"},
+    )
     captured = capsys.readouterr()
     assert "▶ mcp_coding_assistant_mcp_shell_execute(command)" in captured.out
     assert "  command:" in captured.out
     assert "  ls" in captured.out
     assert "  pwd" in captured.out
 
-    cb.on_tool_start("TestAgent", "call_3", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"})
+    cb.on_tool_start(
+        "TestAgent",
+        "call_3",
+        "mcp_coding_assistant_mcp_shell_execute",
+        {"command": "ls"},
+    )
     captured = capsys.readouterr()
     assert 'mcp_coding_assistant_mcp_shell_execute(command="ls")' in captured.out
 
@@ -124,9 +155,15 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         "mcp_coding_assistant_mcp_filesystem_write_file",
         {"path": "test.py", "content": "def hello():\n    pass"},
     )
-    assert cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_write_file"]["content"] == ""
+    assert (
+        cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_write_file"]["content"]
+        == ""
+    )
     captured = capsys.readouterr()
-    assert 'mcp_coding_assistant_mcp_filesystem_write_file(path="test.py", content)' in captured.out
+    assert (
+        'mcp_coding_assistant_mcp_filesystem_write_file(path="test.py", content)'
+        in captured.out
+    )
     assert "  content:" in captured.out
     assert "  def hello():" in captured.out
 
@@ -136,11 +173,18 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         "mcp_coding_assistant_mcp_filesystem_edit_file",
         {"path": "script.sh", "old_text": "line1\nold", "new_text": "line1\nline2"},
     )
-    assert "old_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
-    assert "new_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
+    assert (
+        "old_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
+    )
+    assert (
+        "new_text" in cb._SPECIAL_TOOLS["mcp_coding_assistant_mcp_filesystem_edit_file"]
+    )
 
     captured = capsys.readouterr()
-    assert 'mcp_coding_assistant_mcp_filesystem_edit_file(path="script.sh", old_text, new_text)' in captured.out
+    assert (
+        'mcp_coding_assistant_mcp_filesystem_edit_file(path="script.sh", old_text, new_text)'
+        in captured.out
+    )
     assert "  old_text:" in captured.out
     assert "  new_text:" in captured.out
 
@@ -173,7 +217,10 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
         {"not_code": "line1\nline2"},
     )
     captured = capsys.readouterr()
-    assert 'mcp_coding_assistant_mcp_python_execute(not_code="line1\\nline2")' in captured.out
+    assert (
+        'mcp_coding_assistant_mcp_python_execute(not_code="line1\\nline2")'
+        in captured.out
+    )
 
     cb.on_tool_start(
         "TestAgent",
@@ -187,7 +234,9 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
 
 def test_dense_callbacks_empty_arg_parentheses(capsys):
     cb = DenseProgressCallbacks()
-    cb.on_tool_start("TestAgent", "call_1", "mcp_coding_assistant_mcp_tasks_list_tasks", {})
+    cb.on_tool_start(
+        "TestAgent", "call_1", "mcp_coding_assistant_mcp_tasks_list_tasks", {}
+    )
     captured = capsys.readouterr()
     assert "▶ mcp_coding_assistant_mcp_tasks_list_tasks()" in captured.out
 
@@ -201,7 +250,10 @@ def test_dense_callbacks_long_arg_parentheses(capsys):
         {"command": "echo line1\necho line2", "background": False},
     )
     captured = capsys.readouterr()
-    assert "▶ mcp_coding_assistant_mcp_shell_execute(command, background=false)" in captured.out
+    assert (
+        "▶ mcp_coding_assistant_mcp_shell_execute(command, background=false)"
+        in captured.out
+    )
 
 
 def test_dense_callbacks_tool_result_stripping():
@@ -228,7 +280,13 @@ def test_dense_callbacks_tool_result_stripping():
 
         mock_print.reset_mock()
 
-        cb.on_tool_message("TestAgent", "call_2", "mcp_coding_assistant_mcp_todo_list_todos", {}, "- [ ] Task 1\n")
+        cb.on_tool_message(
+            "TestAgent",
+            "call_2",
+            "mcp_coding_assistant_mcp_todo_list_todos",
+            {},
+            "- [ ] Task 1\n",
+        )
 
         found_todo = False
         for call_args in mock_print.call_args_list:
@@ -245,7 +303,9 @@ def test_dense_callbacks_tool_lang_extension(capsys):
     cb = DenseProgressCallbacks()
     callbacks.console.width = 200
 
-    with patch("coding_assistant.callbacks.Markdown", side_effect=callbacks.Markdown) as mock_markdown:
+    with patch(
+        "coding_assistant.callbacks.Markdown", side_effect=callbacks.Markdown
+    ) as mock_markdown:
         cb.on_tool_start(
             "TestAgent",
             "call_1",
@@ -280,7 +340,11 @@ def test_dense_callbacks_tool_lang_extension(capsys):
             "TestAgent",
             "call_3",
             "mcp_coding_assistant_mcp_filesystem_edit_file",
-            {"path": "index.js", "old_text": "const x = 1\n", "new_text": "const x = 2\n"},
+            {
+                "path": "index.js",
+                "old_text": "const x = 1\n",
+                "new_text": "const x = 2\n",
+            },
         )
         found_js = False
         for call_args in mock_markdown.call_args_list:

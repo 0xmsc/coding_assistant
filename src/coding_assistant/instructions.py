@@ -9,7 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 def _load_default_instructions(root_directory: Path) -> str:
-    default_instructions_path = root_directory / "src/coding_assistant/default_instructions.md"
+    default_instructions_path = (
+        root_directory / "src/coding_assistant/default_instructions.md"
+    )
     if not default_instructions_path.exists():
         raise FileNotFoundError("Could not find default_instructions.md")
     return default_instructions_path.read_text().strip()
@@ -51,6 +53,8 @@ def get_instructions(
 
     for section in sections:
         if not section.startswith("# "):
-            logger.warning(f"Instruction section {section} does not start with a top-level heading")
+            logger.warning(
+                f"Instruction section {section} does not start with a top-level heading"
+            )
 
     return "\n\n".join(sections)

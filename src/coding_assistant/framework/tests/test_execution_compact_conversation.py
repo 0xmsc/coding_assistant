@@ -2,7 +2,10 @@ import json
 
 import pytest
 
-from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.callbacks import (
+    NullProgressCallbacks,
+    NullToolCallbacks,
+)
 from coding_assistant.framework.history import (
     append_assistant_message,
 )
@@ -23,8 +26,16 @@ from coding_assistant.framework.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.framework.types import ToolResult, FinishTaskResult, CompactConversationResult, TextResult
-from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
+from coding_assistant.framework.types import (
+    ToolResult,
+    FinishTaskResult,
+    CompactConversationResult,
+    TextResult,
+)
+from coding_assistant.framework.builtin_tools import (
+    FinishTaskTool,
+    CompactConversationTool as CompactConversation,
+)
 
 
 @pytest.mark.asyncio
@@ -73,7 +84,9 @@ async def test_compact_conversation_resets_history():
         handle_tool_result=handle_tool_result,
     )
 
-    assert any(force for content, force in callbacks.user_messages if summary_text in content)
+    assert any(
+        force for content, force in callbacks.user_messages if summary_text in content
+    )
 
     assert len(state.history) >= 3
     assert state.history[0] == UserMessage(content="old start")

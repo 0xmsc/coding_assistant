@@ -14,7 +14,9 @@ def _get_project_root() -> Path:
 def test_get_instructions_base_and_user_instructions(tmp_path: Path):
     wd = tmp_path
     root = _get_project_root()
-    instr = get_instructions(working_directory=wd, root_directory=root, user_instructions=["  A  ", "B\n"])
+    instr = get_instructions(
+        working_directory=wd, root_directory=root, user_instructions=["  A  ", "B\n"]
+    )
 
     assert "Do not initialize a new git repository" in instr
     assert "\nA\n" in instr
@@ -29,7 +31,9 @@ def test_get_instructions_with_planning_and_local_file(tmp_path: Path):
     local_dir.mkdir()
     (local_dir / "instructions.md").write_text("LOCAL OVERRIDE\n- extra rule")
 
-    instr = get_instructions(working_directory=wd, root_directory=root, user_instructions=[])
+    instr = get_instructions(
+        working_directory=wd, root_directory=root, user_instructions=[]
+    )
 
     assert "LOCAL OVERRIDE" in instr
     assert "- extra rule" in instr

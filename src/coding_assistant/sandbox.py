@@ -79,7 +79,11 @@ def allow_write(rs: Ruleset, paths: list[Path]):
             rs.allow(path, rules=_get_read_write_file_rule())
 
 
-def sandbox(readable_paths: list[Path], writable_paths: list[Path], include_defaults: bool = False):
+def sandbox(
+    readable_paths: list[Path],
+    writable_paths: list[Path],
+    include_defaults: bool = False,
+):
     rs = Ruleset()
 
     if include_defaults:
