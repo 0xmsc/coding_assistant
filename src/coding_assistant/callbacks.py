@@ -30,31 +30,20 @@ class ParagraphBuffer:
 
     def push(self, chunk: str) -> list[str]:
         self._buffer += chunk
+        paragraphs = []
 
-        if self._is_inside_code_fence(self._buffer):
-            return []
+        search_from = 0
+        while (pos := self._buffer.find("\n\n", search_from)) != -1:
+            candidate = self._buffer[:pos]
 
-        parts = self._buffer.split("\n\n")
-        if len(parts) > 1:
-            paragraphs = []
-            current_temp = ""
-            remaining = self._buffer
+            if not self._is_inside_code_fence(candidate):
+                paragraphs.append(candidate)
+                self._buffer = self._buffer[pos + 2 :]
+                search_from = 0
+            else:
+                search_from = pos + 2
 
-            while "\n\n" in remaining:
-                prefix, suffix = remaining.split("\n\n", 1)
-                current_temp += prefix
-                if self._is_inside_code_fence(current_temp):
-                    current_temp += "\n\n"
-                    remaining = suffix
-                else:
-                    paragraphs.append(current_temp)
-                    current_temp = ""
-                    remaining = suffix
-
-            self._buffer = current_temp + remaining
-            return paragraphs
-
-        return []
+        return paragraphs
 
     def flush(self) -> Optional[str]:
         remaining = self._buffer.strip()
