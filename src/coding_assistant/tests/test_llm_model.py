@@ -14,17 +14,13 @@ class _CB(ProgressCallbacks):
     def on_user_message(self, context_name: str, content: str, force: bool = False):
         pass
 
-    def on_assistant_message(
-        self, context_name: str, content: str, force: bool = False
-    ):
+    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
         pass
 
     def on_assistant_reasoning(self, context_name: str, content: str):
         self.reasoning.append(content)
 
-    def on_tool_start(
-        self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict
-    ):
+    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         pass
 
     def on_tool_message(
@@ -111,9 +107,7 @@ async def test_complete_streaming_happy_path(monkeypatch):
         )
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
-    monkeypatch.setattr(
-        llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder
-    )
+    monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
 
     cb = _CB()
     comp = await llm_model.complete(messages=[], model="m", tools=[], callbacks=cb)
@@ -143,9 +137,7 @@ async def test_complete_streaming_with_reasoning(monkeypatch):
         )
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
-    monkeypatch.setattr(
-        llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder
-    )
+    monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
 
     cb = _CB()
     comp = await llm_model.complete(messages=[], model="m", tools=[], callbacks=cb)
@@ -170,9 +162,7 @@ async def test_complete_error_path_logs_and_raises(monkeypatch):
 
     cb = _CB()
     with pytest.raises(Boom):
-        await llm_model.complete(
-            messages=[UserMessage(content="x")], model="m", tools=[], callbacks=cb
-        )
+        await llm_model.complete(messages=[UserMessage(content="x")], model="m", tools=[], callbacks=cb)
 
 
 @pytest.mark.asyncio
@@ -189,19 +179,13 @@ async def test_complete_parses_reasoning_effort_from_model_string(monkeypatch):
         return agen()
 
     def fake_stream_chunk_builder(chunks):
-        return _make_mock_response(
-            {"choices": [{"message": {"content": "AB"}}], "usage": {"total_tokens": 2}}
-        )
+        return _make_mock_response({"choices": [{"message": {"content": "AB"}}], "usage": {"total_tokens": 2}})
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
-    monkeypatch.setattr(
-        llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder
-    )
+    monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
 
     cb = _CB()
-    comp = await llm_model.complete(
-        messages=[], model="openai/gpt-5 (low)", tools=[], callbacks=cb
-    )
+    comp = await llm_model.complete(messages=[], model="openai/gpt-5 (low)", tools=[], callbacks=cb)
 
     assert captured.get("model") == "openai/gpt-5"
     assert captured.get("reasoning_effort") == "low"
@@ -224,14 +208,10 @@ async def test_complete_forwards_image_url_openai_format(monkeypatch):
         return agen()
 
     def fake_stream_chunk_builder(chunks):
-        return _make_mock_response(
-            {"choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 1}}
-        )
+        return _make_mock_response({"choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 1}})
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
-    monkeypatch.setattr(
-        llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder
-    )
+    monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
 
     messages = [
         UserMessage(
@@ -275,14 +255,10 @@ async def test_complete_forwards_base64_image_openai_format(monkeypatch):
         return agen()
 
     def fake_stream_chunk_builder(chunks):
-        return _make_mock_response(
-            {"choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 1}}
-        )
+        return _make_mock_response({"choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 1}})
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
-    monkeypatch.setattr(
-        llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder
-    )
+    monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
 
     base64_payload = "AAAABASE64STRING"
 

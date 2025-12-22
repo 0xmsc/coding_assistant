@@ -88,17 +88,11 @@ async def test_tool_confirmation_denied_and_allowed() -> None:
     )
 
     args_json = '{"cmd": "echo 123"}'
-    expected_prompt = (
-        "Execute tool `execute_shell_command` with arguments `{'cmd': 'echo 123'}`?"
-    )
+    expected_prompt = "Execute tool `execute_shell_command` with arguments `{'cmd': 'echo 123'}`?"
 
-    ui = make_ui_mock(
-        confirm_sequence=[(expected_prompt, False), (expected_prompt, True)]
-    )
+    ui = make_ui_mock(confirm_sequence=[(expected_prompt, False), (expected_prompt, True)])
 
-    call1 = ToolCall(
-        id="1", function=FunctionCall(name="execute_shell_command", arguments=args_json)
-    )
+    call1 = ToolCall(id="1", function=FunctionCall(name="execute_shell_command", arguments=args_json))
     msg1 = AssistantMessage(tool_calls=[call1])
     await handle_tool_calls(
         msg1,
@@ -120,9 +114,7 @@ async def test_tool_confirmation_denied_and_allowed() -> None:
         content="Tool execution denied.",
     )
 
-    call2 = ToolCall(
-        id="2", function=FunctionCall(name="execute_shell_command", arguments=args_json)
-    )
+    call2 = ToolCall(id="2", function=FunctionCall(name="execute_shell_command", arguments=args_json))
     msg2 = AssistantMessage(tool_calls=[call2])
     await handle_tool_calls(
         msg2,
@@ -206,9 +198,7 @@ async def test_tool_call_malformed_arguments_records_error() -> None:
     # Tool name can be anything; malformed JSON should short-circuit before execution attempt
     desc, state = make_test_agent()
     bad_args = "{bad"  # invalid JSON
-    call = ToolCall(
-        id="bad1", function=FunctionCall(name="bad_tool", arguments=bad_args)
-    )
+    call = ToolCall(id="bad1", function=FunctionCall(name="bad_tool", arguments=bad_args))
     msg = AssistantMessage(tool_calls=[call])
 
     await handle_tool_calls(
@@ -226,9 +216,7 @@ async def test_tool_call_malformed_arguments_records_error() -> None:
     assert tool_msg.role == "tool"
     assert tool_msg.name == "bad_tool"
     assert tool_msg.tool_call_id == "bad1"
-    assert tool_msg.content.startswith(
-        "Error: Tool call arguments `{bad` are not valid JSON:"
-    ), tool_msg.content
+    assert tool_msg.content.startswith("Error: Tool call arguments `{bad` are not valid JSON:"), tool_msg.content
 
 
 @pytest.mark.asyncio
@@ -303,16 +291,12 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
     command = "rm -rf /tmp"
     args_json = '{"command": "rm -rf /tmp"}'
     expected_prompt = f"Execute shell command `{command}` for tool `mcp_coding_assistant_mcp_shell_execute`?"
-    ui = make_ui_mock(
-        confirm_sequence=[(expected_prompt, False), (expected_prompt, True)]
-    )
+    ui = make_ui_mock(confirm_sequence=[(expected_prompt, False), (expected_prompt, True)])
 
     # First denied
     call1 = ToolCall(
         id="s1",
-        function=FunctionCall(
-            name="mcp_coding_assistant_mcp_shell_execute", arguments=args_json
-        ),
+        function=FunctionCall(name="mcp_coding_assistant_mcp_shell_execute", arguments=args_json),
     )
     msg1 = AssistantMessage(tool_calls=[call1])
 
@@ -337,9 +321,7 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
     # Then allowed
     call2 = ToolCall(
         id="s2",
-        function=FunctionCall(
-            name="mcp_coding_assistant_mcp_shell_execute", arguments=args_json
-        ),
+        function=FunctionCall(name="mcp_coding_assistant_mcp_shell_execute", arguments=args_json),
     )
     msg2 = AssistantMessage(tool_calls=[call2])
     await handle_tool_calls(
@@ -392,18 +374,14 @@ async def test_before_tool_execution_can_return_finish_task_result() -> None:
     desc, state = make_test_agent(tools=[finish_tool])
 
     class FabricatingCallbacks(ToolCallbacks):
-        async def before_tool_execution(
-            self, context_name, tool_call_id, tool_name, arguments, *, ui
-        ):
+        async def before_tool_execution(self, context_name, tool_call_id, tool_name, arguments, *, ui):
             if tool_name == "finish_task":
                 return FinishTaskResult(result="R", summary="S")
             return None
 
     call = ToolCall(
         id="f1",
-        function=FunctionCall(
-            name="finish_task", arguments='{"result": "ignored", "summary": "ignored"}'
-        ),
+        function=FunctionCall(name="finish_task", arguments='{"result": "ignored", "summary": "ignored"}'),
     )
     msg = AssistantMessage(tool_calls=[call])
 
@@ -493,9 +471,7 @@ async def test_multiple_tool_calls_are_parallel() -> None:
     elapsed = time.monotonic() - start
 
     # Assert total runtime significantly less than sequential (~0.4s)
-    assert elapsed < delay + 0.1, (
-        f"Expected parallel execution (<~{delay + 0.1:.2f}s) but took {elapsed:.2f}s"
-    )
+    assert elapsed < delay + 0.1, f"Expected parallel execution (<~{delay + 0.1:.2f}s) but took {elapsed:.2f}s"
 
     # Extract ordering: we expect both starts before at least one end (start1, start2, end?, end?) not start,end,start,end
     kinds = [k for (k, _, _) in events]
@@ -510,6 +486,4 @@ async def test_multiple_tool_calls_are_parallel() -> None:
     # History should contain two tool messages (order may be any); validate both present
     tool_messages = [m for m in state.history if m.role == "tool"]
     names = sorted(cast(str, m.name) for m in tool_messages if m.name)
-    assert names == ["slow.one", "slow.two"], (
-        f"Unexpected tool messages: {tool_messages}"
-    )
+    assert names == ["slow.one", "slow.two"], f"Unexpected tool messages: {tool_messages}"

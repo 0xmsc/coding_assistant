@@ -47,14 +47,10 @@ def parameters_from_model(model: BaseModel) -> list[Parameter]:
                     first_bulleted = first if first.startswith("- ") else f"- {first}"
                     continuation = [f"  {ln}" for ln in lines[1:]]
                     rendered_items.append(
-                        "\n".join([first_bulleted, *continuation])
-                        if continuation
-                        else first_bulleted
+                        "\n".join([first_bulleted, *continuation]) if continuation else first_bulleted
                     )
                 else:
-                    rendered_items.append(
-                        item_str if item_str.startswith("- ") else f"- {item_str}"
-                    )
+                    rendered_items.append(item_str if item_str.startswith("- ") else f"- {item_str}")
             value_str = "\n".join(rendered_items)
         elif isinstance(value, (str, int, float, bool)):
             value_str = str(value)

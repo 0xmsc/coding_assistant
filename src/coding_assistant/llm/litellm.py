@@ -128,9 +128,7 @@ async def _try_completion_with_retry(
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            return await _try_completion(
-                messages, tools, model, reasoning_effort, callbacks
-            )
+            return await _try_completion(messages, tools, model, reasoning_effort, callbacks)
         except (
             litellm.APIConnectionError,
             litellm.APIError,
@@ -142,9 +140,7 @@ async def _try_completion_with_retry(
         ) as e:
             if attempt == max_retries - 1:
                 raise
-            logger.warning(
-                f"Retry {attempt + 1}/{max_retries} due to {e} for model {model}"
-            )
+            logger.warning(f"Retry {attempt + 1}/{max_retries} due to {e} for model {model}")
             await asyncio.sleep(0.5 + attempt)
 
 
@@ -156,11 +152,7 @@ async def complete(
 ):
     try:
         model, reasoning_effort = _parse_model_and_reasoning(model)
-        return await _try_completion_with_retry(
-            messages, tools, model, reasoning_effort, callbacks
-        )
+        return await _try_completion_with_retry(messages, tools, model, reasoning_effort, callbacks)
     except Exception as e:
-        logger.error(
-            f"Error during model completion: {e}, last messages: {messages[-5:]}"
-        )
+        logger.error(f"Error during model completion: {e}, last messages: {messages[-5:]}")
         raise e
