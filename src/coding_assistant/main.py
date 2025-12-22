@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import socket
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 
@@ -29,7 +28,7 @@ from coding_assistant.trace import enable_tracing, get_default_trace_dir
 from coding_assistant.tools.mcp import (
     get_mcp_servers_from_config,
     get_mcp_wrapped_tools,
-    launch_and_get_mcp_server_url,
+    launch_coding_assistant_mcp,
     print_mcp_tools,
 )
 from coding_assistant.tools.tools import AgentTool, AskClientTool
@@ -227,21 +226,6 @@ async def run_chat_session(
         save_orchestrator_history(working_directory, chat_history)
 
 
-def get_default_mcp_server_config(root_directory: Path) -> MCPServerConfig:
-    mcp_project_dir = root_directory / "packages" / "coding_assistant_mcp"
-    if not mcp_project_dir.exists():
-        raise FileNotFoundError(f"{mcp_project_dir} does not exist")
-
-    return MCPServerConfig(
-        name="coding_assistant_mcp",
-        command="uv",
-        args=[
-            "--project",
-            str(mcp_project_dir),
-            "run",
-            "coding-assistant-mcp",
-        ],
-    )
 
 
 def enable_sandboxing(args, working_directory, root):
@@ -302,29 +286,16 @@ async def _main(args):
     )
 
     mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
-    mcp_server_configs.append(get_default_mcp_server_config(coding_assistant_root))
 
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
     async with AsyncExitStack() as stack:
-        final_configs = []
-        for server_config in mcp_server_configs:
-            if server_config.name == "coding_assistant_mcp" and server_config.command:
-                # Launch the primary server as a network service
-                url = await stack.enter_async_context(
-                    launch_and_get_mcp_server_url(server_config, working_directory)
-                )
-                # Create a new config that only has the URL
-                final_configs.append(
-                    MCPServerConfig(
-                        name=server_config.name,
-                        url=url,
-                    )
-                )
-            else:
-                final_configs.append(server_config)
+        url = await stack.enter_async_context(
+            launch_coding_assistant_mcp(coding_assistant_root, working_directory)
+        )
+        mcp_server_configs.append(MCPServerConfig(name="coding_assistant_mcp", url=url))
 
-        async with get_mcp_servers_from_config(final_configs, working_directory) as mcp_servers:
+        async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
             if args.print_mcp_tools:
                 await print_mcp_tools(mcp_servers)
                 return
