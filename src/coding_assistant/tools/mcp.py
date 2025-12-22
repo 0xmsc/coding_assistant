@@ -77,10 +77,10 @@ def get_default_env():
 
 
 @asynccontextmanager
-async def launch_and_get_mcp_server_url(
-    server_config: MCPServerConfig, working_directory: Path
+async def launch_coding_assistant_mcp(
+    root_directory: Path, working_directory: Path
 ) -> AsyncGenerator[str, None]:
-    """Launch the MCP server as a network service and return its URL."""
+    """Launch the coding_assistant_mcp server as a network service and return its URL."""
     import socket
 
     def get_free_port():
@@ -91,27 +91,27 @@ async def launch_and_get_mcp_server_url(
     port = get_free_port()
     url = f"http://localhost:{port}/sse"
 
-    format_vars = {
-        "working_directory": str(working_directory),
-        "home_directory": str(Path.home()),
-    }
-    args = [arg.format(**format_vars) for arg in server_config.args]
-    # Inject network parameters
-    args.extend(["--transport", "streamable-http", "--port", str(port)])
+    mcp_project_dir = root_directory / "packages" / "coding_assistant_mcp"
+
+    args = [
+        "uv",
+        "--project",
+        str(mcp_project_dir),
+        "run",
+        "coding-assistant-mcp",
+        "--transport",
+        "streamable-http",
+        "--port",
+        str(port),
+    ]
 
     env = {**get_default_env(), **os.environ.copy()}
-    for env_var in server_config.env:
-        if env_var not in os.environ:
-            raise ValueError(
-                f"Required environment variable '{env_var}' for MCP server '{server_config.name}' is not set"
-            )
-        env[env_var] = os.environ[env_var]
 
-    logger.info(f"Launching MCP server '{server_config.name}' on {url}")
+    logger.info(f"Launching coding_assistant_mcp on {url}")
 
     process = await asyncio.create_subprocess_exec(
-        server_config.command,
-        *args,
+        args[0],
+        *args[1:],
         env=env,
         cwd=str(working_directory),
         stdout=subprocess.DEVNULL,
@@ -123,7 +123,7 @@ async def launch_and_get_mcp_server_url(
         await asyncio.sleep(1)
         yield url
     finally:
-        logger.info(f"Terminating MCP server '{server_config.name}'")
+        logger.info("Terminating coding_assistant_mcp")
         process.terminate()
         await process.wait()
 
