@@ -26,7 +26,7 @@ from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
-from coding_assistant.tools.mcp_server import start_mcp_server
+from coding_assistant.tools.mcp_server import start_mcp_server, get_free_port
 from coding_assistant.tools.tools import AgentTool, AskClientTool
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 
@@ -134,7 +134,7 @@ def parse_args():
     parser.add_argument(
         "--mcp-server-port",
         type=int,
-        default=53675,
+        default=0,
         help="Port for the background MCP server (using streamable-http transport).",
     )
 
@@ -314,6 +314,11 @@ async def _main(args):
     )
 
     mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
+
+    if args.mcp_server and args.mcp_server_port == 0:
+        args.mcp_server_port = get_free_port()
+        logger.info(f"Selected random port for background MCP server: {args.mcp_server_port}")
+
     mcp_url = f"http://localhost:{args.mcp_server_port}/mcp" if args.mcp_server else None
     mcp_server_configs.append(get_default_mcp_server_config(coding_assistant_root, mcp_url=mcp_url))
 
