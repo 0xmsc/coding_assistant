@@ -36,10 +36,26 @@ async def call_mcp_tool(name: str, arguments: dict | None = None):
     if not MCP_URL:
         raise RuntimeError("MCP URL not configured")
     async with Client(MCP_URL) as client:
-        return await client.call_tool(name, arguments or {{}})
+        result = await client.call_tool(name, arguments or {{}})
+        
+        # If the result is a standard CallToolResult with text content, return the text
+        if hasattr(result, "content") and result.content:
+            text_parts = [c.text for c in result.content if hasattr(c, "text")]
+            if text_parts:
+                return "\\n".join(text_parts)
+        
+        return result
 
 def call_mcp_tool_sync(name: str, arguments: dict | None = None):
     \"\"\"Call an MCP tool synchronously.\"\"\"
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(call_mcp_tool(name, arguments))
+    
+    if loop.is_running():
+        import nest_asyncio
+        nest_asyncio.apply()
     return asyncio.run(call_mcp_tool(name, arguments))
 
 """
@@ -77,9 +93,9 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         code = bridge_code + "\n" + code
 
         try:
-            # We use --with fastmcp to ensure the bridge works
+            # We use --with fastmcp and --with nest-asyncio to ensure the bridge works
             handle = await start_process(
-                args=["uv", "run", "-q", "--with", "fastmcp", "-"],
+                args=["uv", "run", "-q", "--with", "fastmcp", "--with", "nest-asyncio", "-"],
                 stdin_input=code,
             )
 
