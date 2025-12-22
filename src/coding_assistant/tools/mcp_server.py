@@ -1,11 +1,9 @@
 import asyncio
-import inspect
 import logging
-from typing import Any, Optional, Type
+from typing import Any
 
 from fastmcp import FastMCP
-from pydantic import BaseModel, Field, create_model
-from pydantic_core import PydanticUndefined
+from fastmcp.tools import Tool as FastMCPTool
 
 from coding_assistant.framework.results import TextResult
 from coding_assistant.framework.types import Tool
@@ -13,47 +11,38 @@ from coding_assistant.framework.types import Tool
 logger = logging.getLogger(__name__)
 
 
-def _schema_to_pydantic(schema: dict[str, Any]) -> Type[BaseModel]:
+class AggregatedTool(FastMCPTool):
     """
-    Convert a JSON schema (as returned by Tool.parameters()) into a Pydantic model.
-    This allows FastMCP to correctly expose the tool's input schema.
+    An MCP tool that wraps a coding_assistant Tool object.
+
+    This implementation inherits from FastMCP's base Tool class and
+    overwrites the run() method to delegate to the wrapped tool.
     """
-    properties = schema.get("properties", {})
-    required = set(schema.get("required", []))
 
-    fields: dict[str, Any] = {}
-    for name, prop in properties.items():
-        # Map JSON schema types to Python types
-        json_type = prop.get("type")
-        description = prop.get("description")
+    # Note: FastMCPTool is a Pydantic model. We use this field to store our internal tool.
+    # We provide a default factory to satisfy Pydantic if needed, but it's set in __init__.
+    wrapped_tool: Any
 
-        py_type: Any
-        if json_type == "string":
-            py_type = str
-        elif json_type == "integer":
-            py_type = int
-        elif json_type == "number":
-            py_type = float
-        elif json_type == "boolean":
-            py_type = bool
-        elif json_type == "array":
-            py_type = list[Any]
-        elif json_type == "object":
-            py_type = dict[str, Any]
-        else:
-            py_type = Any
+    def __init__(self, tool: Tool, **kwargs: Any):
+        # We pass metadata to the parent Tool model.
+        # FastMCP uses these fields for the MCP list_tools response.
+        super().__init__(
+            name=tool.name(),
+            description=tool.description(),
+            parameters=tool.parameters(),
+            wrapped_tool=tool,
+            **kwargs,
+        )
 
-        if name not in required:
-            py_type = Optional[py_type]
-            fields[name] = (py_type, Field(default=None, description=description))
-        else:
-            fields[name] = (py_type, Field(description=description))
-
-    # If no properties are defined, we return an empty model
-    if not fields:
-        return create_model("Arguments", __base__=BaseModel)
-
-    return create_model("Arguments", __base__=BaseModel, **fields)
+    async def run(self, arguments: dict[str, Any]) -> str:
+        """
+        Overwritten run method that FastMCP calls when the tool is executed.
+        """
+        result = await self.wrapped_tool.execute(arguments)
+        assert isinstance(
+            result, TextResult
+        ), f"Expected TextResult from tool {self.name}, got {type(result).__name__}"
+        return result.content
 
 
 async def start_mcp_server(tools: list[Tool], port: int) -> asyncio.Task:
@@ -65,57 +54,13 @@ async def start_mcp_server(tools: list[Tool], port: int) -> asyncio.Task:
     )
 
     for tool in tools:
-        # Create a Pydantic model from the tool's JSON schema
-        try:
-            ArgsModel = _schema_to_pydantic(tool.parameters())
-        except Exception as e:
-            logger.warning(
-                f"Failed to create Pydantic model for tool {tool.name()}: {e}"
-            )
-            # Fallback to an empty model
-            ArgsModel = create_model("Arguments", __base__=BaseModel)
-
-        # Create the handler function with a dynamic signature
-        def make_handler(t: Tool, model: Type[BaseModel]):
-            async def handler(**kwargs) -> str:
-                result = await t.execute(kwargs)
-                if isinstance(result, TextResult):
-                    return result.content
-                return str(result)
-
-            # Build the signature from the model's fields
-            params = []
-            for name, field in model.model_fields.items():
-                params.append(
-                    inspect.Parameter(
-                        name,
-                        inspect.Parameter.KEYWORD_ONLY,
-                        annotation=field.annotation,
-                        default=(
-                            field.default
-                            if field.default is not PydanticUndefined
-                            else inspect.Parameter.empty
-                        ),
-                    )
-                )
-
-            handler.__signature__ = inspect.Signature(  # type: ignore[attr-defined]
-                params, return_annotation=str
-            )
-            handler.__annotations__ = {p.name: p.annotation for p in params}
-            handler.__annotations__["return"] = str
-            handler.__name__ = t.name()
-            handler.__doc__ = t.description()
-            return handler
-
-        mcp.tool(
-            name=tool.name(),
-            description=tool.description(),
-        )(make_handler(tool, ArgsModel))
+        # Create an instance of our custom Tool subclass and register it.
+        agg_tool = AggregatedTool(tool=tool)
+        mcp.add_tool(agg_tool)
 
     logger.info(f"Starting background MCP server on port {port}")
 
-    # Start the server as a background task
+    # Start the server as a background task.
     task = asyncio.create_task(
         mcp.run_async(transport="streamable-http", port=port, show_banner=False)
     )
