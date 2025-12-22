@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Annotated
 
 from fastmcp import FastMCP
@@ -23,7 +24,11 @@ def create_shell_server(manager: TaskManager) -> FastMCP:
         command = command.strip()
 
         try:
-            handle = await start_process(args=["bash", "-c", command])
+            extra_env = {}
+            if mcp_url := os.environ.get("MCP_SERVER_URL"):
+                extra_env["MCP_SERVER_URL"] = mcp_url
+
+            handle = await start_process(args=["bash", "-c", command], extra_env=extra_env)
 
             task_name = f"shell: {command[:30]}..."
             task_id = manager.register_task(task_name, handle)

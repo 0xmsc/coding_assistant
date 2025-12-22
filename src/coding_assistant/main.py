@@ -26,7 +26,12 @@ from coding_assistant.history import (
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
-from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
+from coding_assistant.tools.mcp import (
+    get_mcp_servers_from_config,
+    get_mcp_wrapped_tools,
+    launch_and_get_mcp_server_url,
+    print_mcp_tools,
+)
 from coding_assistant.tools.tools import AgentTool, AskClientTool
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 
@@ -222,18 +227,11 @@ async def run_chat_session(
         save_orchestrator_history(working_directory, chat_history)
 
 
-def get_free_port():
-    with socket.socket(socket.socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
-
-
 def get_default_mcp_server_config(root_directory: Path) -> MCPServerConfig:
     mcp_project_dir = root_directory / "packages" / "coding_assistant_mcp"
     if not mcp_project_dir.exists():
         raise FileNotFoundError(f"{mcp_project_dir} does not exist")
 
-    port = get_free_port()
     return MCPServerConfig(
         name="coding_assistant_mcp",
         command="uv",
@@ -242,12 +240,7 @@ def get_default_mcp_server_config(root_directory: Path) -> MCPServerConfig:
             str(mcp_project_dir),
             "run",
             "coding-assistant-mcp",
-            "--transport",
-            "streamable-http",
-            "--port",
-            str(port),
         ],
-        url=f"http://localhost:{port}/sse",
     )
 
 
@@ -313,52 +306,72 @@ async def _main(args):
 
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
-    async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
-        if args.print_mcp_tools:
-            await print_mcp_tools(mcp_servers)
-            return
+    async with AsyncExitStack() as stack:
+        final_configs = []
+        for server_config in mcp_server_configs:
+            if server_config.name == "coding_assistant_mcp" and server_config.command:
+                # Launch the primary server as a network service
+                url = await stack.enter_async_context(
+                    launch_and_get_mcp_server_url(server_config, working_directory)
+                )
+                # Create a new config that only has the URL
+                final_configs.append(
+                    MCPServerConfig(
+                        name=server_config.name,
+                        url=url,
+                    )
+                )
+                # Set environment variable for child processes
+                os.environ["MCP_SERVER_URL"] = url
+            else:
+                final_configs.append(server_config)
 
-        tools = await get_mcp_wrapped_tools(mcp_servers)
+        async with get_mcp_servers_from_config(final_configs, working_directory) as mcp_servers:
+            if args.print_mcp_tools:
+                await print_mcp_tools(mcp_servers)
+                return
 
-        instructions = get_instructions(
-            root_directory=coding_assistant_root,
-            working_directory=working_directory,
-            user_instructions=args.instructions,
-            mcp_servers=mcp_servers,
-        )
+            tools = await get_mcp_wrapped_tools(mcp_servers)
 
-        if args.print_instructions:
-            rich_print(Panel(Markdown(instructions), title="Instructions"))
-            return
-
-        progress_callbacks = DenseProgressCallbacks()
-
-        tool_callbacks = ConfirmationToolCallbacks(
-            tool_confirmation_patterns=args.tool_confirmation_patterns,
-            shell_confirmation_patterns=args.shell_confirmation_patterns,
-        )
-
-        if config.enable_chat_mode:
-            await run_chat_session(
-                config=config,
-                tools=tools,
-                history=resume_history,
-                instructions=instructions,
+            instructions = get_instructions(
+                root_directory=coding_assistant_root,
                 working_directory=working_directory,
-                progress_callbacks=progress_callbacks,
-                tool_callbacks=tool_callbacks,
+                user_instructions=args.instructions,
+                mcp_servers=mcp_servers,
             )
-        else:
-            await run_root_agent(
-                task=args.task,
-                config=config,
-                tools=tools,
-                history=resume_history,
-                instructions=instructions,
-                working_directory=working_directory,
-                progress_callbacks=progress_callbacks,
-                tool_callbacks=tool_callbacks,
+
+            if args.print_instructions:
+                rich_print(Panel(Markdown(instructions), title="Instructions"))
+                return
+
+            progress_callbacks = DenseProgressCallbacks()
+
+            tool_callbacks = ConfirmationToolCallbacks(
+                tool_confirmation_patterns=args.tool_confirmation_patterns,
+                shell_confirmation_patterns=args.shell_confirmation_patterns,
             )
+
+            if config.enable_chat_mode:
+                await run_chat_session(
+                    config=config,
+                    tools=tools,
+                    history=resume_history,
+                    instructions=instructions,
+                    working_directory=working_directory,
+                    progress_callbacks=progress_callbacks,
+                    tool_callbacks=tool_callbacks,
+                )
+            else:
+                await run_root_agent(
+                    task=args.task,
+                    config=config,
+                    tools=tools,
+                    history=resume_history,
+                    instructions=instructions,
+                    working_directory=working_directory,
+                    progress_callbacks=progress_callbacks,
+                    tool_callbacks=tool_callbacks,
+                )
 
 
 def main():
