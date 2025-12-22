@@ -3,6 +3,7 @@ import socket
 import pytest
 import pytest_asyncio
 import httpx
+import os
 from coding_assistant_mcp.main import _main
 from coding_assistant_mcp.python import create_python_server
 from coding_assistant_mcp.tasks import TaskManager
@@ -15,8 +16,8 @@ def get_free_port():
 @pytest.mark.asyncio
 async def test_python_mcp_integration():
     """
-    Test that the injected functions (get_available_mcp_tools, call_mcp_tool_sync)
-    can successfully interact with the MCP server.
+    Test that an agent can manually use fastmcp.Client to interact with the server
+    using the MCP_SERVER_URL environment variable.
     """
     port = get_free_port()
     host = "localhost"
@@ -55,31 +56,27 @@ async def test_python_mcp_integration():
     try:
         python_execute = await mcp.get_tool("python_execute")
         
-        # Test 1: Using the sync helper directly in a script (Standard use case)
-        test_script_sync = """
-# Test calling a tool synchronously
-res = call_mcp_tool_sync("shell_execute", {"command": "echo 'Sync Loopback Success'"})
-print(f"RESULT: {res.strip()}")
-"""
-        output = await python_execute.fn(code=test_script_sync, timeout=60)
-        print(f"DEBUG OUTPUT SYNC:\n{output}")
-        assert "RESULT: Sync Loopback Success" in output
-
-        # Test 2: Using the async helper in a custom loop
-        test_script_async = """
+        # Manually call a tool via fastmcp.Client
+        test_script = """
 import asyncio
+import os
+from fastmcp import Client
+
 async def run_test():
-    tools = await get_available_mcp_tools()
-    print(f"TOOLS: {[t['name'] for t in tools]}")
-    res = await call_mcp_tool("shell_execute", {"command": "echo 'Async Loopback Success'"})
-    print(f"ASYNC_RESULT: {res.strip()}")
+    url = os.environ.get("MCP_SERVER_URL")
+    async with Client(url) as client:
+        # Call shell_execute tool
+        result = await client.call_tool("shell_execute", {"command": "echo 'Manual Client Success'"})
+        
+        # Extract text from CallToolResult manually
+        text = "\\n".join([c.text for c in result.content if hasattr(c, "text")])
+        print(f"RESULT: {text.strip()}")
 
 asyncio.run(run_test())
 """
-        output = await python_execute.fn(code=test_script_async, timeout=60)
-        print(f"DEBUG OUTPUT ASYNC:\n{output}")
-        assert "ASYNC_RESULT: Async Loopback Success" in output
-        assert "shell_execute" in output
+        output = await python_execute.fn(code=test_script, timeout=60)
+        print(f"DEBUG OUTPUT:\n{output}")
+        assert "RESULT: Manual Client Success" in output
 
     finally:
         server_task.cancel()
