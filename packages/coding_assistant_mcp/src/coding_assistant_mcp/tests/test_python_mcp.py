@@ -25,7 +25,6 @@ async def test_python_execute_loopback_with_mock_server(manager):
     async def identity(val: str) -> str:
         return f"Hello, {val}"
 
-    # Find a free port (simple approach for test)
     port = 54321
     mcp_url = f"http://localhost:{port}/mcp"
 

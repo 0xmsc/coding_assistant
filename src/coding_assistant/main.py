@@ -234,20 +234,25 @@ async def run_chat_session(
         save_orchestrator_history(working_directory, chat_history)
 
 
-def get_default_mcp_server_config(root_directory: Path) -> MCPServerConfig:
+def get_default_mcp_server_config(root_directory: Path, mcp_url: str | None = None) -> MCPServerConfig:
     mcp_project_dir = root_directory / "packages" / "coding_assistant_mcp"
     if not mcp_project_dir.exists():
         raise FileNotFoundError(f"{mcp_project_dir} does not exist")
 
+    args = [
+        "--project",
+        str(mcp_project_dir),
+        "run",
+        "coding-assistant-mcp",
+    ]
+
+    if mcp_url:
+        args.extend(["--mcp-url", mcp_url])
+
     return MCPServerConfig(
         name="coding_assistant_mcp",
         command="uv",
-        args=[
-            "--project",
-            str(mcp_project_dir),
-            "run",
-            "coding-assistant-mcp",
-        ],
+        args=args,
     )
 
 
@@ -309,7 +314,8 @@ async def _main(args):
     )
 
     mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
-    mcp_server_configs.append(get_default_mcp_server_config(coding_assistant_root))
+    mcp_url = f"http://localhost:{args.mcp_server_port}/mcp" if args.mcp_server else None
+    mcp_server_configs.append(get_default_mcp_server_config(coding_assistant_root, mcp_url=mcp_url))
 
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
