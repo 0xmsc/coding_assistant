@@ -321,8 +321,6 @@ async def _main(args):
                         url=url,
                     )
                 )
-                # Set environment variable for child processes
-                os.environ["MCP_SERVER_URL"] = url
             else:
                 final_configs.append(server_config)
 
