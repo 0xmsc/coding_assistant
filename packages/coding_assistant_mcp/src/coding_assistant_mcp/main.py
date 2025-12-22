@@ -4,7 +4,6 @@ import argparse
 import asyncio
 
 from fastmcp import FastMCP
-from fastmcp.utilities.logging import configure_logging
 
 from coding_assistant_mcp.filesystem import filesystem_server
 from coding_assistant_mcp.python import create_python_server
@@ -32,7 +31,7 @@ async def _main() -> None:
         mcp_url = f"http://{url_host}:{args.port}/mcp"
 
     mcp = FastMCP("Coding Assistant MCP", instructions="")
-    
+
     await mcp.import_server(create_todo_server(), prefix="todo")
     await mcp.import_server(create_shell_server(manager), prefix="shell")
     await mcp.import_server(create_python_server(manager, mcp_url), prefix="python")
