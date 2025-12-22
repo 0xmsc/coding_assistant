@@ -26,7 +26,9 @@ class InterruptController:
         self._loop = loop
         self._cancellation_manager = ToolCallCancellationManager()
         self._was_interrupted = 0
-        self._original_handler: Callable[[int, FrameType | None], Any] | int | None = None
+        self._original_handler: Callable[[int, FrameType | None], Any] | int | None = (
+            None
+        )
 
     def _signal_handler(self, signum: int, frame: FrameType | None) -> None:
         """Handle SIGINT signals."""

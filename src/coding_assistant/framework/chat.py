@@ -69,7 +69,9 @@ def handle_tool_result_chat(
     if isinstance(result, TextResult):
         return result.content
 
-    raise RuntimeError(f"Tool produced unexpected result of type {type(result).__name__}")
+    raise RuntimeError(
+        f"Tool produced unexpected result of type {type(result).__name__}"
+    )
 
 
 class ChatCommandResult(Enum):
@@ -179,7 +181,9 @@ async def run_chat_loop(
                     ),
                     name="do_single_step",
                 )
-                interrupt_controller.register_task("do_single_step", do_single_step_task)
+                interrupt_controller.register_task(
+                    "do_single_step", do_single_step_task
+                )
 
                 message, _ = await do_single_step_task
                 append_assistant_message(history, callbacks, context_name, message)

@@ -74,7 +74,9 @@ class IdleState:
 ProgressState = Union[ReasoningState, ContentState, ToolState, IdleState, None]
 
 
-async def confirm_tool_if_needed(*, tool_name: str, arguments: dict, patterns: list[str], ui) -> Optional[TextResult]:
+async def confirm_tool_if_needed(
+    *, tool_name: str, arguments: dict, patterns: list[str], ui
+) -> Optional[TextResult]:
     for pat in patterns:
         if re.search(pat, tool_name):
             question = f"Execute tool `{tool_name}` with arguments `{arguments}`?"
@@ -85,7 +87,9 @@ async def confirm_tool_if_needed(*, tool_name: str, arguments: dict, patterns: l
     return None
 
 
-async def confirm_shell_if_needed(*, tool_name: str, arguments: dict, patterns: list[str], ui) -> Optional[TextResult]:
+async def confirm_shell_if_needed(
+    *, tool_name: str, arguments: dict, patterns: list[str], ui
+) -> Optional[TextResult]:
     if tool_name != "mcp_coding_assistant_mcp_shell_execute":
         return None
 
@@ -108,7 +112,10 @@ class DenseProgressCallbacks(ProgressCallbacks):
         "mcp_coding_assistant_mcp_shell_execute": {"command": "bash"},
         "mcp_coding_assistant_mcp_python_execute": {"code": "python"},
         "mcp_coding_assistant_mcp_filesystem_write_file": {"content": ""},
-        "mcp_coding_assistant_mcp_filesystem_edit_file": {"old_text": "", "new_text": ""},
+        "mcp_coding_assistant_mcp_filesystem_edit_file": {
+            "old_text": "",
+            "new_text": "",
+        },
         "mcp_coding_assistant_mcp_todo_add": {"descriptions": "json"},
         "compact_conversation": {"summary": "markdown"},
     }
@@ -121,7 +128,9 @@ class DenseProgressCallbacks(ProgressCallbacks):
         if force:
             self._print_banner("User", content)
 
-    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
+    def on_assistant_message(
+        self, context_name: str, content: str, force: bool = False
+    ):
         if force:
             self._print_banner("Assistant", content)
 
@@ -167,7 +176,11 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 if lang == "markdown":
                     print(Padding(Markdown(value), self._left_padding))
                 else:
-                    print(Padding(Markdown(f"````{lang}\n{value}\n````"), self._left_padding))
+                    print(
+                        Padding(
+                            Markdown(f"````{lang}\n{value}\n````"), self._left_padding
+                        )
+                    )
             print()
 
     def _get_lang_override(self, tool_name: str, arguments: dict) -> Optional[str]:
@@ -175,7 +188,11 @@ class DenseProgressCallbacks(ProgressCallbacks):
             "mcp_coding_assistant_mcp_filesystem_write_file",
             "mcp_coding_assistant_mcp_filesystem_edit_file",
         }
-        if tool_name in file_tools and "path" in arguments and isinstance(arguments["path"], str):
+        if (
+            tool_name in file_tools
+            and "path" in arguments
+            and isinstance(arguments["path"], str)
+        ):
             path = arguments["path"]
             basename = os.path.basename(path)
             _, ext = os.path.splitext(basename)
@@ -183,7 +200,9 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 return ext[1:]
         return None
 
-    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
+    def on_tool_start(
+        self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict
+    ):
         self._finalize_state()
         print()
         self._print_tool_start("▶", tool_name, arguments)
@@ -192,15 +211,29 @@ class DenseProgressCallbacks(ProgressCallbacks):
     def _special_handle_full_result(self, tool_name: str, result: str) -> bool:
         if tool_name == "mcp_coding_assistant_mcp_filesystem_edit_file":
             print()
-            print(Padding(Markdown(f"````diff\n{result.strip()}\n````"), self._left_padding))
+            print(
+                Padding(
+                    Markdown(f"````diff\n{result.strip()}\n````"), self._left_padding
+                )
+            )
             return True
         if tool_name.startswith("mcp_coding_assistant_mcp_todo_"):
             print(Padding(Markdown(result.strip()), self._left_padding))
             return True
         return False
 
-    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
-        if not isinstance(self._state, ToolState) or self._state.tool_call_id != tool_call_id:
+    def on_tool_message(
+        self,
+        context_name: str,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict,
+        result: str,
+    ):
+        if (
+            not isinstance(self._state, ToolState)
+            or self._state.tool_call_id != tool_call_id
+        ):
             print()
             self._print_tool_start("◀", tool_name, arguments)
 
@@ -216,7 +249,10 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._handle_chunk(chunk, ContentState)
 
     def _handle_chunk(
-        self, chunk: str, state_class: type[Union[ContentState, ReasoningState]], style: str | None = None
+        self,
+        chunk: str,
+        state_class: type[Union[ContentState, ReasoningState]],
+        style: str | None = None,
     ):
         if not isinstance(self._state, state_class):
             self._finalize_state()

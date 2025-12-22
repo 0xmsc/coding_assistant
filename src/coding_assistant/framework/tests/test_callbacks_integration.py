@@ -12,7 +12,10 @@ from coding_assistant.framework.tests.helpers import (
 )
 from coding_assistant.llm.types import AssistantMessage, ToolCall, FunctionCall
 from coding_assistant.framework.types import TextResult, Tool, AgentContext
-from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
+from coding_assistant.framework.builtin_tools import (
+    FinishTaskTool,
+    CompactConversationTool as CompactConversation,
+)
 
 
 class EchoTool(Tool):
@@ -23,7 +26,11 @@ class EchoTool(Tool):
         return "echo"
 
     def parameters(self) -> dict:
-        return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
+        return {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        }
 
     async def execute(self, parameters: dict) -> TextResult:
         return TextResult(content=parameters["text"])
@@ -32,7 +39,9 @@ class EchoTool(Tool):
 @pytest.mark.asyncio
 async def test_agent_loop_runs_successfully():
     callbacks = Mock()
-    finish = ToolCall("f1", FunctionCall("finish_task", json.dumps({"result": "r", "summary": "s"})))
+    finish = ToolCall(
+        "f1", FunctionCall("finish_task", json.dumps({"result": "r", "summary": "s"}))
+    )
     completer = FakeCompleter([AssistantMessage(tool_calls=[finish])])
     desc, state = make_test_agent(tools=[FinishTaskTool(), CompactConversation()])
 
@@ -52,9 +61,15 @@ async def test_agent_loop_runs_successfully():
 async def test_on_tool_message_called_with_arguments_and_result():
     callbacks = Mock()
     call = ToolCall("1", FunctionCall("echo", json.dumps({"text": "hello"})))
-    finish = ToolCall("2", FunctionCall("finish_task", json.dumps({"result": "ok", "summary": "s"})))
-    completer = FakeCompleter([AssistantMessage(tool_calls=[call]), AssistantMessage(tool_calls=[finish])])
-    desc, state = make_test_agent(tools=[EchoTool(), FinishTaskTool(), CompactConversation()])
+    finish = ToolCall(
+        "2", FunctionCall("finish_task", json.dumps({"result": "ok", "summary": "s"}))
+    )
+    completer = FakeCompleter(
+        [AssistantMessage(tool_calls=[call]), AssistantMessage(tool_calls=[finish])]
+    )
+    desc, state = make_test_agent(
+        tools=[EchoTool(), FinishTaskTool(), CompactConversation()]
+    )
 
     await run_agent_loop(
         AgentContext(desc=desc, state=state),

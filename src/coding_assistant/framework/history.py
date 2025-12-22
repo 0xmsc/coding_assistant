@@ -1,5 +1,10 @@
 from coding_assistant.framework.callbacks import ProgressCallbacks
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolMessage, UserMessage
+from coding_assistant.llm.types import (
+    AssistantMessage,
+    BaseMessage,
+    ToolMessage,
+    UserMessage,
+)
 
 
 def append_tool_message(
@@ -11,7 +16,9 @@ def append_tool_message(
     function_args: dict,
     function_call_result: str,
 ):
-    callbacks.on_tool_message(context_name, tool_call_id, function_name, function_args, function_call_result)
+    callbacks.on_tool_message(
+        context_name, tool_call_id, function_name, function_args, function_call_result
+    )
 
     history.append(
         ToolMessage(

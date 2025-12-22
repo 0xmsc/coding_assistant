@@ -61,7 +61,9 @@ def save_orchestrator_history(working_directory: Path, agent_history: list):
 
     history_file.write_text(json.dumps(serializable_history, indent=2))
 
-    logger.info(f"Saved orchestrator history for {working_directory} to {history_file}.")
+    logger.info(
+        f"Saved orchestrator history for {working_directory} to {history_file}."
+    )
 
 
 def get_latest_orchestrator_history_file(working_directory: Path) -> Path | None:
