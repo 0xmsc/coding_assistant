@@ -12,9 +12,7 @@ class ProgressCallbacks(ABC):
         pass
 
     @abstractmethod
-    def on_assistant_message(
-        self, context_name: str, content: str, force: bool = False
-    ):
+    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
         """Handle messages with role: assistant."""
         pass
 
@@ -24,9 +22,7 @@ class ProgressCallbacks(ABC):
         pass
 
     @abstractmethod
-    def on_tool_start(
-        self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict
-    ):
+    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         """Handle tool start events."""
         pass
 
@@ -64,17 +60,13 @@ class NullProgressCallbacks(ProgressCallbacks):
     def on_user_message(self, context_name: str, content: str, force: bool = False):
         pass
 
-    def on_assistant_message(
-        self, context_name: str, content: str, force: bool = False
-    ):
+    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
         pass
 
     def on_assistant_reasoning(self, context_name: str, content: str):
         pass
 
-    def on_tool_start(
-        self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict
-    ):
+    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         pass
 
     def on_tool_message(

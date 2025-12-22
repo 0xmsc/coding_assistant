@@ -72,9 +72,7 @@ async def test_orchestrator_tool_resume():
         tool_callbacks=NullToolCallbacks(),
     )
     result = await second.execute(
-        parameters={
-            "task": "Re-do your previous task, just translate your output to German."
-        }
+        parameters={"task": "Re-do your previous task, just translate your output to German."}
     )
     assert result.content == "Hallo, Welt!"
 

@@ -82,9 +82,7 @@ def parse_args():
         required=True,
         help="Model to use for the orchestrator agent.",
     )
-    parser.add_argument(
-        "--expert-model", type=str, default=None, help="Expert model to use."
-    )
+    parser.add_argument("--expert-model", type=str, default=None, help="Expert model to use.")
     parser.add_argument(
         "--instructions",
         nargs="*",
@@ -306,9 +304,7 @@ async def _main(args):
             raise FileNotFoundError(
                 f"No latest orchestrator history file found in {working_directory}/.coding_assistant/history."
             )
-        logger.info(
-            f"Resuming session from latest saved agent history: {latest_history_file}"
-        )
+        logger.info(f"Resuming session from latest saved agent history: {latest_history_file}")
         resume_history = load_orchestrator_history(latest_history_file)
     else:
         resume_history = None
@@ -319,24 +315,15 @@ async def _main(args):
         root=coding_assistant_root,
     )
 
-    mcp_server_configs = [
-        MCPServerConfig.model_validate_json(mcp_config_json)
-        for mcp_config_json in args.mcp_servers
-    ]
+    mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
 
-    logger.info(
-        f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}"
-    )
+    logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
     async with AsyncExitStack() as stack:
-        url = await stack.enter_async_context(
-            launch_coding_assistant_mcp(coding_assistant_root, working_directory)
-        )
+        url = await stack.enter_async_context(launch_coding_assistant_mcp(coding_assistant_root, working_directory))
         mcp_server_configs.append(MCPServerConfig(name="coding_assistant_mcp", url=url))
 
-        async with get_mcp_servers_from_config(
-            mcp_server_configs, working_directory
-        ) as mcp_servers:
+        async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
             if args.print_mcp_tools:
                 await print_mcp_tools(mcp_servers)
                 return

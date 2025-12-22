@@ -33,9 +33,7 @@ class AggregatedTool(FastMCPTool):
 
 
 async def start_mcp_server(tools: list[Tool], port: int) -> asyncio.Task:
-    mcp = FastMCP(
-        "Coding Assistant", instructions="Exposes Coding Assistant tools via MCP"
-    )
+    mcp = FastMCP("Coding Assistant", instructions="Exposes Coding Assistant tools via MCP")
 
     for tool in tools:
         # Create an instance of our custom Tool subclass and register it.
@@ -45,8 +43,6 @@ async def start_mcp_server(tools: list[Tool], port: int) -> asyncio.Task:
     logger.info(f"Starting background MCP server on port {port}")
 
     # Start the server as a background task.
-    task = asyncio.create_task(
-        mcp.run_async(transport="streamable-http", port=port, show_banner=False)
-    )
+    task = asyncio.create_task(mcp.run_async(transport="streamable-http", port=port, show_banner=False))
 
     return task

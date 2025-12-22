@@ -15,9 +15,7 @@ from coding_assistant.ui import UI
 logger = logging.getLogger(__name__)
 
 
-async def execute_tool_call(
-    function_name: str, function_args: dict, tools: Sequence[Tool]
-) -> ToolResult:
+async def execute_tool_call(function_name: str, function_args: dict, tools: Sequence[Tool]) -> ToolResult:
     """Execute a tool call by finding the matching tool and calling its execute method."""
     for tool in tools:
         if tool.name() == function_name:
@@ -48,17 +46,11 @@ async def handle_tool_call(
         logger.error(
             f"[{context_name}] [{tool_call.id}] Failed to parse tool '{function_name}' arguments as JSON: {e} | raw: {args_str}"
         )
-        return TextResult(
-            content=f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}"
-        )
+        return TextResult(content=f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}")
 
-    logger.debug(
-        f"[{tool_call.id}] [{context_name}] Calling tool '{function_name}' with arguments {function_args}"
-    )
+    logger.debug(f"[{tool_call.id}] [{context_name}] Calling tool '{function_name}' with arguments {function_args}")
 
-    progress_callbacks.on_tool_start(
-        context_name, tool_call.id, function_name, function_args
-    )
+    progress_callbacks.on_tool_start(context_name, tool_call.id, function_name, function_args)
 
     function_call_result: ToolResult
     try:
@@ -74,9 +66,7 @@ async def handle_tool_call(
             )
             function_call_result = callback_result
         else:
-            function_call_result = await execute_tool_call(
-                function_name, function_args, tools
-            )
+            function_call_result = await execute_tool_call(function_name, function_args, tools)
     except Exception as e:
         function_call_result = TextResult(content=f"Error executing tool: {e}")
 
@@ -155,9 +145,7 @@ async def handle_tool_calls(
                 result_summary = f"Tool produced result of type {type(result).__name__}"
 
         if result_summary is None:
-            raise RuntimeError(
-                f"Tool call {tool_call.id} produced empty result summary."
-            )
+            raise RuntimeError(f"Tool call {tool_call.id} produced empty result summary.")
 
         try:
             function_args = json.loads(tool_call.function.arguments)
@@ -199,8 +187,6 @@ async def do_single_step(
     message = completion.message
 
     if isinstance(message, AssistantMessage) and message.reasoning_content:
-        progress_callbacks.on_assistant_reasoning(
-            context_name, message.reasoning_content
-        )
+        progress_callbacks.on_assistant_reasoning(context_name, message.reasoning_content)
 
     return message, completion.tokens

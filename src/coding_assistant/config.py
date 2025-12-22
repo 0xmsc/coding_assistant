@@ -11,13 +11,9 @@ class MCPServerConfig(BaseModel):
     @model_validator(mode="after")
     def check_command_or_url(self) -> "MCPServerConfig":
         if self.command and self.url:
-            raise ValueError(
-                f"MCP server '{self.name}' cannot have both a command and a url."
-            )
+            raise ValueError(f"MCP server '{self.name}' cannot have both a command and a url.")
         if not self.command and not self.url:
-            raise ValueError(
-                f"MCP server '{self.name}' must have either a command or a url."
-            )
+            raise ValueError(f"MCP server '{self.name}' must have either a command or a url.")
         return self
 
 
