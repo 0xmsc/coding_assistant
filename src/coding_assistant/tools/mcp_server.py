@@ -1,9 +1,11 @@
 import asyncio
+import inspect
 import logging
 from typing import Any, Optional, Type
 
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field, create_model
+from pydantic_core import PydanticUndefined
 
 from coding_assistant.framework.results import TextResult
 from coding_assistant.framework.types import Tool
@@ -73,19 +75,35 @@ async def start_mcp_server(tools: list[Tool], port: int) -> asyncio.Task:
             # Fallback to an empty model
             ArgsModel = create_model("Arguments", __base__=BaseModel)
 
-        # Create the handler function
-        # Using a closure and default argument to capture the specific tool instance
+        # Create the handler function with a dynamic signature
         def make_handler(t: Tool, model: Type[BaseModel]):
-            async def handler(args: BaseModel) -> str:
-                # Convert the Pydantic model back to a dict for the Tool.execute method
-                params = args.model_dump()
-                result = await t.execute(params)
+            async def handler(**kwargs) -> str:
+                result = await t.execute(kwargs)
                 if isinstance(result, TextResult):
                     return result.content
                 return str(result)
 
-            # We need to set the type hint for the first argument so FastMCP can see it
-            handler.__annotations__ = {"args": model, "return": str}
+            # Build the signature from the model's fields
+            params = []
+            for name, field in model.model_fields.items():
+                params.append(
+                    inspect.Parameter(
+                        name,
+                        inspect.Parameter.KEYWORD_ONLY,
+                        annotation=field.annotation,
+                        default=(
+                            field.default
+                            if field.default is not PydanticUndefined
+                            else inspect.Parameter.empty
+                        ),
+                    )
+                )
+
+            handler.__signature__ = inspect.Signature(  # type: ignore[attr-defined]
+                params, return_annotation=str
+            )
+            handler.__annotations__ = {p.name: p.annotation for p in params}
+            handler.__annotations__["return"] = str
             handler.__name__ = t.name()
             handler.__doc__ = t.description()
             return handler
