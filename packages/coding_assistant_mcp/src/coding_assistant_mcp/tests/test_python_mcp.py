@@ -35,17 +35,14 @@ async def test_python_execute_loopback_with_mock_server(manager):
         # Wait for server to be ready
         started = False
         for _ in range(20):
-            try:
-                async with httpx.AsyncClient() as client:
-                    resp = await client.get(mcp_url, timeout=1.0)
-                    if resp.status_code == 200:
-                        started = True
-                        break
-                    if resp.status_code == 406:
-                        started = True
-                        break
-            except Exception:
-                pass
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(mcp_url, timeout=1.0)
+                if resp.status_code == 200:
+                    started = True
+                    break
+                if resp.status_code == 406:
+                    started = True
+                    break
             await asyncio.sleep(0.5)
 
         if not started:
