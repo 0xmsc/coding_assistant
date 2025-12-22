@@ -1,10 +1,9 @@
 import asyncio
-import socket
 import pytest
 import httpx
-import os
 import subprocess
-import time
+from pathlib import Path
+
 
 @pytest.mark.asyncio
 async def test_python_mcp_integration_real_server():
@@ -16,25 +15,27 @@ async def test_python_mcp_integration_real_server():
     url = f"http://{host}:{port}/mcp"
 
     # Start the REAL MCP server using uv run
-    # We need to ensure we are in the right directory or point to the right pyproject
+    # Use Path(__file__) and --project to start the right MCP
+    project_root = Path(__file__).parents[2].absolute()
     cmd = [
-        "uv", "run", "coding-assistant-mcp",
-        "--transport", "streamable-http",
-        "--host", host,
-        "--port", str(port)
+        "uv",
+        "run",
+        "--project",
+        str(project_root),
+        "coding-assistant-mcp",
+        "--transport",
+        "streamable-http",
+        "--host",
+        host,
+        "--port",
+        str(port),
     ]
-    
-    # Run from the package directory or ensure PYTHONPATH is set for the subprocess
-    # Since 'coding-assistant-mcp' is a script in pyproject.toml, uv run will find it if we run in the right cwd.
-    cwd = os.path.abspath("packages/coding_assistant_mcp")
-    
+
     server_process = subprocess.Popen(
         cmd,
-        cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        env={**os.environ, "PYTHONPATH": "src"} 
     )
 
     # Give the server a moment to start and verify it's up
@@ -55,12 +56,13 @@ async def test_python_mcp_integration_real_server():
                 stdout, _ = server_process.communicate()
                 print(f"STDOUT/STDERR: {stdout}")
                 break
-        
+
         if not started:
             pytest.fail("Real MCP server failed to start via 'uv run'")
 
         # Now we use a Client to call the python_execute tool on the real server
         from fastmcp import Client
+
         async with Client(url) as client:
             # We want to test if the python_execute tool on the server can call the shell_execute tool on the same server
             test_script = """
@@ -82,7 +84,7 @@ asyncio.run(run_test())
             # In current main.py: await mcp.import_server(..., prefix="python")
             # So the tool name is "python_execute"
             result = await client.call_tool("python_execute", {"code": test_script})
-            
+
             output = "\\n".join([c.text for c in result.content if hasattr(c, "text")])
             print(f"DEBUG OUTPUT:\n{output}")
             assert "RESULT: Real uv run Success" in output
