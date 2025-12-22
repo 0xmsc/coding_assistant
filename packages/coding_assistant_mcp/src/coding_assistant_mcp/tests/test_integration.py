@@ -23,7 +23,6 @@ async def test_python_mcp_integration():
     url = f"http://{host}:{port}/mcp"
 
     # Start the MCP server in the background
-    # We use a custom task manager and manually configure the python server with the URL
     manager = TaskManager()
     from fastmcp import FastMCP
     from coding_assistant_mcp.shell import create_shell_server
@@ -40,15 +39,11 @@ async def test_python_mcp_integration():
     ))
 
     # Give the server a moment to start
-    # Polling with correct headers for streamable-http (GET expects certain headers or just works if server allows)
-    # Actually, 406 means it didn't like the Accept header or similar. 
-    # But for a health check, we just want to know it's UP.
     for _ in range(20):
         try:
             async with httpx.AsyncClient() as client:
-                # We try a simple GET. Even if it returns 406, it means the server is responding.
                 resp = await client.get(url)
-                if resp.status_code < 500: # 406 is fine for "server is alive"
+                if resp.status_code < 500:
                     break
         except Exception:
             pass
@@ -58,31 +53,33 @@ async def test_python_mcp_integration():
         pytest.fail("Server failed to start")
 
     try:
-        # Now we use the python execute tool to run a script that calls back to the server
         python_execute = await mcp.get_tool("python_execute")
         
-        test_script = """
-import asyncio
+        # Test 1: Using the sync helper directly in a script (Standard use case)
+        test_script_sync = """
+# Test calling a tool synchronously
+res = call_mcp_tool_sync("shell_execute", {"command": "echo 'Sync Loopback Success'"})
+print(f"RESULT: {res.strip()}")
+"""
+        output = await python_execute.fn(code=test_script_sync, timeout=60)
+        print(f"DEBUG OUTPUT SYNC:\n{output}")
+        assert "RESULT: Sync Loopback Success" in output
 
+        # Test 2: Using the async helper in a custom loop
+        test_script_async = """
+import asyncio
 async def run_test():
-    # 1. Test listing tools
     tools = await get_available_mcp_tools()
-    tool_names = [t['name'] for t in tools]
-    print(f"TOOLS: {tool_names}")
-    
-    # 2. Test calling a tool (shell_execute)
-    res = call_mcp_tool_sync("shell_execute", {"command": "echo 'Loopback Success'"})
-    print(f"RESULT: {res.strip()}")
+    print(f"TOOLS: {[t['name'] for t in tools]}")
+    res = await call_mcp_tool("shell_execute", {"command": "echo 'Async Loopback Success'"})
+    print(f"ASYNC_RESULT: {res.strip()}")
 
 asyncio.run(run_test())
 """
-        output = await python_execute.fn(code=test_script, timeout=60)
-        print(f"DEBUG OUTPUT:\n{output}")
-        
-        assert "TOOLS:" in output
+        output = await python_execute.fn(code=test_script_async, timeout=60)
+        print(f"DEBUG OUTPUT ASYNC:\n{output}")
+        assert "ASYNC_RESULT: Async Loopback Success" in output
         assert "shell_execute" in output
-        assert "python_execute" in output
-        assert "RESULT: Loopback Success" in output
 
     finally:
         server_task.cancel()
