@@ -84,12 +84,13 @@ async def launch_coding_assistant_mcp(
     import socket
 
     def get_free_port():
-        with socket.socket(socket.socket.AF_INET, socket.SOCK_STREAM) as s:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(("", 0))
             return s.getsockname()[1]
 
     port = get_free_port()
-    url = f"http://localhost:{port}/sse"
+    # FastMCP using 'streamable-http' serves on /mcp
+    url = f"http://localhost:{port}/mcp"
 
     mcp_project_dir = root_directory / "packages" / "coding_assistant_mcp"
 
@@ -114,18 +115,33 @@ async def launch_coding_assistant_mcp(
         *args[1:],
         env=env,
         cwd=str(working_directory),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
+
+    async def log_stream(stream, prefix):
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+            logger.info(f"[{prefix}] {line.decode().strip()}")
+
+    # Consume stdout and stderr in the background
+    stdout_task = asyncio.create_task(log_stream(process.stdout, "mcp-server:stdout"))
+    stderr_task = asyncio.create_task(log_stream(process.stderr, "mcp-server:stderr"))
 
     try:
         # Give it a moment to start up and bind to the port
         await asyncio.sleep(1)
+        if process.returncode is not None:
+             raise RuntimeError(f"MCP server died immediately with exit code {process.returncode}")
         yield url
     finally:
         logger.info("Terminating coding_assistant_mcp")
         process.terminate()
         await process.wait()
+        stdout_task.cancel()
+        stderr_task.cancel()
 
 
 @asynccontextmanager
