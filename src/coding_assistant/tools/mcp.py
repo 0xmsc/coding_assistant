@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import os
+import subprocess
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,6 +74,58 @@ def get_default_env():
     if "HTTPS_PROXY" in os.environ:
         default_env["HTTPS_PROXY"] = os.environ["HTTPS_PROXY"]
     return default_env
+
+
+@asynccontextmanager
+async def launch_and_get_mcp_server_url(
+    server_config: MCPServerConfig, working_directory: Path
+) -> AsyncGenerator[str, None]:
+    """Launch the MCP server as a network service and return its URL."""
+    import socket
+
+    def get_free_port():
+        with socket.socket(socket.socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("", 0))
+            return s.getsockname()[1]
+
+    port = get_free_port()
+    url = f"http://localhost:{port}/sse"
+
+    format_vars = {
+        "working_directory": str(working_directory),
+        "home_directory": str(Path.home()),
+    }
+    args = [arg.format(**format_vars) for arg in server_config.args]
+    # Inject network parameters
+    args.extend(["--transport", "streamable-http", "--port", str(port)])
+
+    env = {**get_default_env(), **os.environ.copy()}
+    for env_var in server_config.env:
+        if env_var not in os.environ:
+            raise ValueError(
+                f"Required environment variable '{env_var}' for MCP server '{server_config.name}' is not set"
+            )
+        env[env_var] = os.environ[env_var]
+
+    logger.info(f"Launching MCP server '{server_config.name}' on {url}")
+
+    process = await asyncio.create_subprocess_exec(
+        server_config.command,
+        *args,
+        env=env,
+        cwd=str(working_directory),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    try:
+        # Give it a moment to start up and bind to the port
+        await asyncio.sleep(1)
+        yield url
+    finally:
+        logger.info(f"Terminating MCP server '{server_config.name}'")
+        process.terminate()
+        await process.wait()
 
 
 @asynccontextmanager
