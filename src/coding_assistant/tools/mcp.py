@@ -94,14 +94,11 @@ async def launch_coding_assistant_mcp(root_directory: Path, working_directory: P
         str(port),
     ]
 
-    env = {**get_default_env(), **os.environ.copy()}
-
     logger.info(f"Launching coding_assistant_mcp on {url}")
 
     process = await asyncio.create_subprocess_exec(
         args[0],
         *args[1:],
-        env=env,
         cwd=str(working_directory),
     )
 
