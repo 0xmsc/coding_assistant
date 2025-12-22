@@ -35,10 +35,8 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         print(requests.get("https://github.com").status_code)
         ```
 
-        If an MCP server is running, you can access it via the MCP_SERVER_URL environment
-        variable using the fastmcp Client.
+        If the environment variable MCP_SERVER_URL is set, the code will have access to an MCP server. A `fastmcp` dependency will also be present. Use `fastmcp` to access the server and call its tools.
 
-        Example (manual MCP call):
         ```python
         import asyncio
         import os
