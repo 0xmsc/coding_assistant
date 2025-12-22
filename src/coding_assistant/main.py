@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-from contextlib import AsyncExitStack
 from argparse import (
     ArgumentDefaultsHelpFormatter,
     ArgumentParser,
@@ -33,7 +32,6 @@ from coding_assistant.trace import enable_tracing, get_default_trace_dir
 from coding_assistant.tools.mcp import (
     get_mcp_servers_from_config,
     get_mcp_wrapped_tools,
-    launch_coding_assistant_mcp,
     print_mcp_tools,
 )
 from coding_assistant.tools.mcp_server import start_mcp_server
@@ -258,6 +256,23 @@ async def run_chat_session(
         save_orchestrator_history(working_directory, chat_history)
 
 
+def get_default_mcp_server_config(root_directory: Path) -> MCPServerConfig:
+    mcp_project_dir = root_directory / "packages" / "coding_assistant_mcp"
+    if not mcp_project_dir.exists():
+        raise FileNotFoundError(f"{mcp_project_dir} does not exist")
+
+    return MCPServerConfig(
+        name="coding_assistant_mcp",
+        command="uv",
+        args=[
+            "--project",
+            str(mcp_project_dir),
+            "run",
+            "coding-assistant-mcp",
+        ],
+    )
+
+
 def enable_sandboxing(args, working_directory, root):
     if args.sandbox:
         logger.info("Sandboxing is enabled.")
@@ -316,62 +331,59 @@ async def _main(args):
     )
 
     mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
+    mcp_server_configs.append(get_default_mcp_server_config(coding_assistant_root))
 
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
-    async with AsyncExitStack() as stack:
-        url = await stack.enter_async_context(launch_coding_assistant_mcp(coding_assistant_root, working_directory))
-        mcp_server_configs.append(MCPServerConfig(name="coding_assistant_mcp", url=url))
+    async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
+        if args.print_mcp_tools:
+            await print_mcp_tools(mcp_servers)
+            return
 
-        async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
-            if args.print_mcp_tools:
-                await print_mcp_tools(mcp_servers)
-                return
+        tools = await get_mcp_wrapped_tools(mcp_servers)
 
-            tools = await get_mcp_wrapped_tools(mcp_servers)
+        if args.mcp_server:
+            await start_mcp_server(tools, args.mcp_server_port)
 
-            if args.mcp_server:
-                await start_mcp_server(tools, args.mcp_server_port)
+        instructions = get_instructions(
+            root_directory=coding_assistant_root,
+            working_directory=working_directory,
+            user_instructions=args.instructions,
+            mcp_servers=mcp_servers,
+        )
 
-            instructions = get_instructions(
-                root_directory=coding_assistant_root,
+        if args.print_instructions:
+            rich_print(Panel(Markdown(instructions), title="Instructions"))
+            return
+
+        progress_callbacks = DenseProgressCallbacks()
+
+        tool_callbacks = ConfirmationToolCallbacks(
+            tool_confirmation_patterns=args.tool_confirmation_patterns,
+            shell_confirmation_patterns=args.shell_confirmation_patterns,
+        )
+
+        if config.enable_chat_mode:
+            await run_chat_session(
+                config=config,
+                tools=tools,
+                history=resume_history,
+                instructions=instructions,
                 working_directory=working_directory,
-                user_instructions=args.instructions,
-                mcp_servers=mcp_servers,
+                progress_callbacks=progress_callbacks,
+                tool_callbacks=tool_callbacks,
             )
-
-            if args.print_instructions:
-                rich_print(Panel(Markdown(instructions), title="Instructions"))
-                return
-
-            progress_callbacks = DenseProgressCallbacks()
-
-            tool_callbacks = ConfirmationToolCallbacks(
-                tool_confirmation_patterns=args.tool_confirmation_patterns,
-                shell_confirmation_patterns=args.shell_confirmation_patterns,
+        else:
+            await run_root_agent(
+                task=args.task,
+                config=config,
+                tools=tools,
+                history=resume_history,
+                instructions=instructions,
+                working_directory=working_directory,
+                progress_callbacks=progress_callbacks,
+                tool_callbacks=tool_callbacks,
             )
-
-            if config.enable_chat_mode:
-                await run_chat_session(
-                    config=config,
-                    tools=tools,
-                    history=resume_history,
-                    instructions=instructions,
-                    working_directory=working_directory,
-                    progress_callbacks=progress_callbacks,
-                    tool_callbacks=tool_callbacks,
-                )
-            else:
-                await run_root_agent(
-                    task=args.task,
-                    config=config,
-                    tools=tools,
-                    history=resume_history,
-                    instructions=instructions,
-                    working_directory=working_directory,
-                    progress_callbacks=progress_callbacks,
-                    tool_callbacks=tool_callbacks,
-                )
 
 
 def main():
