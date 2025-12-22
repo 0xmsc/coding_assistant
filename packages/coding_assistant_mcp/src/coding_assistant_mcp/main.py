@@ -26,12 +26,13 @@ def create_mcp_server(
         mcp_url = f"http://{url_host}:{port}/mcp"
 
     mcp = FastMCP("Coding Assistant MCP", instructions="")
-    mcp.manager = manager # For testing accessibility
-    
+    mcp.manager = manager  # For testing accessibility
+
     # We use asyncio.run or similar eventually, but here we just need to return the server
     # Note: FastMCP.import_server is sync in recent versions but we should be careful
     # if it's async in this specific environment. In main.py it was awaited.
     return mcp, manager, mcp_url
+
 
 async def setup_server(mcp, manager, mcp_url):
     await mcp.import_server(create_todo_server(), prefix="todo")
@@ -40,6 +41,7 @@ async def setup_server(mcp, manager, mcp_url):
     await mcp.import_server(filesystem_server, prefix="filesystem")
     await mcp.import_server(create_task_server(manager), prefix="tasks")
     return mcp
+
 
 async def _main() -> None:
     parser = argparse.ArgumentParser(description="Coding Assistant MCP Server")
