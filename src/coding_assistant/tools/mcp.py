@@ -78,7 +78,6 @@ def get_default_env():
 @asynccontextmanager
 async def launch_coding_assistant_mcp(root_directory: Path, working_directory: Path) -> AsyncGenerator[str, None]:
     port = 53675
-    # FastMCP using 'streamable-http' serves on /mcp
     url = f"http://localhost:{port}/mcp"
 
     mcp_project_dir = root_directory / "packages" / "coding_assistant_mcp"
@@ -104,20 +103,7 @@ async def launch_coding_assistant_mcp(root_directory: Path, working_directory: P
         *args[1:],
         env=env,
         cwd=str(working_directory),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
     )
-
-    async def log_stream(stream, prefix):
-        while True:
-            line = await stream.readline()
-            if not line:
-                break
-            logger.info(f"[{prefix}] {line.decode().strip()}")
-
-    # Consume stdout and stderr in the background
-    stdout_task = asyncio.create_task(log_stream(process.stdout, "mcp-server:stdout"))
-    stderr_task = asyncio.create_task(log_stream(process.stderr, "mcp-server:stderr"))
 
     try:
         # Give it a moment to start up and bind to the port
@@ -129,8 +115,6 @@ async def launch_coding_assistant_mcp(root_directory: Path, working_directory: P
         logger.info("Terminating coding_assistant_mcp")
         process.terminate()
         await process.wait()
-        stdout_task.cancel()
-        stderr_task.cancel()
 
 
 @asynccontextmanager
