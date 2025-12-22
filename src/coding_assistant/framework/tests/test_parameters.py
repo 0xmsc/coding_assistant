@@ -1,10 +1,7 @@
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
-from coding_assistant.framework.parameters import (
-    parameters_from_model,
-    format_parameters,
-)
+from coding_assistant.framework.parameters import parameters_from_model, format_parameters
 
 
 class ExampleSchema(BaseModel):
@@ -18,11 +15,7 @@ def test_parameters_from_model_basic_and_optional_skip() -> None:
     model = ExampleSchema(name="Alice", active=True)  # age omitted, hobbies default empty
     params = parameters_from_model(model)
     names = [p.name for p in params]
-    assert names == [
-        "name",
-        "hobbies",
-        "active",
-    ]  # age skipped; hobbies present (empty list -> should it appear?)
+    assert names == ["name", "hobbies", "active"]  # age skipped; hobbies present (empty list -> should it appear?)
     # Empty list should render to empty string list? We currently render it as "" (join of empty). Accept that.
     hobbies_param = next(p for p in params if p.name == "hobbies")
     assert hobbies_param.value == ""  # join of []

@@ -2,10 +2,7 @@ import json
 
 import pytest
 
-from coding_assistant.framework.callbacks import (
-    NullProgressCallbacks,
-    NullToolCallbacks,
-)
+from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
@@ -17,10 +14,7 @@ from coding_assistant.framework.tests.helpers import (
 )
 from coding_assistant.framework.types import AgentContext, TextResult, Tool, AgentOutput
 from coding_assistant.llm.types import message_to_dict
-from coding_assistant.framework.builtin_tools import (
-    FinishTaskTool,
-    CompactConversationTool as CompactConversation,
-)
+from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 
 class FakeEchoTool(Tool):
@@ -34,11 +28,7 @@ class FakeEchoTool(Tool):
         return "Echo a provided text"
 
     def parameters(self) -> dict:
-        return {
-            "type": "object",
-            "properties": {"text": {"type": "string"}},
-            "required": ["text"],
-        }
+        return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
 
     async def execute(self, parameters: dict) -> TextResult:
         self.called_with = parameters

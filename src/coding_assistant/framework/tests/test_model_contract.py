@@ -1,11 +1,7 @@
 import pytest
 from unittest.mock import Mock
 
-from coding_assistant.framework.callbacks import (
-    ProgressCallbacks,
-    NullProgressCallbacks,
-    NullToolCallbacks,
-)
+from coding_assistant.framework.callbacks import ProgressCallbacks, NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
 from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
@@ -22,10 +18,7 @@ from coding_assistant.llm.types import (
 )
 from coding_assistant.framework.types import AgentContext, TextResult, Tool
 from coding_assistant.framework.history import append_assistant_message
-from coding_assistant.framework.builtin_tools import (
-    FinishTaskTool,
-    CompactConversationTool as CompactConversation,
-)
+from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 
 class DummyTool(Tool):
@@ -173,10 +166,7 @@ async def test_auto_inject_builtin_tools():
                 tool_calls=[
                     ToolCall(
                         id="c1",
-                        function=FunctionCall(
-                            name="finish_task",
-                            arguments='{"result": "ok", "summary": "done"}',
-                        ),
+                        function=FunctionCall(name="finish_task", arguments='{"result": "ok", "summary": "done"}'),
                     )
                 ],
             ),

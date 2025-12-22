@@ -242,13 +242,7 @@ def test_directory_access_separation(tmp_path):
     with open(existing_file, "w") as f:
         f.write("Read-only content")
 
-    assert _run_in_sandbox(
-        _test_directory_access_separation,
-        readable_dir,
-        writable_dir,
-        forbidden_dir,
-        existing_file,
-    )
+    assert _run_in_sandbox(_test_directory_access_separation, readable_dir, writable_dir, forbidden_dir, existing_file)
 
 
 def test_write_in_non_allowed_directory(tmp_path):
@@ -270,12 +264,7 @@ def test_nested_directory_permissions(tmp_path):
     with open(existing_file, "w") as f:
         f.write("Child content")
 
-    assert _run_in_sandbox(
-        _test_nested_directory_permissions,
-        readable_child,
-        writable_child,
-        existing_file,
-    )
+    assert _run_in_sandbox(_test_nested_directory_permissions, readable_child, writable_child, existing_file)
 
 
 def test_run_binaries_with_sandbox():

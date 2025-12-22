@@ -75,8 +75,7 @@ def test_fix_invalid_history_with_multiple_trailing_assistant_messages():
 def test_fix_invalid_history_with_objects():
     history = [
         AssistantMessage(
-            content="Thinking...",
-            tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))],
+            content="Thinking...", tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))]
         ),
         ToolMessage(content="Result", tool_call_id="123"),
     ]
@@ -84,8 +83,7 @@ def test_fix_invalid_history_with_objects():
 
     history_invalid = [
         AssistantMessage(
-            content="Thinking...",
-            tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))],
+            content="Thinking...", tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))]
         )
     ]
     assert _fix_invalid_history(history_invalid) == []

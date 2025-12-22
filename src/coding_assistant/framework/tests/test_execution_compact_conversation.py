@@ -2,10 +2,7 @@ import json
 
 import pytest
 
-from coding_assistant.framework.callbacks import (
-    NullProgressCallbacks,
-    NullToolCallbacks,
-)
+from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.framework.history import (
     append_assistant_message,
 )
@@ -26,16 +23,8 @@ from coding_assistant.framework.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.framework.types import (
-    ToolResult,
-    FinishTaskResult,
-    CompactConversationResult,
-    TextResult,
-)
-from coding_assistant.framework.builtin_tools import (
-    FinishTaskTool,
-    CompactConversationTool as CompactConversation,
-)
+from coding_assistant.framework.types import ToolResult, FinishTaskResult, CompactConversationResult, TextResult
+from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 
 @pytest.mark.asyncio
