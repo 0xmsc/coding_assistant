@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Annotated
 
 from fastmcp import FastMCP
@@ -38,9 +39,14 @@ def create_python_server(manager: TaskManager) -> FastMCP:
         code = code.strip()
 
         try:
+            extra_env = {}
+            if mcp_url := os.environ.get("MCP_SERVER_URL"):
+                extra_env["MCP_SERVER_URL"] = mcp_url
+
             handle = await start_process(
                 args=["uv", "run", "-q", "-"],
                 stdin_input=code,
+                extra_env=extra_env,
             )
 
             task_name = "python script"

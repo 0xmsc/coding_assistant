@@ -73,16 +73,22 @@ class ProcessHandle:
 async def start_process(
     args: Sequence[str],
     stdin_input: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> ProcessHandle:
     """Start a process and return a handle to it."""
 
     stdin = asyncio.subprocess.PIPE if stdin_input is not None else asyncio.subprocess.DEVNULL
+
+    env = os.environ.copy()
+    if extra_env:
+        env.update(extra_env)
 
     proc = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
         stdin=stdin,
+        env=env,
     )
 
     assert proc.stdout is not None
