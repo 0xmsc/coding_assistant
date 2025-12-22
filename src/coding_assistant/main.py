@@ -36,7 +36,9 @@ logger.setLevel(logging.INFO)
 
 def parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant CLI")
-    parser.add_argument("--task", type=str, help="Task for the orchestrator agent.")
+    parser.add_argument(
+        "--task", type=str, help="Task for the orchestrator agent. If provided, the agent runs in autonomous mode."
+    )
     parser.add_argument(
         "--resume",
         action="store_true",
@@ -56,12 +58,6 @@ def parse_args():
     )
     parser.add_argument("--model", type=str, required=True, help="Model to use for the orchestrator agent.")
     parser.add_argument("--expert-model", type=str, default=None, help="Expert model to use.")
-    parser.add_argument(
-        "--chat-mode",
-        action=BooleanOptionalAction,
-        default=True,
-        help="Enable open-ended chat mode for the root agent (no task, no finish_task).",
-    )
     parser.add_argument(
         "--instructions",
         nargs="*",
@@ -131,7 +127,7 @@ def create_config_from_args(args) -> Config:
         model=args.model,
         expert_model=args.expert_model or args.model,
         compact_conversation_at_tokens=args.compact_conversation_at_tokens,
-        enable_chat_mode=args.chat_mode,
+        enable_chat_mode=args.task is None,
     )
 
 
@@ -323,8 +319,6 @@ async def _main(args):
                 tool_callbacks=tool_callbacks,
             )
         else:
-            if not args.task:
-                raise ValueError("Task must be provided. Use --task to specify the task for the orchestrator agent.")
             await run_root_agent(
                 task=args.task,
                 config=config,
