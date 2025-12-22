@@ -2,7 +2,12 @@ from typing import Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.framework.parameters import Parameter
-from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext, Tool
+from coding_assistant.framework.types import (
+    AgentDescription,
+    AgentState,
+    AgentContext,
+    Tool,
+)
 from coding_assistant.llm.types import (
     AssistantMessage,
     FunctionCall as FunctionCall,
@@ -65,11 +70,15 @@ def make_ui_mock(
         assert ask_seq is not None, "UI.ask was called but no ask_sequence was provided"
         assert len(ask_seq) > 0, "UI.ask was called more times than expected"
         expected_prompt, value = ask_seq.pop(0)
-        assert prompt_text == expected_prompt, f"Unexpected ask prompt. Expected: {expected_prompt}, got: {prompt_text}"
+        assert prompt_text == expected_prompt, (
+            f"Unexpected ask prompt. Expected: {expected_prompt}, got: {prompt_text}"
+        )
         return value
 
     async def _confirm(prompt_text: str) -> bool:
-        assert confirm_seq is not None, "UI.confirm was called but no confirm_sequence was provided"
+        assert confirm_seq is not None, (
+            "UI.confirm was called but no confirm_sequence was provided"
+        )
         assert len(confirm_seq) > 0, "UI.confirm was called more times than expected"
         expected_prompt, value = confirm_seq.pop(0)
         assert prompt_text == expected_prompt, (

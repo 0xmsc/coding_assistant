@@ -1,6 +1,9 @@
 import pytest
 
-from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.callbacks import (
+    NullProgressCallbacks,
+    NullToolCallbacks,
+)
 from coding_assistant.config import Config
 from coding_assistant.tools.tools import AgentTool
 from coding_assistant.ui import NullUI
@@ -69,7 +72,9 @@ async def test_orchestrator_tool_resume():
         tool_callbacks=NullToolCallbacks(),
     )
     result = await second.execute(
-        parameters={"task": "Re-do your previous task, just translate your output to German."}
+        parameters={
+            "task": "Re-do your previous task, just translate your output to German."
+        }
     )
     assert result.content == "Hallo, Welt!"
 

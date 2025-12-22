@@ -29,7 +29,9 @@ def _run_in_sandbox(test_func, *args):
     Returns True if the test passed, False if it failed.
     """
     queue = multiprocessing.Queue()
-    process = multiprocessing.Process(target=_multiprocessing_wrapper, args=(queue, test_func, *args))
+    process = multiprocessing.Process(
+        target=_multiprocessing_wrapper, args=(queue, test_func, *args)
+    )
     process.start()
     process.join()
 
@@ -80,7 +82,9 @@ def _test_readable_directory_denies_write(readable_dir, existing_file):
         pass  # Expected
 
 
-def _test_directory_access_separation(readable_dir, writable_dir, forbidden_dir, existing_file):
+def _test_directory_access_separation(
+    readable_dir, writable_dir, forbidden_dir, existing_file
+):
     """Test function to run in child process."""
     sandbox(readable_paths=[readable_dir], writable_paths=[writable_dir])
 
@@ -225,7 +229,9 @@ def test_readable_directory_allows_read_but_not_write(tmp_path):
     with open(existing_file, "w") as f:
         f.write("Existing content")
 
-    assert _run_in_sandbox(_test_readable_directory_denies_write, readable_dir, existing_file)
+    assert _run_in_sandbox(
+        _test_readable_directory_denies_write, readable_dir, existing_file
+    )
 
 
 def test_directory_access_separation(tmp_path):
@@ -242,7 +248,13 @@ def test_directory_access_separation(tmp_path):
     with open(existing_file, "w") as f:
         f.write("Read-only content")
 
-    assert _run_in_sandbox(_test_directory_access_separation, readable_dir, writable_dir, forbidden_dir, existing_file)
+    assert _run_in_sandbox(
+        _test_directory_access_separation,
+        readable_dir,
+        writable_dir,
+        forbidden_dir,
+        existing_file,
+    )
 
 
 def test_write_in_non_allowed_directory(tmp_path):
@@ -264,7 +276,12 @@ def test_nested_directory_permissions(tmp_path):
     with open(existing_file, "w") as f:
         f.write("Child content")
 
-    assert _run_in_sandbox(_test_nested_directory_permissions, readable_child, writable_child, existing_file)
+    assert _run_in_sandbox(
+        _test_nested_directory_permissions,
+        readable_child,
+        writable_child,
+        existing_file,
+    )
 
 
 def test_run_binaries_with_sandbox():
@@ -287,7 +304,9 @@ def test_multiple_readable_directories(tmp_path):
     with open(file2, "w") as f:
         f.write("Content 2")
 
-    assert _run_in_sandbox(_test_multiple_readable_directories, dir1, dir2, file1, file2)
+    assert _run_in_sandbox(
+        _test_multiple_readable_directories, dir1, dir2, file1, file2
+    )
 
 
 def test_multiple_writable_directories(tmp_path):

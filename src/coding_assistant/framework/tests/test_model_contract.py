@@ -1,7 +1,11 @@
 import pytest
 from unittest.mock import Mock
 
-from coding_assistant.framework.callbacks import ProgressCallbacks, NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.callbacks import (
+    ProgressCallbacks,
+    NullProgressCallbacks,
+    NullToolCallbacks,
+)
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
 from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
@@ -18,7 +22,10 @@ from coding_assistant.llm.types import (
 )
 from coding_assistant.framework.types import AgentContext, TextResult, Tool
 from coding_assistant.framework.history import append_assistant_message
-from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
+from coding_assistant.framework.builtin_tools import (
+    FinishTaskTool,
+    CompactConversationTool as CompactConversation,
+)
 
 
 class DummyTool(Tool):
@@ -38,7 +45,9 @@ class DummyTool(Tool):
 @pytest.mark.asyncio
 async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
     # Make the assistant respond with a tool call so the "no tool calls" warning is not added
-    tool_call = ToolCall(id="call_1", function=FunctionCall(name="dummy", arguments="{}"))
+    tool_call = ToolCall(
+        id="call_1", function=FunctionCall(name="dummy", arguments="{}")
+    )
     fake_message = AssistantMessage(content=("h" * 2000), tool_calls=[tool_call])
     completer = FakeCompleter([fake_message])
 
@@ -110,7 +119,9 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
 @pytest.mark.asyncio
 async def test_reasoning_is_forwarded_and_not_stored():
     # Prepare a message that includes reasoning_content and a tool call to avoid the no-tool-calls warning
-    tool_call = ToolCall(id="call_reason", function=FunctionCall(name="dummy", arguments="{}"))
+    tool_call = ToolCall(
+        id="call_reason", function=FunctionCall(name="dummy", arguments="{}")
+    )
     msg = AssistantMessage(
         content="Hello",
         tool_calls=[tool_call],
@@ -136,7 +147,9 @@ async def test_reasoning_is_forwarded_and_not_stored():
     )
 
     # Assert reasoning was forwarded via callback
-    callbacks.on_assistant_reasoning.assert_called_once_with(desc.name, "These are my private thoughts")
+    callbacks.on_assistant_reasoning.assert_called_once_with(
+        desc.name, "These are my private thoughts"
+    )
 
     # Assert reasoning is not stored in history anywhere
     for entry in state.history:
@@ -166,7 +179,10 @@ async def test_auto_inject_builtin_tools():
                 tool_calls=[
                     ToolCall(
                         id="c1",
-                        function=FunctionCall(name="finish_task", arguments='{"result": "ok", "summary": "done"}'),
+                        function=FunctionCall(
+                            name="finish_task",
+                            arguments='{"result": "ok", "summary": "done"}',
+                        ),
                     )
                 ],
             ),
@@ -188,8 +204,12 @@ async def test_auto_inject_builtin_tools():
 
 @pytest.mark.asyncio
 async def test_requires_non_empty_history():
-    desc, state = make_test_agent(tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[])
-    with pytest.raises(RuntimeError, match="History is required in order to run a step."):
+    desc, state = make_test_agent(
+        tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[]
+    )
+    with pytest.raises(
+        RuntimeError, match="History is required in order to run a step."
+    ):
         await do_single_step(
             state.history,
             desc.model,
