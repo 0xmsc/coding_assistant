@@ -22,16 +22,20 @@ class MCPServer:
     name: str
     client: Client
     instructions: str | None
+    prefix: str | None = None
 
 
 class MCPWrappedTool(Tool):
-    def __init__(self, client: Client, server_name: str, tool):
+    def __init__(self, client: Client, server_name: str, tool, prefix: str | None = None):
         self._client = client
         self._server_name = server_name
         self._tool = tool
+        self._prefix = prefix
 
     def name(self) -> str:
-        return f"mcp_{self._server_name}_{self._tool.name}"
+        if self._prefix:
+            return f"{self._prefix}{self._tool.name}"
+        return self._tool.name
 
     def description(self) -> str:
         return self._tool.description or ""
@@ -54,16 +58,21 @@ class MCPWrappedTool(Tool):
 
 async def get_mcp_wrapped_tools(mcp_servers: list[MCPServer]) -> list[Tool]:
     wrapped: list[Tool] = []
+    names: set[str] = set()
     for server in mcp_servers:
         tools = await server.client.list_tools()
         for tool in tools:
-            wrapped.append(
-                MCPWrappedTool(
-                    client=server.client,
-                    server_name=server.name,
-                    tool=tool,
-                )
+            wrapped_tool = MCPWrappedTool(
+                client=server.client,
+                server_name=server.name,
+                tool=tool,
+                prefix=server.prefix,
             )
+            name = wrapped_tool.name()
+            if name in names:
+                raise ValueError(f"MCP tool name collision detected: {name}")
+            names.add(name)
+            wrapped.append(wrapped_tool)
     return wrapped
 
 
@@ -78,6 +87,7 @@ def get_default_env():
 async def _get_mcp_server(
     name: str,
     config: StdioMCPServer | RemoteMCPServer,
+    prefix: str | None = None,
 ) -> AsyncGenerator[MCPServer, None]:
     client = Client(config.to_transport(), name=name)
     async with client:
@@ -85,6 +95,7 @@ async def _get_mcp_server(
             name=name,
             client=client,
             instructions=None,  # FastMCP Client doesn't expose server instructions directly yet
+            prefix=prefix,
         )
 
 
@@ -132,6 +143,7 @@ async def get_mcp_servers_from_config(
                 _get_mcp_server(
                     name=server_config.name,
                     config=backend,
+                    prefix=server_config.prefix,
                 )
             )
             servers.append(server)
