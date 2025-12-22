@@ -15,7 +15,7 @@ from coding_assistant_mcp.tasks import create_task_server, TaskManager
 async def _main() -> None:
     parser = argparse.ArgumentParser(description="Coding Assistant MCP Server")
     parser.add_argument(
-        "--transport", default="streamable-http", choices=["stdio", "streamable-http", "sse"], help="Transport to use"
+        "--transport", default="streamable-http", choices=["stdio", "streamable-http"], help="Transport to use"
     )
     parser.add_argument("--host", default="0.0.0.0", help="Host for HTTP transport")
     parser.add_argument("--port", type=int, default=8000, help="Port for HTTP transport")
@@ -26,7 +26,7 @@ async def _main() -> None:
     manager = TaskManager()
 
     mcp_url = None
-    if args.transport in ["streamable-http", "sse"]:
+    if args.transport == "streamable-http":
         url_host = args.host if args.host != "0.0.0.0" else "localhost"
         mcp_url = f"http://{url_host}:{args.port}/mcp"
 
