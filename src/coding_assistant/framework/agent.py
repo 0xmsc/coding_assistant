@@ -90,9 +90,7 @@ def handle_tool_result_agent(
     if isinstance(result, FinishTaskResult):
         return _handle_finish_task_result(result, state)
     if isinstance(result, CompactConversationResult):
-        return _handle_compact_conversation_result(
-            result, desc, state, progress_callbacks
-        )
+        return _handle_compact_conversation_result(result, desc, state, progress_callbacks)
     if isinstance(result, TextResult):
         return result.content
     return f"Tool produced result of type {type(result).__name__}"
@@ -143,9 +141,7 @@ async def run_agent_loop(
                 tool_callbacks,
                 ui=ui,
                 context_name=desc.name,
-                handle_tool_result=lambda result: handle_tool_result_agent(
-                    result, desc, state, progress_callbacks
-                ),
+                handle_tool_result=lambda result: handle_tool_result_agent(result, desc, state, progress_callbacks),
             )
         else:
             append_user_message(

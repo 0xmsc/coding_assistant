@@ -36,9 +36,7 @@ def test_fix_invalid_history_with_trailing_assistant_message_with_tool_calls():
         {
             "role": "assistant",
             "content": "Thinking...",
-            "tool_calls": [
-                {"id": "123", "function": {"name": "test", "arguments": "{}"}}
-            ],
+            "tool_calls": [{"id": "123", "function": {"name": "test", "arguments": "{}"}}],
         },
     ]
     assert _fix_invalid_history(history) == [{"role": "user", "content": "Hello"}]
@@ -50,9 +48,7 @@ def test_fix_invalid_history_with_no_trailing_assistant_message():
         {
             "role": "assistant",
             "content": "Thinking...",
-            "tool_calls": [
-                {"id": "123", "function": {"name": "test", "arguments": "{}"}}
-            ],
+            "tool_calls": [{"id": "123", "function": {"name": "test", "arguments": "{}"}}],
         },
         {"role": "tool", "content": "Result", "tool_call_id": "123"},
     ]
@@ -65,16 +61,12 @@ def test_fix_invalid_history_with_multiple_trailing_assistant_messages():
         {
             "role": "assistant",
             "content": "Thinking...",
-            "tool_calls": [
-                {"id": "123", "function": {"name": "test", "arguments": "{}"}}
-            ],
+            "tool_calls": [{"id": "123", "function": {"name": "test", "arguments": "{}"}}],
         },
         {
             "role": "assistant",
             "content": "Thinking...",
-            "tool_calls": [
-                {"id": "456", "function": {"name": "test", "arguments": "{}"}}
-            ],
+            "tool_calls": [{"id": "456", "function": {"name": "test", "arguments": "{}"}}],
         },
     ]
     assert _fix_invalid_history(history) == [{"role": "user", "content": "Hello"}]
@@ -84,9 +76,7 @@ def test_fix_invalid_history_with_objects():
     history = [
         AssistantMessage(
             content="Thinking...",
-            tool_calls=[
-                ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))
-            ],
+            tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))],
         ),
         ToolMessage(content="Result", tool_call_id="123"),
     ]
@@ -95,9 +85,7 @@ def test_fix_invalid_history_with_objects():
     history_invalid = [
         AssistantMessage(
             content="Thinking...",
-            tool_calls=[
-                ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))
-            ],
+            tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))],
         )
     ]
     assert _fix_invalid_history(history_invalid) == []

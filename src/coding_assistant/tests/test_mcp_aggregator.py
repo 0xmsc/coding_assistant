@@ -47,9 +47,7 @@ async def test_mcp_aggregator_integration():
                     mcp_tools = await client.list_tools()
                     if any(t.name == "mock_tool" for t in mcp_tools):
                         # Tool call test
-                        result = await client.call_tool(
-                            "mock_tool", {"val": "integration test"}
-                        )
+                        result = await client.call_tool("mock_tool", {"val": "integration test"})
                         assert len(result.content) > 0
                         assert hasattr(result.content[0], "text")
                         assert result.content[0].text == "Mock result: integration test"
@@ -60,9 +58,7 @@ async def test_mcp_aggregator_integration():
             await asyncio.sleep(0.1)
 
         if not mcp_client:
-            pytest.fail(
-                "Background MCP server failed to respond correctly within timeout."
-            )
+            pytest.fail("Background MCP server failed to respond correctly within timeout.")
 
     finally:
         # Clean up the background task

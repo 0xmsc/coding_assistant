@@ -84,9 +84,7 @@ async def test_compact_conversation_resets_history():
         handle_tool_result=handle_tool_result,
     )
 
-    assert any(
-        force for content, force in callbacks.user_messages if summary_text in content
-    )
+    assert any(force for content, force in callbacks.user_messages if summary_text in content)
 
     assert len(state.history) >= 3
     assert state.history[0] == UserMessage(content="old start")

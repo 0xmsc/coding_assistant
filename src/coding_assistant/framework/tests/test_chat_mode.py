@@ -73,9 +73,7 @@ async def test_chat_step_executes_tools_without_prompt():
     completer = FakeCompleter([FakeMessage(tool_calls=[echo_call])])
 
     echo_tool = FakeEchoTool()
-    desc, state = make_test_agent(
-        tools=[echo_tool], history=[UserMessage(content="start")]
-    )
+    desc, state = make_test_agent(tools=[echo_tool], history=[UserMessage(content="start")])
 
     ui = make_ui_mock(ask_sequence=[("> ", "Hi")])
 
@@ -138,9 +136,7 @@ async def test_chat_exit_command_stops_loop_without_appending_command():
         ui=ui,
     )
 
-    assert not any(
-        m.role == "user" and (m.content or "").strip() == "/exit" for m in state.history
-    )
+    assert not any(m.role == "user" and (m.content or "").strip() == "/exit" for m in state.history)
     assert state.history[-1].role == "user"
 
 
@@ -152,9 +148,7 @@ async def test_chat_loop_prompts_after_compact_command():
     # 3. Tool executes
     # 4. LOOP SHOULD PROMPT USER
 
-    compact_call = ToolCall(
-        "1", FunctionCall("compact_conversation", json.dumps({"summary": "Compacted"}))
-    )
+    compact_call = ToolCall("1", FunctionCall("compact_conversation", json.dumps({"summary": "Compacted"})))
     completer = FakeCompleter(
         [
             FakeMessage(tool_calls=[compact_call]),
@@ -163,9 +157,7 @@ async def test_chat_loop_prompts_after_compact_command():
     )
 
     compact_tool = CompactConversation()
-    desc, state = make_test_agent(
-        tools=[compact_tool], history=[UserMessage(content="start")]
-    )
+    desc, state = make_test_agent(tools=[compact_tool], history=[UserMessage(content="start")])
 
     ui = make_ui_mock(ask_sequence=[("> ", "/compact"), ("> ", "/exit")])
 
@@ -190,16 +182,12 @@ async def test_chat_loop_prompts_after_compact_command():
 async def test_chat_compact_conversation_not_forced_in_callbacks():
     compact_call = ToolCall(
         "1",
-        FunctionCall(
-            "compact_conversation", json.dumps({"summary": "Compacted summary"})
-        ),
+        FunctionCall("compact_conversation", json.dumps({"summary": "Compacted summary"})),
     )
     completer = FakeCompleter([FakeMessage(tool_calls=[compact_call])])
 
     compact_tool = CompactConversation()
-    desc, state = make_test_agent(
-        tools=[compact_tool], history=[UserMessage(content="start")]
-    )
+    desc, state = make_test_agent(tools=[compact_tool], history=[UserMessage(content="start")])
 
     class SpyCallbacks(NullProgressCallbacks):
         def __init__(self):
@@ -230,9 +218,5 @@ async def test_chat_compact_conversation_not_forced_in_callbacks():
             ui=ui,
         )
 
-    summary_user_msg = next(
-        (c, f) for c, f in callbacks.user_messages if "Compacted summary" in c
-    )
-    assert summary_user_msg[1] is False, (
-        "Summary message should not be forced in chat mode"
-    )
+    summary_user_msg = next((c, f) for c, f in callbacks.user_messages if "Compacted summary" in c)
+    assert summary_user_msg[1] is False, "Summary message should not be forced in chat mode"

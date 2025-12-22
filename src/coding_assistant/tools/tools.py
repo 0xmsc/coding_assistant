@@ -40,9 +40,7 @@ class LaunchAgentSchema(BaseModel):
 
 class AskClientSchema(BaseModel):
     question: str = Field(description="The question to ask the client.")
-    default_answer: str | None = Field(
-        default=None, description="A sensible default answer to the question."
-    )
+    default_answer: str | None = Field(default=None, description="A sensible default answer to the question.")
 
 
 class AskClientTool(Tool):
@@ -61,9 +59,7 @@ class AskClientTool(Tool):
 
     async def execute(self, parameters: dict) -> TextResult:
         validated = AskClientSchema.model_validate(parameters)
-        answer = await self._ui.ask(
-            validated.question, default=validated.default_answer
-        )
+        answer = await self._ui.ask(validated.question, default=validated.default_answer)
         return TextResult(content=str(answer))
 
 

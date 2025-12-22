@@ -61,18 +61,13 @@ class PromptToolkitUI(UI):
     async def prompt(self, words: list[str] | None = None) -> str:
         Console().bell()
         completer = SlashCompleter(words) if words else None
-        return await self._session.prompt_async(
-            "> ", completer=completer, complete_while_typing=True
-        )
+        return await self._session.prompt_async("> ", completer=completer, complete_while_typing=True)
 
 
 class DefaultAnswerUI(UI):
     async def ask(self, prompt_text: str, default: str | None = None) -> str:
         logger.info(f"Skipping user input for prompt: {prompt_text}")
-        return (
-            default
-            or "UI is not available. Assume the user returned the most sensible answer."
-        )
+        return default or "UI is not available. Assume the user returned the most sensible answer."
 
     async def confirm(self, prompt_text: str) -> bool:
         logger.info(f"Skipping user confirmation for prompt: {prompt_text}")
