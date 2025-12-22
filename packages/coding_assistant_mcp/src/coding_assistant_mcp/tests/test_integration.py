@@ -6,17 +6,12 @@ import os
 import subprocess
 import time
 
-def get_free_port():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        return s.getsockname()[1]
-
 @pytest.mark.asyncio
 async def test_python_mcp_integration_real_server():
     """
     Test that an agent can interact with a REAL MCP server instance started via 'uv run'.
     """
-    port = get_free_port()
+    port = 53675
     host = "localhost"
     url = f"http://{host}:{port}/mcp"
 
