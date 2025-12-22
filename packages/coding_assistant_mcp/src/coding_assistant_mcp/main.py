@@ -26,10 +26,15 @@ async def _main() -> None:
 
     manager = TaskManager()
 
+    mcp_url = None
+    if args.transport in ["streamable-http", "sse"]:
+        host = args.host if args.host != "0.0.0.0" else "localhost"
+        mcp_url = f"http://{host}:{args.port}/mcp"
+
     mcp = FastMCP("Coding Assistant MCP", instructions="")
     await mcp.import_server(create_todo_server(), prefix="todo")
     await mcp.import_server(create_shell_server(manager), prefix="shell")
-    await mcp.import_server(create_python_server(manager), prefix="python")
+    await mcp.import_server(create_python_server(manager, mcp_url), prefix="python")
     await mcp.import_server(filesystem_server, prefix="filesystem")
     await mcp.import_server(create_task_server(manager), prefix="tasks")
 
