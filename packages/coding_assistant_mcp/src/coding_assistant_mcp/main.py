@@ -17,7 +17,7 @@ def create_mcp_server(
     transport: str = "streamable-http",
     host: str = "0.0.0.0",
     port: int = 8000,
-) -> FastMCP:
+) -> tuple[FastMCP, TaskManager, str | None]:
     manager = TaskManager()
 
     mcp_url = None
@@ -26,7 +26,7 @@ def create_mcp_server(
         mcp_url = f"http://{url_host}:{port}/mcp"
 
     mcp = FastMCP("Coding Assistant MCP", instructions="")
-    mcp.manager = manager  # For testing accessibility
+    setattr(mcp, "manager", manager)  # For testing accessibility
 
     # We use asyncio.run or similar eventually, but here we just need to return the server
     # Note: FastMCP.import_server is sync in recent versions but we should be careful
@@ -34,7 +34,7 @@ def create_mcp_server(
     return mcp, manager, mcp_url
 
 
-async def setup_server(mcp, manager, mcp_url):
+async def setup_server(mcp: FastMCP, manager: TaskManager, mcp_url: str | None) -> FastMCP:
     await mcp.import_server(create_todo_server(), prefix="todo")
     await mcp.import_server(create_shell_server(manager), prefix="shell")
     await mcp.import_server(create_python_server(manager, mcp_url), prefix="python")
