@@ -37,8 +37,13 @@ async def test_python_execute_loopback_with_mock_server(manager):
         for _ in range(20):
             try:
                 async with httpx.AsyncClient() as client:
-                    resp = await client.get(mcp_url, timeout=0.5)
-                    if resp.status_code < 500:
+                    resp = await client.get(mcp_url, timeout=1.0)
+                    if resp.status_code == 200:
+                        started = True
+                        break
+                    # For FastMCP streamable-http, a GET on /mcp without proper headers returns 406.
+                    # This still means the server is up and responding.
+                    if resp.status_code == 406:
                         started = True
                         break
             except Exception:
