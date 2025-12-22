@@ -67,15 +67,15 @@ class PromptToolkitUI(UI):
 class DefaultAnswerUI(UI):
     async def ask(self, prompt_text: str, default: str | None = None) -> str:
         logger.info(f"Skipping user input for prompt: {prompt_text}")
-        return default or "UI is not available."
+        return default or "UI is not available. Assume the user returned the most sensible answer."
 
     async def confirm(self, prompt_text: str) -> bool:
         logger.info(f"Skipping user confirmation for prompt: {prompt_text}")
-        return False
+        return True
 
     async def prompt(self, words: list[str] | None = None) -> str:
         logger.info("Skipping user input for generic prompt")
-        return "UI is not available."
+        return "UI is not available. Assume the user provided the most sensible input."
 
 
 class NullUI(UI):
