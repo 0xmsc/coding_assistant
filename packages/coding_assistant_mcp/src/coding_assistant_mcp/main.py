@@ -17,31 +17,23 @@ async def _main() -> None:
     parser.add_argument(
         "--transport", default="streamable-http", choices=["stdio", "streamable-http"], help="Transport to use"
     )
-    parser.add_argument("--host", default="0.0.0.0", help="Host for HTTP transport")
-    parser.add_argument("--port", type=int, default=8000, help="Port for HTTP transport")
+    parser.add_argument("--mcp-url", help="The URL of the MCP server (passed to Python scripts)")
     args = parser.parse_args()
 
     # Note: configure_logging removed as per request
 
     manager = TaskManager()
 
-    mcp_url = None
-    if args.transport == "streamable-http":
-        url_host = args.host if args.host != "0.0.0.0" else "localhost"
-        mcp_url = f"http://{url_host}:{args.port}/mcp"
-
     mcp = FastMCP("Coding Assistant MCP", instructions="")
 
     await mcp.import_server(create_todo_server(), prefix="todo")
     await mcp.import_server(create_shell_server(manager), prefix="shell")
-    await mcp.import_server(create_python_server(manager, mcp_url), prefix="python")
+    await mcp.import_server(create_python_server(manager, args.mcp_url), prefix="python")
     await mcp.import_server(filesystem_server, prefix="filesystem")
     await mcp.import_server(create_task_server(manager), prefix="tasks")
 
     await mcp.run_async(
         transport=args.transport,
-        host=args.host,
-        port=args.port,
         show_banner=False,
     )
 
