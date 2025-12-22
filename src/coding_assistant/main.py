@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import socket
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 
@@ -221,11 +222,18 @@ async def run_chat_session(
         save_orchestrator_history(working_directory, chat_history)
 
 
+def get_free_port():
+    with socket.socket(socket.socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
 def get_default_mcp_server_config(root_directory: Path) -> MCPServerConfig:
     mcp_project_dir = root_directory / "packages" / "coding_assistant_mcp"
     if not mcp_project_dir.exists():
         raise FileNotFoundError(f"{mcp_project_dir} does not exist")
 
+    port = get_free_port()
     return MCPServerConfig(
         name="coding_assistant_mcp",
         command="uv",
@@ -234,7 +242,12 @@ def get_default_mcp_server_config(root_directory: Path) -> MCPServerConfig:
             str(mcp_project_dir),
             "run",
             "coding-assistant-mcp",
+            "--transport",
+            "streamable-http",
+            "--port",
+            str(port),
         ],
+        url=f"http://localhost:{port}/sse",
     )
 
 
