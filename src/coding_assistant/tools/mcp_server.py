@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 from typing import Any
 
 from fastmcp import FastMCP
@@ -10,6 +11,13 @@ from coding_assistant.framework.results import TextResult
 from coding_assistant.framework.types import Tool
 
 logger = logging.getLogger(__name__)
+
+
+def get_free_port() -> int:
+    """Get a free port on localhost."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
 
 
 class AggregatedTool(FastMCPTool):
