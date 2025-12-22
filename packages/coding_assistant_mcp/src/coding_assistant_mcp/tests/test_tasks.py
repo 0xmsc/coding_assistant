@@ -76,9 +76,9 @@ async def test_auto_cleanup(manager):
     task_server = create_task_server(manager)
     tasks_list_tasks_tool = await task_server.get_tool("list_tasks")
 
-    await shell_execute_tool.fn(command="sleep 0.2)
-    await shell_execute_tool.fn(command="sleep 0.2; echo 'task 2'")
-    await shell_execute_tool.fn(command="sleep 0.2; echo 'task 3'")  # This will remove task 1
+    await shell_execute_tool.fn(command="sleep 0.2")
+    await shell_execute_tool.fn(command="sleep 0.2")
+    await shell_execute_tool.fn(command="sleep 0.2")  # This will remove task 1
 
     tasks = await tasks_list_tasks_tool.fn()
     print(tasks)
@@ -96,10 +96,10 @@ async def test_auto_cleanup_keeps_running(manager):
     task_server = create_task_server(manager)
     tasks_list_tasks_tool = await task_server.get_tool("list_tasks")
 
-    await shell_execute_tool.fn(command="sleep 2; echo 'task 1'", background=True)
-    await shell_execute_tool.fn(command="sleep 0.2; echo 'task 2'")
-    await shell_execute_tool.fn(command="sleep 0.2; echo 'task 3'")
-    await shell_execute_tool.fn(command="sleep 0.2; echo 'task 4'")
+    await shell_execute_tool.fn(command="sleep 2", background=True)
+    await shell_execute_tool.fn(command="sleep 0.2")
+    await shell_execute_tool.fn(command="sleep 0.2")
+    await shell_execute_tool.fn(command="sleep 0.2")
 
     tasks = await tasks_list_tasks_tool.fn()
     print(tasks)
