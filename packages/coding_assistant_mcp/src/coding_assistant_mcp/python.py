@@ -33,8 +33,7 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         print(requests.get("https://github.com").status_code)
         ```
 
-        If the environment variable MCP_SERVER_URL is set, the code will have access to an MCP server. A `fastmcp` dependency will also be present.
-        Use `fastmcp` to access the server and call its tools.
+        If the environment variable MCP_SERVER_URL is set, the code will have access to an MCP server. A `fastmcp` dependency will also be present. Use `fastmcp` to access the server and call its tools.
 
         ```python
         import asyncio
