@@ -57,8 +57,8 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         env = {}
         if mcp_url:
             env["MCP_SERVER_URL"] = mcp_url
-            # We use --with fastmcp and --with nest-asyncio to ensure Client works out of the box
-            args.extend(["--with", "fastmcp", "--with", "nest-asyncio"])
+            # We use --with fastmcp to ensure Client works out of the box
+            args.extend(["--with", "fastmcp"])
 
         args.append("-")
 
