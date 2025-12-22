@@ -5,6 +5,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncGenerator
+from urllib.parse import urlparse
 
 from fastmcp import Client
 from fastmcp.mcp_config import RemoteMCPServer, StdioMCPServer
@@ -75,6 +76,30 @@ def get_default_env():
     return default_env
 
 
+async def wait_for_port(url: str, process: asyncio.subprocess.Process, timeout: float = 10.0) -> None:
+    """Wait for the server at the given URL to start accepting connections."""
+    parsed = urlparse(url)
+    host = parsed.hostname or "localhost"
+    port = parsed.port
+    if port is None:
+        raise ValueError(f"URL {url} must have a port.")
+
+    start_time = asyncio.get_event_loop().time()
+    while asyncio.get_event_loop().time() - start_time < timeout:
+        if process.returncode is not None:
+            raise RuntimeError(f"MCP server died with exit code {process.returncode}")
+
+        try:
+            reader, writer = await asyncio.open_connection(host, port)
+            writer.close()
+            await writer.wait_closed()
+            return
+        except (OSError, ConnectionRefusedError):
+            await asyncio.sleep(0.05)
+
+    raise TimeoutError(f"MCP server at {url} did not start within {timeout} seconds.")
+
+
 @asynccontextmanager
 async def launch_coding_assistant_mcp(root_directory: Path, working_directory: Path) -> AsyncGenerator[str, None]:
     port = 53675
@@ -103,10 +128,7 @@ async def launch_coding_assistant_mcp(root_directory: Path, working_directory: P
     )
 
     try:
-        # Give it a moment to start up and bind to the port
-        await asyncio.sleep(1)
-        if process.returncode is not None:
-            raise RuntimeError(f"MCP server died immediately with exit code {process.returncode}")
+        await wait_for_port(url, process)
         yield url
     finally:
         logger.info("Terminating coding_assistant_mcp")
