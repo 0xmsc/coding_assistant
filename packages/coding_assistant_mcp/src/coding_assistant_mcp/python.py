@@ -9,56 +9,6 @@ from coding_assistant_mcp.proc import start_process
 from coding_assistant_mcp.utils import truncate_output
 from coding_assistant_mcp.tasks import TaskManager
 
-BRIDGE_TEMPLATE = """
-import asyncio
-import json
-from fastmcp import Client
-
-MCP_URL = {mcp_url_repr}
-
-async def get_available_mcp_tools():
-    \"\"\"Return a JSON-compatible list of available MCP tools.\"\"\"
-    if not MCP_URL:
-        return []
-    async with Client(MCP_URL) as client:
-        tools = await client.list_tools()
-        return [
-            {{
-                "name": t.name,
-                "description": t.description,
-                "inputSchema": t.inputSchema,
-            }}
-            for t in tools
-        ]
-
-async def call_mcp_tool(name: str, arguments: dict | None = None):
-    \"\"\"Call an MCP tool asynchronously.\"\"\"
-    if not MCP_URL:
-        raise RuntimeError("MCP URL not configured")
-    async with Client(MCP_URL) as client:
-        result = await client.call_tool(name, arguments or {{}})
-        
-        # If the result is a standard CallToolResult with text content, return the text
-        if hasattr(result, "content") and result.content:
-            text_parts = [c.text for c in result.content if hasattr(c, "text")]
-            if text_parts:
-                return "\\n".join(text_parts)
-        
-        return result
-
-def call_mcp_tool_sync(name: str, arguments: dict | None = None):
-    \"\"\"Call an MCP tool synchronously.\"\"\"
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(call_mcp_tool(name, arguments))
-    
-    if loop.is_running():
-        import nest_asyncio
-        nest_asyncio.apply()
-    return asyncio.run(call_mcp_tool(name, arguments))
-
-"""
 
 def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> FastMCP:
     python_server = FastMCP("Python")
@@ -84,19 +34,42 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         import requests
         print(requests.get("https://github.com").status_code)
         ```
+
+        If an MCP server is running, you can access it via the MCP_SERVER_URL environment
+        variable using the fastmcp Client.
+
+        Example (manual MCP call):
+        ```python
+        import asyncio
+        import os
+        from fastmcp import Client
+
+        async def check_tools():
+            mcp_url = os.environ.get("MCP_SERVER_URL")
+            async with Client(mcp_url) as client:
+                tools = await client.list_tools()
+                print(f"Available tools: {[t.name for t in tools]}")
+
+        asyncio.run(check_tools())
+        ```
         """
 
         code = code.strip()
-        
-        # Inject the bridge
-        bridge_code = BRIDGE_TEMPLATE.format(mcp_url_repr=repr(mcp_url))
-        code = bridge_code + "\n" + code
+
+        args = ["uv", "run", "-q"]
+        env = {}
+        if mcp_url:
+            env["MCP_SERVER_URL"] = mcp_url
+            # We use --with fastmcp and --with nest-asyncio to ensure Client works out of the box
+            args.extend(["--with", "fastmcp", "--with", "nest-asyncio"])
+
+        args.append("-")
 
         try:
-            # We use --with fastmcp and --with nest-asyncio to ensure the bridge works
             handle = await start_process(
-                args=["uv", "run", "-q", "--with", "fastmcp", "--with", "nest-asyncio", "-"],
+                args=args,
                 stdin_input=code,
+                env=env,
             )
 
             task_name = "python script"
