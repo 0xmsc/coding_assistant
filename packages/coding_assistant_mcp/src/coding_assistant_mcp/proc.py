@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Sequence
+import os
 
 
 class OutputBuffer:
@@ -78,8 +79,6 @@ async def start_process(
     """Start a process and return a handle to it."""
 
     stdin = asyncio.subprocess.PIPE if stdin_input is not None else asyncio.subprocess.DEVNULL
-
-    import os
 
     merged_env = os.environ.copy()
     if env:

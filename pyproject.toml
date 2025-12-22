@@ -3,10 +3,9 @@ name = "coding-assistant"
 version = "0.1.0"
 description = "Coding Assistant is an advanced Python-based project designed to streamline and automate various coding tasks."
 readme = "README.md"
-authors = []
-license = "MIT"
 requires-python = ">=3.12"
-
+license = "MIT"
+authors = []
 dependencies = [
     "litellm",
     "rich",
@@ -17,6 +16,7 @@ dependencies = [
     "prompt-toolkit",
     "fastmcp",
     "dacite>=1.9.2",
+    "httpx>=0.28.1",
 ]
 
 [dependency-groups]
@@ -34,15 +34,12 @@ dev = [
 litellm = { git = "https://github.com/0xmsc/litellm", rev = "ms/openrouter_reasoning_details" }
 
 [tool.ruff]
-line-length = 120
-
 [tool.ruff.lint]
 select = ["E", "F"]
 ignore = ["E501"]
 
 [project.scripts]
 coding-assistant = "coding_assistant.main:main"
-sandbox = "coding_assistant.sandbox:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -52,4 +49,3 @@ build-backend = "hatchling.build"
 markers = [
     "slow: marks tests as slow",
 ]
-addopts = "--ignore=packages/coding_assistant_mcp/src/coding_assistant_mcp/tests"

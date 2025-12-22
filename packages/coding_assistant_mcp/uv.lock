@@ -182,6 +182,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
     { name = "fastmcp" },
+    { name = "httpx" },
 ]
 
 [package.dev-dependencies]
@@ -198,6 +199,7 @@ dev = [
 requires-dist = [
     { name = "aiofiles" },
     { name = "fastmcp" },
+    { name = "httpx", specifier = ">=0.28.1" },
 ]
 
 [package.metadata.requires-dev]

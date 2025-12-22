@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastmcp",
     "aiofiles",
+    "httpx>=0.28.1",
 ]
 
 [dependency-groups]
