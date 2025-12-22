@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import subprocess
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,9 +76,7 @@ def get_default_env():
 
 
 @asynccontextmanager
-async def launch_coding_assistant_mcp(
-    root_directory: Path, working_directory: Path
-) -> AsyncGenerator[str, None]:
+async def launch_coding_assistant_mcp(root_directory: Path, working_directory: Path) -> AsyncGenerator[str, None]:
     """Launch the coding_assistant_mcp server as a network service and return its URL."""
     import socket
 
@@ -134,7 +131,7 @@ async def launch_coding_assistant_mcp(
         # Give it a moment to start up and bind to the port
         await asyncio.sleep(1)
         if process.returncode is not None:
-             raise RuntimeError(f"MCP server died immediately with exit code {process.returncode}")
+            raise RuntimeError(f"MCP server died immediately with exit code {process.returncode}")
         yield url
     finally:
         logger.info("Terminating coding_assistant_mcp")
