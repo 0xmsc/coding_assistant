@@ -8,10 +8,12 @@ from coding_assistant_mcp.main import _main
 from coding_assistant_mcp.python import create_python_server
 from coding_assistant_mcp.tasks import TaskManager
 
+
 def get_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", 0))
         return s.getsockname()[1]
+
 
 @pytest.mark.asyncio
 async def test_python_mcp_integration():
@@ -27,17 +29,19 @@ async def test_python_mcp_integration():
     manager = TaskManager()
     from fastmcp import FastMCP
     from coding_assistant_mcp.shell import create_shell_server
-    
+
     mcp = FastMCP("Integration Test Server")
     await mcp.import_server(create_shell_server(manager), prefix="shell")
     await mcp.import_server(create_python_server(manager, url), prefix="python")
 
-    server_task = asyncio.create_task(mcp.run_async(
-        transport="streamable-http",
-        host=host,
-        port=port,
-        show_banner=False,
-    ))
+    server_task = asyncio.create_task(
+        mcp.run_async(
+            transport="streamable-http",
+            host=host,
+            port=port,
+            show_banner=False,
+        )
+    )
 
     # Give the server a moment to start
     for _ in range(20):
@@ -55,7 +59,7 @@ async def test_python_mcp_integration():
 
     try:
         python_execute = await mcp.get_tool("python_execute")
-        
+
         # Manually call a tool via fastmcp.Client
         test_script = """
 import asyncio
