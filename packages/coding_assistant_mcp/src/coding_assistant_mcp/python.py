@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Annotated
 
 from fastmcp import FastMCP

@@ -1,10 +1,7 @@
 import asyncio
 import socket
 import pytest
-import pytest_asyncio
 import httpx
-import os
-from coding_assistant_mcp.main import _main
 from coding_assistant_mcp.python import create_python_server
 from coding_assistant_mcp.tasks import TaskManager
 

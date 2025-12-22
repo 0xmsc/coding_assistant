@@ -80,6 +80,7 @@ async def start_process(
     stdin = asyncio.subprocess.PIPE if stdin_input is not None else asyncio.subprocess.DEVNULL
 
     import os
+
     merged_env = os.environ.copy()
     if env:
         merged_env.update(env)

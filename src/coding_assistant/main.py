@@ -227,8 +227,6 @@ async def run_chat_session(
         save_orchestrator_history(working_directory, chat_history)
 
 
-
-
 def enable_sandboxing(args, working_directory, root):
     if args.sandbox:
         logger.info("Sandboxing is enabled.")
@@ -291,9 +289,7 @@ async def _main(args):
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
     async with AsyncExitStack() as stack:
-        url = await stack.enter_async_context(
-            launch_coding_assistant_mcp(coding_assistant_root, working_directory)
-        )
+        url = await stack.enter_async_context(launch_coding_assistant_mcp(coding_assistant_root, working_directory))
         mcp_server_configs.append(MCPServerConfig(name="coding_assistant_mcp", url=url))
 
         async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
