@@ -13,6 +13,34 @@ from coding_assistant_mcp.todo import create_todo_server
 from coding_assistant_mcp.tasks import create_task_server, TaskManager
 
 
+def create_mcp_server(
+    transport: str = "streamable-http",
+    host: str = "0.0.0.0",
+    port: int = 8000,
+) -> FastMCP:
+    manager = TaskManager()
+
+    mcp_url = None
+    if transport in ["streamable-http", "sse"]:
+        url_host = host if host != "0.0.0.0" else "localhost"
+        mcp_url = f"http://{url_host}:{port}/mcp"
+
+    mcp = FastMCP("Coding Assistant MCP", instructions="")
+    mcp.manager = manager # For testing accessibility
+    
+    # We use asyncio.run or similar eventually, but here we just need to return the server
+    # Note: FastMCP.import_server is sync in recent versions but we should be careful
+    # if it's async in this specific environment. In main.py it was awaited.
+    return mcp, manager, mcp_url
+
+async def setup_server(mcp, manager, mcp_url):
+    await mcp.import_server(create_todo_server(), prefix="todo")
+    await mcp.import_server(create_shell_server(manager), prefix="shell")
+    await mcp.import_server(create_python_server(manager, mcp_url), prefix="python")
+    await mcp.import_server(filesystem_server, prefix="filesystem")
+    await mcp.import_server(create_task_server(manager), prefix="tasks")
+    return mcp
+
 async def _main() -> None:
     parser = argparse.ArgumentParser(description="Coding Assistant MCP Server")
     parser.add_argument(
@@ -24,19 +52,8 @@ async def _main() -> None:
 
     configure_logging(level="CRITICAL")
 
-    manager = TaskManager()
-
-    mcp_url = None
-    if args.transport in ["streamable-http", "sse"]:
-        host = args.host if args.host != "0.0.0.0" else "localhost"
-        mcp_url = f"http://{host}:{args.port}/mcp"
-
-    mcp = FastMCP("Coding Assistant MCP", instructions="")
-    await mcp.import_server(create_todo_server(), prefix="todo")
-    await mcp.import_server(create_shell_server(manager), prefix="shell")
-    await mcp.import_server(create_python_server(manager, mcp_url), prefix="python")
-    await mcp.import_server(filesystem_server, prefix="filesystem")
-    await mcp.import_server(create_task_server(manager), prefix="tasks")
+    mcp, manager, mcp_url = create_mcp_server(args.transport, args.host, args.port)
+    await setup_server(mcp, manager, mcp_url)
 
     await mcp.run_async(
         transport=args.transport,
