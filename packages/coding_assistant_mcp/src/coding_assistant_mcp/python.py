@@ -33,7 +33,8 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         print(requests.get("https://github.com").status_code)
         ```
 
-        If the environment variable MCP_SERVER_URL is set, the code will have access to an MCP server. A `fastmcp` dependency will also be present. Use `fastmcp` to access the server and call its tools.
+        If the environment variable MCP_SERVER_URL is set, the code will have access to an MCP server. A `fastmcp` dependency will also be present.
+        Use `fastmcp` to access the server and call its tools.
 
         ```python
         import asyncio
@@ -52,6 +53,30 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
                 print(result.content[0].text)
 
         asyncio.run(use_mcp())
+        ```
+
+        Use Python to combine results from different tools and build complex pipelines without leaving the Python context. This is preferred for complex logic, data processing, or batch operations involving multiple tool calls.
+
+        ```python
+        import asyncio
+        import os
+        from fastmcp import Client
+
+        async def pipeline():
+            mcp_url = os.environ.get("MCP_SERVER_URL")
+            async with Client(mcp_url) as client:
+                # Example: Pipeline combining shell and filesystem tools
+                # 1. List files using shell
+                ls_result = await client.call_tool("shell_execute", {"command": "ls *.md"})
+                files = ls_result.content[0].text.strip().split("\n")
+
+                # 2. Process content in Python
+                for file in files:
+                    content = await client.call_tool("filesystem_read_file", {"path": file})
+                    # ... perform complex logic on content ...
+                    print(f"Processed {file}")
+
+        asyncio.run(pipeline())
         ```
         """
 
