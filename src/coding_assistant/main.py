@@ -154,13 +154,13 @@ def parse_args():
     parser.add_argument(
         "--mcp-server",
         action=BooleanOptionalAction,
-        default=False,
+        default=True,
         help="Start an MCP server in the background exposing all available tools.",
     )
     parser.add_argument(
         "--mcp-server-port",
         type=int,
-        default=8001,
+        default=53675,
         help="Port for the background MCP server (using streamable-http transport).",
     )
 
