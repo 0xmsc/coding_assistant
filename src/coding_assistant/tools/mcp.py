@@ -77,15 +77,7 @@ def get_default_env():
 
 @asynccontextmanager
 async def launch_coding_assistant_mcp(root_directory: Path, working_directory: Path) -> AsyncGenerator[str, None]:
-    """Launch the coding_assistant_mcp server as a network service and return its URL."""
-    import socket
-
-    def get_free_port():
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("", 0))
-            return s.getsockname()[1]
-
-    port = get_free_port()
+    port = 53675
     # FastMCP using 'streamable-http' serves on /mcp
     url = f"http://localhost:{port}/mcp"
 
