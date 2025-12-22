@@ -22,3 +22,4 @@ class Config(BaseModel):
     expert_model: str
     compact_conversation_at_tokens: int
     enable_chat_mode: bool = True
+    enable_ask_user: bool = True

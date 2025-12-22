@@ -24,7 +24,10 @@ def create_test_config() -> Config:
 async def test_orchestrator_tool():
     config = create_test_config()
     tool = AgentTool(
-        config=config,
+        model=config.model,
+        expert_model=config.expert_model,
+        compact_conversation_at_tokens=config.compact_conversation_at_tokens,
+        enable_ask_user=config.enable_ask_user,
         tools=[],
         history=None,
         progress_callbacks=NullProgressCallbacks(),
@@ -40,7 +43,10 @@ async def test_orchestrator_tool():
 async def test_orchestrator_tool_resume():
     config = create_test_config()
     first = AgentTool(
-        config=config,
+        model=config.model,
+        expert_model=config.expert_model,
+        compact_conversation_at_tokens=config.compact_conversation_at_tokens,
+        enable_ask_user=config.enable_ask_user,
         tools=[],
         history=None,
         progress_callbacks=NullProgressCallbacks(),
@@ -52,7 +58,10 @@ async def test_orchestrator_tool_resume():
     assert result.content == "Hello, World!"
 
     second = AgentTool(
-        config=config,
+        model=config.model,
+        expert_model=config.expert_model,
+        compact_conversation_at_tokens=config.compact_conversation_at_tokens,
+        enable_ask_user=config.enable_ask_user,
         tools=[],
         history=first.history,
         progress_callbacks=NullProgressCallbacks(),
@@ -70,7 +79,10 @@ async def test_orchestrator_tool_resume():
 async def test_orchestrator_tool_instructions():
     config = create_test_config()
     tool = AgentTool(
-        config=config,
+        model=config.model,
+        expert_model=config.expert_model,
+        compact_conversation_at_tokens=config.compact_conversation_at_tokens,
+        enable_ask_user=config.enable_ask_user,
         tools=[],
         history=None,
         progress_callbacks=NullProgressCallbacks(),

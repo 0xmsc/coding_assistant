@@ -27,7 +27,10 @@ async def test_model_vision_recognizes_car_image():
 
     config = create_test_config()
     tool = AgentTool(
-        config=config,
+        model=config.model,
+        expert_model=config.expert_model,
+        compact_conversation_at_tokens=config.compact_conversation_at_tokens,
+        enable_ask_user=config.enable_ask_user,
         tools=[],
         history=history,
         progress_callbacks=NullProgressCallbacks(),

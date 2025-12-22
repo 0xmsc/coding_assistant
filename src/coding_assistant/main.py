@@ -26,8 +26,8 @@ from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
-from coding_assistant.tools.tools import AgentTool
-from coding_assistant.ui import PromptToolkitUI
+from coding_assistant.tools.tools import AgentTool, AskClientTool
+from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
 logger = logging.getLogger("coding_assistant")
@@ -118,6 +118,12 @@ def parse_args():
         default=False,
         help="Enable tracing of model requests and responses to a session folder in $XDG_STATE_HOME/coding-assistant/traces.",
     )
+    parser.add_argument(
+        "--ask-user",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Enable/disable asking the user for input in agent mode.",
+    )
 
     return parser.parse_args()
 
@@ -128,6 +134,7 @@ def create_config_from_args(args) -> Config:
         expert_model=args.expert_model or args.model,
         compact_conversation_at_tokens=args.compact_conversation_at_tokens,
         enable_chat_mode=args.task is None,
+        enable_ask_user=args.ask_user,
     )
 
 
@@ -141,12 +148,22 @@ async def run_root_agent(
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
 ):
+    agent_ui = PromptToolkitUI() if config.enable_ask_user else DefaultAnswerUI()
+
+    agent_mode_tools = [
+        AskClientTool(ui=agent_ui),
+        *tools,
+    ]
+
     tool = AgentTool(
-        config=config,
-        tools=tools,
+        model=config.model,
+        expert_model=config.expert_model,
+        compact_conversation_at_tokens=config.compact_conversation_at_tokens,
+        enable_ask_user=config.enable_ask_user,
+        tools=agent_mode_tools,
         history=history,
         progress_callbacks=progress_callbacks,
-        ui=PromptToolkitUI(),
+        ui=agent_ui,
         tool_callbacks=tool_callbacks,
         name="launch_orchestrator_agent",
     )
