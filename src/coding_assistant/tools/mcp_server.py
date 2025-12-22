@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from fastmcp import FastMCP
-from fastmcp.tools.tool import Tool as FastMCPTool
+from fastmcp.tools.tool import Tool as FastMCPTool, ToolResult as FastMCPToolResult
 from pydantic import PrivateAttr
 
 from coding_assistant.framework.results import TextResult
@@ -25,11 +25,11 @@ class AggregatedTool(FastMCPTool):
 
         self._wrapped_tool = tool
 
-    async def run(self, arguments: dict[str, Any]) -> str:
+    async def run(self, arguments: dict[str, Any]) -> FastMCPToolResult:
         result = await self._wrapped_tool.execute(arguments)
         if not isinstance(result, TextResult):
             raise ValueError("Expected TextResult from wrapped tool execution.")
-        return result.content
+        return FastMCPToolResult(content=result.content)
 
 
 async def start_mcp_server(tools: list[Tool], port: int) -> asyncio.Task:
