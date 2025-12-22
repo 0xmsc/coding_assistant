@@ -36,6 +36,7 @@ from coding_assistant.tools.mcp import (
     launch_coding_assistant_mcp,
     print_mcp_tools,
 )
+from coding_assistant.tools.mcp_server import start_mcp_server
 from coding_assistant.tools.tools import AgentTool, AskClientTool
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 
@@ -149,6 +150,18 @@ def parse_args():
         action=BooleanOptionalAction,
         default=True,
         help="Enable/disable asking the user for input in agent mode.",
+    )
+    parser.add_argument(
+        "--mcp-server",
+        action=BooleanOptionalAction,
+        default=False,
+        help="Start an MCP server in the background exposing all available tools.",
+    )
+    parser.add_argument(
+        "--mcp-server-port",
+        type=int,
+        default=8001,
+        help="Port for the background MCP server (using streamable-http transport).",
     )
 
     return parser.parse_args()
@@ -329,6 +342,9 @@ async def _main(args):
                 return
 
             tools = await get_mcp_wrapped_tools(mcp_servers)
+
+            if args.mcp_server:
+                await start_mcp_server(tools, args.mcp_server_port)
 
             instructions = get_instructions(
                 root_directory=coding_assistant_root,
