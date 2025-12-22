@@ -44,8 +44,13 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         async def check_tools():
             mcp_url = os.environ.get("MCP_SERVER_URL")
             async with Client(mcp_url) as client:
+                # Example: List available tools
                 tools = await client.list_tools()
                 print(f"Available tools: {[t.name for t in tools]}")
+
+                # Example: Call tool
+                result = await client.call_tool("shell_execute", {"command": "ls"})
+                print(result.content[0].text)
 
         asyncio.run(check_tools())
         ```
