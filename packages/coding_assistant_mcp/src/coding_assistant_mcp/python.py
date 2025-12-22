@@ -54,7 +54,7 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         truncate_at: Annotated[int, "Maximum number of characters to return in stdout/stderr combined."] = 50_000,
         background: Annotated[bool, "If True, run the code in the background and return a task ID."] = False,
     ) -> str:
-        \"\"\"
+        """
         Execute the given Python code using uv run - and return combined stdout/stderr.
 
         The execution supports PEP 723 inline script metadata, allowing you to specify dependencies
@@ -68,7 +68,7 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         import requests
         print(requests.get("https://github.com").status_code)
         ```
-        \"\"\"
+        """
 
         code = code.strip()
         
