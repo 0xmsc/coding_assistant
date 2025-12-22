@@ -1,9 +1,6 @@
 from pydantic import BaseModel, Field
 from coding_assistant.framework.types import Tool
-from coding_assistant.framework.results import (
-    FinishTaskResult,
-    CompactConversationResult,
-)
+from coding_assistant.framework.results import FinishTaskResult, CompactConversationResult
 
 
 class FinishTaskSchema(BaseModel):

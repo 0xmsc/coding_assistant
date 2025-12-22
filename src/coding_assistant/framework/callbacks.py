@@ -27,14 +27,7 @@ class ProgressCallbacks(ABC):
         pass
 
     @abstractmethod
-    def on_tool_message(
-        self,
-        context_name: str,
-        tool_call_id: str,
-        tool_name: str,
-        arguments: dict,
-        result: str,
-    ):
+    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         """Handle messages with role: tool."""
         pass
 
@@ -69,14 +62,7 @@ class NullProgressCallbacks(ProgressCallbacks):
     def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         pass
 
-    def on_tool_message(
-        self,
-        context_name: str,
-        tool_call_id: str,
-        tool_name: str,
-        arguments: dict,
-        result: str,
-    ):
+    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         pass
 
     def on_content_chunk(self, chunk: str):

@@ -1,11 +1,7 @@
 import asyncio
 import logging
 import os
-from argparse import (
-    ArgumentDefaultsHelpFormatter,
-    ArgumentParser,
-    BooleanOptionalAction,
-)
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 
 import debugpy  # type: ignore[import-untyped]
@@ -29,11 +25,7 @@ from coding_assistant.history import (
 from coding_assistant.instructions import get_instructions
 from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
-from coding_assistant.tools.mcp import (
-    get_mcp_servers_from_config,
-    get_mcp_wrapped_tools,
-    print_mcp_tools,
-)
+from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
 from coding_assistant.tools.mcp_server import start_mcp_server
 from coding_assistant.tools.tools import AgentTool, AskClientTool
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
@@ -44,14 +36,9 @@ logger.setLevel(logging.INFO)
 
 
 def parse_args():
-    parser = ArgumentParser(
-        formatter_class=ArgumentDefaultsHelpFormatter,
-        description="Coding Assistant CLI",
-    )
+    parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant CLI")
     parser.add_argument(
-        "--task",
-        type=str,
-        help="Task for the orchestrator agent. If provided, the agent runs in autonomous mode.",
+        "--task", type=str, help="Task for the orchestrator agent. If provided, the agent runs in autonomous mode."
     )
     parser.add_argument(
         "--resume",
@@ -64,22 +51,13 @@ def parse_args():
         default=None,
         help="Resume from a specific orchestrator history file.",
     )
-    parser.add_argument(
-        "--print-mcp-tools",
-        action="store_true",
-        help="Print all available tools from MCP servers.",
-    )
+    parser.add_argument("--print-mcp-tools", action="store_true", help="Print all available tools from MCP servers.")
     parser.add_argument(
         "--print-instructions",
         action="store_true",
         help="Print the instructions that will be given to the orchestrator agent and exit.",
     )
-    parser.add_argument(
-        "--model",
-        type=str,
-        required=True,
-        help="Model to use for the orchestrator agent.",
-    )
+    parser.add_argument("--model", type=str, required=True, help="Model to use for the orchestrator agent.")
     parser.add_argument("--expert-model", type=str, default=None, help="Expert model to use.")
     parser.add_argument(
         "--instructions",
@@ -109,7 +87,7 @@ def parse_args():
         "--mcp-servers",
         nargs="*",
         default=[],
-        help='MCP server configurations as JSON strings. Format: \'{"name": "server_name", "command": "command", "args": ["arg1", "arg2"], "env": ["ENV_VAR1", "ENV_VAR2"]}\' or \'{"name": "server_name", "url": "http://localhost:8000/mcp"}\'',
+        help='MCP server configurations as JSON strings. Format: \'{"name": "server_name", "command": "command", "args": ["arg1", "arg2"], "env": ["ENV_VAR1", "ENV_VAR2"]}\' or \'{"name": "server_name", "url": "http://localhost:8000/sse"}\'',
     )
     parser.add_argument(
         "--compact-conversation-at-tokens",

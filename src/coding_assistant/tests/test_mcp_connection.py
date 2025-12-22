@@ -30,23 +30,23 @@ async def test_get_mcp_servers_from_config_stdio():
 
 
 @pytest.mark.asyncio
-async def test_get_mcp_servers_from_config_http():
-    config = [MCPServerConfig(name="test-http", url="http://localhost:8000/mcp")]
+async def test_get_mcp_servers_from_config_sse():
+    config = [MCPServerConfig(name="test-sse", url="http://localhost:8000/sse")]
     working_dir = Path("/tmp")
 
     with patch("coding_assistant.tools.mcp._get_mcp_server") as mock_get_server:
         mock_server = MagicMock()
-        mock_server.name = "test-http"
+        mock_server.name = "test-sse"
         mock_get_server.return_value.__aenter__.return_value = mock_server
 
         async with get_mcp_servers_from_config(config, working_dir) as servers:
             assert len(servers) == 1
-            assert servers[0].name == "test-http"
+            assert servers[0].name == "test-sse"
             mock_get_server.assert_called_once()
             args, kwargs = mock_get_server.call_args
             config_arg = kwargs["config"]
             assert isinstance(config_arg, RemoteMCPServer)
-            assert config_arg.url == "http://localhost:8000/mcp"
+            assert config_arg.url == "http://localhost:8000/sse"
 
 
 @pytest.mark.asyncio

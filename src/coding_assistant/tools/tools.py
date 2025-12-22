@@ -2,11 +2,7 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.framework.callbacks import (
-    ProgressCallbacks,
-    ToolCallbacks,
-    NullProgressCallbacks,
-)
+from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks, NullProgressCallbacks
 from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.parameters import Parameter, parameters_from_model
 from coding_assistant.framework.types import (

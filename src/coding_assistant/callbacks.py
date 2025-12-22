@@ -108,10 +108,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         "mcp_coding_assistant_mcp_shell_execute": {"command": "bash"},
         "mcp_coding_assistant_mcp_python_execute": {"code": "python"},
         "mcp_coding_assistant_mcp_filesystem_write_file": {"content": ""},
-        "mcp_coding_assistant_mcp_filesystem_edit_file": {
-            "old_text": "",
-            "new_text": "",
-        },
+        "mcp_coding_assistant_mcp_filesystem_edit_file": {"old_text": "", "new_text": ""},
         "mcp_coding_assistant_mcp_todo_add": {"descriptions": "json"},
         "compact_conversation": {"summary": "markdown"},
     }
@@ -202,14 +199,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
             return True
         return False
 
-    def on_tool_message(
-        self,
-        context_name: str,
-        tool_call_id: str,
-        tool_name: str,
-        arguments: dict,
-        result: str,
-    ):
+    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         if not isinstance(self._state, ToolState) or self._state.tool_call_id != tool_call_id:
             print()
             self._print_tool_start("◀", tool_name, arguments)
@@ -226,10 +216,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._handle_chunk(chunk, ContentState)
 
     def _handle_chunk(
-        self,
-        chunk: str,
-        state_class: type[Union[ContentState, ReasoningState]],
-        style: str | None = None,
+        self, chunk: str, state_class: type[Union[ContentState, ReasoningState]], style: str | None = None
     ):
         if not isinstance(self._state, state_class):
             self._finalize_state()

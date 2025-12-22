@@ -23,14 +23,7 @@ class _CB(ProgressCallbacks):
     def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
         pass
 
-    def on_tool_message(
-        self,
-        context_name: str,
-        tool_call_id: str,
-        tool_name: str,
-        arguments: dict,
-        result: str,
-    ):
+    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
         pass
 
     def on_content_chunk(self, chunk: str):
@@ -100,10 +93,7 @@ async def test_complete_streaming_happy_path(monkeypatch):
 
     def fake_stream_chunk_builder(chunks):
         return _make_mock_response(
-            {
-                "choices": [{"message": {"content": "Hello world"}}],
-                "usage": {"total_tokens": 42},
-            }
+            {"choices": [{"message": {"content": "Hello world"}}], "usage": {"total_tokens": 42}}
         )
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
@@ -129,12 +119,7 @@ async def test_complete_streaming_with_reasoning(monkeypatch):
         return agen()
 
     def fake_stream_chunk_builder(chunks):
-        return _make_mock_response(
-            {
-                "choices": [{"message": {"content": "Hello"}}],
-                "usage": {"total_tokens": 42},
-            }
-        )
+        return _make_mock_response({"choices": [{"message": {"content": "Hello"}}], "usage": {"total_tokens": 42}})
 
     monkeypatch.setattr(llm_model.litellm, "acompletion", fake_acompletion)
     monkeypatch.setattr(llm_model.litellm, "stream_chunk_builder", fake_stream_chunk_builder)
@@ -217,13 +202,7 @@ async def test_complete_forwards_image_url_openai_format(monkeypatch):
         UserMessage(
             content=[
                 {"type": "text", "text": "What's in this image?"},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": "https://example.com/cat.png",
-                        "detail": "high",
-                    },
-                },
+                {"type": "image_url", "image_url": {"url": "https://example.com/cat.png", "detail": "high"}},
             ]
         )
     ]
@@ -265,14 +244,8 @@ async def test_complete_forwards_base64_image_openai_format(monkeypatch):
     messages = [
         UserMessage(
             content=[
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{base64_payload}"},
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{base64_payload}"},
-                },
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_payload}"}},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_payload}"}},
             ]
         )
     ]

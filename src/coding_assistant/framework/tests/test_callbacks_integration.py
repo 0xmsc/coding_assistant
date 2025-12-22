@@ -12,10 +12,7 @@ from coding_assistant.framework.tests.helpers import (
 )
 from coding_assistant.llm.types import AssistantMessage, ToolCall, FunctionCall
 from coding_assistant.framework.types import TextResult, Tool, AgentContext
-from coding_assistant.framework.builtin_tools import (
-    FinishTaskTool,
-    CompactConversationTool as CompactConversation,
-)
+from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 
 class EchoTool(Tool):
@@ -26,11 +23,7 @@ class EchoTool(Tool):
         return "echo"
 
     def parameters(self) -> dict:
-        return {
-            "type": "object",
-            "properties": {"text": {"type": "string"}},
-            "required": ["text"],
-        }
+        return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
 
     async def execute(self, parameters: dict) -> TextResult:
         return TextResult(content=parameters["text"])

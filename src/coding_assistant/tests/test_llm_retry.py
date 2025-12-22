@@ -51,14 +51,7 @@ def _make_mock_response(content):
     class _Response(dict):
         def model_dump(self):
             return {
-                "choices": [
-                    {
-                        "message": {
-                            "role": "assistant",
-                            "content": self["choices"][0]["message"].content,
-                        }
-                    }
-                ],
+                "choices": [{"message": {"role": "assistant", "content": self["choices"][0]["message"].content}}],
                 "usage": self["usage"],
             }
 

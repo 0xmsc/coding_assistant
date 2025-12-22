@@ -1,12 +1,6 @@
 from unittest.mock import patch, call
 from coding_assistant import callbacks
-from coding_assistant.callbacks import (
-    DenseProgressCallbacks,
-    ReasoningState,
-    ContentState,
-    ToolState,
-    IdleState,
-)
+from coding_assistant.callbacks import DenseProgressCallbacks, ReasoningState, ContentState, ToolState, IdleState
 
 
 def test_dense_callbacks_lifecycle():
@@ -38,18 +32,9 @@ def test_dense_callbacks_tool_formatting():
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
-        cb.on_tool_start(
-            "TestAgent",
-            "call_1",
-            "mcp_coding_assistant_mcp_shell_execute",
-            {"command": "ls"},
-        )
+        cb.on_tool_start("TestAgent", "call_1", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"})
         cb.on_tool_message(
-            "TestAgent",
-            "call_1",
-            "mcp_coding_assistant_mcp_shell_execute",
-            {"command": "ls"},
-            "file1\nfile2",
+            "TestAgent", "call_1", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"}, "file1\nfile2"
         )
 
     assert mock_print.called
@@ -122,24 +107,14 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     captured = capsys.readouterr()
     assert 'unknown_tool(arg="line1\\nline2")' in captured.out
 
-    cb.on_tool_start(
-        "TestAgent",
-        "call_2",
-        "mcp_coding_assistant_mcp_shell_execute",
-        {"command": "ls\npwd"},
-    )
+    cb.on_tool_start("TestAgent", "call_2", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls\npwd"})
     captured = capsys.readouterr()
     assert "▶ mcp_coding_assistant_mcp_shell_execute(command)" in captured.out
     assert "  command:" in captured.out
     assert "  ls" in captured.out
     assert "  pwd" in captured.out
 
-    cb.on_tool_start(
-        "TestAgent",
-        "call_3",
-        "mcp_coding_assistant_mcp_shell_execute",
-        {"command": "ls"},
-    )
+    cb.on_tool_start("TestAgent", "call_3", "mcp_coding_assistant_mcp_shell_execute", {"command": "ls"})
     captured = capsys.readouterr()
     assert 'mcp_coding_assistant_mcp_shell_execute(command="ls")' in captured.out
 
@@ -253,13 +228,7 @@ def test_dense_callbacks_tool_result_stripping():
 
         mock_print.reset_mock()
 
-        cb.on_tool_message(
-            "TestAgent",
-            "call_2",
-            "mcp_coding_assistant_mcp_todo_list_todos",
-            {},
-            "- [ ] Task 1\n",
-        )
+        cb.on_tool_message("TestAgent", "call_2", "mcp_coding_assistant_mcp_todo_list_todos", {}, "- [ ] Task 1\n")
 
         found_todo = False
         for call_args in mock_print.call_args_list:
@@ -311,11 +280,7 @@ def test_dense_callbacks_tool_lang_extension(capsys):
             "TestAgent",
             "call_3",
             "mcp_coding_assistant_mcp_filesystem_edit_file",
-            {
-                "path": "index.js",
-                "old_text": "const x = 1\n",
-                "new_text": "const x = 2\n",
-            },
+            {"path": "index.js", "old_text": "const x = 1\n", "new_text": "const x = 2\n"},
         )
         found_js = False
         for call_args in mock_markdown.call_args_list:
