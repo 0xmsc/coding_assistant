@@ -44,11 +44,15 @@ class BadRequestError(Exception):
     pass
 
 
+def _get_base_url_and_api_key() -> tuple[str, str]:
+    if os.environ.get("OPENROUTER_API_KEY"):
+        return ("https://openrouter.ai/api/v1", os.environ["OPENROUTER_API_KEY"])
+    else:
+        return ("https://api.openai.com/v1", os.environ["OPENAI_API_KEY"])
+
+
 def _map_internal_message_to_provider(msg: BaseMessage) -> dict:
     d = message_to_dict(msg)
-    # Providers expect tool_calls to be null or a list, but we might have empty lists
-    if "tool_calls" in d and not d["tool_calls"]:
-        d.pop("tool_calls")
     return d
 
 
@@ -110,27 +114,8 @@ async def _try_completion(
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
 ):
-    # Detect if we should use OpenRouter
-    base_url = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-
-    is_openrouter = False
-    if api_key:
-        is_openrouter = True
-    else:
-        # Fallback to standard OpenAI if no OpenRouter key
-        api_key = os.environ.get("OPENAI_API_KEY")
-        base_url = "https://api.openai.com/v1"
-
+    base_url, api_key = _get_base_url_and_api_key()
     headers = {"Authorization": f"Bearer {api_key}"}
-    if is_openrouter:
-        headers.update(
-            {
-                "HTTP-Referer": "https://github.com/0xmsc/coding-assistant",
-                "X-Title": "Coding Assistant",
-            }
-        )
-
     provider_messages = [_map_internal_message_to_provider(m) for m in messages]
     provider_tools = await get_tools(tools)
 
@@ -141,7 +126,6 @@ async def _try_completion(
         "stream": True,
     }
 
-    # reasoning_effort is only supported by O1/O3 models in OpenAI
     if reasoning_effort:
         payload["reasoning_effort"] = reasoning_effort
 
@@ -151,6 +135,9 @@ async def _try_completion(
             async for event in source.aiter_sse():
                 if not event.data:
                     continue
+
+                print(event)
+
                 try:
                     chunk = json.loads(event.data)
                     chunks.append(chunk)
@@ -159,24 +146,19 @@ async def _try_completion(
 
                 delta = chunk.get("choices", [{}])[0].get("delta", {})
 
-                # Call callbacks during streaming
-                reasoning = delta.get("reasoning_content") or delta.get("reasoning")
-                if reasoning:
+                if reasoning := delta.get("reasoning_content"):
                     callbacks.on_reasoning_chunk(reasoning)
 
-                if delta.get("content"):
-                    callbacks.on_content_chunk(delta["content"])
+                if content := delta.get("content"):
+                    callbacks.on_content_chunk(content)
 
             callbacks.on_chunks_end()
 
             # Merge all chunks into final message
             assistant_msg = _merge_chunks(chunks)
 
-    # Token count: dummy for now
-    tokens = 0
-
     trace_json(
-        "openai_completion.json",
+        "completion.json5",
         {
             "model": model,
             "messages": provider_messages,
@@ -187,7 +169,7 @@ async def _try_completion(
 
     return Completion(
         message=assistant_msg,
-        tokens=tokens,
+        tokens=0, # TODO
     )
 
 
