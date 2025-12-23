@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from coding_assistant.framework.callbacks import NullProgressCallbacks
 from coding_assistant.llm import openai as openai_model
 from coding_assistant.llm.types import UserMessage
-from coding_assistant.llm.openai import _merge_chunks
+from coding_assistant.llm.custom import _merge_chunks
 
 
 class _CB(NullProgressCallbacks):
@@ -142,7 +142,7 @@ async def test_openai_complete_streaming_happy_path(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_openai_complete_tool_calls(monkeypatch):
+async def test_custom_complete_tool_calls(monkeypatch):
     fake_events = [
         json.dumps(
             {
@@ -211,7 +211,7 @@ async def test_openai_complete_with_reasoning(monkeypatch):
 
     cb = _CB()
     msgs = [UserMessage(content="Reason")]
-    ret = await openai_model.complete(msgs, "o1-preview", [], cb)
+    ret = await custom_model.complete(msgs, "o1-preview", [], cb)
     assert ret.message.content == "Answer"
     assert ret.message.reasoning_content == "Thinking step by step"
     assert cb.reasoning == ["Thinking", " step by step"]

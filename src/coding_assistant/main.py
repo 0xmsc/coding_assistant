@@ -139,7 +139,7 @@ def parse_args():
     )
     parser.add_argument(
         "--completer",
-        choices=["litellm", "openai"],
+        choices=["litellm", "custom"],
         default="litellm",
         help="The LLM completion engine to use.",
     )
