@@ -38,7 +38,7 @@ async def test_litellm_openrouter_integration():
 @pytest.mark.asyncio
 @pytest.mark.skipif(not os.environ.get("OPENROUTER_API_KEY"), reason="OPENROUTER_API_KEY not set")
 async def test_openai_openrouter_integration():
-    # Note: our openai adapter strips the 'openrouter/' prefix or uses the model as is.
+    # Note: our custom adapter strips the 'openrouter/' prefix or uses the model as is.
     # OpenRouter models usually don't need the prefix if the base_url is set.
     model = "x-ai/grok-code-fast-1"
     messages = [UserMessage(content="Respond with the word 'WORLD' and nothing else.")]
