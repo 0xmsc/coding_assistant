@@ -156,7 +156,7 @@ async def _try_completion(
     reasoning_str = "".join(full_reasoning) if full_reasoning else None
 
     assistant_msg = AssistantMessage(
-        role="assistant", content=content_str, reasoning_content=reasoning_str, tool_calls=final_tool_calls
+        role="assistant", content=content_str, reasoning_content=reasoning_str, tool_calls=final_tool_calls if final_tool_calls else None
     )
 
     # Token count: dummy for now
