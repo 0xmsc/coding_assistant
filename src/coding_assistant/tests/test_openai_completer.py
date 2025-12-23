@@ -87,7 +87,7 @@ async def test_openai_complete_tool_calls(monkeypatch):
     cb = _CB()
 
     msgs = [UserMessage(content="What's the weather in New York")]
- tools = []
+    tools = []
 
     ret = await openai_model.complete(msgs, "gpt-4o", tools, cb)
 
