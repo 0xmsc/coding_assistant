@@ -51,59 +51,56 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
         return ("https://api.openai.com/v1", os.environ["OPENAI_API_KEY"])
 
 
-def _map_internal_message_to_provider(msg: BaseMessage) -> dict:
-    d = message_to_dict(msg)
-    return d
-
-
 def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
-    full_content = []
-    full_reasoning = []
-    tool_calls_chunks = {}
+    full_content = ""
+    full_reasoning = ""
+    full_tool_calls = {}
 
     for chunk in chunks:
-        delta = chunk.get("choices", [{}])[0].get("delta", {})
+        delta = chunk["choices"][0]["delta"]
 
-        # Reasoning extraction (OpenRouter/OpenAI style)
-        reasoning = delta.get("reasoning_content") or delta.get("reasoning")
-        if reasoning:
-            full_reasoning.append(reasoning)
+        if reasoning := delta.get("reasoning"):
+            full_reasoning += reasoning
 
-        if delta.get("content"):
-            full_content.append(delta["content"])
+        if content := delta.get("content"):
+            full_content += content
 
-        if delta.get("tool_calls"):
-            for tc_chunk in delta["tool_calls"]:
-                idx = tc_chunk["index"]
-                if idx not in tool_calls_chunks:
-                    tool_calls_chunks[idx] = {
-                        "id": tc_chunk.get("id", ""),
-                        "type": "function",
-                        "function": {"name": "", "arguments": ""},
-                    }
+        for tc_chunk in delta.get("tool_calls", []):
+            idx = tc_chunk["index"]
 
-                if tc_chunk.get("id"):
-                    tool_calls_chunks[idx]["id"] = tc_chunk["id"]
-                if tc_chunk.get("function", {}).get("name"):
-                    tool_calls_chunks[idx]["function"]["name"] += tc_chunk["function"]["name"]
-                if tc_chunk.get("function", {}).get("arguments"):
-                    tool_calls_chunks[idx]["function"]["arguments"] += tc_chunk["function"]["arguments"]
+            tc = full_tool_calls.setdefault(
+                {
+                    "id": "",
+                    "type": "function",
+                    "function": {"name": "", "arguments": ""},
+                }
+            )
 
-    # Build final message
+            if id := tc_chunk.get("id"):
+                tc["id"] += id
+            if function := tc_chunk.get("function"):
+                if name := function.get("name"):
+                    tc["function"]["name"] += name
+                if arguments := function.get("arguments"):
+                    tc["function"]["arguments"] += arguments
+
     final_tool_calls = []
-    for idx in sorted(tool_calls_chunks.keys()):
-        tc = tool_calls_chunks[idx]
+    for _, item in sorted(full_tool_calls.items()):
         final_tool_calls.append(
             ToolCall(
-                id=tc["id"], function=FunctionCall(name=tc["function"]["name"], arguments=tc["function"]["arguments"])
+                id=item["id"],
+                function=FunctionCall(
+                    name=item["function"]["name"],
+                    arguments=item["function"]["arguments"],
+                ),
             )
         )
 
-    content_str = "".join(full_content) if full_content else None
-    reasoning_str = "".join(full_reasoning) if full_reasoning else None
-
     return AssistantMessage(
-        role="assistant", content=content_str, reasoning_content=reasoning_str, tool_calls=final_tool_calls or []
+        role="assistant",
+        content=full_content,
+        reasoning_content=full_reasoning,
+        tool_calls=final_tool_calls,
     )
 
 
@@ -116,7 +113,7 @@ async def _try_completion(
 ):
     base_url, api_key = _get_base_url_and_api_key()
     headers = {"Authorization": f"Bearer {api_key}"}
-    provider_messages = [_map_internal_message_to_provider(m) for m in messages]
+    provider_messages = [message_to_dict(m) for m in messages]
     provider_tools = await get_tools(tools)
 
     payload = {
