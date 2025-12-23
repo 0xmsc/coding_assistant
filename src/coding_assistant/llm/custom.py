@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 def _get_base_url_and_api_key() -> tuple[str, str]:
     if os.environ.get("OPENROUTER_API_KEY"):
         return ("https://openrouter.ai/api/v1", os.environ["OPENROUTER_API_KEY"])
+    if os.environ.get("OPENAI_BASE_URL"):
+        return (os.environ["OPENAI_BASE_URL"], os.environ["OPENAI_API_KEY"])
     else:
         return ("https://api.openai.com/v1", os.environ["OPENAI_API_KEY"])
 
