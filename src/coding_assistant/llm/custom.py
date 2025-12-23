@@ -144,6 +144,7 @@ async def _try_completion(
         "completion.json5",
         {
             "model": model,
+            "chunks": chunks,
             "messages": provider_messages,
             "tools": provider_tools,
             "completion": message_to_dict(assistant_msg),
