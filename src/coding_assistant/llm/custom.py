@@ -24,6 +24,26 @@ from coding_assistant.trace import trace_json
 logger = logging.getLogger(__name__)
 
 
+class APIConnectionError(Exception):
+    pass
+
+
+class APIError(Exception):
+    pass
+
+
+class RateLimitError(Exception):
+    pass
+
+
+class InternalServerError(Exception):
+    pass
+
+
+class BadRequestError(Exception):
+    pass
+
+
 def _get_base_url_and_api_key() -> tuple[str, str]:
     if os.environ.get("OPENROUTER_API_KEY"):
         return ("https://openrouter.ai/api/v1", os.environ["OPENROUTER_API_KEY"])
@@ -156,7 +176,13 @@ async def _try_completion_with_retry(
     for attempt in range(max_retries):
         try:
             return await _try_completion(messages, tools, model, reasoning_effort, callbacks)
-        except httpx.HTTPError as e:
+        except (
+            APIConnectionError,
+            APIError,
+            RateLimitError,
+            InternalServerError,
+            BadRequestError,
+        ) as e:
             if attempt == max_retries - 1:
                 raise
             logger.warning(f"Retry {attempt + 1}/{max_retries} due to {e} for model {model}")
