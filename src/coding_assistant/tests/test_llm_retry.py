@@ -2,33 +2,11 @@ import pytest
 import litellm
 from unittest.mock import AsyncMock, patch
 from coding_assistant.llm import litellm as llm_model
-from coding_assistant.framework.callbacks import ProgressCallbacks
+from coding_assistant.framework.callbacks import NullProgressCallbacks
 
 
-class _CB(ProgressCallbacks):
-    def on_user_message(self, context_name, content, force=False):
-        pass
-
-    def on_assistant_message(self, context_name, content, force=False):
-        pass
-
-    def on_assistant_reasoning(self, context_name, content):
-        pass
-
-    def on_tool_start(self, context_name, tool_call_id, tool_name, arguments):
-        pass
-
-    def on_tool_message(self, context_name, tool_call_id, tool_name, arguments, result):
-        pass
-
-    def on_content_chunk(self, chunk):
-        pass
-
-    def on_reasoning_chunk(self, chunk):
-        pass
-
-    def on_chunks_end(self):
-        pass
+class _CB(NullProgressCallbacks):
+    pass
 
 
 class _Chunk:
