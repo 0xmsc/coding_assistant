@@ -52,6 +52,57 @@ def _map_internal_message_to_provider(msg: BaseMessage) -> dict:
     return d
 
 
+def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
+    full_content = []
+    full_reasoning = []
+    tool_calls_chunks = {}
+
+    for chunk in chunks:
+        delta = chunk.get("choices", [{}])[0].get("delta", {})
+
+        # Reasoning extraction (OpenRouter/OpenAI style)
+        reasoning = delta.get("reasoning_content") or delta.get("reasoning")
+        if reasoning:
+            full_reasoning.append(reasoning)
+
+        if delta.get("content"):
+            full_content.append(delta["content"])
+
+        if delta.get("tool_calls"):
+            for tc_chunk in delta["tool_calls"]:
+                idx = tc_chunk["index"]
+                if idx not in tool_calls_chunks:
+                    tool_calls_chunks[idx] = {
+                        "id": tc_chunk.get("id", ""),
+                        "type": "function",
+                        "function": {"name": "", "arguments": ""},
+                    }
+
+                if tc_chunk.get("id"):
+                    tool_calls_chunks[idx]["id"] = tc_chunk["id"]
+                if tc_chunk.get("function", {}).get("name"):
+                    tool_calls_chunks[idx]["function"]["name"] += tc_chunk["function"]["name"]
+                if tc_chunk.get("function", {}).get("arguments"):
+                    tool_calls_chunks[idx]["function"]["arguments"] += tc_chunk["function"]["arguments"]
+
+    # Build final message
+    final_tool_calls = []
+    for idx in sorted(tool_calls_chunks.keys()):
+        tc = tool_calls_chunks[idx]
+        final_tool_calls.append(
+            ToolCall(
+                id=tc["id"], function=FunctionCall(name=tc["function"]["name"], arguments=tc["function"]["arguments"])
+            )
+        )
+
+    content_str = "".join(full_content) if full_content else None
+    reasoning_str = "".join(full_reasoning) if full_reasoning else None
+
+    return AssistantMessage(
+        role="assistant", content=content_str, reasoning_content=reasoning_str, tool_calls=final_tool_calls or []
+    )
+
+
 async def _try_completion(
     messages: list[BaseMessage],
     tools: Sequence[Tool],
@@ -96,71 +147,30 @@ async def _try_completion(
 
     async with httpx.AsyncClient(base_url=base_url, headers=headers) as client:
         async with aconnect_sse(client, "POST", "/chat/completions", json=payload) as source:
-            full_content = []
-            full_reasoning = []
-            tool_calls_chunks = {}
-
+            chunks = []
             async for event in source.aiter_sse():
                 if not event.data:
                     continue
                 try:
                     chunk = json.loads(event.data)
+                    chunks.append(chunk)
                 except json.JSONDecodeError:
                     continue
 
-                if not chunk.get("choices"):
-                    continue
+                delta = chunk.get("choices", [{}])[0].get("delta", {})
 
-                delta = chunk["choices"][0]["delta"]
-
-                # Reasoning extraction (OpenRouter/OpenAI style)
+                # Call callbacks during streaming
                 reasoning = delta.get("reasoning_content") or delta.get("reasoning")
                 if reasoning:
-                    full_reasoning.append(reasoning)
                     callbacks.on_reasoning_chunk(reasoning)
 
                 if delta.get("content"):
-                    full_content.append(delta["content"])
                     callbacks.on_content_chunk(delta["content"])
 
-                if delta.get("tool_calls"):
-                    for tc_chunk in delta["tool_calls"]:
-                        idx = tc_chunk["index"]
-                        if idx not in tool_calls_chunks:
-                            tool_calls_chunks[idx] = {
-                                "id": tc_chunk.get("id", ""),
-                                "type": "function",
-                                "function": {"name": "", "arguments": ""},
-                            }
+            callbacks.on_chunks_end()
 
-                        if tc_chunk.get("id"):
-                            tool_calls_chunks[idx]["id"] = tc_chunk["id"]
-                        if tc_chunk.get("function", {}).get("name"):
-                            tool_calls_chunks[idx]["function"]["name"] += tc_chunk["function"]["name"]
-                        if tc_chunk.get("function", {}).get("arguments"):
-                            tool_calls_chunks[idx]["function"]["arguments"] += tc_chunk["function"]["arguments"]
-
-        callbacks.on_chunks_end()
-
-    # Build final message
-    final_tool_calls = []
-    for idx in sorted(tool_calls_chunks.keys()):
-        tc = tool_calls_chunks[idx]
-        final_tool_calls.append(
-            ToolCall(
-                id=tc["id"], function=FunctionCall(name=tc["function"]["name"], arguments=tc["function"]["arguments"])
-            )
-        )
-
-    content_str = "".join(full_content) if full_content else None
-    reasoning_str = "".join(full_reasoning) if full_reasoning else None
-
-    assistant_msg = AssistantMessage(
-        role="assistant",
-        content=content_str,
-        reasoning_content=reasoning_str,
-        tool_calls=final_tool_calls or [],
-    )
+            # Merge all chunks into final message
+            assistant_msg = _merge_chunks(chunks)
 
     # Token count: dummy for now
     tokens = 0

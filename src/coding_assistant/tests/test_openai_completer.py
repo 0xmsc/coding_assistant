@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from coding_assistant.framework.callbacks import NullProgressCallbacks
 from coding_assistant.llm import openai as openai_model
 from coding_assistant.llm.types import UserMessage
+from coding_assistant.llm.openai import _merge_chunks
 
 
 class _CB(NullProgressCallbacks):
@@ -47,6 +48,78 @@ class FakeContext:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         pass
+
+
+def test_merge_chunks_content():
+    chunks = [
+        {"choices": [{"delta": {"content": "Hello"}}]},
+        {"choices": [{"delta": {"content": " world"}}]},
+    ]
+    msg = _merge_chunks(chunks)
+    assert msg.content == "Hello world"
+    assert msg.reasoning_content is None
+    assert msg.tool_calls == []
+
+
+def test_merge_chunks_reasoning():
+    chunks = [
+        {"choices": [{"delta": {"reasoning_content": "Thinking"}}]},
+        {"choices": [{"delta": {"reasoning_content": " step by step"}}]},
+    ]
+    msg = _merge_chunks(chunks)
+    assert msg.content is None
+    assert msg.reasoning_content == "Thinking step by step"
+    assert msg.tool_calls == []
+
+
+def test_merge_chunks_tool_calls():
+    chunks = [
+        {
+            "choices": [
+                {"delta": {"tool_calls": [{"index": 0, "id": "call_123", "function": {"name": "", "arguments": ""}}]}}
+            ]
+        },
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"name": "get_weather", "arguments": ""}}]}}]},
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": '{"location": "New York"}'}}]}}]},
+    ]
+    msg = _merge_chunks(chunks)
+    assert msg.content is None
+    assert msg.reasoning_content is None
+    assert len(msg.tool_calls) == 1
+    assert msg.tool_calls[0].id == "call_123"
+    assert msg.tool_calls[0].function.name == "get_weather"
+    assert msg.tool_calls[0].function.arguments == '{"location": "New York"}'
+
+
+def test_merge_chunks_mixed():
+    chunks = [
+        {"choices": [{"delta": {"content": "I am"}}]},
+        {"choices": [{"delta": {"reasoning_content": "Planning"}}]},
+        {
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [{"index": 0, "id": "call_456", "function": {"name": "calc", "arguments": ""}}]
+                    }
+                }
+            ]
+        },
+        {"choices": [{"delta": {"content": " searching"}}]},
+    ]
+    msg = _merge_chunks(chunks)
+    assert msg.content == "I am searching"
+    assert msg.reasoning_content == "Planning"
+    assert len(msg.tool_calls) == 1
+    assert msg.tool_calls[0].id == "call_456"
+    assert msg.tool_calls[0].function.name == "calc"
+
+
+def test_merge_chunks_empty():
+    chunks = []
+    msg = _merge_chunks(chunks)
+    assert msg.content is None
+    assert msg.reasoning_content is None
+    assert msg.tool_calls == []
 
 
 @pytest.mark.asyncio
