@@ -49,11 +49,12 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
             idx = tc_chunk["index"]
 
             tc = full_tool_calls.setdefault(
+                idx,
                 {
                     "id": "",
                     "type": "function",
                     "function": {"name": "", "arguments": ""},
-                }
+                },
             )
 
             if id := tc_chunk.get("id"):
@@ -78,8 +79,8 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
 
     return AssistantMessage(
         role="assistant",
-        content=full_content,
-        reasoning_content=full_reasoning,
+        content=full_content if full_content else None,
+        reasoning_content=full_reasoning if full_reasoning else None,
         tool_calls=final_tool_calls,
     )
 

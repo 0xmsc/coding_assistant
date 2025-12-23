@@ -63,8 +63,8 @@ def test_merge_chunks_content():
 
 def test_merge_chunks_reasoning():
     chunks = [
-        {"choices": [{"delta": {"reasoning_content": "Thinking"}}]},
-        {"choices": [{"delta": {"reasoning_content": " step by step"}}]},
+        {"choices": [{"delta": {"reasoning": "Thinking"}}]},
+        {"choices": [{"delta": {"reasoning": " step by step"}}]},
     ]
     msg = _merge_chunks(chunks)
     assert msg.content is None
@@ -94,7 +94,7 @@ def test_merge_chunks_tool_calls():
 def test_merge_chunks_mixed():
     chunks = [
         {"choices": [{"delta": {"content": "I am"}}]},
-        {"choices": [{"delta": {"reasoning_content": "Planning"}}]},
+        {"choices": [{"delta": {"reasoning": "Planning"}}]},
         {
             "choices": [
                 {
@@ -166,16 +166,6 @@ async def test_custom_complete_tool_calls(monkeypatch):
     mock_ac = MagicMock(return_value=mock_context_instance)
     monkeypatch.setattr(custom_model, "aconnect_sse", mock_ac)
 
-    # For simplicity, assume tool is defined
-
-    # The test expects the tool_calls to be parsed correctly
-
-    # But since tool is not defined, perhaps skip or add
-
-    # In original, it has tools = [...]
-
-    # Let me add proper tool
-
     tools = [
         dict(
             name="get_weather",
@@ -192,17 +182,15 @@ async def test_custom_complete_tool_calls(monkeypatch):
     ret = await custom_model.complete(msgs, "gpt-4o", tools, cb)
 
     assert ret.message.tool_calls[0].id == "call_123"
-
     assert ret.message.tool_calls[0].function.name == "get_weather"
-
     assert ret.message.tool_calls[0].function.arguments == '{"location": "New York"}'
 
 
 @pytest.mark.asyncio
 async def test_custom_complete_with_reasoning(monkeypatch):
     fake_events = [
-        json.dumps({"choices": [{"delta": {"reasoning_content": "Thinking"}}]}),
-        json.dumps({"choices": [{"delta": {"reasoning_content": " step by step"}}]}),
+        json.dumps({"choices": [{"delta": {"reasoning": "Thinking"}}]}),
+        json.dumps({"choices": [{"delta": {"reasoning": " step by step"}}]}),
         json.dumps({"choices": [{"delta": {"content": "Answer"}}]}),
     ]
     mock_context_instance = FakeContext(fake_events)
