@@ -84,9 +84,9 @@ async def _try_completion(
     async for chunk in response:
         if not chunk.choices:
             continue
-        
+
         delta = chunk.choices[0].delta
-        
+
         # OpenRouter/OpenAI reasoning extraction
         reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
         if reasoning:
@@ -106,7 +106,7 @@ async def _try_completion(
                         "type": "function",
                         "function": {"name": "", "arguments": ""},
                     }
-                
+
                 if tc_chunk.id:
                     tool_calls_chunks[idx]["id"] = tc_chunk.id
                 if tc_chunk.function.name:
@@ -122,11 +122,7 @@ async def _try_completion(
         tc = tool_calls_chunks[idx]
         final_tool_calls.append(
             ToolCall(
-                id=tc["id"],
-                function=FunctionCall(
-                    name=tc["function"]["name"],
-                    arguments=tc["function"]["arguments"]
-                )
+                id=tc["id"], function=FunctionCall(name=tc["function"]["name"], arguments=tc["function"]["arguments"])
             )
         )
 
@@ -134,16 +130,13 @@ async def _try_completion(
     reasoning_str = "".join(full_reasoning) if full_reasoning else None
 
     assistant_msg = AssistantMessage(
-        role="assistant",
-        content=content_str,
-        reasoning_content=reasoning_str,
-        tool_calls=final_tool_calls
+        role="assistant", content=content_str, reasoning_content=reasoning_str, tool_calls=final_tool_calls
     )
 
     # Note: Usage info might not be available in streaming unless requested or supported by provider
-    # For now we use a dummy or partial token count if available. 
+    # For now we use a dummy or partial token count if available.
     # OpenRouter often doesn't provide it in the last chunk of a stream without specific flags.
-    tokens = 0 
+    tokens = 0
 
     trace_json(
         "openai_completion.json",
@@ -192,9 +185,10 @@ async def complete(
     callbacks: ProgressCallbacks,
 ):
     try:
-        # Re-use reasoning parsing logic from LiteLLM adapter if available, 
+        # Re-use reasoning parsing logic from LiteLLM adapter if available,
         # but we'll re-implement simple version to avoid circularity if needed.
         from coding_assistant.llm.litellm import _parse_model_and_reasoning
+
         model, reasoning_effort = _parse_model_and_reasoning(model)
         return await _try_completion_with_retry(messages, tools, model, reasoning_effort, callbacks)
     except Exception as e:
