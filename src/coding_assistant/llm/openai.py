@@ -133,20 +133,15 @@ async def _try_completion(
         async with aconnect_sse(client, "POST", "/chat/completions", json=payload) as source:
             chunks = []
             async for event in source.aiter_sse():
-                if not event.data:
-                    continue
+                if event.data == "[DONE]":
+                    break
 
-                print(event)
+                chunk = json.loads(event.data)
+                chunks.append(chunk)
 
-                try:
-                    chunk = json.loads(event.data)
-                    chunks.append(chunk)
-                except json.JSONDecodeError:
-                    continue
+                delta = chunk["choices"][0]["delta"]
 
-                delta = chunk.get("choices", [{}])[0].get("delta", {})
-
-                if reasoning := delta.get("reasoning_content"):
+                if reasoning := delta.get("reasoning"):
                     callbacks.on_reasoning_chunk(reasoning)
 
                 if content := delta.get("content"):
@@ -169,7 +164,7 @@ async def _try_completion(
 
     return Completion(
         message=assistant_msg,
-        tokens=0, # TODO
+        tokens=0,  # TODO
     )
 
 
