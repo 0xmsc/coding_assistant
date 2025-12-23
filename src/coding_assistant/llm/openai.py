@@ -1,10 +1,12 @@
 import asyncio
+import json
 import logging
 import os
 from collections.abc import Sequence
 from typing import Literal
 
-from openai import AsyncOpenAI, APIConnectionError, APIError, RateLimitError, InternalServerError, BadRequestError
+import httpx
+from httpx_sse import aconnect_sse
 
 from coding_assistant.llm.adapters import get_tools
 from coding_assistant.llm.types import (
@@ -22,9 +24,29 @@ from coding_assistant.trace import trace_json
 logger = logging.getLogger(__name__)
 
 
-def _map_internal_message_to_openai(msg: BaseMessage) -> dict:
+class APIConnectionError(Exception):
+    pass
+
+
+class APIError(Exception):
+    pass
+
+
+class RateLimitError(Exception):
+    pass
+
+
+class InternalServerError(Exception):
+    pass
+
+
+class BadRequestError(Exception):
+    pass
+
+
+def _map_internal_message_to_provider(msg: BaseMessage) -> dict:
     d = message_to_dict(msg)
-    # OpenAI and OpenRouter expect tool_calls to be null or a list, but we might have empty lists
+    # Providers expect tool_calls to be null or a list, but we might have empty lists
     if "tool_calls" in d and not d["tool_calls"]:
         d.pop("tool_calls")
     return d
@@ -49,72 +71,76 @@ async def _try_completion(
         api_key = os.environ.get("OPENAI_API_KEY")
         base_url = "https://api.openai.com/v1"
 
-    client = AsyncOpenAI(
-        api_key=api_key,
-        base_url=base_url,
-    )
-
-    openai_messages = [_map_internal_message_to_openai(m) for m in messages]
-    openai_tools = await get_tools(tools)
-
-    extra_headers = {}
+    headers = {"Authorization": f"Bearer {api_key}"}
     if is_openrouter:
-        extra_headers["HTTP-Referer"] = "https://github.com/0xmsc/coding-assistant"
-        extra_headers["X-Title"] = "Coding Assistant"
+        headers.update(
+            {
+                "HTTP-Referer": "https://github.com/0xmsc/coding-assistant",
+                "X-Title": "Coding Assistant",
+            }
+        )
 
-    kwargs = {
+    provider_messages = [_map_internal_message_to_provider(m) for m in messages]
+    provider_tools = await get_tools(tools)
+
+    payload = {
         "model": model,
-        "messages": openai_messages,
-        "tools": openai_tools,
+        "messages": provider_messages,
+        "tools": provider_tools,
         "stream": True,
-        "extra_headers": extra_headers,
     }
 
     # reasoning_effort is only supported by O1/O3 models in OpenAI
     if reasoning_effort:
-        kwargs["reasoning_effort"] = reasoning_effort
+        payload["reasoning_effort"] = reasoning_effort
 
-    response = await client.chat.completions.create(**kwargs)
+    async with httpx.AsyncClient(base_url=base_url, headers=headers) as client:
+        async with aconnect_sse(client, "POST", "/chat/completions", json=payload) as source:
+            full_content = []
+            full_reasoning = []
+            tool_calls_chunks = {}
 
-    full_content = []
-    full_reasoning = []
-    tool_calls_chunks = {}
-    role = "assistant"
+            async for event in source.aiter_sse():
+                if not event.data:
+                    continue
+                try:
+                    chunk = json.loads(event.data)
+                except json.JSONDecodeError:
+                    continue
 
-    async for chunk in response:
-        if not chunk.choices:
-            continue
+                if not chunk.get("choices"):
+                    continue
 
-        delta = chunk.choices[0].delta
+                delta = chunk["choices"][0]["delta"]
 
-        # OpenRouter/OpenAI reasoning extraction
-        reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
-        if reasoning:
-            full_reasoning.append(reasoning)
-            callbacks.on_reasoning_chunk(reasoning)
+                # Reasoning extraction (OpenRouter/OpenAI style)
+                reasoning = delta.get("reasoning_content") or delta.get("reasoning")
+                if reasoning:
+                    full_reasoning.append(reasoning)
+                    callbacks.on_reasoning_chunk(reasoning)
 
-        if delta.content:
-            full_content.append(delta.content)
-            callbacks.on_content_chunk(delta.content)
+                if delta.get("content"):
+                    full_content.append(delta["content"])
+                    callbacks.on_content_chunk(delta["content"])
 
-        if delta.tool_calls:
-            for tc_chunk in delta.tool_calls:
-                idx = tc_chunk.index
-                if idx not in tool_calls_chunks:
-                    tool_calls_chunks[idx] = {
-                        "id": tc_chunk.id,
-                        "type": "function",
-                        "function": {"name": "", "arguments": ""},
-                    }
+                if delta.get("tool_calls"):
+                    for tc_chunk in delta["tool_calls"]:
+                        idx = tc_chunk["index"]
+                        if idx not in tool_calls_chunks:
+                            tool_calls_chunks[idx] = {
+                                "id": tc_chunk.get("id", ""),
+                                "type": "function",
+                                "function": {"name": "", "arguments": ""},
+                            }
 
-                if tc_chunk.id:
-                    tool_calls_chunks[idx]["id"] = tc_chunk.id
-                if tc_chunk.function.name:
-                    tool_calls_chunks[idx]["function"]["name"] += tc_chunk.function.name
-                if tc_chunk.function.arguments:
-                    tool_calls_chunks[idx]["function"]["arguments"] += tc_chunk.function.arguments
+                        if tc_chunk.get("id"):
+                            tool_calls_chunks[idx]["id"] = tc_chunk["id"]
+                        if tc_chunk.get("function", {}).get("name"):
+                            tool_calls_chunks[idx]["function"]["name"] += tc_chunk["function"]["name"]
+                        if tc_chunk.get("function", {}).get("arguments"):
+                            tool_calls_chunks[idx]["function"]["arguments"] += tc_chunk["function"]["arguments"]
 
-    callbacks.on_chunks_end()
+        callbacks.on_chunks_end()
 
     # Build final message
     final_tool_calls = []
@@ -133,17 +159,15 @@ async def _try_completion(
         role="assistant", content=content_str, reasoning_content=reasoning_str, tool_calls=final_tool_calls
     )
 
-    # Note: Usage info might not be available in streaming unless requested or supported by provider
-    # For now we use a dummy or partial token count if available.
-    # OpenRouter often doesn't provide it in the last chunk of a stream without specific flags.
+    # Token count: dummy for now
     tokens = 0
 
     trace_json(
         "openai_completion.json",
         {
             "model": model,
-            "messages": openai_messages,
-            "tools": openai_tools,
+            "messages": provider_messages,
+            "tools": provider_tools,
             "completion": message_to_dict(assistant_msg),
         },
     )
