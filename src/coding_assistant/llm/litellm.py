@@ -1,6 +1,5 @@
 import asyncio
 import functools
-import json
 import logging
 import re
 from collections.abc import Sequence
@@ -17,7 +16,7 @@ from coding_assistant.llm.types import (
     message_from_dict,
     message_to_dict,
 )
-from coding_assistant.trace import trace_data
+from coding_assistant.trace import trace_json
 
 logger = logging.getLogger(__name__)
 
@@ -95,19 +94,15 @@ async def _try_completion(
     completion = litellm.stream_chunk_builder(chunks)
     assert completion
 
-    trace_data(
+    trace_json(
         "completion.json",
-        json.dumps(
-            {
-                "model": model,
-                "reasoning_effort": reasoning_effort,
-                "messages": litellm_messages,
-                "tools": litellm_tools,
-                "completion": completion.model_dump(),
-            },
-            indent=2,
-            default=str,
-        ),
+        {
+            "model": model,
+            "reasoning_effort": reasoning_effort,
+            "messages": litellm_messages,
+            "tools": litellm_tools,
+            "completion": completion.model_dump(),
+        },
     )
 
     litellm_message = completion["choices"][0]["message"]

@@ -9,7 +9,7 @@ from coding_assistant.framework.history import append_tool_message
 from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolCall
 from coding_assistant.framework.types import Tool, Completer
 from coding_assistant.framework.results import ToolResult, TextResult
-from coding_assistant.trace import trace_data
+from coding_assistant.trace import trace_json
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
@@ -70,17 +70,14 @@ async def handle_tool_call(
     except Exception as e:
         function_call_result = TextResult(content=f"Error executing tool: {e}")
 
-    trace_data(
+    trace_json(
         f"tool_result_{function_name}.json",
-        json.dumps(
-            {
-                "tool_call_id": tool_call.id,
-                "function_name": function_name,
-                "function_args": function_args,
-                "result": function_call_result.to_dict(),
-            },
-            indent=2,
-        ),
+        {
+            "tool_call_id": tool_call.id,
+            "function_name": function_name,
+            "function_args": function_args,
+            "result": function_call_result.to_dict(),
+        },
     )
 
     return function_call_result
