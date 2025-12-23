@@ -42,7 +42,7 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
     for chunk in chunks:
         delta = chunk["choices"][0]["delta"]
 
-        if reasoning := delta.get("reasoning"):
+        if (reasoning := delta.get("reasoning")) or (reasoning := delta.get("reasoning_content")):
             full_reasoning += reasoning
 
         if content := delta.get("content"):
@@ -143,7 +143,7 @@ async def _try_completion(
 
                     delta = chunk["choices"][0]["delta"]
 
-                    if reasoning := delta.get("reasoning"):
+                    if (reasoning := delta.get("reasoning")) or (reasoning := delta.get("reasoning_content")):
                         callbacks.on_reasoning_chunk(reasoning)
 
                     if content := delta.get("content"):
