@@ -1,11 +1,11 @@
 import coding_assistant.trace
 import pytest
-from coding_assistant.trace import enable_tracing, trace_enabled, trace_data
+from coding_assistant.trace import enable_tracing, trace_enabled, trace_data, trace_json
 
 
 @pytest.fixture(autouse=True)
 def reset_tracing():
-    coding_assistant.trace._trace_dir_ = None
+    coding_assistant.trace._trace_dir = None
 
 
 def test_tracing_toggle(tmp_path):
@@ -53,3 +53,17 @@ def test_trace_without_clear_keeps_files(tmp_path):
 
     assert (trace_dir / "old_trace.json").exists()
     assert (trace_dir / "old_trace.json").read_text() == "old content"
+
+
+def test_trace_json_creates_json5_file(tmp_path):
+    trace_dir = tmp_path / "traces"
+    enable_tracing(trace_dir)
+
+    data = {"key": "value", "multi": "line\nstring"}
+    trace_json("test.json", data)
+
+    files = list(trace_dir.glob("*_test.json5"))
+    assert len(files) == 1
+    content = files[0].read_text()
+    assert 'key: "value"' in content
+    assert 'multi: "line\\\nstring"' in content
