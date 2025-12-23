@@ -40,7 +40,6 @@ class BaseMessage:
     role: str
     content: Optional[str | list[dict]] = None
     name: Optional[str] = None
-    provider_specific_fields: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -61,6 +60,7 @@ class AssistantMessage(BaseMessage):
     reasoning_content: Optional[str] = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     role: Literal["assistant"] = "assistant"
+    provider_specific_fields: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, kw_only=True)
