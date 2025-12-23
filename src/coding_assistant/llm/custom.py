@@ -35,6 +35,7 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
     full_content = ""
     full_reasoning = ""
     full_tool_calls = {}
+    full_reasoning_details = []
 
     for chunk in chunks:
         delta = chunk["choices"][0]["delta"]
@@ -65,6 +66,10 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
                 if arguments := function.get("arguments"):
                     tc["function"]["arguments"] += arguments
 
+        # Openrouter specific field
+        if reasoning_details := delta.get("reasoning_details"):
+            full_reasoning_details.extend(reasoning_details)
+
     final_tool_calls = []
     for _, item in sorted(full_tool_calls.items()):
         final_tool_calls.append(
@@ -82,7 +87,20 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
         content=full_content if full_content else None,
         reasoning_content=full_reasoning if full_reasoning else None,
         tool_calls=final_tool_calls,
+        provider_specific_fields={
+            "reasoning_details": full_reasoning_details,
+        },
     )
+
+
+def _prepare_messages(messages: list[BaseMessage]) -> list[dict]:
+    result = [message_to_dict(m) for m in messages]
+    for m in result:
+        if "provider_specific_fields" in m:
+            for k, v in m["provider_specific_fields"].items():
+                m[k] = v
+            del m["provider_specific_fields"]
+    return result
 
 
 async def _try_completion(
@@ -97,7 +115,7 @@ async def _try_completion(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    provider_messages = [message_to_dict(m) for m in messages]
+    provider_messages = _prepare_messages(messages)
     provider_tools = await get_tools(tools)
 
     payload = {
