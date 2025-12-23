@@ -93,7 +93,10 @@ async def _try_completion(
     callbacks: ProgressCallbacks,
 ):
     base_url, api_key = _get_base_url_and_api_key()
-    headers = {"Authorization": f"Bearer {api_key}"}
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
     provider_messages = [message_to_dict(m) for m in messages]
     provider_tools = await get_tools(tools)
 
@@ -153,7 +156,7 @@ async def _try_completion_with_retry(
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
 ):
-    max_retries = 3
+    max_retries = 1
     for attempt in range(max_retries):
         try:
             return await _try_completion(messages, tools, model, reasoning_effort, callbacks)
