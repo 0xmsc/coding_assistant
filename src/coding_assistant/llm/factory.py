@@ -5,6 +5,7 @@ from coding_assistant.llm.openai import complete as openai_complete
 if TYPE_CHECKING:
     from coding_assistant.framework.types import Completer
 
+
 def get_completer(name: str) -> "Completer":
     if name == "openai":
         return openai_complete
