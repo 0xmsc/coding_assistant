@@ -13,10 +13,17 @@ class _CB(NullProgressCallbacks):
         self.end = False
         self.reasoning = []
 
-    def on_assistant_reasoning(self, context_name: str, content: str): self.reasoning.append(content)
-    def on_content_chunk(self, chunk: str): self.chunks.append(chunk)
-    def on_reasoning_chunk(self, chunk: str): self.reasoning.append(chunk)
-    def on_chunks_end(self): self.end = True
+    def on_assistant_reasoning(self, context_name: str, content: str):
+        self.reasoning.append(content)
+
+    def on_content_chunk(self, chunk: str):
+        self.chunks.append(chunk)
+
+    def on_reasoning_chunk(self, chunk: str):
+        self.reasoning.append(chunk)
+
+    def on_chunks_end(self):
+        self.end = True
 
 
 @pytest.mark.asyncio
