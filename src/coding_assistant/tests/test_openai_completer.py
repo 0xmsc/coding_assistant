@@ -1,11 +1,10 @@
-import asyncio
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from coding_assistant.framework.callbacks import NullProgressCallbacks
 from coding_assistant.llm import openai as openai_model
-from coding_assistant.llm.types import UserMessage, AssistantMessage, Tool
+from coding_assistant.llm.types import UserMessage
 
 
 class _CB(NullProgressCallbacks):
@@ -15,10 +14,17 @@ class _CB(NullProgressCallbacks):
         self.end = False
         self.reasoning = []
 
-    def on_assistant_reasoning(self, context_name: str, content: str): self.reasoning.append(content)
-    def on_content_chunk(self, chunk: str): self.chunks.append(chunk)
-    def on_reasoning_chunk(self, chunk: str): self.reasoning.append(chunk)
-    def on_chunks_end(self): self.end = True
+    def on_assistant_reasoning(self, context_name: str, content: str):
+        self.reasoning.append(content)
+
+    def on_content_chunk(self, chunk: str):
+        self.chunks.append(chunk)
+
+    def on_reasoning_chunk(self, chunk: str):
+        self.reasoning.append(chunk)
+
+    def on_chunks_end(self):
+        self.end = True
 
 
 class FakeSource:
@@ -57,7 +63,7 @@ async def test_openai_complete_streaming_happy_path(monkeypatch):
     msgs = [UserMessage(content="Hello")]
     ret = await openai_model.complete(msgs, "gpt-4o", [], cb)
     assert ret.message.content == "Hello world"
-    assert ret.message.tool_calls is None
+    assert ret.message.tool_calls == []
     assert cb.chunks == ["Hello", " world"]
     assert cb.end is True
 
@@ -65,13 +71,28 @@ async def test_openai_complete_streaming_happy_path(monkeypatch):
 @pytest.mark.asyncio
 async def test_openai_complete_tool_calls(monkeypatch):
     fake_events = [
-        json.dumps({"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "call_123", "function": {"name": "get_weather", "arguments": '{"location": "New York"}'}}]}}]} )
+        json.dumps(
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_123",
+                                    "function": {"name": "get_weather", "arguments": '{"location": "New York"}'},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        )
     ]
     mock_context_instance = FakeContext(fake_events)
     mock_ac = MagicMock(return_value=mock_context_instance)
     monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
 
-    from coding_assistant.llm.types import Tool
     # For simplicity, assume tool is defined
 
     # The test expects the tool_calls to be parsed correctly
@@ -82,7 +103,13 @@ async def test_openai_complete_tool_calls(monkeypatch):
 
     # Let me add proper tool
 
-    tools = [dict(name="get_weather", description="Get weather", fn_sig='{"type": "function", "function": {"name": "get_weather", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}}}}')]
+    tools = [
+        dict(
+            name="get_weather",
+            description="Get weather",
+            fn_sig='{"type": "function", "function": {"name": "get_weather", "parameters": {"type": "object", "properties": {"location": {"type": "string"}}}}}',
+        )
+    ]
 
     cb = _CB()
 

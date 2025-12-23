@@ -159,7 +159,7 @@ async def _try_completion(
         role="assistant",
         content=content_str,
         reasoning_content=reasoning_str,
-        tool_calls=final_tool_calls if final_tool_calls else None,
+        tool_calls=final_tool_calls or [],
     )
 
     # Token count: dummy for now
