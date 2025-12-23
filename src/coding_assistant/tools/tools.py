@@ -9,10 +9,11 @@ from coding_assistant.framework.types import (
     AgentContext,
     AgentDescription,
     AgentState,
+    Completer,
     TextResult,
     Tool,
 )
-from coding_assistant.llm.litellm import complete
+from coding_assistant.llm.factory import get_completer
 from coding_assistant.ui import DefaultAnswerUI, UI
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,7 @@ class AgentTool(Tool):
         tool_callbacks: ToolCallbacks,
         name: str = "launch_agent",
         history: list | None = None,
+        completer: Completer | None = None,
     ):
         super().__init__()
         self._model = model
@@ -84,6 +86,7 @@ class AgentTool(Tool):
         self._tool_callbacks = tool_callbacks
         self._name = name
         self._history = history
+        self._completer = completer or get_completer("litellm")
         self.history: list = []
         self.summary: str = ""
 
@@ -126,6 +129,7 @@ class AgentTool(Tool):
                     ui=DefaultAnswerUI() if not self._enable_ask_user else self._ui,
                     progress_callbacks=NullProgressCallbacks(),
                     tool_callbacks=self._tool_callbacks,
+                    completer=self._completer,
                 ),
                 *self._tools,
             ],
@@ -139,7 +143,7 @@ class AgentTool(Tool):
                 progress_callbacks=self._progress_callbacks,
                 tool_callbacks=self._tool_callbacks,
                 compact_conversation_at_tokens=self._compact_conversation_at_tokens,
-                completer=complete,
+                completer=self._completer,
                 ui=self._ui,
             )
             assert state.output is not None, "Agent did not produce output"
