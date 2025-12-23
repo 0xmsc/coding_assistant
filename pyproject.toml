@@ -17,6 +17,7 @@ dependencies = [
     "prompt-toolkit",
     "fastmcp",
     "dacite>=1.9.2",
+    "json5>=0.12.1",
 ]
 
 [dependency-groups]
