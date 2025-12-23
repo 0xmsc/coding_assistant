@@ -64,14 +64,16 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         async def pipeline():
             mcp_url = os.environ.get("MCP_SERVER_URL")
             async with Client(mcp_url) as client:
-                # Example: Pipeline combining shell and filesystem tools
+                # Example: Pipeline combining shell tools
                 # 1. List files using shell
                 ls_result = await client.call_tool("shell_execute", {"command": "ls *.md"})
                 files = ls_result.content[0].text.strip().split("\n")
 
                 # 2. Process content in Python
                 for file in files:
-                    content = await client.call_tool("filesystem_read_file", {"path": file})
+                    # Use cat to read the file content
+                    content_result = await client.call_tool("shell_execute", {"command": f"cat {file}"})
+                    content = content_result.content[0].text
                     # ... perform complex logic on content ...
                     print(f"Processed {file}")
 
