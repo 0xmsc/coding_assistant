@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from coding_assistant.framework.callbacks import NullProgressCallbacks
-from coding_assistant.llm import openai as openai_model
+from coding_assistant.llm import custom as custom_model
 from coding_assistant.llm.types import UserMessage
 from coding_assistant.llm.custom import _merge_chunks
 
@@ -123,18 +123,18 @@ def test_merge_chunks_empty():
 
 
 @pytest.mark.asyncio
-async def test_openai_complete_streaming_happy_path(monkeypatch):
+async def test_custom_complete_streaming_happy_path(monkeypatch):
     fake_events = [
         json.dumps({"choices": [{"delta": {"content": "Hello"}}]}),
         json.dumps({"choices": [{"delta": {"content": " world"}}]}),
     ]
     mock_context_instance = FakeContext(fake_events)
     mock_ac = MagicMock(return_value=mock_context_instance)
-    monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
+    monkeypatch.setattr(custom_model, "aconnect_sse", mock_ac)
 
     cb = _CB()
     msgs = [UserMessage(content="Hello")]
-    ret = await openai_model.complete(msgs, "gpt-4o", [], cb)
+    ret = await custom_model.complete(msgs, "gpt-4o", [], cb)
     assert ret.message.content == "Hello world"
     assert ret.message.tool_calls == []
     assert cb.chunks == ["Hello", " world"]
@@ -164,7 +164,7 @@ async def test_custom_complete_tool_calls(monkeypatch):
     ]
     mock_context_instance = FakeContext(fake_events)
     mock_ac = MagicMock(return_value=mock_context_instance)
-    monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
+    monkeypatch.setattr(custom_model, "aconnect_sse", mock_ac)
 
     # For simplicity, assume tool is defined
 
@@ -189,7 +189,7 @@ async def test_custom_complete_tool_calls(monkeypatch):
     msgs = [UserMessage(content="What's the weather in New York")]
     tools = []
 
-    ret = await openai_model.complete(msgs, "gpt-4o", tools, cb)
+    ret = await custom_model.complete(msgs, "gpt-4o", tools, cb)
 
     assert ret.message.tool_calls[0].id == "call_123"
 
@@ -199,7 +199,7 @@ async def test_custom_complete_tool_calls(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_openai_complete_with_reasoning(monkeypatch):
+async def test_custom_complete_with_reasoning(monkeypatch):
     fake_events = [
         json.dumps({"choices": [{"delta": {"reasoning_content": "Thinking"}}]}),
         json.dumps({"choices": [{"delta": {"reasoning_content": " step by step"}}]}),
@@ -207,7 +207,7 @@ async def test_openai_complete_with_reasoning(monkeypatch):
     ]
     mock_context_instance = FakeContext(fake_events)
     mock_ac = MagicMock(return_value=mock_context_instance)
-    monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
+    monkeypatch.setattr(custom_model, "aconnect_sse", mock_ac)
 
     cb = _CB()
     msgs = [UserMessage(content="Reason")]
