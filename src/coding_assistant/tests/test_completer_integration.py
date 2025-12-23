@@ -1,7 +1,7 @@
 import os
 import pytest
 from coding_assistant.llm.litellm import complete as litellm_complete
-from coding_assistant.llm.openai import complete as openai_complete
+from coding_assistant.llm.custom import complete as custom_complete
 from coding_assistant.llm.types import UserMessage
 from coding_assistant.framework.callbacks import NullProgressCallbacks
 
@@ -37,14 +37,14 @@ async def test_litellm_openrouter_integration():
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(not os.environ.get("OPENROUTER_API_KEY"), reason="OPENROUTER_API_KEY not set")
-async def test_openai_openrouter_integration():
+async def test_custom_openrouter_integration():
     # Note: our custom adapter strips the 'openrouter/' prefix or uses the model as is.
     # OpenRouter models usually don't need the prefix if the base_url is set.
     model = "x-ai/grok-code-fast-1"
     messages = [UserMessage(content="Respond with the word 'WORLD' and nothing else.")]
     cb = _RealCB()
 
-    completion = await openai_complete(messages, model=model, tools=[], callbacks=cb)
+    completion = await custom_complete(messages, model=model, tools=[], callbacks=cb)
 
     assert "WORLD" in completion.message.content.upper()
     assert cb.done
