@@ -1,30 +1,19 @@
 import pytest
 
-from coding_assistant.framework.callbacks import ProgressCallbacks
+from coding_assistant.framework.callbacks import NullProgressCallbacks
 from coding_assistant.llm import litellm as llm_model
 from coding_assistant.llm.types import UserMessage
 
 
-class _CB(ProgressCallbacks):
+class _CB(NullProgressCallbacks):
     def __init__(self):
+        super().__init__()
         self.chunks = []
         self.end = False
         self.reasoning = []
 
-    def on_user_message(self, context_name: str, content: str, force: bool = False):
-        pass
-
-    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
-        pass
-
     def on_assistant_reasoning(self, context_name: str, content: str):
         self.reasoning.append(content)
-
-    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
-        pass
-
-    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
-        pass
 
     def on_content_chunk(self, chunk: str):
         self.chunks.append(chunk)

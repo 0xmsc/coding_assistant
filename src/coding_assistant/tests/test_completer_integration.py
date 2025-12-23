@@ -3,11 +3,12 @@ import pytest
 from coding_assistant.llm.litellm import complete as litellm_complete
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.llm.types import UserMessage
-from coding_assistant.framework.callbacks import ProgressCallbacks
+from coding_assistant.framework.callbacks import NullProgressCallbacks
 
 
-class _RealCB(ProgressCallbacks):
+class _RealCB(NullProgressCallbacks):
     def __init__(self):
+        super().__init__()
         self.content = ""
         self.done = False
 
