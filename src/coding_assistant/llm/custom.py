@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from typing import Literal
 
 import httpx
-from httpx_sse import aconnect_sse
+from httpx_sse import aconnect_sse, SSEError
 
 from coding_assistant.llm.adapters import get_tools
 from coding_assistant.llm.types import (
@@ -113,20 +113,27 @@ async def _try_completion(
     async with httpx.AsyncClient(base_url=base_url, headers=headers) as client:
         async with aconnect_sse(client, "POST", "/chat/completions", json=payload) as source:
             chunks = []
-            async for event in source.aiter_sse():
-                if event.data == "[DONE]":
-                    break
+            try:
+                async for event in source.aiter_sse():
+                    if event.data == "[DONE]":
+                        break
 
-                chunk = json.loads(event.data)
-                chunks.append(chunk)
+                    chunk = json.loads(event.data)
+                    chunks.append(chunk)
 
-                delta = chunk["choices"][0]["delta"]
+                    delta = chunk["choices"][0]["delta"]
 
-                if reasoning := delta.get("reasoning"):
-                    callbacks.on_reasoning_chunk(reasoning)
+                    if reasoning := delta.get("reasoning"):
+                        callbacks.on_reasoning_chunk(reasoning)
 
-                if content := delta.get("content"):
-                    callbacks.on_content_chunk(content)
+                    if content := delta.get("content"):
+                        callbacks.on_content_chunk(content)
+            except SSEError as e:
+                response = source.response
+                await response.aread()
+                content = response.text
+                logger.error(f"SSE error during completion: {e}, response {response}, {content}")
+                raise
 
             callbacks.on_chunks_end()
 
