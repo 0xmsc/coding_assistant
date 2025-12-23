@@ -24,3 +24,4 @@ class Config(BaseModel):
     compact_conversation_at_tokens: int
     enable_chat_mode: bool = True
     enable_ask_user: bool = True
+    completer_name: str = "litellm"
