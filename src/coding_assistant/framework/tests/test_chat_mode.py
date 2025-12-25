@@ -7,7 +7,6 @@ from coding_assistant.framework.tests.helpers import (
     FunctionCall,
     FakeMessage,
     ToolCall,
-    make_test_agent,
     make_ui_mock,
 )
 from coding_assistant.framework.chat import run_chat_loop
@@ -37,24 +36,27 @@ class FakeEchoTool(Tool):
 @pytest.mark.asyncio
 async def test_chat_step_prompts_user_on_no_tool_calls_once():
     completer = FakeCompleter([FakeMessage(content="Hello")])
-    desc, state = make_test_agent(tools=[], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = []
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(ask_sequence=[("> ", "User reply"), ("> ", "User reply 2")])
 
     with pytest.raises(AssertionError, match="FakeCompleter script exhausted"):
         await run_chat_loop(
-            history=state.history,
-            model=desc.model,
-            tools=desc.tools,
-            parameters=desc.parameters,
-            context_name=desc.name,
+            history=history,
+            model=model,
+            tools=tools,
+            parameters=parameters,
+            context_name="test",
             callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             completer=completer,
             ui=ui,
         )
 
-    roles = [m.role for m in state.history[-2:]]
+    roles = [m.role for m in history[-2:]]
     assert roles == ["assistant", "user"]
 
 
@@ -64,17 +66,20 @@ async def test_chat_step_executes_tools_without_prompt():
     completer = FakeCompleter([FakeMessage(tool_calls=[echo_call])])
 
     echo_tool = FakeEchoTool()
-    desc, state = make_test_agent(tools=[echo_tool], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = [echo_tool]
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(ask_sequence=[("> ", "Hi")])
 
     with pytest.raises(AssertionError, match="FakeCompleter script exhausted"):
         await run_chat_loop(
-            history=state.history,
-            model=desc.model,
-            tools=desc.tools,
-            parameters=desc.parameters,
-            context_name=desc.name,
+            history=history,
+            model=model,
+            tools=tools,
+            parameters=parameters,
+            context_name="test",
             callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             completer=completer,
@@ -87,48 +92,54 @@ async def test_chat_step_executes_tools_without_prompt():
 @pytest.mark.asyncio
 async def test_chat_mode_does_not_require_finish_task_tool():
     completer = FakeCompleter([FakeMessage(content="Hi there")])
-    desc, state = make_test_agent(tools=[], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = []
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(ask_sequence=[("> ", "Ack"), ("> ", "Ack 2")])
 
     with pytest.raises(AssertionError, match="FakeCompleter script exhausted"):
         await run_chat_loop(
-            history=state.history,
-            model=desc.model,
-            tools=desc.tools,
-            parameters=desc.parameters,
-            context_name=desc.name,
+            history=history,
+            model=model,
+            tools=tools,
+            parameters=parameters,
+            context_name="test",
             callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
             completer=completer,
             ui=ui,
         )
 
-    roles = [m.role for m in state.history[-2:]]
+    roles = [m.role for m in history[-2:]]
     assert roles == ["assistant", "user"]
 
 
 @pytest.mark.asyncio
 async def test_chat_exit_command_stops_loop_without_appending_command():
     completer = FakeCompleter([FakeMessage(content="Hello chat")])
-    desc, state = make_test_agent(tools=[], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = []
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(ask_sequence=[("> ", "/exit")])
 
     await run_chat_loop(
-        history=state.history,
-        model=desc.model,
-        tools=desc.tools,
-        parameters=desc.parameters,
-        context_name=desc.name,
+        history=history,
+        model=model,
+        tools=tools,
+        parameters=parameters,
+        context_name="test",
         callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         completer=completer,
         ui=ui,
     )
 
-    assert not any(m.role == "user" and (m.content or "").strip() == "/exit" for m in state.history)
-    assert state.history[-1].role == "user"
+    assert not any(m.role == "user" and (m.content or "").strip() == "/exit" for m in history)
+    assert history[-1].role == "user"
 
 
 @pytest.mark.asyncio
@@ -145,16 +156,19 @@ async def test_chat_loop_prompts_after_compact_command():
     )
 
     compact_tool = CompactConversation()
-    desc, state = make_test_agent(tools=[compact_tool], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = [compact_tool]
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(ask_sequence=[("> ", "/compact"), ("> ", "/exit")])
 
     await run_chat_loop(
-        history=state.history,
-        model=desc.model,
-        tools=desc.tools,
-        parameters=desc.parameters,
-        context_name=desc.name,
+        history=history,
+        model=model,
+        tools=tools,
+        parameters=parameters,
+        context_name="test",
         callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         completer=completer,
@@ -162,8 +176,8 @@ async def test_chat_loop_prompts_after_compact_command():
     )
 
     assert ui.prompt.call_count == 2
-    assert state.history[-1].role == "tool"
-    assert "compacted" in state.history[-1].content.lower()
+    assert history[-1].role == "tool"
+    assert "compacted" in history[-1].content.lower()
 
 
 @pytest.mark.asyncio
@@ -172,7 +186,10 @@ async def test_chat_compact_conversation_not_forced_in_callbacks():
     completer = FakeCompleter([FakeMessage(tool_calls=[compact_call])])
 
     compact_tool = CompactConversation()
-    desc, state = make_test_agent(tools=[compact_tool], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = [compact_tool]
+    model = "test-model"
+    parameters = []
 
     class SpyCallbacks(NullProgressCallbacks):
         def __init__(self):
@@ -192,11 +209,11 @@ async def test_chat_compact_conversation_not_forced_in_callbacks():
 
     with pytest.raises(AssertionError, match="Completer script exhausted"):
         await run_chat_loop(
-            history=state.history,
-            model=desc.model,
-            tools=desc.tools,
-            parameters=desc.parameters,
-            context_name=desc.name,
+            history=history,
+            model=model,
+            tools=tools,
+            parameters=parameters,
+            context_name="test",
             callbacks=callbacks,
             tool_callbacks=NullToolCallbacks(),
             completer=completer,
