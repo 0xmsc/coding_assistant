@@ -335,7 +335,7 @@ async def test_multiple_tool_calls_processed_in_order():
                 "type": "function",
                 "function": {
                     "name": "fake.echo",
-                    "arguments": "{\"text\": \"first\"}",
+                    "arguments": '{"text": "first"}',
                 },
             },
             {
@@ -343,7 +343,7 @@ async def test_multiple_tool_calls_processed_in_order():
                 "type": "function",
                 "function": {
                     "name": "fake.echo",
-                    "arguments": "{\"text\": \"second\"}",
+                    "arguments": '{"text": "second"}',
                 },
             },
         ],
