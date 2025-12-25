@@ -12,6 +12,7 @@ from coding_assistant.framework.execution import handle_tool_calls, execute_tool
 from coding_assistant.framework.agent import _handle_finish_task_result
 from coding_assistant.llm.types import (
     AssistantMessage,
+    BaseMessage,
     FunctionCall,
     ToolCall,
     ToolMessage,
@@ -20,6 +21,7 @@ from coding_assistant.framework.tests.helpers import (
     make_ui_mock,
 )
 from coding_assistant.framework.types import (
+    AgentState,
     FinishTaskResult,
     TextResult,
     Tool,
@@ -78,8 +80,8 @@ async def test_execute_tool_call_regular_tool_and_not_found():
 @pytest.mark.asyncio
 async def test_tool_confirmation_denied_and_allowed() -> None:
     tool = FakeConfirmTool()
-    tools = [tool]
-    history = []
+    tools: list[Tool] = [tool]
+    history: list[BaseMessage] = []
 
     args_json = '{"cmd": "echo 123"}'
     expected_prompt = "Execute tool `execute_shell_command` with arguments `{'cmd': 'echo 123'}`?"
@@ -148,8 +150,8 @@ async def test_unknown_result_type_raises() -> None:
         async def execute(self, parameters: dict) -> ToolResult:
             return WeirdResult()
 
-    history = []
-    tools = [WeirdTool()]
+    history: list[BaseMessage] = []
+    tools: list[Tool] = [WeirdTool()]
     tool_call = ToolCall(id="1", function=FunctionCall(name="weird", arguments="{}"))
     msg = AssistantMessage(tool_calls=[tool_call])
     await handle_tool_calls(
@@ -189,8 +191,8 @@ class ParallelSlowTool(Tool):
 @pytest.mark.asyncio
 async def test_tool_call_malformed_arguments_records_error() -> None:
     # Tool name can be anything; malformed JSON should short-circuit before execution attempt
-    history = []
-    tools = []
+    history: list[BaseMessage] = []
+    tools: list[Tool] = []
     bad_args = "{bad"  # invalid JSON
     call = ToolCall(id="bad1", function=FunctionCall(name="bad_tool", arguments=bad_args))
     msg = AssistantMessage(tool_calls=[call])
@@ -233,8 +235,8 @@ async def test_tool_execution_value_error_records_error() -> None:
             raise ValueError("boom")
 
     tool = ErrorTool()
-    history = []
-    tools = [tool]
+    history: list[BaseMessage] = []
+    tools: list[Tool] = [tool]
     call = ToolCall(id="e1", function=FunctionCall(name="err_tool", arguments="{}"))
     msg = AssistantMessage(tool_calls=[call])
 
@@ -277,8 +279,8 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
             return TextResult(content=f"ran shell: {parameters['command']}")
 
     tool = FakeShellTool()
-    history = []
-    tools = [tool]
+    history: list[BaseMessage] = []
+    tools: list[Tool] = [tool]
 
     command = "rm -rf /tmp"
     args_json = '{"command": "rm -rf /tmp"}'
@@ -354,11 +356,9 @@ async def test_before_tool_execution_can_return_finish_task_result() -> None:
             return TextResult(content="should not run")
 
     finish_tool = RecordingFinishTaskTool()
-    class MockState: pass
-    state = MockState()
-    state.history = []
-    state.output = None
-    tools = [finish_tool]
+
+    state = AgentState(history=[])
+    tools: list[Tool] = [finish_tool]
 
     class FabricatingCallbacks(ToolCallbacks):
         async def before_tool_execution(self, context_name, tool_call_id, tool_name, arguments, *, ui):
@@ -411,8 +411,8 @@ async def test_multiple_tool_calls_are_parallel() -> None:
     t1 = ParallelSlowTool("slow.one", delay, events)
     t2 = ParallelSlowTool("slow.two", delay, events)
 
-    history = []
-    tools = [t1, t2]
+    history: list[BaseMessage] = []
+    tools: list[Tool] = [t1, t2]
 
     msg = AssistantMessage(
         tool_calls=[
@@ -444,7 +444,7 @@ async def test_multiple_tool_calls_are_parallel() -> None:
     )
     # Above would be sequential; now test real parallel variant using handle_tool_calls
     history = []
-    tools = [t1, t2]  # reset agent history
+    # reset agent history
     events.clear()
     start = time.monotonic()
     await handle_tool_calls(
@@ -472,32 +472,43 @@ async def test_multiple_tool_calls_are_parallel() -> None:
     )
 
 
-
 @pytest.mark.asyncio
 async def test_tool_calls_process_as_they_arrive() -> None:
     # t1 completes quickly; t2 takes longer.
     events: list[str] = []
 
     class FastTool(Tool):
-        def name(self) -> str: return "fast"
-        def description(self) -> str: return ""
-        def parameters(self) -> dict: return {}
+        def name(self) -> str:
+            return "fast"
+
+        def description(self) -> str:
+            return ""
+
+        def parameters(self) -> dict:
+            return {}
+
         async def execute(self, parameters: dict) -> TextResult:
             events.append("fast_start")
             return TextResult(content="fast_done")
 
     class SlowTool(Tool):
-        def name(self) -> str: return "slow"
-        def description(self) -> str: return ""
-        def parameters(self) -> dict: return {}
+        def name(self) -> str:
+            return "slow"
+
+        def description(self) -> str:
+            return ""
+
+        def parameters(self) -> dict:
+            return {}
+
         async def execute(self, parameters: dict) -> TextResult:
             events.append("slow_start")
             await asyncio.sleep(0.3)
             events.append("slow_done")
             return TextResult(content="slow_done")
 
-    history = []
-    tools = [FastTool(), SlowTool()]
+    history: list[BaseMessage] = []
+    tools: list[Tool] = [FastTool(), SlowTool()]
 
     msg = AssistantMessage(
         tool_calls=[
@@ -518,7 +529,9 @@ async def test_tool_calls_process_as_they_arrive() -> None:
         raise RuntimeError("Fast tool result never appeared in history while slow tool was running")
 
     await asyncio.gather(
-        handle_tool_calls(msg, tools, history, NullProgressCallbacks(), NullToolCallbacks(), ui=make_ui_mock(), context_name="test"),
+        handle_tool_calls(
+            msg, tools, history, NullProgressCallbacks(), NullToolCallbacks(), ui=make_ui_mock(), context_name="test"
+        ),
         checker(),
     )
 
