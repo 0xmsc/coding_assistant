@@ -463,7 +463,90 @@ async def test_multiple_tool_calls_are_parallel() -> None:
         f"Second tool did not start before the first finished; tools likely executed sequentially. Events: {events}"
     )
 
-    # History should contain two tool messages (order may be any); validate both present
-    tool_messages = [m for m in state.history if m.role == "tool"]
-    names = sorted(cast(str, m.name) for m in tool_messages if m.name)
-    assert names == ["slow.one", "slow.two"], f"Unexpected tool messages: {tool_messages}"
+@pytest.mark.asyncio
+async def test_tool_calls_process_as_they_arrive() -> None:
+    # t1 completes quickly; t2 takes longer.
+    # We check history immediately after first tool finishes (via a pseudo-tool or concurrent inspection).
+    events: list[str] = []
+
+    class FastTool(Tool):
+        def name(self) -> str:
+            return "fast"
+
+        def description(self) -> str:
+            return ""
+
+        def parameters(self) -> dict:
+            return {}
+
+        async def execute(self, parameters: dict) -> TextResult:
+            events.append("fast_start")
+            return TextResult(content="fast_done")
+
+    class SlowTool(Tool):
+        def name(self) -> str:
+            return "slow"
+
+        def description(self) -> str:
+            return ""
+
+        def parameters(self) -> dict:
+            return {}
+
+        async def execute(self, parameters: dict) -> TextResult:
+            events.append("slow_start")
+            await asyncio.sleep(0.3)
+            events.append("slow_done")
+            return TextResult(content="slow_done")
+
+    desc, state = make_test_agent(tools=[FastTool(), SlowTool()])
+
+    msg = AssistantMessage(
+        tool_calls=[
+            ToolCall(id="s", function=FunctionCall(name="slow", arguments="{}")),
+            ToolCall(id="f", function=FunctionCall(name="fast", arguments="{}")),
+        ],
+    )
+
+    # We want to verify that the "fast" result is in history while "slow" is still running.
+    # We can use a task_created_callback to get the tasks.
+    slow_task = None
+
+    def task_created(call_id, task):
+        nonlocal slow_task
+        if call_id == "s":
+            slow_task = task
+
+    async def checker():
+        # Wait until fast tool is likely done but slow tool is still sleeping
+        # We know fast tool has no sleep, so it should be done very quickly.
+        # We'll poll history until "fast" result appears.
+        for _ in range(10):
+            if any(getattr(m, "tool_call_id", None) == "f" for m in state.history):
+                # Verify that slow tool is NOT done yet
+                assert not any(getattr(m, "tool_call_id", None) == "s" for m in state.history)
+                events.append("check_passed")
+                return
+            await asyncio.sleep(0.05)
+        raise RuntimeError("Fast tool result never appeared in history while slow tool was running")
+
+    # Run everything
+    await asyncio.gather(
+        handle_tool_calls(
+            msg,
+            desc.tools,
+            state.history,
+            NullProgressCallbacks(),
+            tool_callbacks=NullToolCallbacks(),
+            ui=make_ui_mock(),
+            context_name=desc.name,
+            task_created_callback=task_created,
+        ),
+        checker(),
+    )
+
+    assert "check_passed" in events
+    # Finally both should be in history
+    ids = [getattr(m, "tool_call_id", None) for m in state.history if m.role == "tool"]
+    assert "f" in ids
+    assert "s" in ids

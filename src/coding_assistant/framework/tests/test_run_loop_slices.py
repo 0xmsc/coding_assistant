@@ -326,28 +326,31 @@ async def test_multiple_tool_calls_processed_in_order():
     assert state.output is not None
     assert state.output.result == "ok"
     desc, state = agent
-    assert [message_to_dict(m) for m in state.history[1:4]] == [
-        {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": "1",
-                    "type": "function",
-                    "function": {
-                        "name": "fake.echo",
-                        "arguments": '{"text": "first"}',
-                    },
+    actual_history = [message_to_dict(m) for m in state.history[1:4]]
+    assert actual_history[0] == {
+        "role": "assistant",
+        "tool_calls": [
+            {
+                "id": "1",
+                "type": "function",
+                "function": {
+                    "name": "fake.echo",
+                    "arguments": "{\"text\": \"first\"}",
                 },
-                {
-                    "id": "2",
-                    "type": "function",
-                    "function": {
-                        "name": "fake.echo",
-                        "arguments": '{"text": "second"}',
-                    },
+            },
+            {
+                "id": "2",
+                "type": "function",
+                "function": {
+                    "name": "fake.echo",
+                    "arguments": "{\"text\": \"second\"}",
                 },
-            ],
-        },
+            },
+        ],
+    }
+    # Verify both tool results are present, regardless of order
+    tool_results = sorted(actual_history[1:3], key=lambda x: x["tool_call_id"])
+    assert tool_results == [
         {
             "tool_call_id": "1",
             "role": "tool",
