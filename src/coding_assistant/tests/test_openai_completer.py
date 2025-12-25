@@ -83,8 +83,8 @@ def test_prepare_messages():
         AssistantMessage(
             role="assistant",
             content="assistant stuff",
-            provider_specific_fields={"reasoning_details": [{"thought": "planned"}]}
-        )
+            provider_specific_fields={"reasoning_details": [{"thought": "planned"}]},
+        ),
     ]
     prepared = _prepare_messages(msgs)
     assert len(prepared) == 2
@@ -156,8 +156,16 @@ def test_merge_chunks_tool_calls():
 
 def test_merge_chunks_multiple_tool_calls():
     chunks = [
-        {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "f1", "arguments": ""}}]}}]},
-        {"choices": [{"delta": {"tool_calls": [{"index": 1, "id": "c2", "function": {"name": "f2", "arguments": ""}}]}}]},
+        {
+            "choices": [
+                {"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "f1", "arguments": ""}}]}}
+            ]
+        },
+        {
+            "choices": [
+                {"delta": {"tool_calls": [{"index": 1, "id": "c2", "function": {"name": "f2", "arguments": ""}}]}}
+            ]
+        },
         {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "arg1"}}]}}]},
         {"choices": [{"delta": {"tool_calls": [{"index": 1, "function": {"arguments": "arg2"}}]}}]},
     ]
@@ -281,7 +289,7 @@ async def test_openai_complete_with_reasoning(monkeypatch):
 @pytest.mark.asyncio
 async def test_openai_complete_with_reasoning_effort(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
-    
+
     # We want to check if reasoning_effort is passed to the payload.
     # We'll mock the AsyncClient.post or just check what's passed to aconnect_sse
     captured_payload = None
@@ -298,9 +306,9 @@ async def test_openai_complete_with_reasoning_effort(monkeypatch):
     # Mock _parse_model_and_reasoning since it depends on LiteLLM which might use different logic
     # and we want to control the input to _try_completion_with_retry
     monkeypatch.setattr("coding_assistant.llm.litellm._parse_model_and_reasoning", lambda m: ("o1", "high"))
-    
+
     await openai_model.complete(msgs, "o1:high", [], cb)
-    
+
     assert captured_payload["model"] == "o1"
     assert captured_payload["reasoning_effort"] == "high"
 
@@ -308,8 +316,36 @@ async def test_openai_complete_with_reasoning_effort(monkeypatch):
 @pytest.mark.asyncio
 async def test_openai_complete_error_retry(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
-    
+
     call_count = 0
+
+    def mock_aconnect_sse(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        raise httpx.ReadTimeout("Timeout")
+
+    monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
+
+    # Patch sleep to avoid waiting
+    async def mocked_sleep(delay):
+        pass
+
+    monkeypatch.setattr("asyncio.sleep", mocked_sleep)
+
+    cb = _CB()
+    # Now that we have max_retries = 3, it should call 3 times before failing
+    with pytest.raises(httpx.ReadTimeout):
+        await openai_model.complete([UserMessage(content="hi")], "gpt-4o", [], cb)
+
+    assert call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_openai_complete_error_recovery(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
+
+    call_count = 0
+
     def mock_aconnect_sse(*args, **kwargs):
         nonlocal call_count
         call_count += 1
@@ -318,13 +354,15 @@ async def test_openai_complete_error_retry(monkeypatch):
         return FakeContext([json.dumps({"choices": [{"delta": {"content": "Recovered"}}]})])
 
     monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
+
     # Patch sleep to avoid waiting
-    async def mocked_sleep(delay): pass
+    async def mocked_sleep(delay):
+        pass
+
     monkeypatch.setattr("asyncio.sleep", mocked_sleep)
 
     cb = _CB()
-    # Now that we have max_retries = 3, it should call 3 times before failing
-    with pytest.raises(httpx.ReadTimeout):
-        await openai_model.complete([UserMessage(content="hi")], "gpt-4o", [], cb)
-    
-    assert call_count == 3
+    ret = await openai_model.complete([UserMessage(content="hi")], "gpt-4o", [], cb)
+
+    assert ret.message.content == "Recovered"
+    assert call_count == 2
