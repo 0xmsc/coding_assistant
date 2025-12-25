@@ -540,7 +540,6 @@ async def test_tool_calls_process_as_they_arrive() -> None:
             tool_callbacks=NullToolCallbacks(),
             ui=make_ui_mock(),
             context_name=desc.name,
-            task_created_callback=task_created,
         ),
         checker(),
     )
