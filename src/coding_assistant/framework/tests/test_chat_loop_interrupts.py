@@ -14,7 +14,6 @@ from coding_assistant.framework.tests.helpers import (
     FunctionCall,
     FakeMessage,
     ToolCall,
-    make_test_agent,
     make_ui_mock,
 )
 from coding_assistant.framework.types import TextResult, Tool
@@ -71,7 +70,10 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
         ]
     )
 
-    desc, state = make_test_agent(tools=[tool], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = [tool]
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -93,15 +95,15 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    history=state.history,
-                    model=desc.model,
-                    tools=desc.tools,
-                    parameters=desc.parameters,
+                    history=history,
+                    model=model,
+                    tools=tools,
+                    parameters=parameters,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
-                    context_name=desc.name,
+                    context_name="test",
                 )
             )
 
@@ -119,7 +121,7 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
     assert tool.called
     assert tool.cancelled
 
-    user_messages = [m for m in state.history if m.role == "user"]
+    user_messages = [m for m in history if m.role == "user"]
     resume_msg = next((m for m in user_messages if "Resume" in (m.content or "")), None)
     assert resume_msg is not None, "User should have been prompted after interrupt"
 
@@ -139,7 +141,10 @@ async def test_interrupt_during_do_single_step():
         ]
     )
 
-    desc, state = make_test_agent(tools=[tool], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = [tool]
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -161,15 +166,15 @@ async def test_interrupt_during_do_single_step():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    history=state.history,
-                    model=desc.model,
-                    tools=desc.tools,
-                    parameters=desc.parameters,
+                    history=history,
+                    model=model,
+                    tools=tools,
+                    parameters=parameters,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
-                    context_name=desc.name,
+                    context_name="test",
                 )
             )
 
@@ -187,7 +192,7 @@ async def test_interrupt_during_do_single_step():
 
     assert tool.cancelled
 
-    user_messages = [m for m in state.history if m.role == "user"]
+    user_messages = [m for m in history if m.role == "user"]
     assert len(user_messages) >= 2
 
 
@@ -208,7 +213,10 @@ async def test_multiple_tool_calls_with_interrupt():
         ]
     )
 
-    desc, state = make_test_agent(tools=[tool1, tool2], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = [tool1, tool2]
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -230,15 +238,15 @@ async def test_multiple_tool_calls_with_interrupt():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    history=state.history,
-                    model=desc.model,
-                    tools=desc.tools,
-                    parameters=desc.parameters,
+                    history=history,
+                    model=model,
+                    tools=tools,
+                    parameters=parameters,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
-                    context_name=desc.name,
+                    context_name="test",
                 )
             )
 
@@ -267,7 +275,10 @@ async def test_chat_loop_without_interrupts_works_normally():
         ]
     )
 
-    desc, state = make_test_agent(tools=[tool], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = [tool]
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -277,22 +288,22 @@ async def test_chat_loop_without_interrupts_works_normally():
     )
 
     await run_chat_loop(
-        history=state.history,
-        model=desc.model,
-        tools=desc.tools,
-        parameters=desc.parameters,
+        history=history,
+        model=model,
+        tools=tools,
+        parameters=parameters,
         callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         completer=completer,
         ui=ui,
-        context_name=desc.name,
+        context_name="test",
     )
 
     assert tool.called
     assert tool.completed
     assert not tool.cancelled
 
-    assert len(state.history) > 2
+    assert len(history) > 2
 
 
 @pytest.mark.asyncio
@@ -310,7 +321,10 @@ async def test_interrupt_recovery_continues_conversation():
         ]
     )
 
-    desc, state = make_test_agent(tools=[tool], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = [tool]
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -333,15 +347,15 @@ async def test_interrupt_recovery_continues_conversation():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    history=state.history,
-                    model=desc.model,
-                    tools=desc.tools,
-                    parameters=desc.parameters,
+                    history=history,
+                    model=model,
+                    tools=tools,
+                    parameters=parameters,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
-                    context_name=desc.name,
+                    context_name="test",
                 )
             )
 
@@ -356,10 +370,10 @@ async def test_interrupt_recovery_continues_conversation():
 
     assert tool.cancelled
 
-    user_messages = [m for m in state.history if m.role == "user"]
+    user_messages = [m for m in history if m.role == "user"]
     assert len(user_messages) >= 2
 
-    assistant_messages = [m for m in state.history if m.role == "assistant"]
+    assistant_messages = [m for m in history if m.role == "assistant"]
     assert len(assistant_messages) >= 1
 
 
@@ -380,7 +394,10 @@ async def test_interrupt_during_second_tool_call():
         ]
     )
 
-    desc, state = make_test_agent(tools=[tool], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = [tool]
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -402,15 +419,15 @@ async def test_interrupt_during_second_tool_call():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    history=state.history,
-                    model=desc.model,
-                    tools=desc.tools,
-                    parameters=desc.parameters,
+                    history=history,
+                    model=model,
+                    tools=tools,
+                    parameters=parameters,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
-                    context_name=desc.name,
+                    context_name="test",
                 )
             )
 
@@ -426,7 +443,7 @@ async def test_interrupt_during_second_tool_call():
 
     assert tool.cancelled
 
-    user_messages = [m for m in state.history if m.role == "user"]
+    user_messages = [m for m in history if m.role == "user"]
     assert any("after tool interrupt" in (m.content or "") for m in user_messages)
 
 
@@ -444,7 +461,10 @@ async def test_sigint_interrupts_tool_execution():
         ]
     )
 
-    desc, state = make_test_agent(tools=[tool], history=[UserMessage(content="start")])
+    history = [UserMessage(content="start")]
+    tools = [tool]
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -456,15 +476,15 @@ async def test_sigint_interrupts_tool_execution():
     async def run_with_sigint():
         task = asyncio.create_task(
             run_chat_loop(
-                history=state.history,
-                model=desc.model,
-                tools=desc.tools,
-                parameters=desc.parameters,
+                history=history,
+                model=model,
+                tools=tools,
+                parameters=parameters,
                 callbacks=NullProgressCallbacks(),
                 tool_callbacks=NullToolCallbacks(),
                 completer=completer,
                 ui=ui,
-                context_name=desc.name,
+                context_name="test",
             )
         )
 
@@ -480,7 +500,7 @@ async def test_sigint_interrupts_tool_execution():
 
     assert tool.cancelled
 
-    user_messages = [m for m in state.history if m.role == "user"]
+    user_messages = [m for m in history if m.role == "user"]
     assert any("recovered from SIGINT" in (m.content or "") for m in user_messages)
 
 
@@ -495,7 +515,10 @@ async def test_interrupt_during_llm_call():
         await asyncio.sleep(2.0)
         return FakeCompleter([FakeMessage(content="Response from LLM")])._completions[0]
 
-    desc, state = make_test_agent(history=[UserMessage(content="test")])
+    history = [UserMessage(content="test")]
+    tools = []
+    model = "test-model"
+    parameters = []
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -517,15 +540,15 @@ async def test_interrupt_during_llm_call():
         async def run_with_interrupt():
             task = asyncio.create_task(
                 run_chat_loop(
-                    history=state.history,
-                    model=desc.model,
-                    tools=desc.tools,
-                    parameters=desc.parameters,
+                    history=history,
+                    model=model,
+                    tools=tools,
+                    parameters=parameters,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=slow_completer,
                     ui=ui,
-                    context_name=desc.name,
+                    context_name="test",
                 )
             )
 
@@ -539,9 +562,9 @@ async def test_interrupt_during_llm_call():
 
         await run_with_interrupt()
 
-    assistant_messages = [m for m in state.history if m.role == "assistant"]
+    assistant_messages = [m for m in history if m.role == "assistant"]
     for msg in assistant_messages:
         assert "Response from LLM" not in (msg.content or "")
 
-    user_messages = [m for m in state.history if m.role == "user"]
+    user_messages = [m for m in history if m.role == "user"]
     assert any("user input after interrupt" in (m.content or "") for m in user_messages)
