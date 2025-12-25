@@ -463,6 +463,7 @@ async def test_multiple_tool_calls_are_parallel() -> None:
         f"Second tool did not start before the first finished; tools likely executed sequentially. Events: {events}"
     )
 
+
 @pytest.mark.asyncio
 async def test_tool_calls_process_as_they_arrive() -> None:
     # t1 completes quickly; t2 takes longer.
@@ -507,15 +508,6 @@ async def test_tool_calls_process_as_they_arrive() -> None:
             ToolCall(id="f", function=FunctionCall(name="fast", arguments="{}")),
         ],
     )
-
-    # We want to verify that the "fast" result is in history while "slow" is still running.
-    # We can use a task_created_callback to get the tasks.
-    slow_task = None
-
-    def task_created(call_id, task):
-        nonlocal slow_task
-        if call_id == "s":
-            slow_task = task
 
     async def checker():
         # Wait until fast tool is likely done but slow tool is still sleeping
