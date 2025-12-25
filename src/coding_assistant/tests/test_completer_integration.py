@@ -23,6 +23,7 @@ class _RealCB(NullProgressCallbacks):
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 @pytest.mark.skipif(not os.environ.get("OPENROUTER_API_KEY"), reason="OPENROUTER_API_KEY not set")
 async def test_litellm_openrouter_integration():
     model = "openrouter/x-ai/grok-code-fast-1"
@@ -36,6 +37,7 @@ async def test_litellm_openrouter_integration():
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 @pytest.mark.skipif(not os.environ.get("OPENROUTER_API_KEY"), reason="OPENROUTER_API_KEY not set")
 async def test_openai_openrouter_integration():
     # Note: our openai adapter strips the 'openrouter/' prefix or uses the model as is.
