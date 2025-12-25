@@ -103,7 +103,7 @@ async def handle_tool_calls(
     if not tool_calls:
         return
 
-    tasks_with_calls = []
+    tasks_with_calls = {}
     loop = asyncio.get_running_loop()
     for tool_call in tool_calls:
         task = loop.create_task(
@@ -120,44 +120,46 @@ async def handle_tool_calls(
         )
         if task_created_callback is not None:
             task_created_callback(tool_call.id, task)
-        tasks_with_calls.append((tool_call, task))
-
-    done, pending = await asyncio.wait([task for _, task in tasks_with_calls])
-    assert len(pending) == 0
+        tasks_with_calls[task] = tool_call
 
     any_cancelled = False
-    for tool_call, task in tasks_with_calls:
-        try:
-            result: ToolResult = await task
-        except asyncio.CancelledError:
-            result = TextResult(content="Tool execution was cancelled.")
-            any_cancelled = True
+    pending = set(tasks_with_calls.keys())
+    while pending:
+        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
 
-        if handle_tool_result:
-            result_summary = handle_tool_result(result)
-        else:
-            if isinstance(result, TextResult):
-                result_summary = result.content
+        for task in done:
+            tool_call = tasks_with_calls[task]
+            try:
+                result: ToolResult = await task
+            except asyncio.CancelledError:
+                result = TextResult(content="Tool execution was cancelled.")
+                any_cancelled = True
+
+            if handle_tool_result:
+                result_summary = handle_tool_result(result)
             else:
-                result_summary = f"Tool produced result of type {type(result).__name__}"
+                if isinstance(result, TextResult):
+                    result_summary = result.content
+                else:
+                    result_summary = f"Tool produced result of type {type(result).__name__}"
 
-        if result_summary is None:
-            raise RuntimeError(f"Tool call {tool_call.id} produced empty result summary.")
+            if result_summary is None:
+                raise RuntimeError(f"Tool call {tool_call.id} produced empty result summary.")
 
-        try:
-            function_args = json.loads(tool_call.function.arguments)
-        except JSONDecodeError:
-            function_args = {}
+            try:
+                function_args = json.loads(tool_call.function.arguments)
+            except JSONDecodeError:
+                function_args = {}
 
-        append_tool_message(
-            history,
-            progress_callbacks,
-            context_name,
-            tool_call.id,
-            tool_call.function.name,
-            function_args,
-            result_summary,
-        )
+            append_tool_message(
+                history,
+                progress_callbacks,
+                context_name,
+                tool_call.id,
+                tool_call.function.name,
+                function_args,
+                result_summary,
+            )
 
     if any_cancelled:
         raise asyncio.CancelledError()
