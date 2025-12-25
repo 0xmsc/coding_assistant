@@ -184,7 +184,7 @@ async def _try_completion_with_retry(
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
 ):
-    max_retries = 1
+    max_retries = 3
     for attempt in range(max_retries):
         try:
             return await _try_completion(messages, tools, model, reasoning_effort, callbacks)
