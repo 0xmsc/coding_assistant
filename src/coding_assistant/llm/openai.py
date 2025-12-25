@@ -36,7 +36,7 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
 def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
     full_content = ""
     full_reasoning = ""
-    full_tool_calls = {}
+    full_tool_calls: dict[int, dict] = {}
     full_reasoning_details = []
 
     for chunk in chunks:
