@@ -303,9 +303,8 @@ async def test_openai_complete_with_reasoning_effort(monkeypatch):
 
     cb = _CB()
     msgs = [UserMessage(content="Reason")]
-    # Mock _parse_model_and_reasoning since it depends on LiteLLM which might use different logic
-    # and we want to control the input to _try_completion_with_retry
-    monkeypatch.setattr("coding_assistant.llm.litellm._parse_model_and_reasoning", lambda m: ("o1", "high"))
+    # Mock _parse_model_and_reasoning
+    monkeypatch.setattr("coding_assistant.llm.openai._parse_model_and_reasoning", lambda m: ("o1", "high"))
 
     await openai_model.complete(msgs, "o1:high", [], cb)
 
