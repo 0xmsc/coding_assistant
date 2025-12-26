@@ -13,7 +13,7 @@ from coding_assistant.framework.types import (
     TextResult,
     Tool,
 )
-from coding_assistant.llm.factory import get_completer
+from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.ui import DefaultAnswerUI, UI
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ class AgentTool(Tool):
         self._tool_callbacks = tool_callbacks
         self._name = name
         self._history = history
-        self._completer = completer or get_completer("litellm")
+        self._completer = completer or openai_complete
         self.history: list = []
         self.summary: str = ""
 

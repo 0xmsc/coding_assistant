@@ -1,9 +1,11 @@
 import asyncio
+import functools
 import json
 import logging
 import os
+import re
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, cast
 
 import httpx
 from httpx_sse import aconnect_sse, SSEError
@@ -195,6 +197,26 @@ async def _try_completion_with_retry(
             await asyncio.sleep(0.5 + attempt)
 
 
+@functools.cache
+def _parse_model_and_reasoning(
+    model: str,
+) -> tuple[str, Literal["low", "medium", "high"] | None]:
+    s = model.strip()
+    m = re.match(r"^(.+?) \(([^)]*)\)$", s)
+
+    if not m:
+        return s, None
+
+    base = m.group(1).strip()
+    effort = m.group(2).strip().lower()
+
+    if effort not in ("low", "medium", "high"):
+        raise ValueError(f"Invalid reasoning effort level {effort} in {model}")
+
+    effort = cast(Literal["low", "medium", "high"], effort)
+    return base, effort
+
+
 async def complete(
     messages: list[BaseMessage],
     model: str,
@@ -202,10 +224,6 @@ async def complete(
     callbacks: ProgressCallbacks,
 ):
     try:
-        # Re-use reasoning parsing logic from LiteLLM adapter if available,
-        # but we'll re-implement simple version to avoid circularity if needed.
-        from coding_assistant.llm.litellm import _parse_model_and_reasoning
-
         model, reasoning_effort = _parse_model_and_reasoning(model)
         return await _try_completion_with_retry(messages, tools, model, reasoning_effort, callbacks)
     except Exception as e:

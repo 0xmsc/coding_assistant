@@ -11,7 +11,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from coding_assistant.framework.callbacks import ProgressCallbacks
-from coding_assistant.llm.factory import get_completer
+from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.parameters import Parameter
 from coding_assistant.framework.types import Tool
@@ -137,12 +137,6 @@ def parse_args():
         default=0,
         help="Port for the background MCP server (using streamable-http transport).",
     )
-    parser.add_argument(
-        "--completer",
-        choices=["litellm", "openai"],
-        default="litellm",
-        help="The LLM completion engine to use.",
-    )
 
     return parser.parse_args()
 
@@ -154,7 +148,6 @@ def create_config_from_args(args) -> Config:
         compact_conversation_at_tokens=args.compact_conversation_at_tokens,
         enable_chat_mode=args.task is None,
         enable_ask_user=args.ask_user,
-        completer_name=args.completer,
     )
 
 
@@ -175,8 +168,6 @@ async def run_root_agent(
         *tools,
     ]
 
-    completer = get_completer(config.completer_name)
-
     tool = AgentTool(
         model=config.model,
         expert_model=config.expert_model,
@@ -188,7 +179,7 @@ async def run_root_agent(
         ui=agent_ui,
         tool_callbacks=tool_callbacks,
         name="launch_orchestrator_agent",
-        completer=completer,
+        completer=openai_complete,
     )
 
     orchestrator_params = {
@@ -227,7 +218,6 @@ async def run_chat_session(
         )
 
     chat_history = history or []
-    completer = get_completer(config.completer_name)
 
     try:
         await run_chat_loop(
@@ -237,7 +227,7 @@ async def run_chat_session(
             parameters=chat_parameters,
             callbacks=progress_callbacks,
             tool_callbacks=tool_callbacks,
-            completer=completer,
+            completer=openai_complete,
             ui=PromptToolkitUI(),
             context_name="Orchestrator",
         )
