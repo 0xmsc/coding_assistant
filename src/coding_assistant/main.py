@@ -264,8 +264,6 @@ def get_default_mcp_server_config(root_directory: Path, mcp_url: str | None = No
         name="coding_assistant_mcp",
         command="uv",
         args=args,
-        # TODO: Remove
-        env=["OPENROUTER_API_KEY"],
     )
 
 
