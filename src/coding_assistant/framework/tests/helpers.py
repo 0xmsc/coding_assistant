@@ -8,8 +8,8 @@ from coding_assistant.llm.types import (
     FunctionCall as FunctionCall,
     BaseMessage,
     ToolCall as ToolCall,
+    Completion,
 )
-from coding_assistant.llm.litellm import Completion
 from coding_assistant.ui import UI
 
 
