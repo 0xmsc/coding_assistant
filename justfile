@@ -12,6 +12,11 @@ lint:
     uv run --directory packages/coding_assistant_mcp ruff format
     uv run --directory packages/coding_assistant_mcp mypy .
 
+ci:
+    #!/usr/bin/env -S parallel --shebang --jobs {{ num_cpus() }}
+    just test
+    just lint
+
 test-integration:
     uv run coding-assistant \
         --model "openrouter/google/gemini-3-flash-preview (medium)" \
