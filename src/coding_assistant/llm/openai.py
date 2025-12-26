@@ -209,5 +209,5 @@ async def complete(
         model, reasoning_effort = _parse_model_and_reasoning(model)
         return await _try_completion_with_retry(messages, tools, model, reasoning_effort, callbacks)
     except Exception as e:
-        logger.error(f"Error during model completion (OpenAI): {e}")
+        logger.error(f"Error during model completion (OpenAI): {e}, last messages: {messages[-5:]}")
         raise e
