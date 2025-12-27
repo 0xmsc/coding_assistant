@@ -31,14 +31,7 @@ Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automa
 Using uv (recommended):
 
 ```bash
-# In the repo root
-uv sync  # or: uv pip install -e .
-```
-
-Using pip:
-
-```bash
-pip install -e .
+uv tool install coding-assistant-cli
 ```
 
 ## Quickstart
@@ -46,7 +39,7 @@ pip install -e .
 The easiest way to run is with the uv command:
 
 ```bash
-uv run coding-assistant \
+coding-assistant \
   --model "openrouter/anthropic/claude-3.5-sonnet" \
   --task "Refactor all function names to snake_case."
 ```
@@ -54,7 +47,7 @@ uv run coding-assistant \
 Resume the last session:
 
 ```bash
-uv run coding-assistant \
+coding-assistant \
   --model "openrouter/anthropic/claude-3.5-sonnet" \
   --resume
 ```
@@ -62,7 +55,7 @@ uv run coding-assistant \
 Show available options:
 
 ```bash
-uv run coding-assistant --help
+coding-assistant --help
 ```
 
 ### Advanced Examples
@@ -70,7 +63,7 @@ uv run coding-assistant --help
 You can invoke the CLI with additional MCP servers (stdio or SSE/remote). The built-in `coding_assistant_mcp` is included by default.
 
 ```bash
-uv run coding-assistant \
+coding-assistant \
   --model "openrouter/openai/gpt-4o-mini" \
   --task "Say 'Hello World'" \
   --mcp-servers \
@@ -122,7 +115,7 @@ Pass MCP servers with repeated `--mcp-servers` flags as JSON strings. Support is
 
 ### Built-in: Coding Assistant MCP
 
-This repository includes a built-in MCP server (package `packages/coding_assistant_mcp`) that is started automatically by default. It provides:
+This repository includes a built-in MCP server (package `coding_assistant_mcp`) that is started automatically by default. It provides:
 
 - **shell**: `shell_execute` — Execute shell commands with timeout and output truncation
 - **python**: `python_execute` — Execute Python code with timeout and output truncation
@@ -146,7 +139,7 @@ To use these, add them via `--mcp-servers` flags as shown in the examples above.
 You can print all discovered tools from running MCP servers:
 
 ```bash
-uv run coding-assistant --print-mcp-tools --mcp-servers '...'
+coding-assistant --print-mcp-tools --mcp-servers '...'
 ```
 
 ## Sandbox
@@ -197,7 +190,6 @@ The built-in MCP tools `shell_execute` and `python_execute`:
 
   ```bash
   uv run pytest -n auto -m "not slow"
-  uv run --directory packages/coding_assistant_mcp pytest -n auto
   ```
 
 - Run linting/formatting/type-checking:
