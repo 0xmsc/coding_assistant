@@ -1,7 +1,7 @@
 import pytest
 import pytest_asyncio
-from coding_assistant_mcp.shell import create_shell_server
-from coding_assistant_mcp.tasks import TaskManager
+from coding_assistant.mcp.shell import create_shell_server
+from coding_assistant.mcp.tasks import TaskManager
 
 
 @pytest.fixture
