@@ -1,5 +1,5 @@
 import pytest
-from coding_assistant_mcp.todo import TodoManager
+from coding_assistant.mcp.todo import TodoManager
 
 
 @pytest.fixture()

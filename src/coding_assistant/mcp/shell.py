@@ -4,9 +4,9 @@ from typing import Annotated
 
 from fastmcp import FastMCP
 
-from coding_assistant_mcp.proc import start_process
-from coding_assistant_mcp.utils import truncate_output
-from coding_assistant_mcp.tasks import TaskManager
+from coding_assistant.mcp.proc import start_process
+from coding_assistant.mcp.utils import truncate_output
+from coding_assistant.mcp.tasks import TaskManager
 
 
 def create_shell_server(manager: TaskManager) -> FastMCP:

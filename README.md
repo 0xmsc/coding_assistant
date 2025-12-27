@@ -60,7 +60,7 @@ coding-assistant --help
 
 ### Advanced Examples
 
-You can invoke the CLI with additional MCP servers (stdio or SSE/remote). The built-in `coding_assistant_mcp` is included by default.
+You can invoke the CLI with additional MCP servers (stdio or SSE/remote). The built-in `coding_assistant.mcp` is included by default.
 
 ```bash
 coding-assistant \
@@ -115,7 +115,7 @@ Pass MCP servers with repeated `--mcp-servers` flags as JSON strings. Support is
 
 ### Built-in: Coding Assistant MCP
 
-This repository includes a built-in MCP server (package `coding_assistant_mcp`) that is started automatically by default. It provides:
+This repository includes a built-in MCP server (package `coding_assistant.mcp`) that is started automatically by default. It provides:
 
 - **shell**: `shell_execute` — Execute shell commands with timeout and output truncation
 - **python**: `python_execute` — Execute Python code with timeout and output truncation
