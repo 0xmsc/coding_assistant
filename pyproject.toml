@@ -59,4 +59,3 @@ packages = ["src/coding_assistant"]
 markers = [
     "slow: marks tests as slow",
 ]
-addopts = "--ignore=src/coding_assistant/mcp/tests"
