@@ -236,15 +236,9 @@ async def run_chat_session(
 
 
 def get_default_mcp_server_config(root_directory: Path, mcp_url: str | None = None) -> MCPServerConfig:
-    mcp_project_dir = root_directory / "packages" / "coding_assistant_mcp"
-    if not mcp_project_dir.exists():
-        raise FileNotFoundError(f"{mcp_project_dir} does not exist")
-
     args = [
-        "--project",
-        str(mcp_project_dir),
-        "run",
-        "coding-assistant-mcp",
+        "-m",
+        "coding_assistant_mcp",
     ]
 
     if mcp_url:
@@ -252,7 +246,7 @@ def get_default_mcp_server_config(root_directory: Path, mcp_url: str | None = No
 
     return MCPServerConfig(
         name="coding_assistant_mcp",
-        command="uv",
+        command="python",
         args=args,
     )
 
