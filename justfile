@@ -1,16 +1,10 @@
 test:
     uv run pytest -n auto -m "not slow"
-    uv run --directory packages/coding_assistant_mcp pytest -n auto
-
 
 lint:
-    uv run ruff check --fix src/coding_assistant
-    uv run ruff format src/coding_assistant
-    uv run mypy src/coding_assistant
-
-    uv run --directory packages/coding_assistant_mcp ruff check --fix
-    uv run --directory packages/coding_assistant_mcp ruff format
-    uv run --directory packages/coding_assistant_mcp mypy .
+    uv run ruff check --fix src/coding_assistant src/coding_assistant_mcp
+    uv run ruff format src/coding_assistant src/coding_assistant_mcp
+    uv run mypy src/coding_assistant src/coding_assistant_mcp
 
 ci:
     #!/usr/bin/env -S parallel --shebang --jobs {{ num_cpus() }}
