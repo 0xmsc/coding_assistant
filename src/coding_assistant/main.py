@@ -238,14 +238,14 @@ async def run_chat_session(
 def get_default_mcp_server_config(root_directory: Path, mcp_url: str | None = None) -> MCPServerConfig:
     args = [
         "-m",
-        "coding_assistant_mcp",
+        "coding_assistant.mcp",
     ]
 
     if mcp_url:
         args.extend(["--mcp-url", mcp_url])
 
     return MCPServerConfig(
-        name="coding_assistant_mcp",
+        name="coding_assistant.mcp",
         command="python",
         args=args,
     )

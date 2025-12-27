@@ -6,11 +6,11 @@ import asyncio
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import configure_logging
 
-from coding_assistant_mcp.filesystem import filesystem_server
-from coding_assistant_mcp.python import create_python_server
-from coding_assistant_mcp.shell import create_shell_server
-from coding_assistant_mcp.todo import create_todo_server
-from coding_assistant_mcp.tasks import create_task_server, TaskManager
+from coding_assistant.mcp.filesystem import filesystem_server
+from coding_assistant.mcp.python import create_python_server
+from coding_assistant.mcp.shell import create_shell_server
+from coding_assistant.mcp.todo import create_todo_server
+from coding_assistant.mcp.tasks import create_task_server, TaskManager
 
 
 async def _main() -> None:
