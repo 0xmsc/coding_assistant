@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from coding_assistant_mcp.filesystem import edit_file, write_file
+from coding_assistant.mcp.filesystem import edit_file, write_file
 
 
 @pytest.mark.asyncio

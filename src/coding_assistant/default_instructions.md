@@ -30,7 +30,7 @@
 
 ## MCP
 
-- You have access to a custom MCP server (`coding_assistant_mcp`).
+- You have access to a custom MCP server (`coding_assistant.mcp`).
 - Prefer it where other MCPs provide similar tools.
 
 ## Shell
