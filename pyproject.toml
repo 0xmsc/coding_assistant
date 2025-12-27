@@ -1,6 +1,6 @@
 [project]
 name = "coding-assistant-cli"
-version = "0.1.3"
+version = "0.1.4"
 description = "An agent-orchestrated CLI for streamlining and automating coding tasks."
 readme = "README.md"
 authors = []
