@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sys
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 
@@ -246,7 +247,7 @@ def get_default_mcp_server_config(root_directory: Path, mcp_url: str | None = No
 
     return MCPServerConfig(
         name="coding_assistant.mcp",
-        command="python",
+        command=sys.executable,
         args=args,
     )
 
