@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import importlib.resources
 from pathlib import Path
 
 from coding_assistant.tools.mcp import MCPServer
@@ -8,22 +9,22 @@ from coding_assistant.tools.mcp import MCPServer
 logger = logging.getLogger(__name__)
 
 
-def _load_default_instructions(root_directory: Path) -> str:
-    default_instructions_path = root_directory / "src/coding_assistant/default_instructions.md"
-    if not default_instructions_path.exists():
-        raise FileNotFoundError("Could not find default_instructions.md")
-    return default_instructions_path.read_text().strip()
+def _load_default_instructions() -> str:
+    path = importlib.resources.files("coding_assistant") / "default_instructions.md"
+    try:
+        return path.read_text().strip()
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Could not find default_instructions.md at {path}")
 
 
 def get_instructions(
     working_directory: Path,
-    root_directory: Path,
     user_instructions: list[str],
     mcp_servers: list[MCPServer] | None = None,
 ) -> str:
     sections: list[str] = []
 
-    sections.append(_load_default_instructions(root_directory))
+    sections.append(_load_default_instructions())
 
     for path in [
         working_directory / ".coding_assistant" / "instructions.md",

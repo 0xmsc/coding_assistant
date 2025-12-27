@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+import importlib.resources
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 
@@ -284,7 +285,7 @@ async def _main(args):
     working_directory = Path(os.getcwd())
     logger.info(f"Running in working directory: {working_directory}")
 
-    coding_assistant_root = Path(__file__).parent.parent.parent.resolve()
+    coding_assistant_root = Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
     logger.info(f"Coding Assistant root directory: {coding_assistant_root}")
 
     if args.resume_file:
@@ -331,7 +332,6 @@ async def _main(args):
             await start_mcp_server(tools, args.mcp_server_port)
 
         instructions = get_instructions(
-            root_directory=coding_assistant_root,
             working_directory=working_directory,
             user_instructions=args.instructions,
             mcp_servers=mcp_servers,

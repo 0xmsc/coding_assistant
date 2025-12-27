@@ -13,8 +13,7 @@ def _get_project_root() -> Path:
 
 def test_get_instructions_base_and_user_instructions(tmp_path: Path):
     wd = tmp_path
-    root = _get_project_root()
-    instr = get_instructions(working_directory=wd, root_directory=root, user_instructions=["  A  ", "B\n"])
+    instr = get_instructions(working_directory=wd, user_instructions=["  A  ", "B\n"])
 
     assert "Do not initialize a new git repository" in instr
     assert "\nA\n" in instr
@@ -24,12 +23,11 @@ def test_get_instructions_base_and_user_instructions(tmp_path: Path):
 
 def test_get_instructions_with_planning_and_local_file(tmp_path: Path):
     wd = tmp_path
-    root = _get_project_root()
     local_dir = wd / ".coding_assistant"
     local_dir.mkdir()
     (local_dir / "instructions.md").write_text("LOCAL OVERRIDE\n- extra rule")
 
-    instr = get_instructions(working_directory=wd, root_directory=root, user_instructions=[])
+    instr = get_instructions(working_directory=wd, user_instructions=[])
 
     assert "LOCAL OVERRIDE" in instr
     assert "- extra rule" in instr
@@ -37,7 +35,6 @@ def test_get_instructions_with_planning_and_local_file(tmp_path: Path):
 
 def test_get_instructions_appends_mcp_instructions(tmp_path: Path):
     wd = tmp_path
-    root = _get_project_root()
 
     class _FakeServer:
         def __init__(self, name: str, instructions: str | None):
@@ -49,7 +46,6 @@ def test_get_instructions_appends_mcp_instructions(tmp_path: Path):
 
     instr = get_instructions(
         working_directory=wd,
-        root_directory=root,
         user_instructions=[],
         mcp_servers=cast(list[MCPServer], [s1, s2]),
     )
@@ -60,7 +56,6 @@ def test_get_instructions_appends_mcp_instructions(tmp_path: Path):
 
 def test_get_instructions_ignores_empty_or_missing_mcp_instructions(tmp_path: Path):
     wd = tmp_path
-    root = _get_project_root()
 
     class _BlankServer:
         def __init__(self, name: str, instructions: str | None):
@@ -73,7 +68,6 @@ def test_get_instructions_ignores_empty_or_missing_mcp_instructions(tmp_path: Pa
 
     instr = get_instructions(
         working_directory=wd,
-        root_directory=root,
         user_instructions=[],
         mcp_servers=cast(list[MCPServer], [s1, s2, s3]),
     )
