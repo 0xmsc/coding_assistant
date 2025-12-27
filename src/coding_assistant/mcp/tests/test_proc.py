@@ -1,6 +1,6 @@
 import os
 import pytest
-from coding_assistant_mcp.proc import start_process
+from coding_assistant.mcp.proc import start_process
 
 
 @pytest.mark.asyncio

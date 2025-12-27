@@ -2,8 +2,8 @@ import asyncio
 import pytest
 import httpx
 from fastmcp import FastMCP
-from coding_assistant_mcp.python import create_python_server
-from coding_assistant_mcp.tasks import TaskManager
+from coding_assistant.mcp.python import create_python_server
+from coding_assistant.mcp.tasks import TaskManager
 
 
 @pytest.fixture
