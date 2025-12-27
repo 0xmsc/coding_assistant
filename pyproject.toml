@@ -45,6 +45,7 @@ ignore = ["E501"]
 
 [project.scripts]
 coding-assistant = "coding_assistant.main:main"
+coding-assistant-cli = "coding_assistant.main:main"
 coding-assistant-mcp = "coding_assistant.mcp.main:main"
 sandbox = "coding_assistant.sandbox:main"
 
