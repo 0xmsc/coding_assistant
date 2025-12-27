@@ -1,6 +1,6 @@
 [project]
 name = "coding-assistant-cli"
-version = "0.1.0"
+version = "0.1.1"
 description = "An agent-orchestrated CLI for streamlining and automating coding tasks."
 readme = "README.md"
 authors = []
@@ -46,7 +46,7 @@ ignore = ["E501"]
 [project.scripts]
 coding-assistant = "coding_assistant.main:main"
 coding-assistant-cli = "coding_assistant.main:main"
-coding-assistant-mcp = "coding_assistant.mcp.main:main"
+coding-assistant-mcp = "coding_assistant_mcp.main:main"
 sandbox = "coding_assistant.sandbox:main"
 
 [build-system]
