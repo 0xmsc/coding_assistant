@@ -1,4 +1,8 @@
+from typing import cast
+
 import logging
+
+from coding_assistant.llm.types import AssistantMessage
 
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
@@ -121,7 +125,7 @@ async def run_agent_loop(
     append_user_message(state.history, progress_callbacks, desc.name, start_message)
 
     while state.output is None:
-        message, tokens = await do_single_step(
+        message, usage = await do_single_step(
             state.history,
             desc.model,
             tools,
@@ -130,7 +134,7 @@ async def run_agent_loop(
             context_name=desc.name,
         )
 
-        append_assistant_message(state.history, progress_callbacks, desc.name, message)
+        append_assistant_message(state.history, progress_callbacks, desc.name, cast(AssistantMessage, message))
 
         if getattr(message, "tool_calls", []):
             await handle_tool_calls(
@@ -150,7 +154,7 @@ async def run_agent_loop(
                 desc.name,
                 "I detected a step from you without any tool calls. This is not allowed. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
             )
-        if tokens > compact_conversation_at_tokens:
+        if usage is not None and usage.tokens > compact_conversation_at_tokens:
             append_user_message(
                 state.history,
                 progress_callbacks,

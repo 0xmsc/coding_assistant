@@ -2,6 +2,9 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
+from typing import cast
+
+from coding_assistant.llm.types import AssistantMessage
 
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
@@ -182,7 +185,7 @@ async def run_chat_loop(
                 interrupt_controller.register_task("do_single_step", do_single_step_task)
 
                 message, _ = await do_single_step_task
-                append_assistant_message(history, callbacks, context_name, message)
+                append_assistant_message(history, callbacks, context_name, cast(AssistantMessage, message))
 
                 if getattr(message, "tool_calls", []):
                     await handle_tool_calls(
