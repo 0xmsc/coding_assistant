@@ -6,7 +6,7 @@ import httpx
 from coding_assistant.framework.callbacks import NullProgressCallbacks
 from coding_assistant.llm import openai as openai_model
 from coding_assistant.llm.types import UserMessage, AssistantMessage
-from coding_assistant.llm.openai import _merge_chunks, _get_base_url_and_api_key, _prepare_messages
+from coding_assistant.llm.openai import _merge_chunks, _extract_usage, _get_base_url_and_api_key, _prepare_messages
 
 
 class _CB(NullProgressCallbacks):
@@ -99,7 +99,8 @@ def test_merge_chunks_content():
         {"choices": [{"delta": {"content": "Hello"}}]},
         {"choices": [{"delta": {"content": " world"}}]},
     ]
-    msg, usage = _merge_chunks(chunks)
+    msg = _merge_chunks(chunks)
+    usage = _extract_usage(chunks)
     assert msg.content == "Hello world"
     assert msg.reasoning_content is None
     assert msg.tool_calls == []
@@ -111,7 +112,8 @@ def test_merge_chunks_reasoning():
         {"choices": [{"delta": {"reasoning": "Thinking"}}]},
         {"choices": [{"delta": {"reasoning": " step by step"}}]},
     ]
-    msg, usage = _merge_chunks(chunks)
+    msg = _merge_chunks(chunks)
+    usage = _extract_usage(chunks)
     assert msg.content is None
     assert msg.reasoning_content == "Thinking step by step"
     assert msg.tool_calls == []
@@ -124,7 +126,8 @@ def test_merge_chunks_reasoning_content_alt():
         {"choices": [{"delta": {"reasoning_content": "Deep"}}]},
         {"choices": [{"delta": {"reasoning_content": " thought"}}]},
     ]
-    msg, usage = _merge_chunks(chunks)
+    msg = _merge_chunks(chunks)
+    usage = _extract_usage(chunks)
     assert msg.reasoning_content == "Deep thought"
     assert usage is None
 
@@ -134,7 +137,8 @@ def test_merge_chunks_reasoning_details_openrouter():
         {"choices": [{"delta": {"reasoning_details": [{"thought": "step 1"}]}}]},
         {"choices": [{"delta": {"reasoning_details": [{"thought": "step 2"}]}}]},
     ]
-    msg, usage = _merge_chunks(chunks)
+    msg = _merge_chunks(chunks)
+    usage = _extract_usage(chunks)
     assert msg.provider_specific_fields["reasoning_details"] == [{"thought": "step 1"}, {"thought": "step 2"}]
     assert usage is None
 
@@ -149,7 +153,8 @@ def test_merge_chunks_tool_calls():
         {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"name": "get_weather", "arguments": ""}}]}}]},
         {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": '{"location": "New York"}'}}]}}]},
     ]
-    msg, usage = _merge_chunks(chunks)
+    msg = _merge_chunks(chunks)
+    usage = _extract_usage(chunks)
     assert msg.content is None
     assert msg.reasoning_content is None
     assert len(msg.tool_calls) == 1
@@ -174,7 +179,8 @@ def test_merge_chunks_multiple_tool_calls():
         {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "arg1"}}]}}]},
         {"choices": [{"delta": {"tool_calls": [{"index": 1, "function": {"arguments": "arg2"}}]}}]},
     ]
-    msg, usage = _merge_chunks(chunks)
+    msg = _merge_chunks(chunks)
+    usage = _extract_usage(chunks)
     assert len(msg.tool_calls) == 2
     assert msg.tool_calls[0].id == "c1"
     assert msg.tool_calls[0].function.arguments == "arg1"
@@ -198,7 +204,8 @@ def test_merge_chunks_mixed():
         },
         {"choices": [{"delta": {"content": " searching"}}]},
     ]
-    msg, usage = _merge_chunks(chunks)
+    msg = _merge_chunks(chunks)
+    usage = _extract_usage(chunks)
     assert msg.content == "I am searching"
     assert msg.reasoning_content == "Planning"
     assert len(msg.tool_calls) == 1
@@ -209,7 +216,8 @@ def test_merge_chunks_mixed():
 
 def test_merge_chunks_empty():
     chunks = []
-    msg, usage = _merge_chunks(chunks)
+    msg = _merge_chunks(chunks)
+    usage = _extract_usage(chunks)
     assert msg.content is None
     assert msg.reasoning_content is None
     assert msg.tool_calls == []
@@ -229,7 +237,8 @@ def test_merge_chunks_with_usage():
             },
         },
     ]
-    msg, usage = _merge_chunks(chunks)
+    msg = _merge_chunks(chunks)
+    usage = _extract_usage(chunks)
     assert msg.content == "Hello"
     assert usage.tokens == 150
     assert usage.cost == 0.0015
