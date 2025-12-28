@@ -13,6 +13,7 @@ from httpx_sse import aconnect_sse, SSEError
 from coding_assistant.llm.adapters import get_tools
 from coding_assistant.llm.types import (
     Completion,
+    Usage,
     BaseMessage,
     ProgressCallbacks,
     Tool,
@@ -40,6 +41,7 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
     full_reasoning = ""
     full_tool_calls: dict[int, dict] = {}
     full_reasoning_details = []
+    usage = Usage()
 
     for chunk in chunks:
         delta = chunk["choices"][0]["delta"]
@@ -73,6 +75,10 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
         # Openrouter specific field
         if reasoning_details := delta.get("reasoning_details"):
             full_reasoning_details.extend(reasoning_details)
+
+        if usage_chunk := chunk.get("usage"):
+            usage.tokens = usage_chunk.get("completion_tokens")
+            usage.cost = usage_chunk.get("cost")
 
     final_tool_calls = []
     for _, item in sorted(full_tool_calls.items()):
@@ -160,7 +166,7 @@ async def _try_completion(
             callbacks.on_chunks_end()
 
             # Merge all chunks into final message
-            assistant_msg = _merge_chunks(chunks)
+            message, usage = _merge_chunks(chunks)
 
     trace_json(
         "completion.json5",
@@ -169,13 +175,14 @@ async def _try_completion(
             "chunks": chunks,
             "messages": provider_messages,
             "tools": provider_tools,
-            "completion": message_to_dict(assistant_msg),
+            "completion": message_to_dict(message),
+            "usage": usage,
         },
     )
 
     return Completion(
-        message=assistant_msg,
-        tokens=0,  # TODO
+        message=message,
+        usage=usage,
     )
 
 
