@@ -70,10 +70,16 @@ class ToolMessage(BaseMessage):
     role: Literal["tool"] = "tool"
 
 
-@dataclass
+@dataclass(frozen=True)
+class Usage:
+    tokens: int = 0
+    cost: float = 0.0
+
+
+@dataclass(frozen=True)
 class Completion:
     message: BaseMessage
-    tokens: int
+    usage: Usage
 
 
 def message_from_dict(d: dict[str, Any]) -> BaseMessage:
