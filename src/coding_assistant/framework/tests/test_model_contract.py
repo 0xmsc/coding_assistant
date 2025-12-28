@@ -47,7 +47,7 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
         history=[UserMessage(content="start")],
     )
 
-    msg, tokens = await do_single_step(
+    msg, usage = await do_single_step(
         state.history,
         desc.model,
         desc.tools,
@@ -70,7 +70,7 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold():
         ui=make_ui_mock(),
         context_name=desc.name,
     )
-    if tokens > 1000:
+    if usage is not None and usage.tokens > 1000:
         state.history.append(
             UserMessage(
                 content=(
