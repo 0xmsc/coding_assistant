@@ -1,5 +1,4 @@
-
-from coding_assistant.llm.openai import _merge_chunks, _extract_usage
+from coding_assistant.llm.openai import _merge_chunks
 from coding_assistant.llm.types import Completion, Usage, AssistantMessage, ToolCall, FunctionCall
 
 
@@ -79,9 +78,7 @@ class TestMergeChunks:
                     {
                         "delta": {
                             "role": "assistant",
-                            "tool_calls": [
-                                {"index": 0, "id": "call_", "function": {"name": "test", "arguments": ""}}
-                            ],
+                            "tool_calls": [{"index": 0, "id": "call_", "function": {"name": "test", "arguments": ""}}],
                         },
                         "finish_reason": None,
                     }
@@ -91,9 +88,7 @@ class TestMergeChunks:
                 "choices": [
                     {
                         "delta": {
-                            "tool_calls": [
-                                {"index": 0, "function": {"arguments": '{"key"'}}
-                            ],
+                            "tool_calls": [{"index": 0, "function": {"arguments": '{"key"'}}],
                         },
                         "finish_reason": None,
                     }
@@ -103,9 +98,7 @@ class TestMergeChunks:
                 "choices": [
                     {
                         "delta": {
-                            "tool_calls": [
-                                {"index": 0, "function": {"arguments": ': "value"}'}}
-                            ],
+                            "tool_calls": [{"index": 0, "function": {"arguments": ': "value"}'}}],
                         },
                         "finish_reason": None,
                     }
@@ -217,69 +210,6 @@ class TestMergeChunks:
         assert usage.cost == 0.0002
 
 
-class TestExtractUsage:
-    """Tests for usage extraction from completion chunks."""
-
-    def test_extract_usage_with_all_fields(self):
-        """Test extracting usage when all fields are present."""
-        chunks = [
-            {"choices": [{"delta": {"content": "test"}}]},
-            {
-                "choices": [{"delta": {"content": " more"}}],
-                "usage": {
-                    "prompt_tokens": 100,
-                    "completion_tokens": 50,
-                    "total_tokens": 150,
-                    "cost": 0.0015,
-                },
-            },
-        ]
-
-        result = _extract_usage(chunks)
-
-        assert result["prompt_tokens"] == 100
-        assert result["completion_tokens"] == 50
-        assert result["total_tokens"] == 150
-        assert result["cost"] == 0.0015
-
-    def test_extract_usage_missing_usage(self):
-        """Test extracting usage when last chunk has no usage field."""
-        chunks = [
-            {"choices": [{"delta": {"content": "test"}}]},
-            {"choices": [{"delta": {"content": " more"}}]},
-        ]
-
-        result = _extract_usage(chunks)
-
-        assert result == {}
-
-    def test_extract_usage_empty_chunks(self):
-        """Test extracting usage from empty chunk list."""
-        result = _extract_usage([])
-
-        assert result == {}
-
-    def test_extract_usage_partial_fields(self):
-        """Test extracting usage with only some fields present."""
-        chunks = [
-            {"choices": [{"delta": {"content": "test"}}]},
-            {
-                "choices": [{"delta": {"content": " more"}}],
-                "usage": {
-                    "completion_tokens": 25,
-                    "total_tokens": 100,
-                },
-            },
-        ]
-
-        result = _extract_usage(chunks)
-
-        assert result["completion_tokens"] == 25
-        assert result["total_tokens"] == 100
-        assert result.get("cost") is None
-        assert result.get("prompt_tokens") is None
-
-
 class TestCompletionType:
     """Tests for the Completion type with Usage."""
 
@@ -372,14 +302,8 @@ class TestIntegration:
         message, usage = _merge_chunks(chunks)
         assert message.content == "The answer is 42."
 
-        # Extract usage from last chunk
-        raw_usage = _extract_usage(chunks)
-        assert raw_usage["completion_tokens"] == 20
-        assert raw_usage["cost"] == 0.00052
-
-        # Verify the usage from merge matches raw usage
-        assert usage.tokens == raw_usage["completion_tokens"]
-        assert usage.cost == raw_usage["cost"]
+        assert usage.tokens == 20
+        assert usage.cost == 0.00052
 
         # Create completion
         completion = Completion(message=message, usage=usage)
@@ -410,7 +334,6 @@ class TestIntegration:
         ]
 
         message, usage = _merge_chunks(chunks)
-        raw_usage = _extract_usage(chunks)
 
         assert message.content == "Response"
         assert usage.tokens == 10
@@ -464,7 +387,6 @@ class TestIntegration:
         ]
 
         message, usage = _merge_chunks(chunks)
-        raw_usage = _extract_usage(chunks)
 
         assert message.reasoning_content == "Step 1 Step 2"
         assert message.content == "Final"
@@ -482,12 +404,10 @@ class TestIntegration:
         chunks = []
 
         message, usage = _merge_chunks(chunks)
-        raw_usage = _extract_usage(chunks)
 
         assert message.content is None
         assert usage.tokens == 0
         assert usage.cost == 0.0
-        assert raw_usage == {}
 
         completion = Completion(message=message, usage=usage)
 
