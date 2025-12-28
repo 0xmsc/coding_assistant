@@ -48,7 +48,7 @@ class FakeCompleter:
         toks = len(text)
         self._total_tokens += toks
 
-        usage = Usage(tokens=self._total_tokens)
+        usage = Usage(tokens=self._total_tokens, cost=0.0)
         return Completion(message=action, usage=usage)
 
 
