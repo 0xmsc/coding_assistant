@@ -173,7 +173,7 @@ async def do_single_step(
     *,
     completer: Completer,
     context_name: str,
-) -> tuple[BaseMessage, Usage | None]:
+) -> tuple[AssistantMessage, Usage | None]:
     if not history:
         raise RuntimeError("History is required in order to run a step.")
 
