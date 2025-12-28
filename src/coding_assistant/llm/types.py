@@ -72,14 +72,14 @@ class ToolMessage(BaseMessage):
 
 @dataclass(frozen=True)
 class Usage:
-    tokens: int = 0
-    cost: float = 0.0
+    tokens: int
+    cost: float
 
 
 @dataclass(frozen=True)
 class Completion:
     message: BaseMessage
-    usage: Usage
+    usage: Optional[Usage] = None
 
 
 def message_from_dict(d: dict[str, Any]) -> BaseMessage:

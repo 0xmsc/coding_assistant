@@ -188,4 +188,4 @@ async def do_single_step(
     if isinstance(message, AssistantMessage) and message.reasoning_content:
         progress_callbacks.on_assistant_reasoning(context_name, message.reasoning_content)
 
-    return message, completion.usage.tokens
+    return message, completion.usage.tokens if completion.usage else 0
