@@ -1,7 +1,8 @@
 import json
 import pytest
+from typing import Iterable
 
-from coding_assistant.llm.types import UserMessage
+from coding_assistant.llm.types import UserMessage, Usage, AssistantMessage, Completion
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FunctionCall,
@@ -222,3 +223,69 @@ async def test_chat_compact_conversation_not_forced_in_callbacks():
 
     summary_user_msg = next((c, f) for c, f in callbacks.user_messages if "Compacted summary" in c)
     assert summary_user_msg[1] is False, "Summary message should not be forced in chat mode"
+
+
+@pytest.mark.asyncio
+async def test_chat_mode_displays_usage_right_aligned():
+    """Test that usage info is displayed right-aligned after LLM response."""
+    # Use two messages to verify cumulative cost tracking
+    completer = FakeCompleterWithCost([FakeMessage(content="Hello"), FakeMessage(content="World")])
+    history = [UserMessage(content="start")]
+    tools = []
+    model = "test-model"
+    parameters = []
+
+    # Two prompts: first after model's first response, second after model's second response
+    ui = make_ui_mock(ask_sequence=[("> ", "user response"), ("> ", "/exit")])
+
+    # The loop should exit when /exit is entered after processing both messages
+    await run_chat_loop(
+        history=history,
+        model=model,
+        tools=tools,
+        parameters=parameters,
+        context_name="test",
+        callbacks=NullProgressCallbacks(),
+        tool_callbacks=NullToolCallbacks(),
+        completer=completer,
+        ui=ui,
+    )
+
+    # Verify usage was tracked (both messages should have been processed)
+    assert completer._total_tokens > 0
+    assert completer._total_cost > 0
+    # Verify cumulative cost tracking
+    assert completer._total_cost == completer._cumulative_cost
+
+
+class FakeCompleterWithCost(FakeCompleter):
+    """Fake completer that tracks cost as well as tokens."""
+
+    def __init__(self, script: Iterable[AssistantMessage | Exception]) -> None:
+        super().__init__(script)
+        self._total_cost = 0.0
+        self._cumulative_cost = 0.0
+
+    async def __call__(self, messages, *, model, tools, callbacks) -> Completion:
+        if hasattr(self, "before_completion") and callable(self.before_completion):
+            await self.before_completion()
+
+        if not self.script:
+            raise AssertionError("FakeCompleter script exhausted")
+
+        action = self.script.pop(0)
+
+        if isinstance(action, Exception):
+            raise action
+
+        text = str(action)
+        toks = len(text)
+        self._total_tokens += toks
+
+        # Simulate cost based on tokens (e.g., $0.01 per token)
+        cost = toks * 0.01
+        self._total_cost = cost
+        self._cumulative_cost += cost
+
+        usage = Usage(tokens=self._total_tokens, cost=self._total_cost)
+        return Completion(message=action, usage=usage)

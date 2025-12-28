@@ -191,7 +191,10 @@ async def run_chat_loop(
 
                 # Print usage info right-aligned if available
                 if usage:
-                    usage_text = f"💰 {usage.tokens} tokens"
+                    cumulative_cost: float = getattr(run_chat_loop, "_cumulative_cost", 0.0)  # type: ignore[attr-defined]
+                    cumulative_cost += usage.cost
+                    run_chat_loop._cumulative_cost = cumulative_cost  # type: ignore[attr-defined]
+                    usage_text = f"💰 {usage.tokens} tokens • ${cumulative_cost:.2f}"
                     Console().print(usage_text, justify="right")
 
                 if getattr(message, "tool_calls", []):
