@@ -134,7 +134,7 @@ async def run_agent_loop(
             context_name=desc.name,
         )
 
-        append_assistant_message(state.history, progress_callbacks, desc.name, cast(AssistantMessage, message))
+        append_assistant_message(state.history, progress_callbacks, desc.name, message)
 
         if getattr(message, "tool_calls", []):
             await handle_tool_calls(
