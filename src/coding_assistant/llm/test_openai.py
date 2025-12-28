@@ -164,7 +164,7 @@ class TestMergeChunks:
         result, usage = _merge_chunks(chunks)
 
         assert result.content == "Hello"
-        assert usage.tokens == 50
+        assert usage.tokens == 150
         assert usage.cost == 0.0015
 
     def test_merge_chunks_usage_overwritten(self):
@@ -178,7 +178,7 @@ class TestMergeChunks:
                     }
                 ],
                 "usage": {
-                    "completion_tokens": 10,
+                    "total_tokens": 10,
                     "cost": 0.0001,
                 },
             },
@@ -193,7 +193,7 @@ class TestMergeChunks:
             {
                 "choices": [{"delta": {}}],
                 "usage": {
-                    "completion_tokens": 20,
+                    "total_tokens": 20,
                     "cost": 0.0002,
                 },
             },
@@ -321,13 +321,13 @@ class TestIntegration:
 
         assert message.content == "Response"
         assert usage is not None
-        assert usage.tokens == 10
+        assert usage.tokens == 110
         assert usage.cost is None  # cost is None when not provided
 
         completion = Completion(message=message, usage=usage)
 
         assert completion.usage is not None
-        assert completion.usage.tokens == 10
+        assert completion.usage.tokens == 110
         assert completion.usage.cost is None
 
     def test_workflow_with_reasoning_and_usage(self):
