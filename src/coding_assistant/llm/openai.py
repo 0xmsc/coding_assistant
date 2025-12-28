@@ -37,12 +37,11 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
         return ("https://api.openai.com/v1", os.environ["OPENAI_API_KEY"])
 
 
-def _merge_chunks(chunks: list[dict]) -> tuple[AssistantMessage, Usage | None]:
+def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
     full_content = ""
     full_reasoning = ""
     full_tool_calls: dict[int, dict] = {}
     full_reasoning_details = []
-    usage: Usage | None = None
 
     for chunk in chunks:
         delta = chunk["choices"][0]["delta"]
@@ -77,11 +76,6 @@ def _merge_chunks(chunks: list[dict]) -> tuple[AssistantMessage, Usage | None]:
         if reasoning_details := delta.get("reasoning_details"):
             full_reasoning_details.extend(reasoning_details)
 
-        if usage_chunk := chunk.get("usage"):
-            tokens = usage_chunk.get("total_tokens")
-            cost = usage_chunk.get("cost")
-            usage = Usage(tokens=tokens, cost=cost)
-
     final_tool_calls = []
     for _, item in sorted(full_tool_calls.items()):
         final_tool_calls.append(
@@ -94,7 +88,7 @@ def _merge_chunks(chunks: list[dict]) -> tuple[AssistantMessage, Usage | None]:
             )
         )
 
-    assistant_msg = AssistantMessage(
+    return AssistantMessage(
         role="assistant",
         content=full_content if full_content else None,
         reasoning_content=full_reasoning if full_reasoning else None,
@@ -104,7 +98,17 @@ def _merge_chunks(chunks: list[dict]) -> tuple[AssistantMessage, Usage | None]:
         },
     )
 
-    return assistant_msg, usage
+
+def _extract_usage(chunks: list[dict]) -> Usage | None:
+    if not chunks:
+        return None
+
+    if usage_chunk := chunks[-1].get("usage"):
+        tokens = usage_chunk.get("total_tokens")
+        cost = usage_chunk.get("cost")
+        return Usage(tokens=tokens, cost=cost)
+
+    return None
 
 
 def _prepare_messages(messages: list[BaseMessage]) -> list[dict]:
@@ -170,7 +174,8 @@ async def _try_completion(
             callbacks.on_chunks_end()
 
             # Merge all chunks into final message
-            message, usage = _merge_chunks(chunks)
+            message = _merge_chunks(chunks)
+            usage = _extract_usage(chunks)
 
     trace_data = {
         "model": model,
