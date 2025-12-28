@@ -6,7 +6,7 @@ from json import JSONDecodeError
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.history import append_tool_message
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolCall
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolCall, Usage
 from coding_assistant.framework.types import Tool, Completer
 from coding_assistant.framework.results import ToolResult, TextResult
 from coding_assistant.trace import trace_json
@@ -173,7 +173,7 @@ async def do_single_step(
     *,
     completer: Completer,
     context_name: str,
-):
+) -> tuple[BaseMessage, Usage | None]:
     if not history:
         raise RuntimeError("History is required in order to run a step.")
 
@@ -188,4 +188,4 @@ async def do_single_step(
     if isinstance(message, AssistantMessage) and message.reasoning_content:
         progress_callbacks.on_assistant_reasoning(context_name, message.reasoning_content)
 
-    return message, completion.usage.tokens if completion.usage else 0
+    return message, completion.usage
