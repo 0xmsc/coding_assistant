@@ -219,25 +219,13 @@ class TestCompletionType:
         assert completion.usage.tokens == 100
         assert completion.usage.cost == 0.005
 
-    def test_completion_with_empty_usage(self):
-        """Test Completion with default usage."""
+    def test_completion_without_usage(self):
+        """Test Completion without usage object."""
         message = AssistantMessage(content="Hello")
-        usage = Usage()
-        completion = Completion(message=message, usage=usage)
+        completion = Completion(message=message)
 
         assert completion.message == message
-        assert completion.usage.tokens == 0
-        assert completion.usage.cost == 0.0
-
-    def test_completion_with_none_cost(self):
-        """Test Completion with usage where cost might be None."""
-        message = AssistantMessage(content="Hello")
-        usage = Usage(tokens=50, cost=None)
-        completion = Completion(message=message, usage=usage)
-
-        assert completion.message == message
-        assert completion.usage.tokens == 50
-        assert completion.usage.cost is None
+        assert completion.usage is None
 
     def test_completion_with_tool_calls(self):
         """Test Completion with tool calls and usage info."""

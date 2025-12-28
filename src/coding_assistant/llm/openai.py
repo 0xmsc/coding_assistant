@@ -6,7 +6,7 @@ import logging
 import os
 import re
 from collections.abc import Sequence
-from typing import Literal, Optional, cast
+from typing import Literal, cast
 
 import httpx
 from httpx_sse import aconnect_sse, SSEError
