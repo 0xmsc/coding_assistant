@@ -36,12 +36,13 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
         return ("https://api.openai.com/v1", os.environ["OPENAI_API_KEY"])
 
 
-def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
+def _merge_chunks(chunks: list[dict]) -> tuple[AssistantMessage, Usage]:
     full_content = ""
     full_reasoning = ""
     full_tool_calls: dict[int, dict] = {}
     full_reasoning_details = []
-    usage = Usage()
+    usage_tokens = 0
+    usage_cost = 0.0
 
     for chunk in chunks:
         delta = chunk["choices"][0]["delta"]
@@ -77,8 +78,8 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
             full_reasoning_details.extend(reasoning_details)
 
         if usage_chunk := chunk.get("usage"):
-            usage.tokens = usage_chunk.get("completion_tokens")
-            usage.cost = usage_chunk.get("cost")
+            usage_tokens = usage_chunk.get("completion_tokens", 0)
+            usage_cost = usage_chunk.get("cost", 0.0)
 
     final_tool_calls = []
     for _, item in sorted(full_tool_calls.items()):
@@ -92,7 +93,7 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
             )
         )
 
-    return AssistantMessage(
+    assistant_msg = AssistantMessage(
         role="assistant",
         content=full_content if full_content else None,
         reasoning_content=full_reasoning if full_reasoning else None,
@@ -101,6 +102,17 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
             "reasoning_details": full_reasoning_details,
         },
     )
+
+    usage = Usage(tokens=usage_tokens, cost=usage_cost)
+
+    return assistant_msg, usage
+
+
+def _extract_usage(chunks: list[dict]) -> dict:
+    """Extract usage information from the last chunk."""
+    if not chunks:
+        return {}
+    return chunks[-1].get("usage", {})
 
 
 def _prepare_messages(messages: list[BaseMessage]) -> list[dict]:
