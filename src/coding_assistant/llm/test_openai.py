@@ -31,8 +31,7 @@ class TestMergeChunks:
         assert result.content == "Hello world"
         assert result.role == "assistant"
         assert result.reasoning_content is None
-        assert usage.tokens == 0
-        assert usage.cost == 0.0
+        assert usage is None
 
     def test_merge_chunks_with_reasoning(self):
         """Test merging chunks with reasoning content."""
@@ -67,8 +66,7 @@ class TestMergeChunks:
 
         assert result.content == "Answer"
         assert result.reasoning_content == "Thinking more thoughts"
-        assert usage.tokens == 0
-        assert usage.cost == 0.0
+        assert usage is None
 
     def test_merge_chunks_with_tool_calls(self):
         """Test merging chunks with tool calls."""
@@ -120,8 +118,7 @@ class TestMergeChunks:
         assert result.content is None
         assert result.role == "assistant"
         assert result.tool_calls == []
-        assert usage.tokens == 0
-        assert usage.cost == 0.0
+        assert usage is None
 
     def test_merge_chunks_only_role(self):
         """Test chunks with only role in first delta."""
@@ -140,8 +137,7 @@ class TestMergeChunks:
 
         assert result.content is None
         assert result.role == "assistant"
-        assert usage.tokens == 0
-        assert usage.cost == 0.0
+        assert usage is None
 
     def test_merge_chunks_with_usage(self):
         """Test merging chunks with usage information."""
@@ -336,13 +332,15 @@ class TestIntegration:
         message, usage = _merge_chunks(chunks)
 
         assert message.content == "Response"
+        assert usage is not None
         assert usage.tokens == 10
-        assert usage.cost == 0.0  # Default when not provided
+        assert usage.cost is None  # cost is None when not provided
 
         completion = Completion(message=message, usage=usage)
 
+        assert completion.usage is not None
         assert completion.usage.tokens == 10
-        assert completion.usage.cost == 0.0
+        assert completion.usage.cost is None
 
     def test_workflow_with_reasoning_and_usage(self):
         """Test workflow with reasoning content and usage."""
@@ -406,11 +404,9 @@ class TestIntegration:
         message, usage = _merge_chunks(chunks)
 
         assert message.content is None
-        assert usage.tokens == 0
-        assert usage.cost == 0.0
+        assert usage is None
 
         completion = Completion(message=message, usage=usage)
 
         assert completion.message.content is None
-        assert completion.usage.tokens == 0
-        assert completion.usage.cost == 0.0
+        assert completion.usage is None
