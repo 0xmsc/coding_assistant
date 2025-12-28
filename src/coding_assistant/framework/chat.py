@@ -2,11 +2,10 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import cast
 
 from rich.console import Console
 
-from coding_assistant.llm.types import AssistantMessage, Usage
+from coding_assistant.llm.types import Usage
 
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,

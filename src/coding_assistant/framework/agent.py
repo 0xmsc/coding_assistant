@@ -1,8 +1,5 @@
-from typing import cast
-
 import logging
 
-from coding_assistant.llm.types import AssistantMessage
 
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
