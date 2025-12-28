@@ -1,3 +1,4 @@
+import dataclasses
 import asyncio
 import functools
 import json
@@ -108,13 +109,6 @@ def _merge_chunks(chunks: list[dict]) -> tuple[AssistantMessage, Usage]:
     return assistant_msg, usage
 
 
-def _extract_usage(chunks: list[dict]) -> dict:
-    """Extract usage information from the last chunk."""
-    if not chunks:
-        return {}
-    return chunks[-1].get("usage", {})
-
-
 def _prepare_messages(messages: list[BaseMessage]) -> list[dict]:
     result = [message_to_dict(m) for m in messages]
     for m in result:
@@ -188,7 +182,7 @@ async def _try_completion(
             "messages": provider_messages,
             "tools": provider_tools,
             "completion": message_to_dict(message),
-            "usage": usage,
+            "usage": dataclasses.asdict(usage),
         },
     )
 
