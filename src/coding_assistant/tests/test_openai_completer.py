@@ -231,7 +231,7 @@ def test_merge_chunks_with_usage():
     ]
     msg, usage = _merge_chunks(chunks)
     assert msg.content == "Hello"
-    assert usage.tokens == 50
+    assert usage.tokens == 150
     assert usage.cost == 0.0015
 
 

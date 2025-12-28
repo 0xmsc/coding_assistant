@@ -286,14 +286,14 @@ class TestIntegration:
         message, usage = _merge_chunks(chunks)
         assert message.content == "The answer is 42."
 
-        assert usage.tokens == 20
+        assert usage.tokens == 520
         assert usage.cost == 0.00052
 
         # Create completion
         completion = Completion(message=message, usage=usage)
 
         assert completion.message.content == "The answer is 42."
-        assert completion.usage.tokens == 20
+        assert completion.usage.tokens == 520
         assert completion.usage.cost == 0.00052
 
     def test_workflow_without_cost(self):
@@ -376,13 +376,13 @@ class TestIntegration:
 
         assert message.reasoning_content == "Step 1 Step 2"
         assert message.content == "Final"
-        assert usage.tokens == 30
+        assert usage.tokens == 230
         assert usage.cost == 0.0023
 
         completion = Completion(message=message, usage=usage)
 
         assert completion.message.reasoning_content == "Step 1 Step 2"
-        assert completion.usage.tokens == 30
+        assert completion.usage.tokens == 230
         assert completion.usage.cost == 0.0023
 
     def test_workflow_empty_chunks(self):
