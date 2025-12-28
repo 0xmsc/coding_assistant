@@ -78,7 +78,7 @@ def _merge_chunks(chunks: list[dict]) -> tuple[AssistantMessage, Usage | None]:
             full_reasoning_details.extend(reasoning_details)
 
         if usage_chunk := chunk.get("usage"):
-            tokens = usage_chunk.get("completion_tokens")
+            tokens = usage_chunk.get("total_tokens")
             cost = usage_chunk.get("cost")
             usage = Usage(tokens=tokens, cost=cost)
 
