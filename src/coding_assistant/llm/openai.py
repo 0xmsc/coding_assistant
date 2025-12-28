@@ -6,7 +6,7 @@ import logging
 import os
 import re
 from collections.abc import Sequence
-from typing import Literal, cast
+from typing import Literal, Optional, cast
 
 import httpx
 from httpx_sse import aconnect_sse, SSEError
@@ -37,13 +37,12 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
         return ("https://api.openai.com/v1", os.environ["OPENAI_API_KEY"])
 
 
-def _merge_chunks(chunks: list[dict]) -> tuple[AssistantMessage, Usage]:
+def _merge_chunks(chunks: list[dict]) -> tuple[AssistantMessage, Usage | None]:
     full_content = ""
     full_reasoning = ""
     full_tool_calls: dict[int, dict] = {}
     full_reasoning_details = []
-    usage_tokens = 0
-    usage_cost = 0.0
+    usage: Usage | None = None
 
     for chunk in chunks:
         delta = chunk["choices"][0]["delta"]
@@ -79,8 +78,9 @@ def _merge_chunks(chunks: list[dict]) -> tuple[AssistantMessage, Usage]:
             full_reasoning_details.extend(reasoning_details)
 
         if usage_chunk := chunk.get("usage"):
-            usage_tokens = usage_chunk.get("completion_tokens", 0)
-            usage_cost = usage_chunk.get("cost", 0.0)
+            tokens = usage_chunk.get("completion_tokens")
+            cost = usage_chunk.get("cost")
+            usage = Usage(tokens=tokens, cost=cost)
 
     final_tool_calls = []
     for _, item in sorted(full_tool_calls.items()):
@@ -103,8 +103,6 @@ def _merge_chunks(chunks: list[dict]) -> tuple[AssistantMessage, Usage]:
             "reasoning_details": full_reasoning_details,
         },
     )
-
-    usage = Usage(tokens=usage_tokens, cost=usage_cost)
 
     return assistant_msg, usage
 
@@ -174,17 +172,18 @@ async def _try_completion(
             # Merge all chunks into final message
             message, usage = _merge_chunks(chunks)
 
-    trace_json(
-        "completion.json5",
-        {
-            "model": model,
-            "chunks": chunks,
-            "messages": provider_messages,
-            "tools": provider_tools,
-            "completion": message_to_dict(message),
-            "usage": dataclasses.asdict(usage),
-        },
-    )
+    trace_data = {
+        "model": model,
+        "chunks": chunks,
+        "messages": provider_messages,
+        "tools": provider_tools,
+        "completion": message_to_dict(message),
+    }
+
+    if usage is not None:
+        trace_data["usage"] = dataclasses.asdict(usage)
+
+    trace_json("completion.json5", trace_data)
 
     return Completion(
         message=message,
