@@ -103,8 +103,7 @@ def test_merge_chunks_content():
     assert msg.content == "Hello world"
     assert msg.reasoning_content is None
     assert msg.tool_calls == []
-    assert usage.tokens == 0
-    assert usage.cost == 0.0
+    assert usage is None
 
 
 def test_merge_chunks_reasoning():
@@ -116,7 +115,7 @@ def test_merge_chunks_reasoning():
     assert msg.content is None
     assert msg.reasoning_content == "Thinking step by step"
     assert msg.tool_calls == []
-    assert usage.tokens == 0
+    assert usage is None
 
 
 def test_merge_chunks_reasoning_content_alt():
@@ -127,7 +126,7 @@ def test_merge_chunks_reasoning_content_alt():
     ]
     msg, usage = _merge_chunks(chunks)
     assert msg.reasoning_content == "Deep thought"
-    assert usage.tokens == 0
+    assert usage is None
 
 
 def test_merge_chunks_reasoning_details_openrouter():
@@ -137,7 +136,7 @@ def test_merge_chunks_reasoning_details_openrouter():
     ]
     msg, usage = _merge_chunks(chunks)
     assert msg.provider_specific_fields["reasoning_details"] == [{"thought": "step 1"}, {"thought": "step 2"}]
-    assert usage.tokens == 0
+    assert usage is None
 
 
 def test_merge_chunks_tool_calls():
@@ -157,7 +156,7 @@ def test_merge_chunks_tool_calls():
     assert msg.tool_calls[0].id == "call_123"
     assert msg.tool_calls[0].function.name == "get_weather"
     assert msg.tool_calls[0].function.arguments == '{"location": "New York"}'
-    assert usage.tokens == 0
+    assert usage is None
 
 
 def test_merge_chunks_multiple_tool_calls():
@@ -181,7 +180,7 @@ def test_merge_chunks_multiple_tool_calls():
     assert msg.tool_calls[0].function.arguments == "arg1"
     assert msg.tool_calls[1].id == "c2"
     assert msg.tool_calls[1].function.arguments == "arg2"
-    assert usage.tokens == 0
+    assert usage is None
 
 
 def test_merge_chunks_mixed():
@@ -205,7 +204,7 @@ def test_merge_chunks_mixed():
     assert len(msg.tool_calls) == 1
     assert msg.tool_calls[0].id == "call_456"
     assert msg.tool_calls[0].function.name == "calc"
-    assert usage.tokens == 0
+    assert usage is None
 
 
 def test_merge_chunks_empty():
@@ -214,8 +213,7 @@ def test_merge_chunks_empty():
     assert msg.content is None
     assert msg.reasoning_content is None
     assert msg.tool_calls == []
-    assert usage.tokens == 0
-    assert usage.cost == 0.0
+    assert usage is None
 
 
 def test_merge_chunks_with_usage():
