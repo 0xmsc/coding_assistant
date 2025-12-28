@@ -1,4 +1,3 @@
-import pytest
 
 from coding_assistant.llm.openai import _merge_chunks, _extract_usage
 from coding_assistant.llm.types import Completion, Usage, AssistantMessage, ToolCall, FunctionCall
