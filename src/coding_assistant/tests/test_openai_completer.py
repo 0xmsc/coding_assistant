@@ -368,11 +368,11 @@ async def test_openai_complete_error_retry(monkeypatch):
     monkeypatch.setattr("asyncio.sleep", mocked_sleep)
 
     cb = _CB()
-    # Now that we have max_retries = 3, it should call 3 times before failing
+    # Now that we have max_retries = 5, it should call 5 times before failing
     with pytest.raises(httpx.ReadTimeout):
         await openai_model.complete([UserMessage(content="hi")], "gpt-4o", [], cb)
 
-    assert call_count == 3
+    assert call_count == 5
 
 
 @pytest.mark.asyncio
