@@ -78,7 +78,7 @@ class Usage:
 
 @dataclass(frozen=True)
 class Completion:
-    message: BaseMessage
+    message: AssistantMessage
     usage: Optional[Usage] = None
 
 
