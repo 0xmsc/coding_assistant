@@ -1,4 +1,3 @@
-from typing import Iterable
 import json
 import pytest
 from unittest.mock import MagicMock
@@ -24,6 +23,7 @@ from coding_assistant.llm.openai import (
 
 class _CB(NullProgressCallbacks):
     """Test callback tracker."""
+
     def __init__(self):
         super().__init__()
         self.chunks = []
@@ -330,7 +330,9 @@ class TestMergeChunks:
                 "choices": [
                     {
                         "delta": {
-                            "tool_calls": [{"index": 0, "id": "call_456", "function": {"name": "calc", "arguments": ""}}]
+                            "tool_calls": [
+                                {"index": 0, "id": "call_456", "function": {"name": "calc", "arguments": ""}}
+                            ]
                         }
                     }
                 ]
