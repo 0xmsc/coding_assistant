@@ -99,10 +99,12 @@ def test_merge_chunks_content():
         {"choices": [{"delta": {"content": "Hello"}}]},
         {"choices": [{"delta": {"content": " world"}}]},
     ]
-    msg = _merge_chunks(chunks)
+    msg, usage = _merge_chunks(chunks)
     assert msg.content == "Hello world"
     assert msg.reasoning_content is None
     assert msg.tool_calls == []
+    assert usage.tokens == 0
+    assert usage.cost == 0.0
 
 
 def test_merge_chunks_reasoning():
@@ -110,10 +112,11 @@ def test_merge_chunks_reasoning():
         {"choices": [{"delta": {"reasoning": "Thinking"}}]},
         {"choices": [{"delta": {"reasoning": " step by step"}}]},
     ]
-    msg = _merge_chunks(chunks)
+    msg, usage = _merge_chunks(chunks)
     assert msg.content is None
     assert msg.reasoning_content == "Thinking step by step"
     assert msg.tool_calls == []
+    assert usage.tokens == 0
 
 
 def test_merge_chunks_reasoning_content_alt():
@@ -122,8 +125,9 @@ def test_merge_chunks_reasoning_content_alt():
         {"choices": [{"delta": {"reasoning_content": "Deep"}}]},
         {"choices": [{"delta": {"reasoning_content": " thought"}}]},
     ]
-    msg = _merge_chunks(chunks)
+    msg, usage = _merge_chunks(chunks)
     assert msg.reasoning_content == "Deep thought"
+    assert usage.tokens == 0
 
 
 def test_merge_chunks_reasoning_details_openrouter():
@@ -131,8 +135,9 @@ def test_merge_chunks_reasoning_details_openrouter():
         {"choices": [{"delta": {"reasoning_details": [{"thought": "step 1"}]}}]},
         {"choices": [{"delta": {"reasoning_details": [{"thought": "step 2"}]}}]},
     ]
-    msg = _merge_chunks(chunks)
+    msg, usage = _merge_chunks(chunks)
     assert msg.provider_specific_fields["reasoning_details"] == [{"thought": "step 1"}, {"thought": "step 2"}]
+    assert usage.tokens == 0
 
 
 def test_merge_chunks_tool_calls():
@@ -145,13 +150,14 @@ def test_merge_chunks_tool_calls():
         {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"name": "get_weather", "arguments": ""}}]}}]},
         {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": '{"location": "New York"}'}}]}}]},
     ]
-    msg = _merge_chunks(chunks)
+    msg, usage = _merge_chunks(chunks)
     assert msg.content is None
     assert msg.reasoning_content is None
     assert len(msg.tool_calls) == 1
     assert msg.tool_calls[0].id == "call_123"
     assert msg.tool_calls[0].function.name == "get_weather"
     assert msg.tool_calls[0].function.arguments == '{"location": "New York"}'
+    assert usage.tokens == 0
 
 
 def test_merge_chunks_multiple_tool_calls():
@@ -169,12 +175,13 @@ def test_merge_chunks_multiple_tool_calls():
         {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "arg1"}}]}}]},
         {"choices": [{"delta": {"tool_calls": [{"index": 1, "function": {"arguments": "arg2"}}]}}]},
     ]
-    msg = _merge_chunks(chunks)
+    msg, usage = _merge_chunks(chunks)
     assert len(msg.tool_calls) == 2
     assert msg.tool_calls[0].id == "c1"
     assert msg.tool_calls[0].function.arguments == "arg1"
     assert msg.tool_calls[1].id == "c2"
     assert msg.tool_calls[1].function.arguments == "arg2"
+    assert usage.tokens == 0
 
 
 def test_merge_chunks_mixed():
@@ -192,20 +199,42 @@ def test_merge_chunks_mixed():
         },
         {"choices": [{"delta": {"content": " searching"}}]},
     ]
-    msg = _merge_chunks(chunks)
+    msg, usage = _merge_chunks(chunks)
     assert msg.content == "I am searching"
     assert msg.reasoning_content == "Planning"
     assert len(msg.tool_calls) == 1
     assert msg.tool_calls[0].id == "call_456"
     assert msg.tool_calls[0].function.name == "calc"
+    assert usage.tokens == 0
 
 
 def test_merge_chunks_empty():
     chunks = []
-    msg = _merge_chunks(chunks)
+    msg, usage = _merge_chunks(chunks)
     assert msg.content is None
     assert msg.reasoning_content is None
     assert msg.tool_calls == []
+    assert usage.tokens == 0
+    assert usage.cost == 0.0
+
+
+def test_merge_chunks_with_usage():
+    chunks = [
+        {"choices": [{"delta": {"content": "Hello"}}]},
+        {
+            "choices": [{"delta": {}}],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+                "cost": 0.0015,
+            },
+        },
+    ]
+    msg, usage = _merge_chunks(chunks)
+    assert msg.content == "Hello"
+    assert usage.tokens == 50
+    assert usage.cost == 0.0015
 
 
 @pytest.mark.asyncio

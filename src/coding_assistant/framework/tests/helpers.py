@@ -9,6 +9,7 @@ from coding_assistant.llm.types import (
     BaseMessage,
     ToolCall as ToolCall,
     Completion,
+    Usage,
 )
 from coding_assistant.ui import UI
 
@@ -47,7 +48,8 @@ class FakeCompleter:
         toks = len(text)
         self._total_tokens += toks
 
-        return Completion(message=action, tokens=self._total_tokens)
+        usage = Usage(tokens=self._total_tokens)
+        return Completion(message=action, usage=usage)
 
 
 def make_ui_mock(
