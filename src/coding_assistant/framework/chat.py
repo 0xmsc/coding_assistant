@@ -190,7 +190,7 @@ async def run_chat_loop(
                 interrupt_controller.register_task("do_single_step", do_single_step_task)
 
                 message, step_usage = await do_single_step_task
-                append_assistant_message(history, callbacks, context_name, cast(AssistantMessage, message))
+                append_assistant_message(history, callbacks, context_name, message)
 
                 if step_usage:
                     usage = Usage(
