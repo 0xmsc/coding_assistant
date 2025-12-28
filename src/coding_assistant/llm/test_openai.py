@@ -1,4 +1,4 @@
-from coding_assistant.llm.openai import _merge_chunks
+from coding_assistant.llm.openai import _merge_chunks, _extract_usage
 from coding_assistant.llm.types import Completion, Usage, AssistantMessage, ToolCall, FunctionCall
 
 
@@ -26,7 +26,8 @@ class TestMergeChunks:
             },
         ]
 
-        result, usage = _merge_chunks(chunks)
+        result = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
 
         assert result.content == "Hello world"
         assert result.role == "assistant"
@@ -62,7 +63,8 @@ class TestMergeChunks:
             },
         ]
 
-        result, usage = _merge_chunks(chunks)
+        result = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
 
         assert result.content == "Answer"
         assert result.reasoning_content == "Thinking more thoughts"
@@ -104,7 +106,7 @@ class TestMergeChunks:
             },
         ]
 
-        result, usage = _merge_chunks(chunks)
+        result = _merge_chunks(chunks)
 
         assert len(result.tool_calls) == 1
         assert result.tool_calls[0].id == "call_"
@@ -113,7 +115,8 @@ class TestMergeChunks:
 
     def test_merge_chunks_empty(self):
         """Test merging empty chunk list."""
-        result, usage = _merge_chunks([])
+        result = _merge_chunks([])
+        usage = _extract_usage([])
 
         assert result.content is None
         assert result.role == "assistant"
@@ -133,7 +136,8 @@ class TestMergeChunks:
             },
         ]
 
-        result, usage = _merge_chunks(chunks)
+        result = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
 
         assert result.content is None
         assert result.role == "assistant"
@@ -161,7 +165,8 @@ class TestMergeChunks:
             },
         ]
 
-        result, usage = _merge_chunks(chunks)
+        result = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
 
         assert result.content == "Hello"
         assert usage.tokens == 150
@@ -199,7 +204,8 @@ class TestMergeChunks:
             },
         ]
 
-        result, usage = _merge_chunks(chunks)
+        result = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
 
         assert result.content == "Part 1 Part 2"
         assert usage.tokens == 20
@@ -283,7 +289,8 @@ class TestIntegration:
         ]
 
         # Merge chunks into message and usage
-        message, usage = _merge_chunks(chunks)
+        message = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
         assert message.content == "The answer is 42."
 
         assert usage.tokens == 520
@@ -317,7 +324,8 @@ class TestIntegration:
             },
         ]
 
-        message, usage = _merge_chunks(chunks)
+        message = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
 
         assert message.content == "Response"
         assert usage is not None
@@ -372,7 +380,8 @@ class TestIntegration:
             },
         ]
 
-        message, usage = _merge_chunks(chunks)
+        message = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
 
         assert message.reasoning_content == "Step 1 Step 2"
         assert message.content == "Final"
@@ -389,7 +398,8 @@ class TestIntegration:
         """Test workflow with empty chunk list."""
         chunks = []
 
-        message, usage = _merge_chunks(chunks)
+        message = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
 
         assert message.content is None
         assert usage is None
