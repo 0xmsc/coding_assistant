@@ -6,7 +6,7 @@ from typing import cast
 
 from rich.console import Console
 
-from coding_assistant.llm.types import AssistantMessage
+from coding_assistant.llm.types import AssistantMessage, Usage
 
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
@@ -150,10 +150,13 @@ async def run_chat_loop(
     start_message = _create_chat_start_message(parameters)
     append_user_message(history, callbacks, context_name, start_message, force=True)
 
+    usage = Usage(0, 0.0)
+
     while True:
         if need_user_input:
             need_user_input = False
 
+            Console().print(f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", justify="right")
             print()
             answer = await ui.prompt(words=command_names)
             answer_strip = answer.strip()
@@ -186,16 +189,14 @@ async def run_chat_loop(
                 )
                 interrupt_controller.register_task("do_single_step", do_single_step_task)
 
-                message, usage = await do_single_step_task
+                message, step_usage = await do_single_step_task
                 append_assistant_message(history, callbacks, context_name, cast(AssistantMessage, message))
 
-                # Print usage info right-aligned if available
-                if usage:
-                    cumulative_cost: float = getattr(run_chat_loop, "_cumulative_cost", 0.0)  # type: ignore[attr-defined]
-                    cumulative_cost += usage.cost
-                    run_chat_loop._cumulative_cost = cumulative_cost  # type: ignore[attr-defined]
-                    usage_text = f"💰 {usage.tokens} tokens • ${cumulative_cost:.2f}"
-                    Console().print(usage_text, justify="right")
+                if step_usage:
+                    usage = Usage(
+                        tokens=step_usage.tokens,
+                        cost=usage.cost + step_usage.cost,
+                    )
 
                 if getattr(message, "tool_calls", []):
                     await handle_tool_calls(
