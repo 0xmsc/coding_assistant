@@ -86,6 +86,8 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
                             full_reasoning_details[-1]["text"] += text
                         if signature := rdc.get("signature"):
                             full_reasoning_details[-1]["signature"] = signature
+                    else:
+                        full_reasoning_details.append(rdc)
                 else:
                     full_reasoning_details.append(rdc)
 
