@@ -74,7 +74,23 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
 
         # Openrouter specific field
         if reasoning_details := delta.get("reasoning_details"):
-            full_reasoning_details.extend(reasoning_details)
+            for rdc in reasoning_details:
+                print(rdc)
+
+                # Try to merge with last reasoning.text
+                if rdc["type"] == "reasoning.text":
+                    if (
+                        full_reasoning_details
+                        and full_reasoning_details[-1]["type"] == "reasoning.text"
+                        and full_reasoning_details[-1]["index"] == rdc["index"]
+                    ):
+                        if text := rdc.get("text"):
+                            full_reasoning_details[-1]["text"] += text
+                        if signature := rdc.get("signature"):
+                            full_reasoning_details[-1]["signature"] = signature
+                        continue
+
+                full_reasoning_details.append(rdc)
 
     final_tool_calls = []
     for _, item in sorted(full_tool_calls.items()):
