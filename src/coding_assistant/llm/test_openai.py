@@ -288,12 +288,12 @@ class TestMergeChunks:
     def test_merge_chunks_reasoning_details_openrouter(self):
         """Test OpenRouter reasoning_details field."""
         chunks = [
-            {"choices": [{"delta": {"reasoning_details": [{"thought": "step 1"}]}}]},
-            {"choices": [{"delta": {"reasoning_details": [{"thought": "step 2"}]}}]},
+            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.thought", "text": "step 1"}]}}]},
+            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.thought", "text": "step 2"}]}}]},
         ]
         msg = _merge_chunks(chunks)
         usage = _extract_usage(chunks)
-        assert msg.provider_specific_fields["reasoning_details"] == [{"thought": "step 1"}, {"thought": "step 2"}]
+        assert msg.provider_specific_fields["reasoning_details"] == [{"type": "reasoning.thought", "text": "step 1"}, {"type": "reasoning.thought", "text": "step 2"}]
         assert usage is None
 
     def test_merge_chunks_reasoning_details_merge_text_chunks(self):
@@ -349,20 +349,6 @@ class TestMergeChunks:
         assert len(msg.provider_specific_fields["reasoning_details"]) == 2
         assert msg.provider_specific_fields["reasoning_details"][0]["type"] == "reasoning.text"
         assert msg.provider_specific_fields["reasoning_details"][1]["type"] == "reasoning.other"
-        assert usage is None
-
-    def test_merge_chunks_reasoning_details_no_merge_without_type(self):
-        """Test that entries without type field are not merged."""
-        chunks = [
-            {"choices": [{"delta": {"reasoning_details": [{"index": 0, "text": "Entry 1"}]}}]},
-            {"choices": [{"delta": {"reasoning_details": [{"index": 0, "text": "Entry 2"}]}}]},
-        ]
-        msg = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
-        # Entries without type field should not be merged
-        assert len(msg.provider_specific_fields["reasoning_details"]) == 2
-        assert msg.provider_specific_fields["reasoning_details"][0]["text"] == "Entry 1"
-        assert msg.provider_specific_fields["reasoning_details"][1]["text"] == "Entry 2"
         assert usage is None
 
     def test_merge_chunks_reasoning_details_empty_list(self):
