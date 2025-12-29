@@ -378,6 +378,33 @@ class TestMergeChunks:
         assert msg.provider_specific_fields["reasoning_details"][1]["type"] == "reasoning.other"
         assert usage is None
 
+    def test_merge_chunks_reasoning_details_summary(self):
+        """Test merging reasoning.summary chunks."""
+        chunks = [
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "reasoning_details": [
+                                {"type": "reasoning.summary", "index": 0, "summary": "Summary part 1"}
+                            ]
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {"delta": {"reasoning_details": [{"type": "reasoning.summary", "index": 0, "summary": " part 2"}]}}
+                ]
+            },
+        ]
+        msg = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
+        # Chunks with same index should be merged
+        assert len(msg.provider_specific_fields["reasoning_details"]) == 1
+        assert msg.provider_specific_fields["reasoning_details"][0]["summary"] == "Summary part 1 part 2"
+        assert usage is None
+
     def test_merge_chunks_reasoning_details_empty_list(self):
         """Test that empty reasoning_details list is handled."""
         chunks = [
