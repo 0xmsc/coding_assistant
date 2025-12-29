@@ -76,15 +76,17 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
         if reasoning_details := delta.get("reasoning_details"):
             for rdc in reasoning_details:
                 # Try to merge with last
-                if rdc["type"] == "reasoning.text":
+                if rdc["type"] in ("reasoning.text", "reasoning.summary"):
                     if (
                         full_reasoning_details
                         and (last := full_reasoning_details[-1])
-                        and last["type"] == "reasoning.text"
+                        and last["type"] == rdc["type"]
                         and last["index"] == rdc["index"]
                     ):
                         if text := rdc.get("text"):
                             last["text"] += text
+                        if summary := rdc.get("summary"):
+                            last["summary"] += summary
                         if signature := rdc.get("signature"):
                             last["signature"] = signature
                     else:
