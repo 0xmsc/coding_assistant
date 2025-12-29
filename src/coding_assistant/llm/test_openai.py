@@ -296,6 +296,85 @@ class TestMergeChunks:
         assert msg.provider_specific_fields["reasoning_details"] == [{"thought": "step 1"}, {"thought": "step 2"}]
         assert usage is None
 
+    def test_merge_chunks_reasoning_details_merge_text_chunks(self):
+        """Test merging reasoning.text chunks with same index."""
+        chunks = [
+            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Part 1"}]}}]},
+            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Part 2"}]}}]},
+        ]
+        msg = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
+        # Chunks with same index should be merged
+        assert len(msg.provider_specific_fields["reasoning_details"]) == 1
+        assert msg.provider_specific_fields["reasoning_details"][0]["text"] == "Part 1Part 2"
+        assert usage is None
+
+    def test_merge_chunks_reasoning_details_merge_with_signature(self):
+        """Test merging reasoning.text chunks updates signature."""
+        chunks = [
+            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Step 1", "signature": "sig1"}]}}]},
+            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Step 2", "signature": "sig2"}]}}]},
+        ]
+        msg = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
+        # Signature should be updated to the latest one
+        assert len(msg.provider_specific_fields["reasoning_details"]) == 1
+        assert msg.provider_specific_fields["reasoning_details"][0]["text"] == "Step 1Step 2"
+        assert msg.provider_specific_fields["reasoning_details"][0]["signature"] == "sig2"
+        assert usage is None
+
+    def test_merge_chunks_reasoning_details_different_indices(self):
+        """Test that reasoning.text chunks with different indices are not merged."""
+        chunks = [
+            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "First"}]}}]},
+            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 1, "text": "Second"}]}}]},
+        ]
+        msg = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
+        # Chunks with different indices should remain separate
+        assert len(msg.provider_specific_fields["reasoning_details"]) == 2
+        assert msg.provider_specific_fields["reasoning_details"][0]["text"] == "First"
+        assert msg.provider_specific_fields["reasoning_details"][1]["text"] == "Second"
+        assert usage is None
+
+    def test_merge_chunks_reasoning_details_mixed_types(self):
+        """Test that different reasoning_detail types are not merged."""
+        chunks = [
+            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Text chunk"}]}}]},
+            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.other", "index": 0, "data": "value"}]}}]},
+        ]
+        msg = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
+        # Different types should remain separate even with same index
+        assert len(msg.provider_specific_fields["reasoning_details"]) == 2
+        assert msg.provider_specific_fields["reasoning_details"][0]["type"] == "reasoning.text"
+        assert msg.provider_specific_fields["reasoning_details"][1]["type"] == "reasoning.other"
+        assert usage is None
+
+    def test_merge_chunks_reasoning_details_no_merge_without_type(self):
+        """Test that entries without type field are not merged."""
+        chunks = [
+            {"choices": [{"delta": {"reasoning_details": [{"index": 0, "text": "Entry 1"}]}}]},
+            {"choices": [{"delta": {"reasoning_details": [{"index": 0, "text": "Entry 2"}]}}]},
+        ]
+        msg = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
+        # Entries without type field should not be merged
+        assert len(msg.provider_specific_fields["reasoning_details"]) == 2
+        assert msg.provider_specific_fields["reasoning_details"][0]["text"] == "Entry 1"
+        assert msg.provider_specific_fields["reasoning_details"][1]["text"] == "Entry 2"
+        assert usage is None
+
+    def test_merge_chunks_reasoning_details_empty_list(self):
+        """Test that empty reasoning_details list is handled."""
+        chunks = [
+            {"choices": [{"delta": {"reasoning_details": []}}]},
+        ]
+        msg = _merge_chunks(chunks)
+        usage = _extract_usage(chunks)
+        assert msg.provider_specific_fields["reasoning_details"] == []
+        assert usage is None
+
     def test_merge_chunks_multiple_tool_calls(self):
         """Test merging multiple tool calls."""
         chunks = [
