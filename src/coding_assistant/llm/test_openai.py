@@ -293,7 +293,10 @@ class TestMergeChunks:
         ]
         msg = _merge_chunks(chunks)
         usage = _extract_usage(chunks)
-        assert msg.provider_specific_fields["reasoning_details"] == [{"type": "reasoning.thought", "text": "step 1"}, {"type": "reasoning.thought", "text": "step 2"}]
+        assert msg.provider_specific_fields["reasoning_details"] == [
+            {"type": "reasoning.thought", "text": "step 1"},
+            {"type": "reasoning.thought", "text": "step 2"},
+        ]
         assert usage is None
 
     def test_merge_chunks_reasoning_details_merge_text_chunks(self):
@@ -312,8 +315,28 @@ class TestMergeChunks:
     def test_merge_chunks_reasoning_details_merge_with_signature(self):
         """Test merging reasoning.text chunks updates signature."""
         chunks = [
-            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Step 1", "signature": "sig1"}]}}]},
-            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Step 2", "signature": "sig2"}]}}]},
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "reasoning_details": [
+                                {"type": "reasoning.text", "index": 0, "text": "Step 1", "signature": "sig1"}
+                            ]
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "reasoning_details": [
+                                {"type": "reasoning.text", "index": 0, "text": "Step 2", "signature": "sig2"}
+                            ]
+                        }
+                    }
+                ]
+            },
         ]
         msg = _merge_chunks(chunks)
         usage = _extract_usage(chunks)
@@ -340,7 +363,11 @@ class TestMergeChunks:
     def test_merge_chunks_reasoning_details_mixed_types(self):
         """Test that different reasoning_detail types are not merged."""
         chunks = [
-            {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Text chunk"}]}}]},
+            {
+                "choices": [
+                    {"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Text chunk"}]}}
+                ]
+            },
             {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.other", "index": 0, "data": "value"}]}}]},
         ]
         msg = _merge_chunks(chunks)
