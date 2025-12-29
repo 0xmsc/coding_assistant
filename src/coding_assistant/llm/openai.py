@@ -145,6 +145,8 @@ async def _try_completion(
 
     if reasoning_effort:
         payload["reasoning_effort"] = reasoning_effort
+        # TODO: Does OpenAI support this?
+        # payload["reasoning"]["effort"] = reasoning_effort
 
     async with httpx.AsyncClient(base_url=base_url, headers=headers) as client:
         async with aconnect_sse(client, "POST", "/chat/completions", json=payload) as source:
