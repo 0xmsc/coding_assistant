@@ -75,9 +75,7 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
         # Openrouter specific field
         if reasoning_details := delta.get("reasoning_details"):
             for rdc in reasoning_details:
-                print(rdc)
-
-                # Try to merge with last reasoning.text
+                # Try to merge with last
                 if rdc["type"] == "reasoning.text":
                     if (
                         full_reasoning_details
