@@ -113,9 +113,10 @@ class DenseProgressCallbacks(ProgressCallbacks):
         "compact_conversation": {"summary": "markdown"},
     }
 
-    def __init__(self):
+    def __init__(self, print_reasoning: bool = True):
         self._state: ProgressState = None
         self._left_padding = (0, 0, 0, 2)
+        self._print_reasoning = print_reasoning
 
     def on_user_message(self, context_name: str, content: str, force: bool = False):
         if force:
@@ -210,7 +211,8 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._state = ToolState()
 
     def on_reasoning_chunk(self, chunk: str):
-        self._handle_chunk(chunk, ReasoningState, "dim cyan")
+        if self._print_reasoning:
+            self._handle_chunk(chunk, ReasoningState, "dim cyan")
 
     def on_content_chunk(self, chunk: str):
         self._handle_chunk(chunk, ContentState)

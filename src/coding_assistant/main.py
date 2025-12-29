@@ -139,6 +139,12 @@ def parse_args():
         default=0,
         help="Port for the background MCP server (using streamable-http transport).",
     )
+    parser.add_argument(
+        "--print-reasoning",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Print reasoning chunks from the model.",
+    )
 
     return parser.parse_args()
 
@@ -341,7 +347,7 @@ async def _main(args):
             rich_print(Panel(Markdown(instructions), title="Instructions"))
             return
 
-        progress_callbacks = DenseProgressCallbacks()
+        progress_callbacks = DenseProgressCallbacks(print_reasoning=args.print_reasoning)
 
         tool_callbacks = ConfirmationToolCallbacks(
             tool_confirmation_patterns=args.tool_confirmation_patterns,
