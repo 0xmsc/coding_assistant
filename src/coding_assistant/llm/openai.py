@@ -41,7 +41,7 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
     full_content = ""
     full_reasoning = ""
     full_tool_calls: dict[int, dict] = {}
-    full_reasoning_details = []
+    full_reasoning_details: list[dict] = []
 
     for chunk in chunks:
         delta = chunk["choices"][0]["delta"]
