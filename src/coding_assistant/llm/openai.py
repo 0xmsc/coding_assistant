@@ -52,8 +52,8 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
         if content := delta.get("content"):
             full_content += content
 
-        for tc_chunk in delta.get("tool_calls", []):
-            idx = tc_chunk["index"]
+        for tcc in delta.get("tool_calls", []):
+            idx = tcc["index"]
 
             tc = full_tool_calls.setdefault(
                 idx,
@@ -64,9 +64,9 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
                 },
             )
 
-            if id := tc_chunk.get("id"):
+            if id := tcc.get("id"):
                 tc["id"] += id
-            if function := tc_chunk.get("function"):
+            if function := tcc.get("function"):
                 if name := function.get("name"):
                     tc["function"]["name"] += name
                 if arguments := function.get("arguments"):
