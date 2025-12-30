@@ -24,7 +24,7 @@ from coding_assistant.history import (
     save_orchestrator_history,
 )
 from coding_assistant.instructions import get_instructions
-from coding_assistant.skills import load_skills_from_directory, format_skills_section, load_builtin_skills
+from coding_assistant.mcp.skills import load_skills_from_directory, format_skills_section, load_builtin_skills
 from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools

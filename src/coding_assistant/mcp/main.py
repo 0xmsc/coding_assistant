@@ -11,10 +11,14 @@ from coding_assistant.mcp.python import create_python_server
 from coding_assistant.mcp.shell import create_shell_server
 from coding_assistant.mcp.todo import create_todo_server
 from coding_assistant.mcp.tasks import create_task_server, TaskManager
+from coding_assistant.mcp.skills import create_skills_server, load_builtin_skills, format_skills_instructions
 
 
-# Consolidated instructions for all MCP tools
-INSTRUCTIONS = """
+def get_instructions() -> str:
+    skills = load_builtin_skills()
+    skills_instr = format_skills_instructions(skills)
+    
+    rest = """
 ## Shell
 
 - Use MCP shell tool `shell_execute` to execute shell commands.
@@ -46,6 +50,8 @@ INSTRUCTIONS = """
 - Use tasks tools to monitor and manage background tasks.
 """.strip()
 
+    return f"{skills_instr}\n\n{rest}".strip()
+
 
 async def _main() -> None:
     parser = argparse.ArgumentParser(description="Coding Assistant MCP Server")
@@ -56,12 +62,13 @@ async def _main() -> None:
 
     manager = TaskManager()
 
-    mcp = FastMCP("Coding Assistant MCP", instructions=INSTRUCTIONS)
+    mcp = FastMCP("Coding Assistant MCP", instructions=get_instructions())
     await mcp.import_server(create_todo_server(), prefix="todo")
     await mcp.import_server(create_shell_server(manager), prefix="shell")
     await mcp.import_server(create_python_server(manager, args.mcp_url), prefix="python")
     await mcp.import_server(filesystem_server, prefix="filesystem")
     await mcp.import_server(create_task_server(manager), prefix="tasks")
+    await mcp.import_server(create_skills_server(), prefix="skills")
     await mcp.run_async(show_banner=False)
 
 
