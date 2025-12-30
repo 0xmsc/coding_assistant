@@ -21,7 +21,7 @@ def test_get_instructions_base_and_user_instructions(tmp_path: Path):
     assert "\nB\n" in instr or instr.rstrip().endswith("\nB") or instr.endswith("B")
 
 
-def test_get_instructions_with_planning_and_local_file(tmp_path: Path):
+def test_get_instructions_with_plan_and_local_file(tmp_path: Path):
     wd = tmp_path
     local_dir = wd / ".coding_assistant"
     local_dir.mkdir()
