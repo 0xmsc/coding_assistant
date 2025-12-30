@@ -24,6 +24,7 @@ from coding_assistant.history import (
     save_orchestrator_history,
 )
 from coding_assistant.instructions import get_instructions
+from coding_assistant.skills import load_skills_from_directory, format_skills_section
 from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
@@ -335,11 +336,18 @@ async def _main(args):
         if args.mcp_server:
             await start_mcp_server(tools, args.mcp_server_port)
 
+        # Load skills and format section if skills_directory is provided
+        skills_section = None
+        if config.skills_directory:
+            skills = load_skills_from_directory(config.skills_directory)
+            if skills:
+                skills_section = format_skills_section(skills)
+
         instructions = get_instructions(
             working_directory=working_directory,
             user_instructions=args.instructions,
             mcp_servers=mcp_servers,
-            skills_directory=config.skills_directory,
+            skills_section=skills_section,
         )
 
         if args.print_instructions:
