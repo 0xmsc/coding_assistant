@@ -75,7 +75,7 @@ def format_parameters(parameters: list[Parameter]) -> str:
     PARAMETER_TEMPLATE = """
 - Name: {name}
   - Description: {description}
-  - Value:{value}
+  - Value: {value}
 """.strip()
     parts: list[str] = []
     for parameter in parameters:
