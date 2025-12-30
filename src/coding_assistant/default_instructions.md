@@ -5,10 +5,6 @@
 - Output text in markdown formatting, where appropriate.
 - Do not install any software before asking the user.
 - Do not run any binary using `uvx` or `npx` before asking the user.
-- You **must** read the `developing` skill before performing any of the following tasks:
-    - exploring or editing a codebase.
-    - performing git operations.
-    - doing any other development-related task.
 
 ## Tools
 
