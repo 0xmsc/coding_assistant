@@ -77,8 +77,7 @@ def format_skills_instructions(skills: List[Skill]) -> str:
             "- Use `skills_list_resources(name=...)` to list the resources available for a skill.",
             "- Use `skills_read_skill(name=...)` to read the `SKILL.md` of a skill.",
             "- Use `skills_read_skill(name=..., resource=...)` to read specific resources or scripts of a skill.",
-            "- Try to read a skill file when something that the user wants from you matches one of the descriptions.",
-            "- The directory that contains the `SKILL.md` file might contain more files and subdirectories to explore, e.g. `/scripts` or `/references`.",
+            "- If a skill could match the users task, you must read it.",
         ]
     )
 

@@ -131,5 +131,5 @@ def test_builtin_skills_parsing_content():
     # Verify it has the moved content
     assert "SKILL.md" in general_skill.resources
     content = (general_skill.root / "SKILL.md").read_text()
-    assert "## Exploring" in content
-    assert "## Editing" in content
+    assert "## Codebase Exploration" in content
+    assert "## File Editing" in content
