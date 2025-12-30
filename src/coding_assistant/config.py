@@ -25,4 +25,4 @@ class Config(BaseModel):
     compact_conversation_at_tokens: int
     enable_chat_mode: bool = True
     enable_ask_user: bool = True
-    skills_directory: Path | None = None
+    skills_directories: list[Path] = Field(default_factory=list)
