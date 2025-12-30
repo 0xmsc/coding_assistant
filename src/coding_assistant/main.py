@@ -238,11 +238,17 @@ async def run_chat_session(
         save_orchestrator_history(working_directory, chat_history)
 
 
-def get_default_mcp_server_config(root_directory: Path, mcp_url: str | None = None) -> MCPServerConfig:
+def get_default_mcp_server_config(
+    root_directory: Path, skills_directories: list[str], mcp_url: str | None = None
+) -> MCPServerConfig:
     args = [
         "-m",
         "coding_assistant.mcp",
     ]
+
+    if skills_directories:
+        args.append("--skills-directories")
+        args.extend(skills_directories)
 
     if mcp_url:
         args.extend(["--mcp-url", mcp_url])
@@ -319,7 +325,7 @@ async def _main(args):
         logger.info(f"Selected random port for background MCP server: {args.mcp_server_port}")
 
     mcp_url = f"http://localhost:{args.mcp_server_port}/mcp" if args.mcp_server else None
-    mcp_server_configs.append(get_default_mcp_server_config(coding_assistant_root, mcp_url=mcp_url))
+    mcp_server_configs.append(get_default_mcp_server_config(coding_assistant_root, args.skills_directories, mcp_url=mcp_url))
 
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 
