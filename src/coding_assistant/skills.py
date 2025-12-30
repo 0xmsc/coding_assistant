@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+import frontmatter
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,53 +23,6 @@ class Skill:
     path: Path
 
 
-def _parse_frontmatter(content: str) -> dict[str, str]:
-    """
-    Parse YAML frontmatter from a markdown file.
-
-    Extracts lines between --- markers and parses simple key: value pairs.
-    Supports quoted values and basic string values.
-    """
-    lines = content.splitlines()
-    frontmatter_start = -1
-    frontmatter_end = -1
-
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped == "---":
-            if frontmatter_start == -1:
-                frontmatter_start = i
-            else:
-                frontmatter_end = i
-                break
-
-    if frontmatter_start == -1 or frontmatter_end == -1:
-        return {}
-
-    frontmatter_lines = lines[frontmatter_start + 1 : frontmatter_end]
-    result = {}
-
-    for line in frontmatter_lines:
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-
-        if ":" not in line:
-            continue
-
-        key, value = line.split(":", 1)
-        key = key.strip()
-        value = value.strip()
-
-        # Remove quotes if present
-        if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
-            value = value[1:-1]
-
-        result[key] = value
-
-    return result
-
-
 def parse_skill_file(file_path: Path) -> Optional[Skill]:
     """
     Parse a single SKILL.md file and extract name and description.
@@ -76,15 +31,13 @@ def parse_skill_file(file_path: Path) -> Optional[Skill]:
         Skill object with name, description, and path, or None if invalid.
     """
     try:
-        content = file_path.read_text()
+        post = frontmatter.load(file_path)
     except Exception as e:
-        logger.warning(f"Failed to read {file_path}: {e}")
+        logger.warning(f"Failed to read or parse {file_path}: {e}")
         return None
 
-    frontmatter = _parse_frontmatter(content)
-
-    name = frontmatter.get("name")
-    description = frontmatter.get("description")
+    name = post.metadata.get("name")
+    description = post.metadata.get("description")
 
     if not name:
         logger.warning(f"No 'name' field in {file_path}")
