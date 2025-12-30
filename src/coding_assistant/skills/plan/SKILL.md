@@ -1,5 +1,5 @@
 ---
-name: planning
+name: plan
 description: Guidelines for iteratively planning tasks and changes before implementation. Use this when the user requests a non-trivial task or when you need to align on a complex implementation strategy.
 ---
 
