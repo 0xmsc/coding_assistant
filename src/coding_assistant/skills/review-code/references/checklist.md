@@ -85,9 +85,9 @@ A comprehensive checklist for senior engineer-level code reviews. Use this as a 
 - [ ] **Positive feedback**: Acknowledge good practices?
 
 ## Tools to Run
-- `just lint` or language-specific linters
-- `just test` or test runners
-- `npm audit`, `safety check`, `bandit`, `semgrep`
+- Linting tools (e.g., `just lint`, `eslint`, `flake8`)
+- Test runners (e.g., `just test`, `npm test`, `pytest`)
+- Security scanners (e.g., `npm audit`, `safety check`, `bandit`, `semgrep`)
 - `git diff` to double-check changes
 
 ## Common Pitfalls
