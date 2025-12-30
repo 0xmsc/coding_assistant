@@ -21,7 +21,7 @@ skill-name/
 - **Resources**: Move detailed docs to `references/` and code to `scripts/`.
 
 ## Process
-1. **Directory**: `mkdir -p <name>/{scripts,references,assets}`.
+1. **Directory**: `mkdir <name>`. Create `scripts/`, `references/`, or `assets/` only if you actually have content for them.
 2. **Metadata**: Write the `SKILL.md` frontmatter first.
 3. **Resources**: Implement scripts and test them.
 4. **Instructions**: Write concise steps in `SKILL.md` body.
