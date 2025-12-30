@@ -77,6 +77,22 @@ def test_load_builtin_skills():
         assert "SKILL.md" in str(skill.path)
 
 
+def test_create_skills_server(tmp_path):
+    from coding_assistant.mcp.skills import create_skills_server
+
+    # Create a CLI skill
+    cli_skills_dir = tmp_path / "cli_skills"
+    cli_skills_dir.mkdir()
+    (cli_skills_dir / "my_cli_skill").mkdir()
+    (cli_skills_dir / "my_cli_skill" / "SKILL.md").write_text("---\nname: my_cli_skill\ndescription: CLI skill\n---\n")
+
+    server, instr = create_skills_server([cli_skills_dir])
+
+    assert "developing" in instr
+    assert "my_cli_skill" in instr
+    assert "skills_read_skill" in instr
+
+
 def test_builtin_skills_parsing_content():
     # Verify that the placeholder skill has the expected structure
     skills = load_builtin_skills()

@@ -174,12 +174,24 @@ def load_skills_from_directory(skills_dir: Path) -> List[Skill]:
     return skills
 
 
-def create_skills_server(skills: Optional[List[Skill]] = None) -> FastMCP:
+def create_skills_server(
+    skills_directories: Optional[List[Path]] = None,
+) -> tuple[FastMCP, str]:
+    """
+    Create the skills server and return it along with the formatted instructions.
+    """
     skills_server = FastMCP("Skills")
 
-    # If no skills are provided, load built-in ones
-    effective_skills = skills if skills is not None else load_builtin_skills()
-    skills_map = {s.name: s for s in effective_skills}
+    # Load built-in skills
+    all_skills = load_builtin_skills()
+
+    # Load extra skills from directories
+    if skills_directories:
+        for directory in skills_directories:
+            all_skills.extend(load_skills_from_directory(directory))
+
+    skills_map = {s.name: s for s in all_skills}
+    instructions = format_skills_instructions(all_skills)
 
     @skills_server.tool()
     async def read_skill(
@@ -201,4 +213,4 @@ def create_skills_server(skills: Optional[List[Skill]] = None) -> FastMCP:
 
         return content
 
-    return skills_server
+    return skills_server, instructions
