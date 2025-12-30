@@ -1,5 +1,5 @@
 ---
-name: create_skill
+name: create-skill
 description: Guide for creating new Agent Skills. Use this skill when you need to create a new skill.
 ---
 
