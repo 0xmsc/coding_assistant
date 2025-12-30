@@ -37,20 +37,13 @@ def _load_resources_recursive(
             else:
                 rel_path = item_str
 
-            try:
-                resources[rel_path] = item.read_text(encoding="utf-8")
-            except Exception as e:
-                logger.warning(f"Could not read resource {item}: {e}")
+            resources[rel_path] = item.read_text(encoding="utf-8")
         elif item.is_dir():
             _load_resources_recursive(base_path, item, resources)
 
 
 def parse_skill_file(content: str, source_info: str) -> Optional[Skill]:
-    try:
-        post = frontmatter.loads(content)
-    except Exception as e:
-        logger.warning(f"Failed to parse skill at {source_info}: {e}")
-        return None
+    post = frontmatter.loads(content)
 
     name = post.metadata.get("name")
     description = post.metadata.get("description")
@@ -73,28 +66,21 @@ def load_skills_from_root(root: Traversable) -> List[Skill]:
             continue
         skill_file = skill_dir / "SKILL.md"
         if skill_file.is_file():
-            try:
-                content = skill_file.read_text(encoding="utf-8")
-                skill = parse_skill_file(content, str(skill_file))
-                if skill:
-                    # Load all resources for this skill
-                    _load_resources_recursive(skill_dir, skill_dir, skill.resources)
-                    skills.append(skill)
-            except Exception as e:
-                logger.warning(f"Error loading skill from {skill_dir}: {e}")
+            content = skill_file.read_text(encoding="utf-8")
+            skill = parse_skill_file(content, str(skill_file))
+            if skill:
+                # Load all resources for this skill
+                _load_resources_recursive(skill_dir, skill_dir, skill.resources)
+                skills.append(skill)
     return skills
 
 
 def load_builtin_skills() -> List[Skill]:
-    try:
-        skills_root = importlib.resources.files("coding_assistant") / "skills"
-        if not skills_root.is_dir():
-            return []
-
-        return load_skills_from_root(skills_root)
-    except Exception as e:
-        logger.error(f"Error loading builtin skills: {e}")
+    skills_root = importlib.resources.files("coding_assistant") / "skills"
+    if not skills_root.is_dir():
         return []
+
+    return load_skills_from_root(skills_root)
 
 
 def format_skills_instructions(skills: List[Skill]) -> str:
