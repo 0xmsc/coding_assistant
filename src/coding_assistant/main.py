@@ -156,6 +156,7 @@ def parse_args():
 
 def create_config_from_args(args) -> Config:
     from pathlib import Path
+
     return Config(
         model=args.model,
         expert_model=args.expert_model or args.model,
