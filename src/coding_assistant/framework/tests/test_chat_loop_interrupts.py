@@ -73,7 +73,7 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
     history = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -98,7 +98,7 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input():
                     history=history,
                     model=model,
                     tools=tools,
-                    parameters=parameters,
+                    instructions=instructions,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
@@ -144,7 +144,7 @@ async def test_interrupt_during_do_single_step():
     history = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -169,7 +169,7 @@ async def test_interrupt_during_do_single_step():
                     history=history,
                     model=model,
                     tools=tools,
-                    parameters=parameters,
+                    instructions=instructions,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
@@ -216,7 +216,7 @@ async def test_multiple_tool_calls_with_interrupt():
     history = [UserMessage(content="start")]
     tools = [tool1, tool2]
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -241,7 +241,7 @@ async def test_multiple_tool_calls_with_interrupt():
                     history=history,
                     model=model,
                     tools=tools,
-                    parameters=parameters,
+                    instructions=instructions,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
@@ -278,7 +278,7 @@ async def test_chat_loop_without_interrupts_works_normally():
     history = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -291,7 +291,7 @@ async def test_chat_loop_without_interrupts_works_normally():
         history=history,
         model=model,
         tools=tools,
-        parameters=parameters,
+        instructions=instructions,
         callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         completer=completer,
@@ -324,7 +324,7 @@ async def test_interrupt_recovery_continues_conversation():
     history = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -350,7 +350,7 @@ async def test_interrupt_recovery_continues_conversation():
                     history=history,
                     model=model,
                     tools=tools,
-                    parameters=parameters,
+                    instructions=instructions,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
@@ -397,7 +397,7 @@ async def test_interrupt_during_second_tool_call():
     history = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -422,7 +422,7 @@ async def test_interrupt_during_second_tool_call():
                     history=history,
                     model=model,
                     tools=tools,
-                    parameters=parameters,
+                    instructions=instructions,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=completer,
@@ -464,7 +464,7 @@ async def test_sigint_interrupts_tool_execution():
     history = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -479,7 +479,7 @@ async def test_sigint_interrupts_tool_execution():
                 history=history,
                 model=model,
                 tools=tools,
-                parameters=parameters,
+                instructions=instructions,
                 callbacks=NullProgressCallbacks(),
                 tool_callbacks=NullToolCallbacks(),
                 completer=completer,
@@ -518,7 +518,7 @@ async def test_interrupt_during_llm_call():
     history = [UserMessage(content="test")]
     tools = []
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(
         ask_sequence=[
@@ -543,7 +543,7 @@ async def test_interrupt_during_llm_call():
                     history=history,
                     model=model,
                     tools=tools,
-                    parameters=parameters,
+                    instructions=instructions,
                     callbacks=NullProgressCallbacks(),
                     tool_callbacks=NullToolCallbacks(),
                     completer=slow_completer,

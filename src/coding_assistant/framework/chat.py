@@ -18,7 +18,6 @@ from coding_assistant.framework.history import (
     clear_history,
 )
 from coding_assistant.framework.interrupts import InterruptController
-from coding_assistant.framework.parameters import Parameter, format_parameters
 from coding_assistant.framework.types import (
     CompactConversationResult,
     Completer,
@@ -37,18 +36,16 @@ CHAT_START_MESSAGE_TEMPLATE = """
   - When you have finished your task, reply without any tool calls to return control to the user.
   - When you want to ask the user a question, create a message without any tool calls to return control to the user.
 
-## Parameters
-
-Your client has provided the following parameters for your session:
-
-{parameters}
+{instructions_section}
 """.strip()
 
 
-def _create_chat_start_message(parameters: list[Parameter]) -> str:
-    parameters_str = format_parameters(parameters)
+def _create_chat_start_message(instructions: str | None) -> str:
+    instructions_section = ""
+    if instructions:
+        instructions_section = f"## Instructions\n\n{instructions}"
     message = CHAT_START_MESSAGE_TEMPLATE.format(
-        parameters=parameters_str,
+        instructions_section=instructions_section,
     )
     return message
 
@@ -93,7 +90,7 @@ async def run_chat_loop(
     history: list,
     model: str,
     tools: list[Tool],
-    parameters: list[Parameter],
+    instructions: str | None,
     *,
     callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
@@ -146,7 +143,7 @@ async def run_chat_loop(
     command_map = {cmd.name: cmd for cmd in commands}
     command_names = list(command_map.keys())
 
-    start_message = _create_chat_start_message(parameters)
+    start_message = _create_chat_start_message(instructions)
     append_user_message(history, callbacks, context_name, start_message, force=True)
 
     usage = Usage(0, 0.0)
