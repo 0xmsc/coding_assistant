@@ -13,17 +13,8 @@ from coding_assistant.mcp.todo import create_todo_server
 from coding_assistant.mcp.tasks import create_task_server, TaskManager
 
 
-async def _main() -> None:
-    parser = argparse.ArgumentParser(description="Coding Assistant MCP Server")
-    parser.add_argument("--mcp-url", help="The URL of the MCP server (passed to Python scripts)")
-    args = parser.parse_args()
-
-    configure_logging(level="CRITICAL")
-
-    manager = TaskManager()
-
-    # Consolidated instructions for all MCP tools
-    instructions = """
+# Consolidated instructions for all MCP tools
+INSTRUCTIONS = """
 ## MCP Instructions
 
 ### Shell
@@ -33,23 +24,42 @@ async def _main() -> None:
 - Example commands: `eza`, `git`, `fd`, `rg`, `gh`, `pwd`.
 - Be sure that the command you are running is safe. If you are unsure, ask the user.
 - Interactive commands (e.g., `git rebase -i`) are not supported and will block.
-- Prefer Shell over Python for simple one-liners.
 
 ### Python
 
 - You have access to a Python interpreter via `python_execute`.
 - `python_execute` can run multi-line scripts.
 - The most common Python libraries are already installed.
-- Prefer Python over Shell for complex logic.
+- Prefer Python over Shell for readability.
 - Add comments to your scripts to explain your logic.
 
 ### TODO
 
 - Always manage a TODO list while working on your task.
 - Use the `todo_*` tools for managing the list.
-"""
-    
-    mcp = FastMCP("Coding Assistant MCP", instructions=instructions)
+
+### Filesystem
+
+- Use filesystem tools to read, write, and edit files.
+- Try not to use shell commands for file operations.
+- The tools use MCP protocol for file operations.
+
+### Tasks
+
+- Use tasks tools to monitor and manage background tasks.
+""".strip()
+
+
+async def _main() -> None:
+    parser = argparse.ArgumentParser(description="Coding Assistant MCP Server")
+    parser.add_argument("--mcp-url", help="The URL of the MCP server (passed to Python scripts)")
+    args = parser.parse_args()
+
+    configure_logging(level="CRITICAL")
+
+    manager = TaskManager()
+
+    mcp = FastMCP("Coding Assistant MCP", instructions=INSTRUCTIONS)
     await mcp.import_server(create_todo_server(), prefix="todo")
     await mcp.import_server(create_shell_server(manager), prefix="shell")
     await mcp.import_server(create_python_server(manager, args.mcp_url), prefix="python")
