@@ -28,14 +28,25 @@ class Skill:
 
 
 def _load_resources_recursive(
-    base_path: Traversable, current_path: Traversable, resources: Dict[str, str]
+    base_path: Union[Path, Traversable],
+    current_path: Union[Path, Traversable],
+    resources: Dict[str, str],
 ) -> None:
     """Recursively load all files in a directory into the resources dict."""
     for item in current_path.iterdir():
         if item.is_file():
-            # Calculate relative path manually for Traversable
-            # traversable doesn't have .relative_to() like Path
-            rel_path = str(item).replace(str(base_path), "").lstrip(os.sep)
+            # Calculate relative path
+            if isinstance(item, Path) and isinstance(base_path, Path):
+                rel_path = str(item.relative_to(base_path))
+            else:
+                # Fallback for Traversable
+                base_str = str(base_path)
+                item_str = str(item)
+                if item_str.startswith(base_str):
+                    rel_path = item_str[len(base_str) :].lstrip("/")
+                else:
+                    rel_path = item_str
+            
             try:
                 resources[rel_path] = item.read_text(encoding="utf-8")
             except Exception as e:
