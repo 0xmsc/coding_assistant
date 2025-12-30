@@ -14,9 +14,7 @@ from coding_assistant.mcp.todo import create_todo_server
 from coding_assistant.mcp.tasks import create_task_server, TaskManager
 from coding_assistant.mcp.skills import create_skills_server
 
-
-def get_instructions(skills_instr: str) -> str:
-    rest = """
+INSTRUCTIONS = """
 ## Shell
 
 - Use MCP shell tool `shell_execute` to execute shell commands.
@@ -48,7 +46,12 @@ def get_instructions(skills_instr: str) -> str:
 - Use tasks tools to monitor and manage background tasks.
 """.strip()
 
-    return f"{skills_instr}\n\n{rest}".strip()
+
+def get_instructions(skills_instr: str) -> str:
+    if not skills_instr:
+        return INSTRUCTIONS
+    else:
+        return f"{INSTRUCTIONS}\n\n{skills_instr}"
 
 
 async def _main() -> None:
