@@ -24,7 +24,6 @@ from coding_assistant.history import (
     save_orchestrator_history,
 )
 from coding_assistant.instructions import get_instructions
-from coding_assistant.mcp.skills import load_skills_from_directory, format_skills_section, load_builtin_skills
 from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
@@ -279,19 +278,6 @@ def enable_sandboxing(args, working_directory, root):
         logger.warning("Sandboxing is disabled")
 
 
-def create_skills_section(skills_directories: list[str]) -> str | None:
-    all_skills = load_builtin_skills()
-
-    for dir_path in skills_directories:
-        skills = load_skills_from_directory(Path(dir_path))
-        all_skills.extend(skills)
-
-    if not all_skills:
-        return None
-
-    return format_skills_section(all_skills)
-
-
 async def _main(args):
     logger.info(f"Starting Coding Assistant with arguments {args}")
 
@@ -347,13 +333,10 @@ async def _main(args):
         if args.mcp_server:
             await start_mcp_server(tools, args.mcp_server_port)
 
-        skills_section = create_skills_section(args.skills_directories)
-
         instructions = get_instructions(
             working_directory=working_directory,
             user_instructions=args.instructions,
             mcp_servers=mcp_servers,
-            skills_section=skills_section,
         )
 
         if args.print_instructions:
