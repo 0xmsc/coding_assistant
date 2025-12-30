@@ -5,58 +5,280 @@ description: Guide for creating new Agent Skills. Use this skill when you need t
 
 # Create Skill
 
-This skill provides the instructions necessary to create new Agent Skills following the [Agent Skills specification](https://github.com/agentskills/agentskills).
+This skill provides comprehensive guidance for creating effective Agent Skills that extend capabilities with specialized knowledge, workflows, and tool integrations.
+
+## What Are Skills
+
+Skills are modular packages that transform a general-purpose agent into a specialized one by providing:
+- **Specialized workflows** - Multi-step procedures for specific domains
+- **Tool integrations** - Instructions for working with file formats, APIs, or tools
+- **Domain expertise** - Company-specific knowledge, schemas, business logic
+- **Bundled resources** - Scripts, references, and assets for complex tasks
+
+## Core Design Principles
+
+### Concise is Key
+The context window is a shared resource. Only add what the agent truly needs. **Challenge each piece**: "Does the agent really need this explanation?"
+
+**Default assumption: The agent is already smart.** Add context only when necessary.
+
+### Progressive Disclosure
+Skills use a three-level loading system:
+
+1. **Metadata** (name + description) - Always loaded (~100 words)
+2. **SKILL.md body** - Loaded when skill triggers (<500 lines)
+3. **Bundled resources** - Loaded as needed (scripts/references/assets)
+
+Keep SKILL.md lean. Split detailed content into references. Move executable code to scripts.
+
+### Match Freedom to Task
+- **High freedom** (text instructions): Multiple valid approaches, context-dependent decisions
+- **Medium freedom** (pseudocode/scripts with parameters): Preferred patterns, some variation acceptable
+- **Low freedom** (specific scripts): Fragile operations, consistency critical
 
 ## Skill Structure
 
-A skill is a directory containing at minimum a `SKILL.md` file:
+A skill is a directory containing:
 
 ```
 skill-name/
 ├── SKILL.md          # Required: instructions + metadata
 ├── scripts/          # Optional: executable code
 ├── references/       # Optional: documentation
-└── assets/           # Optional: templates, resources
+└── assets/           # Optional: templates/resources
 ```
 
-## Creating a new Skill
+### SKILL.md Requirements
 
-### 1. Naming
-- The skill name must be 1-64 characters.
-- Use only lowercase alphanumeric characters and hyphens (`a-z`, `0-9`, `-`).
-- Must not start or end with a hyphen.
-- Must not contain consecutive hyphens (`--`).
-- The directory name must match the `name` field in `SKILL.md`.
-
-### 2. SKILL.md Frontmatter
-Every `SKILL.md` must start with YAML frontmatter:
+#### Frontmatter (Required)
+Every SKILL.md must start with YAML frontmatter:
 
 ```yaml
 ---
 name: skill-name
-description: A clear description of what the skill does and when to use it.
+description: Clear description of what the skill does AND when to use it
 ---
 ```
 
-**Description Guidelines:**
-- Describe both what the skill does and when the agent should use it.
-- Include keywords to help with discovery.
+**Name rules:**
+- 1-64 characters
+- Lowercase alphanumeric + hyphens only
+- Cannot start/end with hyphen
+- No consecutive hyphens
 
-### 3. SKILL.md Content
-The body of `SKILL.md` should contain clear instructions for the agent. Use Markdown formatting.
-Recommended sections:
-- **Prerequisites**: Any tools or setup needed.
-- **Workflow**: Step-by-step instructions.
-- **Examples**: How to perform specific tasks.
-- **Troubleshooting**: Common issues.
+**Description guidelines:**
+- Describe both **what** it does and **when** to use it
+- Include specific triggers/contexts
+- Include keywords for discovery
+- **All "when to use" information belongs in description** - body loads after triggering
 
-### 4. Progressive Disclosure
-- Keep `SKILL.md` focused and under 500 lines.
-- Move detailed technical references or large datasets to the `references/` directory.
-- Move executable logic to the `scripts/` directory.
+#### Body (Required)
+Clear instructions for using the skill. Use imperative form. Recommended sections:
+- Prerequisites
+- Workflow steps
+- Examples
+- Troubleshooting
+
+**Length limit**: Keep under 500 lines to avoid context bloat.
+
+## Bundled Resources
+
+### Scripts (`scripts/`)
+Executable code for tasks requiring deterministic reliability.
+
+**When to include:**
+- Same code rewritten repeatedly
+- Deterministic reliability needed
+- Complex operations prone to errors
+
+**Examples:**
+- `rotate_pdf.py` - PDF rotation
+- `validate_schema.py` - Schema validation
+- `generate_report.py` - Report generation
+
+**Benefits**: Token efficient, executable without loading into context, testable.
+
+### References (`references/`)
+Documentation to be loaded as needed.
+
+**When to include:**
+- Database schemas
+- API documentation
+- Domain knowledge
+- Company policies
+- Detailed workflow guides
+
+**Examples:**
+- `schema.md` - Table schemas
+- `api_docs.md` - API specifications
+- `policies.md` - Company policies
+- `workflow.md` - Detailed procedures
+
+**Best practices:**
+- Keep SKILL.md lean by moving details here
+- For files >10k words, include grep search patterns in SKILL.md
+- Avoid duplication between SKILL.md and references
+- If >100 lines, add table of contents
+
+### Assets (`assets/`)
+Files used in output, not loaded into context.
+
+**When to include:**
+- Templates
+- Brand assets
+- Boilerplate code
+- Sample documents
+
+**Examples:**
+- `logo.png` - Brand assets
+- `slides.pptx` - PowerPoint templates
+- `frontend-template/` - HTML/React boilerplate
+- `font.ttf` - Typography files
+
+## What NOT to Include
+
+Do NOT create extraneous documentation:
+- README.md
+- INSTALLATION_GUIDE.md
+- QUICK_REFERENCE.md
+- CHANGELOG.md
+- etc.
+
+Only include files that directly support the skill's functionality.
+
+## Creation Process
+
+### Step 1: Understand with Concrete Examples
+Skip if usage patterns are already clear. Otherwise, ask:
+- "What functionality should this skill support?"
+- "Can you give examples of how it would be used?"
+- "What would a user say to trigger this skill?"
+
+### Step 2: Plan Reusable Contents
+Analyze each example to identify what resources would help:
+
+**Example**: `pdf-editor` skill for "Help me rotate this PDF"
+- Analysis: Rotating requires rewriting same code
+- Resource: `scripts/rotate_pdf.py`
+
+**Example**: `big-query` skill for "How many users logged in today?"
+- Analysis: Requires re-discovering schemas each time
+- Resource: `references/schema.md`
+
+**Example**: `frontend-webapp-builder` for "Build me a todo app"
+- Analysis: Same boilerplate each time
+- Resource: `assets/hello-world/` template
+
+### Step 3: Initialize the Skill
+Create the skill template structure:
+
+```bash
+scripts/init_skill.py <skill-name> --path <output-directory>
+```
+
+This creates the directory, SKILL.md template, and resource directories with example files.
+
+### Step 4: Edit the Skill
+
+#### Learn Design Patterns
+Consult guides for specific needs:
+- **Multi-step processes**: references/workflows.md
+- **Output formats**: references/output-patterns.md
+
+#### Start with Resources
+Implement reusable resources first:
+1. Add scripts and test them
+2. Add reference documentation
+3. Add assets/templates
+4. Delete unneeded example files
+
+#### Update SKILL.md
+**Frontmatter**: Write clear name and description.
+
+**Body**: Use imperative form. Include:
+- Prerequisites
+- Workflow
+- Examples
+- Troubleshooting
+
+### Step 5: Package the Skill
+Validate and package:
+
+```bash
+scripts/package_skill.py <path/to/skill-folder>
+```
+
+The script:
+1. Validates frontmatter, naming, structure
+2. Creates `.skill` file (zip with .skill extension)
+3. Reports errors if validation fails
+
+### Step 6: Iterate
+Test the skill on real tasks, then:
+1. Notice struggles or inefficiencies
+2. Identify needed improvements
+3. Update SKILL.md or resources
+4. Re-package and test again
+
+## Design Patterns
+
+### Multi-Step Workflows
+For complex processes:
+1. Break into clear sequential steps
+2. Include decision points
+3. Provide fallback options
+4. Document error handling
+
+### Output Quality Standards
+For specific formats:
+1. Define quality criteria upfront
+2. Include validation checks
+3. Provide templates or examples
+4. Document common pitfalls
+
+### Domain Organization
+For skills with multiple domains:
+```
+bigquery-skill/
+├── SKILL.md (overview + navigation)
+└── reference/
+    ├── finance.md
+    ├── sales.md
+    ├── product.md
+    └── marketing.md
+```
+
+### Variant Organization
+For skills supporting multiple options:
+```
+cloud-deploy/
+├── SKILL.md (workflow + selection)
+└── references/
+    ├── aws.md
+    ├── gcp.md
+    └── azure.md
+```
+
+## Quick Reference
+
+### Do's
+✅ Be concise - challenge every sentence
+✅ Use progressive disclosure
+✅ Match freedom to task fragility
+✅ Test scripts before packaging
+✅ Move detailed docs to references
+✅ Use imperative language in SKILL.md body
+✅ Include "when to use" in description
+
+### Don'ts
+❌ Don't include extraneous documentation files
+❌ Don't duplicate information between SKILL.md and references
+❌ Don't create deeply nested references (keep one level deep)
+❌ Don't exceed 500 lines in SKILL.md body
+❌ Don't put "when to use" info in the body
 
 ## Documentation
 
-For more detailed information, see the original documents:
-- [What are Skills?](references/what-are-skills.md)
+For detailed specifications, see:
+- [What are Skills?](references/what_are_skills.md)
 - [Full Specification](references/specification.md)
