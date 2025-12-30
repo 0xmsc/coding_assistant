@@ -47,13 +47,6 @@ INSTRUCTIONS = """
 """.strip()
 
 
-def get_instructions(skills_instr: str) -> str:
-    if not skills_instr:
-        return INSTRUCTIONS
-    else:
-        return f"{INSTRUCTIONS}\n\n{skills_instr}"
-
-
 async def _main() -> None:
     parser = argparse.ArgumentParser(description="Coding Assistant MCP Server")
     parser.add_argument("--mcp-url", help="The URL of the MCP server (passed to Python scripts)")
@@ -71,8 +64,7 @@ async def _main() -> None:
 
     skills_dir = [Path(d) for d in args.skills_directories]
     skills_server, skills_instr = create_skills_server(skills_dir)
-
-    instructions = get_instructions(skills_instr)
+    instructions = f"{INSTRUCTIONS}\n\n{skills_instr}"
 
     mcp = FastMCP("Coding Assistant MCP", instructions=instructions)
     await mcp.import_server(create_todo_server(), prefix="todo")
