@@ -1,3 +1,4 @@
+from pathlib import Path
 from coding_assistant.mcp.skills import load_skills_from_directory, parse_skill_file, load_builtin_skills
 
 
@@ -28,7 +29,7 @@ def test_parse_skill_file_name_with_spaces(tmp_path):
     content = "---\nname: name with spaces\ndescription: test\n---"
     identifier = str(tmp_path / "SKILL.md")
 
-    skill = parse_skill_file(content, identifier)
+    skill = parse_skill_file(content, identifier, tmp_path)
     assert skill is not None
     assert skill.name == "name with spaces"
 
@@ -37,8 +38,8 @@ def test_format_skills_instructions():
     from coding_assistant.mcp.skills import Skill, format_skills_instructions
 
     skills = [
-        Skill(name="skill1", description="desc1", resources={"SKILL.md": "content1", "script.py": "content2"}),
-        Skill(name="skill2", description="desc2", resources={"SKILL.md": "content3"}),
+        Skill(name="skill1", description="desc1", root=Path("/path/1"), resources=["SKILL.md", "script.py"]),
+        Skill(name="skill2", description="desc2", root=Path("/path/2"), resources=["SKILL.md"]),
     ]
 
     section = format_skills_instructions(skills)
@@ -57,7 +58,7 @@ def test_parse_skill_file_missing_fields(tmp_path):
     content = "---\nname: only-name\n---"
     identifier = str(tmp_path / "SKILL.md")
 
-    skill = parse_skill_file(content, identifier)
+    skill = parse_skill_file(content, identifier, tmp_path)
     assert skill is None
 
 
@@ -95,6 +96,7 @@ def test_builtin_skills_parsing_content():
     assert "General principles" in general_skill.description
 
     # Verify it has the moved content
-    content = general_skill.resources["SKILL.md"]
+    assert "SKILL.md" in general_skill.resources
+    content = (general_skill.root / "SKILL.md").read_text()
     assert "## Exploring" in content
     assert "## Editing" in content
