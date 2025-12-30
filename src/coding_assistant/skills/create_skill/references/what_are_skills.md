@@ -64,8 +64,6 @@ This simple format has some key advantages:
 
 ## Next steps
 
-- [View the specification](/specification) to understand the full format.
-- [Add skills support to your agent](/integrate-skills) to build a compatible client.
+- [View the specification](specification.md) to understand the full format.
 - [See example skills](https://github.com/anthropics/skills) on GitHub.
 - [Read authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices) for writing effective skills.
-- [Use the reference library](https://github.com/agentskills/agentskills/tree/main/skills-ref) to validate skills and generate prompt XML.
