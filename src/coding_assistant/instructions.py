@@ -5,6 +5,7 @@ import importlib.resources
 from pathlib import Path
 
 from coding_assistant.tools.mcp import MCPServer
+from coding_assistant.skills import load_skills_from_directory, format_skills_section
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +22,18 @@ def get_instructions(
     working_directory: Path,
     user_instructions: list[str],
     mcp_servers: list[MCPServer] | None = None,
+    skills_directory: Path | None = None,
 ) -> str:
     sections: list[str] = []
 
     sections.append(_load_default_instructions())
+
+    if skills_directory:
+        skills = load_skills_from_directory(skills_directory)
+        if skills:
+            skills_section = format_skills_section(skills)
+            if skills_section:
+                sections.append(skills_section)
 
     for path in [
         working_directory / ".coding_assistant" / "instructions.md",
