@@ -23,6 +23,7 @@ description: General principles for exploring, developing, editing and refactori
 - Do not add obvious, redundant comments to the code.
 - Do not document what the code is doing, document why it is doing it.
 - Do not document trivial functions or classes.
+- Do not catch exceptions that you do not expect to happen.
 
 ## Git
 
