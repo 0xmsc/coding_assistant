@@ -57,7 +57,9 @@ def _load_skills_from_traversable(root: Traversable) -> List[Skill]:
         skill_file = skill_dir / "SKILL.md"
         if skill_file.is_file():
             content = skill_file.read_text()
-            skill = parse_skill_file(content, Path(skill_file))
+            # TODO: Is this valid, does this work in all circumstances?
+            path_obj = Path(str(skill_file))
+            skill = parse_skill_file(content, path_obj)
             if skill:
                 skills.append(skill)
 
@@ -78,12 +80,8 @@ def load_skills_from_directory(skills_dir: Path) -> List[Skill]:
 
 
 def load_builtin_skills() -> List[Skill]:
-    try:
-        skills_root = importlib.resources.files("coding_assistant") / "skills"
-        return _load_skills_from_traversable(skills_root)
-    except Exception as e:
-        logger.warning(f"Failed to load built-in skills: {e}")
-        return []
+    skills_root = importlib.resources.files("coding_assistant") / "skills"
+    return _load_skills_from_traversable(skills_root)
 
 
 def format_skills_section(skills: List[Skill]) -> str | None:
