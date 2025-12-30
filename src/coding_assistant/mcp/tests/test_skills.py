@@ -49,7 +49,7 @@ def test_format_skills_instructions():
     assert "- **skill1**: desc1" in section
     assert "- **skill2**: desc2" in section
     assert "Use `skills_list_resources(name=...)` to list the resources available for a skill." in section
-    assert "Use `skills_read_skill(name=...)` to read the `SKILL.md` of a skill." in section
+    assert "Use `skills_read(name=...)` to read the `SKILL.md` of a skill." in section
 
 
 def test_parse_skill_file_missing_fields(tmp_path):
@@ -84,7 +84,7 @@ def test_create_skills_server(tmp_path):
     assert "develop" in instr
     assert "my_cli_skill" in instr
     assert "skills_list_resources" in instr
-    assert "skills_read_skill" in instr
+    assert "skills_read" in instr
 
 
 @pytest.mark.asyncio
@@ -107,12 +107,12 @@ async def test_skills_tools(tmp_path):
     assert "- SKILL.md" in result_text
     assert "- script.py" in result_text
 
-    # Test read_skill
-    read_tool = tools["read_skill"]
+    # Test read
+    read_tool = tools["read"]
     result = await read_tool.run({"name": "myskill", "resource": "script.py"})
     assert result.content[0].text == "print(1)"
 
-    # Test read_skill default
+    # Test read default
     result_main = await read_tool.run({"name": "myskill"})
     assert "content" in result_main.content[0].text
 
