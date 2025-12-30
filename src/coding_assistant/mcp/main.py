@@ -15,8 +15,6 @@ from coding_assistant.mcp.tasks import create_task_server, TaskManager
 
 # Consolidated instructions for all MCP tools
 INSTRUCTIONS = """
-## MCP Instructions
-
 ### Shell
 
 - Use MCP shell tool `shell_execute` to execute shell commands.
