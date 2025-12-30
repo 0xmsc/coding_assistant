@@ -15,7 +15,7 @@ from coding_assistant.mcp.tasks import create_task_server, TaskManager
 
 # Consolidated instructions for all MCP tools
 INSTRUCTIONS = """
-### Shell
+## Shell
 
 - Use MCP shell tool `shell_execute` to execute shell commands.
 - `shell_execute` can run multi-line scripts.
@@ -23,7 +23,7 @@ INSTRUCTIONS = """
 - Be sure that the command you are running is safe. If you are unsure, ask the user.
 - Interactive commands (e.g., `git rebase -i`) are not supported and will block.
 
-### Python
+## Python
 
 - You have access to a Python interpreter via `python_execute`.
 - `python_execute` can run multi-line scripts.
@@ -31,18 +31,18 @@ INSTRUCTIONS = """
 - Prefer Python over Shell for readability.
 - Add comments to your scripts to explain your logic.
 
-### TODO
+## TODO
 
 - Always manage a TODO list while working on your task.
 - Use the `todo_*` tools for managing the list.
 
-### Filesystem
+## Filesystem
 
 - Use filesystem tools to read, write, and edit files.
 - Try not to use shell commands for file operations.
 - The tools use MCP protocol for file operations.
 
-### Tasks
+## Tasks
 
 - Use tasks tools to monitor and manage background tasks.
 """.strip()
