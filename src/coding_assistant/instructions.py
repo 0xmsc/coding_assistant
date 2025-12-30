@@ -40,9 +40,9 @@ def get_instructions(
         sections.append(content)
 
     for server in mcp_servers or []:
-        text = getattr(server, "instructions", None)
-        if text and text.strip():
-            sections.append(f"# MCP `{server.name}` instructions\n\n{text.strip()}")
+        instructions = server.instructions
+        if instructions and instructions.strip():
+            sections.append(f"# MCP `{server.name}` instructions\n\n{instructions.strip()}")
 
     if user_instructions:
         sections.append("# User-provided instructions")

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class MCPServer:
     name: str
     client: Client
-    instructions: str | None
+    instructions: str | None = None
     prefix: str | None = None
 
 
@@ -91,10 +91,12 @@ async def _get_mcp_server(
 ) -> AsyncGenerator[MCPServer, None]:
     client = Client(config.to_transport(), name=name)
     async with client:
+        result = await client.initialize()
+        print(f"MCP Server '{name}' initialized with instructions:\n{result.instructions}\n")
         yield MCPServer(
             name=name,
             client=client,
-            instructions=None,  # FastMCP Client doesn't expose server instructions directly yet
+            instructions=result.instructions,
             prefix=prefix,
         )
 
