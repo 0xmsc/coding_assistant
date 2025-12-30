@@ -75,3 +75,37 @@ def test_get_instructions_ignores_empty_or_missing_mcp_instructions(tmp_path: Pa
     # Ensure baseline rule present and nothing from the servers leaked
     assert "Do not initialize a new git repository" in instr
     assert "Server" not in instr
+
+
+def test_get_instructions_with_skills_section(tmp_path: Path):
+    wd = tmp_path
+    skills_section = "# Skills\n- Skill A"
+    instr = get_instructions(working_directory=wd, user_instructions=[], skills_section=skills_section)
+
+    assert "Skills" in instr
+    assert "Skill A" in instr
+    # Skills should be after default instructions
+    assert instr.find("Skills") > instr.find("Global instructions")
+
+
+def test_get_instructions_includes_mcp_formatting_with_real_mcp_instructions(tmp_path: Path):
+    wd = tmp_path
+    from coding_assistant.mcp.main import INSTRUCTIONS as MCP_INSTRUCTIONS
+
+    class _FakeServer:
+        def __init__(self, name: str, instructions: str | None):
+            self.name = name
+            self.instructions = instructions
+
+    server = _FakeServer("coding_assistant.mcp", MCP_INSTRUCTIONS)
+
+    instr = get_instructions(
+        working_directory=wd,
+        user_instructions=[],
+        mcp_servers=cast(list[MCPServer], [server]),
+    )
+
+    assert "# MCP `coding_assistant.mcp` instructions" in instr
+    assert "## Shell" in instr
+    assert "## Tasks" in instr
+    assert "Use tasks tools to monitor and manage background tasks." in instr
