@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import importlib.resources.abc
+import importlib.resources
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated, Dict, List, Optional
+from typing import Annotated, List, Optional
 
 import frontmatter  # type: ignore
 from fastmcp import FastMCP
-
-Traversable = importlib.resources.abc.Traversable
 
 logger = logging.getLogger(__name__)
 
@@ -18,31 +16,11 @@ logger = logging.getLogger(__name__)
 class Skill:
     name: str
     description: str
-    resources: Dict[str, str] = field(default_factory=dict)  # relative path -> content
+    root: Path
+    resources: List[str] = field(default_factory=list)
 
 
-def _load_resources_recursive(
-    base_path: Traversable,
-    current_path: Traversable,
-    resources: Dict[str, str],
-) -> None:
-    """Recursively load all files in a directory into the resources dict."""
-    for item in current_path.iterdir():
-        if item.is_file():
-            # Calculate relative path
-            base_str = str(base_path)
-            item_str = str(item)
-            if item_str.startswith(base_str):
-                rel_path = item_str[len(base_str) :].lstrip("/")
-            else:
-                rel_path = item_str
-
-            resources[rel_path] = item.read_text(encoding="utf-8")
-        elif item.is_dir():
-            _load_resources_recursive(base_path, item, resources)
-
-
-def parse_skill_file(content: str, source_info: str) -> Optional[Skill]:
+def parse_skill_file(content: str, source_info: str, root: Path) -> Optional[Skill]:
     post = frontmatter.loads(content)
 
     name = post.metadata.get("name")
@@ -56,31 +34,28 @@ def parse_skill_file(content: str, source_info: str) -> Optional[Skill]:
         logger.warning(f"No 'description' field in skill at {source_info}")
         return None
 
-    return Skill(name=name, description=description)
+    return Skill(name=name, description=description, root=root)
 
 
-def load_skills_from_root(root: Traversable) -> List[Skill]:
+def load_skills_from_root(root_dir: Path) -> List[Skill]:
     skills = []
-    for skill_dir in root.iterdir():
+    for skill_dir in root_dir.iterdir():
         if not skill_dir.is_dir():
             continue
         skill_file = skill_dir / "SKILL.md"
         if skill_file.is_file():
             content = skill_file.read_text(encoding="utf-8")
-            skill = parse_skill_file(content, str(skill_file))
+            skill = parse_skill_file(content, str(skill_file), skill_dir)
             if skill:
-                # Load all resources for this skill
-                _load_resources_recursive(skill_dir, skill_dir, skill.resources)
+                # Collect allowed resources (files only)
+                skill.resources = sorted([str(p.relative_to(skill_dir)) for p in skill_dir.glob("**/*") if p.is_file()])
                 skills.append(skill)
     return skills
 
 
 def load_builtin_skills() -> List[Skill]:
-    skills_root = importlib.resources.files("coding_assistant") / "skills"
-    if not skills_root.is_dir():
-        return []
-
-    return load_skills_from_root(skills_root)
+    files = importlib.resources.files("coding_assistant") / "skills"
+    return load_skills_from_root(Path(str(files)))
 
 
 def format_skills_instructions(skills: List[Skill]) -> str:
@@ -97,7 +72,7 @@ def format_skills_instructions(skills: List[Skill]) -> str:
         lines.append(f"  - Name: {skill.name}")
         lines.append(f"    - Description: {skill.description}")
         if skill.resources:
-            resources_list = ", ".join(f"`{k}`" for k in sorted(skill.resources.keys()))
+            resources_list = ", ".join(f"`{r}`" for r in skill.resources)
             lines.append(f"    - Resources: {resources_list}")
 
     lines.extend(
@@ -152,11 +127,21 @@ def create_skills_server(
             return f"Error: Skill '{name}' not found."
 
         res_path = resource if resource else "SKILL.md"
-        content = skill.resources.get(res_path)
 
-        if content is None:
+        if res_path not in skill.resources:
+            return f"Error: Resource '{res_path}' not found or not allowed in skill '{name}'."
+
+        # Security: prevent directory traversal
+        target_path = (skill.root / res_path).resolve()
+        if not str(target_path).startswith(str(skill.root.resolve())):
+            return f"Error: Resource '{res_path}' is outside of skill root."
+
+        if not target_path.is_file():
             return f"Error: Resource '{res_path}' not found in skill '{name}'."
 
-        return content
+        try:
+            return target_path.read_text(encoding="utf-8")
+        except Exception as e:
+            return f"Error: Could not read resource '{res_path}' in skill '{name}': {e}"
 
     return skills_server, instructions
