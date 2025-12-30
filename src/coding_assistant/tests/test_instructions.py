@@ -77,17 +77,6 @@ def test_get_instructions_ignores_empty_or_missing_mcp_instructions(tmp_path: Pa
     assert "Server" not in instr
 
 
-def test_get_instructions_with_skills_section(tmp_path: Path):
-    wd = tmp_path
-    skills_section = "# Skills\n- Skill A"
-    instr = get_instructions(working_directory=wd, user_instructions=[], skills_section=skills_section)
-
-    assert "Skills" in instr
-    assert "Skill A" in instr
-    # Skills should be after default instructions
-    assert instr.find("Skills") > instr.find("Global instructions")
-
-
 def test_get_instructions_includes_mcp_formatting_with_real_mcp_instructions(tmp_path: Path):
     wd = tmp_path
     mcp_instructions = """

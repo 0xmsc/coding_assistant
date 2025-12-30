@@ -21,14 +21,10 @@ def get_instructions(
     working_directory: Path,
     user_instructions: list[str],
     mcp_servers: list[MCPServer] | None = None,
-    skills_section: str | None = None,
 ) -> str:
     sections: list[str] = []
 
     sections.append(_load_default_instructions())
-
-    if skills_section:
-        sections.append(skills_section)
 
     for path in [
         working_directory / ".coding_assistant" / "instructions.md",
