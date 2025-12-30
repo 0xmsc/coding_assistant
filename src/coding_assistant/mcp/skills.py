@@ -131,16 +131,8 @@ def create_skills_server(
         if res_path not in skill.resources:
             return f"Error: Resource '{res_path}' not found or not allowed in skill '{name}'."
 
-        # Security: prevent directory traversal
-        target_path = (skill.root / res_path).resolve()
-        if not str(target_path).startswith(str(skill.root.resolve())):
-            return f"Error: Resource '{res_path}' is outside of skill root."
-
-        if not target_path.is_file():
-            return f"Error: Resource '{res_path}' not found in skill '{name}'."
-
         try:
-            return target_path.read_text(encoding="utf-8")
+            return (skill.root / res_path).read_text(encoding="utf-8")
         except Exception as e:
             return f"Error: Could not read resource '{res_path}' in skill '{name}': {e}"
 
