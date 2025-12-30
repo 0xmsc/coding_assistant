@@ -15,7 +15,6 @@ from rich.panel import Panel
 from coding_assistant.framework.callbacks import ProgressCallbacks
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.framework.chat import run_chat_loop
-from coding_assistant.framework.parameters import Parameter
 from coding_assistant.framework.types import Tool
 from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
@@ -215,16 +214,6 @@ async def run_chat_session(
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
 ):
-    chat_parameters: list[Parameter] = []
-    if instructions:
-        chat_parameters.append(
-            Parameter(
-                name="instructions",
-                description="General instructions for the agent.",
-                value=instructions,
-            )
-        )
-
     chat_history = history or []
 
     try:
@@ -232,7 +221,7 @@ async def run_chat_session(
             history=chat_history,
             model=config.model,
             tools=tools,
-            parameters=chat_parameters,
+            instructions=instructions,
             callbacks=progress_callbacks,
             tool_callbacks=tool_callbacks,
             completer=openai_complete,
