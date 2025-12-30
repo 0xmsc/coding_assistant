@@ -40,7 +40,6 @@ INSTRUCTIONS = """
 
 - Use filesystem tools to read, write, and edit files.
 - Try not to use shell commands for file operations.
-- The tools use MCP protocol for file operations.
 
 ## Tasks
 
