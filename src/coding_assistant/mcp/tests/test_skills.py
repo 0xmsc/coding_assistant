@@ -37,8 +37,8 @@ def test_format_skills_instructions():
     from coding_assistant.mcp.skills import Skill, format_skills_instructions
 
     skills = [
-        Skill(name="skill1", description="desc1"),
-        Skill(name="skill2", description="desc2"),
+        Skill(name="skill1", description="desc1", resources={"SKILL.md": "content1", "script.py": "content2"}),
+        Skill(name="skill2", description="desc2", resources={"SKILL.md": "content3"}),
     ]
 
     section = format_skills_instructions(skills)
@@ -46,8 +46,10 @@ def test_format_skills_instructions():
     assert "## Skills" in section
     assert "- Name: skill1" in section
     assert "- Description: desc1" in section
+    assert "- Resources: `SKILL.md`, `script.py`" in section
     assert "- Name: skill2" in section
     assert "- Description: desc2" in section
+    assert "- Resources: `SKILL.md`" in section
     assert "Use `skills_read_skill(name=...)` to read the `SKILL.md` of a skill." in section
 
 
