@@ -20,8 +20,8 @@
 ## Repository
 
 - Most tasks will be performed within an existing repository.
-  In some cases, your client might ask you for something that is not related to any repository, 
-  In that case, simply follow the user's instructions directly.
+  In some cases, your client might ask you for something that is not related to any repository.
+  If that is the case, simply follow the user's instructions directly.
 - Before doing any non-trivial changes to the codebase, present a coherent plan to the user.
   The plan should contain at least 3 clarifying questions with answers you are proposing.
   When the user has follow-up questions or comments, update the plan accordingly.
