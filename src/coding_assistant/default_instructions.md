@@ -36,27 +36,6 @@
 - You have access to a custom MCP server (`coding_assistant.mcp`).
 - Prefer it where other MCPs provide similar tools.
 
-## Shell
-
-- Use MCP shell tool `shell_execute` to execute shell commands.
-- `shell_execute` can run multi-line scripts.
-- Example commands: `eza`, `git`, `fd`, `rg`, `gh`, `pwd`.
-- Be sure that the command you are running is safe. If you are unsure, ask the user.
-- Interactive commands (e.g., `git rebase -i`) are not supported and will block.
-- Prefer Shell over Python for simple one-liners.
-
-## Python
-
-- You have access to a Python interpreter via `python_execute`.
-- `python_execute` can run multi-line scripts.
-- Prefer Python over Shell for complex logic.
-- Add comments to your scripts to explain your logic.
-
-## TODO
-
-- Always manage a TODO list while working on your task.
-- Use the `todo_*` tools for managing the list.
-
 ## Exploring 
 
 - Use `pwd` to determine the project you are working on.
@@ -68,4 +47,3 @@
 - Do not try to use `applypatch` to edit files. Use e.g. `sed` or `edit_file`.
 - You can use `sed` to search & replace (e.g. to rename variables).
 - Writing full files should be the exception. Try to use `edit_file` to edit existing files.
-
