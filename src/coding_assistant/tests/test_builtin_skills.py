@@ -4,11 +4,11 @@ from coding_assistant.skills import load_builtin_skills, Skill
 def test_load_builtin_skills():
     skills = load_builtin_skills()
     
-    # We should have at least the general_developing skill we just added
+    # We should have at least the developing skill we just added
     assert len(skills) >= 1
     
     names = {s.name for s in skills}
-    assert "general_developing" in names
+    assert "developing" in names
     
     # Check that paths are provided (even if they are traversable string paths)
     for skill in skills:
@@ -18,7 +18,7 @@ def test_load_builtin_skills():
 def test_builtin_skills_parsing_content():
     # Verify that the placeholder skill has the expected structure
     skills = load_builtin_skills()
-    general_skill = next(s for s in skills if s.name == "general_developing")
+    general_skill = next(s for s in skills if s.name == "developing")
     
     assert "General principles" in general_skill.description
     
