@@ -5,7 +5,6 @@ import importlib.resources
 from pathlib import Path
 
 from coding_assistant.tools.mcp import MCPServer
-from coding_assistant.skills import load_skills_from_directory, format_skills_section
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +21,33 @@ def get_instructions(
     working_directory: Path,
     user_instructions: list[str],
     mcp_servers: list[MCPServer] | None = None,
-    skills_directory: Path | None = None,
+    skills_section: str | None = None,
 ) -> str:
+    """
+    Compose the full instruction string for the agent.
+
+    The instruction string is assembled from multiple sources in order:
+    1. Default instructions (default_instructions.md)
+    2. Skills section (optional, provided as pre‑formatted string)
+    3. Project-local instructions (AGENTS.md or .coding_assistant/instructions.md)
+    4. MCP server instructions
+    5. User-provided instructions
+
+    Args:
+        working_directory: The directory to search for local instruction files.
+        user_instructions: List of user‑provided instruction strings.
+        mcp_servers: List of MCP servers with optional instructions.
+        skills_section: Pre‑formatted markdown section listing available skills.
+
+    Returns:
+        The concatenated instruction string.
+    """
     sections: list[str] = []
 
     sections.append(_load_default_instructions())
 
-    if skills_directory:
-        skills = load_skills_from_directory(skills_directory)
-        if skills:
-            skills_section = format_skills_section(skills)
-            if skills_section:
-                sections.append(skills_section)
+    if skills_section:
+        sections.append(skills_section)
 
     for path in [
         working_directory / ".coding_assistant" / "instructions.md",
