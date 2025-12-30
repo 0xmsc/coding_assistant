@@ -74,12 +74,13 @@ def format_skills_section(skills: List[Skill]) -> str | None:
     ]
 
     for skill in skills:
-        lines.append(f"  - **{skill.name}** `{skill.path}` {skill.description}")
+        lines.append(f"  - **{skill.name}** {skill.description} in {skill.path}")
 
     lines.extend(
         [
             "- If you want to use a skill, read its `SKILL.md` file, it will contain all the details.",
             "- Try to read a skill file when something that the user wants from you matches one of the descriptions.",
+            "- The directory that contains the `SKILL.md` file might contain more files and subdirectories to explore, e.g. `/scripts`.",
         ]
     )
 
