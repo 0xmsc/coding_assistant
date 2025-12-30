@@ -1,4 +1,5 @@
 from pathlib import Path
+import pytest
 from coding_assistant.mcp.skills import load_skills_from_directory, parse_skill_file, load_builtin_skills
 
 
@@ -88,6 +89,36 @@ def test_create_skills_server(tmp_path):
     assert "my_cli_skill" in instr
     assert "skills_list_resources" in instr
     assert "skills_read_skill" in instr
+
+
+@pytest.mark.asyncio
+async def test_skills_tools(tmp_path):
+    from coding_assistant.mcp.skills import create_skills_server
+
+    skill_dir = tmp_path / "myskill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("---\nname: myskill\ndescription: desc\n---\ncontent")
+    (skill_dir / "script.py").write_text("print(1)")
+
+    server, _ = create_skills_server([tmp_path])
+
+    # Test list_resources
+    tools = await server.get_tools()
+    list_tool = tools["list_resources"]
+    result = await list_tool.run({"name": "myskill"})
+    # FastMCP returns a ToolResult object. Content is in result.content
+    result_text = result.content[0].text
+    assert "- SKILL.md" in result_text
+    assert "- script.py" in result_text
+
+    # Test read_skill
+    read_tool = tools["read_skill"]
+    result = await read_tool.run({"name": "myskill", "resource": "script.py"})
+    assert result.content[0].text == "print(1)"
+
+    # Test read_skill default
+    result_main = await read_tool.run({"name": "myskill"})
+    assert "content" in result_main.content[0].text
 
 
 def test_builtin_skills_parsing_content():
