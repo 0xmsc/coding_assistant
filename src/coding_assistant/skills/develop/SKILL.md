@@ -18,7 +18,7 @@ For non-trivial changes:
 
 ## Implementation & Git
 ### Git Safety
-- **Permission First**: Always ask before initializing repos, switching branches, or committing.
+- **Permission First**: Always ask before initializing repos or switching branches.
 - **Atomic Commits**: Group related changes logically.
 
 ### Code Quality
