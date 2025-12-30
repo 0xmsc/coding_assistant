@@ -1,7 +1,8 @@
 ---
 name: general_developing
-description: General principles for exploring, developing, editing and refactoring.
+description: General principles for exploring, developing, editing and refactoring code.
 ---
+
 # General Developing Skill
 
 - Follow clean code principles.
