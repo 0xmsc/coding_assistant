@@ -1,5 +1,5 @@
 ---
-name: general_developing
+name: developing
 description: General principles for exploring, developing, editing and refactoring code.
 ---
 
