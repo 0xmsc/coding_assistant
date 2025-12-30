@@ -144,6 +144,12 @@ def parse_args():
         default=True,
         help="Print reasoning chunks from the model.",
     )
+    parser.add_argument(
+        "--skills",
+        type=str,
+        default=None,
+        help="Path to a directory containing Agent Skills (with SKILL.md files).",
+    )
 
     return parser.parse_args()
 
