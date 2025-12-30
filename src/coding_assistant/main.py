@@ -156,15 +156,12 @@ def parse_args():
 
 
 def create_config_from_args(args) -> Config:
-    from pathlib import Path
-
     return Config(
         model=args.model,
         expert_model=args.expert_model or args.model,
         compact_conversation_at_tokens=args.compact_conversation_at_tokens,
         enable_chat_mode=args.task is None,
         enable_ask_user=args.ask_user,
-        skills_directories=[Path(p) for p in args.skills_directories],
     )
 
 
@@ -281,13 +278,13 @@ def enable_sandboxing(args, working_directory, root):
         logger.warning("Sandboxing is disabled")
 
 
-def create_skills_section(skills_directories: list[Path]) -> str | None:
+def create_skills_section(skills_directories: list[str]) -> str | None:
     if not skills_directories:
         return None
 
     all_skills = []
     for dir_path in skills_directories:
-        skills = load_skills_from_directory(dir_path)
+        skills = load_skills_from_directory(Path(dir_path))
         all_skills.extend(skills)
 
     if not all_skills:
@@ -350,6 +347,8 @@ async def _main(args):
 
         if args.mcp_server:
             await start_mcp_server(tools, args.mcp_server_port)
+
+        skills_section = create_skills_section(args.skills_directories)
 
         instructions = get_instructions(
             working_directory=working_directory,
