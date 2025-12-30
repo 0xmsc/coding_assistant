@@ -126,7 +126,7 @@ def load_skills_from_directory(skills_dir: Path) -> List[Skill]:
     skills = []
 
     # Recursively find all SKILL.md files
-    for skill_file in skills_dir.rglob("SKILL.md"):
+    for skill_file in skills_dir.glob("*/SKILL.md"):
         skill = parse_skill_file(skill_file)
         if skill:
             skills.append(skill)
