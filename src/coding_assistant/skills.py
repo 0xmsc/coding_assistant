@@ -74,7 +74,9 @@ def format_skills_section(skills: List[Skill]) -> str | None:
     ]
 
     for skill in skills:
-        lines.append(f"  - `{skill.name}` – {skill.description} – `{skill.path}`")
+        lines.append(f"  - Name: {skill.name}")
+        lines.append(f"    - Description: {skill.description}")
+        lines.append(f"    - Path: {skill.path}")
 
     lines.extend(
         [
