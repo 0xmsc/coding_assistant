@@ -261,6 +261,7 @@ def enable_sandboxing(args, working_directory, root):
 
         readable_sandbox_directories = [
             *[Path(d).resolve() for d in args.readable_sandbox_directories],
+            *[Path(d).resolve() for d in args.skills_directories],
             root,
         ]
 
