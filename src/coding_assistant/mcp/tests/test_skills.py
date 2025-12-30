@@ -1,4 +1,3 @@
-from pathlib import Path
 from coding_assistant.mcp.skills import load_skills_from_directory, parse_skill_file, load_builtin_skills
 
 
@@ -27,38 +26,36 @@ def test_load_skills_from_directory(tmp_path):
 
 def test_parse_skill_file_name_with_spaces(tmp_path):
     content = "---\nname: name with spaces\ndescription: test\n---"
-    path = tmp_path / "SKILL.md"
+    identifier = str(tmp_path / "SKILL.md")
 
-    skill = parse_skill_file(content, path)
+    skill = parse_skill_file(content, identifier)
     assert skill is not None
     assert skill.name == "name with spaces"
 
 
-def test_format_skills_section():
-    from coding_assistant.mcp.skills import Skill, format_skills_section
+def test_format_skills_instructions():
+    from coding_assistant.mcp.skills import Skill, format_skills_instructions
 
     skills = [
-        Skill(name="skill1", description="desc1", path=Path("/path/1/SKILL.md")),
-        Skill(name="skill2", description="desc2", path=Path("/path/2/SKILL.md")),
+        Skill(name="skill1", description="desc1"),
+        Skill(name="skill2", description="desc2"),
     ]
 
-    section = format_skills_section(skills)
+    section = format_skills_instructions(skills)
 
-    assert "# Skills" in section
+    assert "## Skills" in section
     assert "- Name: skill1" in section
     assert "- Description: desc1" in section
-    assert "- Path: /path/1/SKILL.md" in section
     assert "- Name: skill2" in section
     assert "- Description: desc2" in section
-    assert "- Path: /path/2/SKILL.md" in section
-    assert "If you want to use a skill, read its `SKILL.md` file" in section
+    assert "Use `skills_read_skill(name=...)` to read the `SKILL.md` of a skill." in section
 
 
 def test_parse_skill_file_missing_fields(tmp_path):
     content = "---\nname: only-name\n---"
-    path = tmp_path / "SKILL.md"
+    identifier = str(tmp_path / "SKILL.md")
 
-    skill = parse_skill_file(content, path)
+    skill = parse_skill_file(content, identifier)
     assert skill is None
 
 
@@ -70,11 +67,6 @@ def test_load_builtin_skills():
 
     names = {s.name for s in skills}
     assert "developing" in names
-
-    # Check that paths are provided (even if they are traversable string paths)
-    for skill in skills:
-        assert skill.path is not None
-        assert "SKILL.md" in str(skill.path)
 
 
 def test_create_skills_server(tmp_path):
@@ -101,6 +93,6 @@ def test_builtin_skills_parsing_content():
     assert "General principles" in general_skill.description
 
     # Verify it has the moved content
-    content = general_skill.path.expanduser().read_text()
+    content = general_skill.resources["SKILL.md"]
     assert "## Exploring" in content
     assert "## Editing" in content
