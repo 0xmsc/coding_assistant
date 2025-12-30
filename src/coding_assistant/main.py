@@ -146,10 +146,10 @@ def parse_args():
         help="Print reasoning chunks from the model.",
     )
     parser.add_argument(
-        "--skills",
-        type=str,
-        default=None,
-        help="Path to a directory containing Agent Skills (with SKILL.md files).",
+        "--skills-directories",
+        nargs="*",
+        default=[],
+        help="Paths to directories containing Agent Skills (with SKILL.md files).",
     )
 
     return parser.parse_args()
@@ -164,7 +164,7 @@ def create_config_from_args(args) -> Config:
         compact_conversation_at_tokens=args.compact_conversation_at_tokens,
         enable_chat_mode=args.task is None,
         enable_ask_user=args.ask_user,
-        skills_directory=Path(args.skills) if args.skills else None,
+        skills_directories=[Path(p) for p in args.skills_directories],
     )
 
 
@@ -336,12 +336,15 @@ async def _main(args):
         if args.mcp_server:
             await start_mcp_server(tools, args.mcp_server_port)
 
-        # Load skills and format section if skills_directory is provided
+        # Load skills and format section if skills_directories are provided
         skills_section = None
-        if config.skills_directory:
-            skills = load_skills_from_directory(config.skills_directory)
+        all_skills = []
+        for dir_path in config.skills_directories:
+            skills = load_skills_from_directory(dir_path)
             if skills:
-                skills_section = format_skills_section(skills)
+                all_skills.extend(skills)
+        if all_skills:
+            skills_section = format_skills_section(all_skills)
 
         instructions = get_instructions(
             working_directory=working_directory,
