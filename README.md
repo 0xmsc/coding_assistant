@@ -200,6 +200,44 @@ The built-in MCP tools `shell_execute` and `python_execute`:
 
 - Handy `just` recipes: `test`, `lint` (see `justfile`).
 
+## Skills
+
+Coding Assistant includes a skills system that provides specialized workflows, tool integrations, and domain expertise for common tasks. Skills transform the general-purpose agent into a specialized one by bundling instructions, scripts, references, and assets.
+
+### Available Skills
+
+The following skills are available:
+
+- **planning** - Guidelines for iteratively planning tasks and changes before implementation. Use when the user requests a non-trivial task or when you need to align on a complex implementation strategy.
+
+- **code-review** - Provides a structured workflow for planning and executing code reviews like a senior engineer, including checklists for quality, security, and maintainability. Use when asked to review code, PRs, or plan a code review task.
+
+- **create-skill** - Guide for creating new Agent Skills. Use this skill when you need to create a new skill to extend the agent's capabilities with specialized knowledge, workflows, or tool integrations.
+
+- **developing** - General principles for exploring, developing, editing, and refactoring code. Use for codebase analysis, implementation tasks, and code quality improvements.
+
+### How Skills Work
+
+Skills use a progressive disclosure system:
+
+1. **Metadata** (name + description) - Always loaded, ~100 words
+2. **SKILL.md body** - Loaded when skill triggers, <500 lines
+3. **Bundled resources** - Loaded as needed (scripts, references, assets)
+
+When a skill's context matches the current task, it loads automatically, providing specialized instructions and tools.
+
+### Skill Structure
+
+Skills are organized as directories containing:
+
+```
+skill-name/
+├── SKILL.md          # Required: instructions + metadata
+├── scripts/          # Optional: executable code
+├── references/       # Optional: documentation
+└── assets/           # Optional: templates/resources
+```
+
 ## License
 
 MIT
