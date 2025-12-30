@@ -46,12 +46,8 @@ def test_format_skills_instructions():
     section = format_skills_instructions(skills)
 
     assert "## Skills" in section
-    assert "- Name: skill1" in section
-    assert "- Description: desc1" in section
-    assert "- Resources: `SKILL.md`, `script.py`" not in section
-    assert "- Name: skill2" in section
-    assert "- Description: desc2" in section
-    assert "- Resources: `SKILL.md`" not in section
+    assert "- **skill1**: desc1" in section
+    assert "- **skill2**: desc2" in section
     assert "Use `skills_list_resources(name=...)` to list the resources available for a skill." in section
     assert "Use `skills_read_skill(name=...)` to read the `SKILL.md` of a skill." in section
 
