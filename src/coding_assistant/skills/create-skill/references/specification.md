@@ -70,7 +70,7 @@ name: pdf-processing
 name: data-analysis
 ```
 ```yaml
-name: code-review
+name: review-code
 ```
 
 Invalid examples:
