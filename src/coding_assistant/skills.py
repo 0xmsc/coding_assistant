@@ -7,7 +7,6 @@ Provides functions to parse and load Agent Skills from a directory according to 
 from __future__ import annotations
 
 import importlib.resources
-import io
 import logging
 from dataclasses import dataclass
 from pathlib import Path
