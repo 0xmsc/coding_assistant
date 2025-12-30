@@ -61,7 +61,7 @@ def test_create_skills_section_includes_builtin(tmp_path):
     section = create_skills_section([])
     assert section is not None
     assert "# Skills" in section
-    assert "general_developing" in section
+    assert "developing" in section
 
 def test_create_skills_section_merges_cli_and_builtin(tmp_path):
     from coding_assistant.main import create_skills_section
@@ -74,7 +74,7 @@ def test_create_skills_section_merges_cli_and_builtin(tmp_path):
     
     section = create_skills_section([str(cli_skills_dir)])
     assert section is not None
-    assert "general_developing" in section
+    assert "developing" in section
     assert "my_cli_skill" in section
 
 
