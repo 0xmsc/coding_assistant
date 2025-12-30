@@ -67,11 +67,11 @@ def test_parse_skill_file_missing_fields(tmp_path):
 def test_load_builtin_skills():
     skills = load_builtin_skills()
 
-    # We should have at least the developing skill we just added
+    # We should have at least the develop skill we just added
     assert len(skills) >= 1
 
     names = {s.name for s in skills}
-    assert "developing" in names
+    assert "develop" in names
 
 
 def test_create_skills_server(tmp_path):
@@ -85,7 +85,7 @@ def test_create_skills_server(tmp_path):
 
     server, instr = create_skills_server([cli_skills_dir])
 
-    assert "developing" in instr
+    assert "develop" in instr
     assert "my_cli_skill" in instr
     assert "skills_list_resources" in instr
     assert "skills_read_skill" in instr
@@ -124,7 +124,7 @@ async def test_skills_tools(tmp_path):
 def test_builtin_skills_parsing_content():
     # Verify that the placeholder skill has the expected structure
     skills = load_builtin_skills()
-    general_skill = next(s for s in skills if s.name == "developing")
+    general_skill = next(s for s in skills if s.name == "develop")
 
     assert "General principles" in general_skill.description
 

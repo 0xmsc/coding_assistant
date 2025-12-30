@@ -14,7 +14,7 @@ description: General principles for exploring, developing, editing, and refactor
 For non-trivial changes:
 - Present a plan with **at least 3 clarifying questions** (and proposed answers).
 - **Wait for explicit approval** before implementation.
-- For complex strategy, use the `planning` skill.
+- For complex strategy, use the `plan` skill.
 
 ## Implementation & Git
 ### Git Safety
