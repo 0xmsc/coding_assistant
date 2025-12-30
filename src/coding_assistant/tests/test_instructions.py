@@ -90,14 +90,20 @@ def test_get_instructions_with_skills_section(tmp_path: Path):
 
 def test_get_instructions_includes_mcp_formatting_with_real_mcp_instructions(tmp_path: Path):
     wd = tmp_path
-    from coding_assistant.mcp.main import INSTRUCTIONS as MCP_INSTRUCTIONS
+    mcp_instructions = """
+## Shell
+- Rule 1
+
+## Tasks
+- Rule 2
+""".strip()
 
     class _FakeServer:
         def __init__(self, name: str, instructions: str | None):
             self.name = name
             self.instructions = instructions
 
-    server = _FakeServer("coding_assistant.mcp", MCP_INSTRUCTIONS)
+    server = _FakeServer("coding_assistant.mcp", mcp_instructions)
 
     instr = get_instructions(
         working_directory=wd,
@@ -107,5 +113,6 @@ def test_get_instructions_includes_mcp_formatting_with_real_mcp_instructions(tmp
 
     assert "# MCP `coding_assistant.mcp` instructions" in instr
     assert "## Shell" in instr
+    assert "- Rule 1" in instr
     assert "## Tasks" in instr
-    assert "Use tasks tools to monitor and manage background tasks." in instr
+    assert "- Rule 2" in instr
