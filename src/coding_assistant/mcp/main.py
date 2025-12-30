@@ -27,7 +27,6 @@ INSTRUCTIONS = """
 
 - You have access to a Python interpreter via `python_execute`.
 - `python_execute` can run multi-line scripts.
-- The most common Python libraries are already installed.
 - Prefer Python over Shell for readability.
 - Add comments to your scripts to explain your logic.
 
