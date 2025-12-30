@@ -1,6 +1,6 @@
 ---
 name: create_skill
-description: Guide for creating new Agent Skills. Use this skill when you need to extend the agent's capabilities with specialized knowledge or workflows.
+description: Guide for creating new Agent Skills. Use this skill when you need to create a new skill.
 ---
 
 # Create Skill
