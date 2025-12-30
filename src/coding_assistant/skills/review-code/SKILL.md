@@ -15,4 +15,3 @@ description: Provides a structured workflow for planning and executing code revi
 
 ## References
 - `checklist.md`: Detailed review criteria.
-- `security_patterns.md`: Common vulnerabilities.
