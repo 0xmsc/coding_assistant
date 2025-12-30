@@ -270,5 +270,5 @@ cloud-deploy/
 ## Documentation
 
 For detailed specifications, see:
-- [What are Skills?](references/what_are_skills.md)
+- [What are Skills?](references/what-are-skills.md)
 - [Full Specification](references/specification.md)
