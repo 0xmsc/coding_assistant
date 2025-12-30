@@ -72,14 +72,14 @@ def load_builtin_skills() -> List[Skill]:
     skills = []
     try:
         skills_root = importlib.resources.files("coding_assistant") / "skills"
-        if not skills_root.exists():
+        if not skills_root.is_dir():
             return []
 
         for skill_dir in skills_root.iterdir():
             if not skill_dir.is_dir():
                 continue
             skill_file = skill_dir / "SKILL.md"
-            if skill_file.exists():
+            if skill_file.is_file():
                 try:
                     content = skill_file.read_text()
                     # We use the string representation of the Traversable path
