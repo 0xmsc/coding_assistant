@@ -1,3 +1,4 @@
+from pathlib import Path
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -24,3 +25,4 @@ class Config(BaseModel):
     compact_conversation_at_tokens: int
     enable_chat_mode: bool = True
     enable_ask_user: bool = True
+    skills_directory: Path | None = None
