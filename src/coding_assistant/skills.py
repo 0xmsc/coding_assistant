@@ -24,12 +24,6 @@ class Skill:
 
 
 def parse_skill_file(file_path: Path) -> Optional[Skill]:
-    """
-    Parse a single SKILL.md file and extract name and description.
-
-    Returns:
-        Skill object with name, description, and path, or None if invalid.
-    """
     try:
         post = frontmatter.load(file_path)
     except Exception as e:
@@ -47,31 +41,10 @@ def parse_skill_file(file_path: Path) -> Optional[Skill]:
         logger.warning(f"No 'description' field in {file_path}")
         return None
 
-    # Validate name format per spec
-    if len(name) > 64:
-        logger.warning(f"Name too long (>64 chars) in {file_path}")
-        return None
-
-    if not name.replace("-", "").isalnum() or name.startswith("-") or name.endswith("-") or "--" in name:
-        logger.warning(f"Invalid name format in {file_path}: {name}")
-        return None
-
-    # Validate description length
-    if len(description) > 1024:
-        logger.warning(f"Description too long (>1024 chars) in {file_path}")
-        # Truncate instead of rejecting
-        description = description[:1024]
-
     return Skill(name=name, description=description, path=file_path)
 
 
 def load_skills_from_directory(skills_dir: Path) -> List[Skill]:
-    """
-    Recursively scan directory for SKILL.md files and load valid skills.
-
-    Returns:
-        List of Skill objects with name, description, and path.
-    """
     if not skills_dir.exists() or not skills_dir.is_dir():
         logger.warning(f"Skills directory does not exist or is not a directory: {skills_dir}")
         return []
@@ -90,17 +63,26 @@ def load_skills_from_directory(skills_dir: Path) -> List[Skill]:
     return skills
 
 
-def format_skills_section(skills: List[Skill]) -> str:
-    """
-    Format skills as a markdown section for instructions.
-    """
+def format_skills_section(skills: List[Skill]) -> str | None:
     if not skills:
-        return ""
+        return None
 
-    lines = ["# Available Agent Skills", ""]
+    lines = [
+        "# Skills",
+        "",
+        "- You have the following skills available to you:",
+    ]
+
     for skill in skills:
-        # Escape any markdown characters in description
-        description = skill.description.replace("|", "\\|")
-        lines.append(f"- **{skill.name}**: {description}")
+        lines.append(f"  - Name:        {skill.name}")
+        lines.append(f"    Description: {skill.description}")
+        lines.append(f"    File:        {skill.path}")
+
+    lines.extend(
+        [
+            "- If you want to use a skill, read its `SKILL.md` file, it will contain all the details.",
+            "- Try to read a skill file when something that the user wants from you matches one of the descriptions.",
+        ]
+    )
 
     return "\n".join(lines)
