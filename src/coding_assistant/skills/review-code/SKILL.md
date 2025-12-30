@@ -1,5 +1,5 @@
 ---
-name: code-review
+name: review-code
 description: Provides a structured workflow for planning and executing code reviews like a senior engineer. Use when asked to review code, PRs, or plan a code review task.
 ---
 
