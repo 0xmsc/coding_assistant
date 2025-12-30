@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.resources
 import logging
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Dict, List, Optional, Union
@@ -46,7 +45,7 @@ def _load_resources_recursive(
                     rel_path = item_str[len(base_str) :].lstrip("/")
                 else:
                     rel_path = item_str
-            
+
             try:
                 resources[rel_path] = item.read_text(encoding="utf-8")
             except Exception as e:
@@ -129,7 +128,7 @@ def format_skills_section(skills: List[Skill]) -> str | None:
         return None
 
     lines = [
-        "# Skills",
+        "## Skills",
         "",
         "- You have the following skills available to you:",
     ]
