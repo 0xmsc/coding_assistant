@@ -10,9 +10,12 @@ import importlib.resources
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional
 
 import frontmatter  # type: ignore
+
+if TYPE_CHECKING:
+    from importlib.resources.abc import Traversable
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +24,10 @@ logger = logging.getLogger(__name__)
 class Skill:
     name: str
     description: str
-    path: Union[Path, str]
+    path: Path
 
 
-def parse_skill_file(content: str, path: Union[Path, str]) -> Optional[Skill]:
+def parse_skill_file(content: str, path: Path) -> Optional[Skill]:
     try:
         post = frontmatter.loads(content)
     except Exception as e:
@@ -45,22 +48,37 @@ def parse_skill_file(content: str, path: Union[Path, str]) -> Optional[Skill]:
     return Skill(name=name, description=description, path=path)
 
 
+def _load_skills_from_traversable(root: Traversable) -> List[Skill]:
+    skills = []
+    try:
+        if not root.is_dir():
+            return []
+
+        for skill_dir in root.iterdir():
+            if not skill_dir.is_dir():
+                continue
+            skill_file = skill_dir / "SKILL.md"
+            if skill_file.is_file():
+                try:
+                    content = skill_file.read_text()
+                    # We ensure we have a Path object
+                    skill = parse_skill_file(content, Path(skill_file))
+                    if skill:
+                        skills.append(skill)
+                except Exception as e:
+                    logger.warning(f"Failed to read skill file {skill_file}: {e}")
+    except Exception as e:
+        logger.warning(f"Error while exploring skills in {root}: {e}")
+
+    return skills
+
+
 def load_skills_from_directory(skills_dir: Path) -> List[Skill]:
     if not skills_dir.exists() or not skills_dir.is_dir():
         logger.warning(f"Skills directory does not exist or is not a directory: {skills_dir}")
         return []
 
-    skills = []
-
-    # Recursively find all SKILL.md files
-    for skill_file in skills_dir.glob("*/SKILL.md"):
-        try:
-            content = skill_file.read_text()
-            skill = parse_skill_file(content, skill_file)
-            if skill:
-                skills.append(skill)
-        except Exception as e:
-            logger.warning(f"Failed to read {skill_file}: {e}")
+    skills = _load_skills_from_traversable(skills_dir)
 
     if not skills:
         logger.info(f"No valid skills found in {skills_dir}")
@@ -69,29 +87,12 @@ def load_skills_from_directory(skills_dir: Path) -> List[Skill]:
 
 
 def load_builtin_skills() -> List[Skill]:
-    skills = []
     try:
         skills_root = importlib.resources.files("coding_assistant") / "skills"
-        if not skills_root.is_dir():
-            return []
-
-        for skill_dir in skills_root.iterdir():
-            if not skill_dir.is_dir():
-                continue
-            skill_file = skill_dir / "SKILL.md"
-            if skill_file.is_file():
-                try:
-                    content = skill_file.read_text()
-                    # We use the string representation of the Traversable path
-                    skill = parse_skill_file(content, str(skill_file))
-                    if skill:
-                        skills.append(skill)
-                except Exception as e:
-                    logger.warning(f"Failed to read built-in skill {skill_file}: {e}")
+        return _load_skills_from_traversable(skills_root)
     except Exception as e:
         logger.warning(f"Failed to load built-in skills: {e}")
-
-    return skills
+        return []
 
 
 def format_skills_section(skills: List[Skill]) -> str | None:
