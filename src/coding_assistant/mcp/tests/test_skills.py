@@ -47,10 +47,11 @@ def test_format_skills_instructions():
     assert "## Skills" in section
     assert "- Name: skill1" in section
     assert "- Description: desc1" in section
-    assert "- Resources: `SKILL.md`, `script.py`" in section
+    assert "- Resources: `SKILL.md`, `script.py`" not in section
     assert "- Name: skill2" in section
     assert "- Description: desc2" in section
-    assert "- Resources: `SKILL.md`" in section
+    assert "- Resources: `SKILL.md`" not in section
+    assert "Use `skills_list_resources(name=...)` to list the resources available for a skill." in section
     assert "Use `skills_read_skill(name=...)` to read the `SKILL.md` of a skill." in section
 
 
@@ -85,6 +86,7 @@ def test_create_skills_server(tmp_path):
 
     assert "developing" in instr
     assert "my_cli_skill" in instr
+    assert "skills_list_resources" in instr
     assert "skills_read_skill" in instr
 
 
