@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-import frontmatter
+import frontmatter  # type: ignore
 
 logger = logging.getLogger(__name__)
 
