@@ -281,6 +281,21 @@ def enable_sandboxing(args, working_directory, root):
         logger.warning("Sandboxing is disabled")
 
 
+def create_skills_section(skills_directories: list[Path]) -> str | None:
+    if not skills_directories:
+        return None
+
+    all_skills = []
+    for dir_path in skills_directories:
+        skills = load_skills_from_directory(dir_path)
+        all_skills.extend(skills)
+
+    if not all_skills:
+        return None
+
+    return format_skills_section(all_skills)
+
+
 async def _main(args):
     logger.info(f"Starting Coding Assistant with arguments {args}")
 
@@ -335,16 +350,6 @@ async def _main(args):
 
         if args.mcp_server:
             await start_mcp_server(tools, args.mcp_server_port)
-
-        # Load skills and format section if skills_directories are provided
-        skills_section = None
-        all_skills = []
-        for dir_path in config.skills_directories:
-            skills = load_skills_from_directory(dir_path)
-            if skills:
-                all_skills.extend(skills)
-        if all_skills:
-            skills_section = format_skills_section(all_skills)
 
         instructions = get_instructions(
             working_directory=working_directory,
