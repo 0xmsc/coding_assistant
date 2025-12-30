@@ -40,7 +40,7 @@ async def test_chat_step_prompts_user_on_no_tool_calls_once():
     history = [UserMessage(content="start")]
     tools = []
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(ask_sequence=[("> ", "User reply"), ("> ", "User reply 2")])
 
@@ -49,7 +49,7 @@ async def test_chat_step_prompts_user_on_no_tool_calls_once():
             history=history,
             model=model,
             tools=tools,
-            parameters=parameters,
+            instructions=instructions,
             context_name="test",
             callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
@@ -70,7 +70,7 @@ async def test_chat_step_executes_tools_without_prompt():
     history = [UserMessage(content="start")]
     tools = [echo_tool]
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(ask_sequence=[("> ", "Hi")])
 
@@ -79,7 +79,7 @@ async def test_chat_step_executes_tools_without_prompt():
             history=history,
             model=model,
             tools=tools,
-            parameters=parameters,
+            instructions=instructions,
             context_name="test",
             callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
@@ -96,7 +96,7 @@ async def test_chat_mode_does_not_require_finish_task_tool():
     history = [UserMessage(content="start")]
     tools = []
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(ask_sequence=[("> ", "Ack"), ("> ", "Ack 2")])
 
@@ -105,7 +105,7 @@ async def test_chat_mode_does_not_require_finish_task_tool():
             history=history,
             model=model,
             tools=tools,
-            parameters=parameters,
+            instructions=instructions,
             context_name="test",
             callbacks=NullProgressCallbacks(),
             tool_callbacks=NullToolCallbacks(),
@@ -123,7 +123,7 @@ async def test_chat_exit_command_stops_loop_without_appending_command():
     history = [UserMessage(content="start")]
     tools = []
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(ask_sequence=[("> ", "/exit")])
 
@@ -131,7 +131,7 @@ async def test_chat_exit_command_stops_loop_without_appending_command():
         history=history,
         model=model,
         tools=tools,
-        parameters=parameters,
+        instructions=instructions,
         context_name="test",
         callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
@@ -160,7 +160,7 @@ async def test_chat_loop_prompts_after_compact_command():
     history = [UserMessage(content="start")]
     tools = [compact_tool]
     model = "test-model"
-    parameters = []
+    instructions = None
 
     ui = make_ui_mock(ask_sequence=[("> ", "/compact"), ("> ", "/exit")])
 
@@ -168,7 +168,7 @@ async def test_chat_loop_prompts_after_compact_command():
         history=history,
         model=model,
         tools=tools,
-        parameters=parameters,
+        instructions=instructions,
         context_name="test",
         callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
@@ -190,7 +190,7 @@ async def test_chat_compact_conversation_not_forced_in_callbacks():
     history = [UserMessage(content="start")]
     tools = [compact_tool]
     model = "test-model"
-    parameters = []
+    instructions = None
 
     class SpyCallbacks(NullProgressCallbacks):
         def __init__(self):
@@ -213,7 +213,7 @@ async def test_chat_compact_conversation_not_forced_in_callbacks():
             history=history,
             model=model,
             tools=tools,
-            parameters=parameters,
+            instructions=instructions,
             context_name="test",
             callbacks=callbacks,
             tool_callbacks=NullToolCallbacks(),
@@ -233,7 +233,7 @@ async def test_chat_mode_displays_usage_right_aligned():
     history = [UserMessage(content="start")]
     tools = []
     model = "test-model"
-    parameters = []
+    instructions = None
 
     # Two prompts: first after model's first response, second after model's second response
     ui = make_ui_mock(ask_sequence=[("> ", "user response"), ("> ", "/exit")])
@@ -243,7 +243,7 @@ async def test_chat_mode_displays_usage_right_aligned():
         history=history,
         model=model,
         tools=tools,
-        parameters=parameters,
+        instructions=instructions,
         context_name="test",
         callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
