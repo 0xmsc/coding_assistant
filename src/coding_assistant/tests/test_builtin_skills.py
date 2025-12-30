@@ -25,6 +25,6 @@ def test_builtin_skills_parsing_content():
     assert "General principles" in general_skill.description
 
     # Verify it has the moved content
-    content = Path(str(general_skill.path)).read_text()
+    content = general_skill.path.expanduser().read_text()
     assert "## Exploring" in content
     assert "## Editing" in content

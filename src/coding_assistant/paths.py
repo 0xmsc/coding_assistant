@@ -36,3 +36,13 @@ def get_app_cache_dir() -> Path:
 
 def get_app_state_dir() -> Path:
     return get_state_home() / "coding_assistant"
+
+
+def maybe_collapse_user(path: Path) -> Path:
+    try:
+        home = Path.home()
+        if path.is_relative_to(home):
+            return Path("~") / path.relative_to(home)
+    except Exception:
+        pass
+    return path
