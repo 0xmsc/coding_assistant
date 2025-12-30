@@ -71,12 +71,10 @@ def format_skills_instructions(skills: List[Skill]) -> str:
     for skill in skills:
         lines.append(f"  - Name: {skill.name}")
         lines.append(f"    - Description: {skill.description}")
-        if skill.resources:
-            resources_list = ", ".join(f"`{r}`" for r in skill.resources)
-            lines.append(f"    - Resources: {resources_list}")
 
     lines.extend(
         [
+            "- Use `skills_list_resources(name=...)` to list the resources available for a skill.",
             "- Use `skills_read_skill(name=...)` to read the `SKILL.md` of a skill.",
             "- Use `skills_read_skill(name=..., resource=...)` to read specific resources or scripts of a skill.",
             "- Try to read a skill file when something that the user wants from you matches one of the descriptions.",
@@ -113,6 +111,18 @@ def create_skills_server(
 
     skills_map = {s.name: s for s in all_skills}
     instructions = format_skills_instructions(all_skills)
+
+    @skills_server.tool()
+    async def list_resources(
+        name: Annotated[str, "The name of the skill to list resources for."],
+    ) -> str:
+        """
+        List the resources available for a specific skill.
+        """
+        skill = skills_map.get(name)
+        if not skill:
+            return "Skill not found."
+        return "\n".join([f"- {r}" for r in skill.resources])
 
     @skills_server.tool()
     async def read_skill(
