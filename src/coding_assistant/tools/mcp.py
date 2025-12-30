@@ -92,7 +92,6 @@ async def _get_mcp_server(
     client = Client(config.to_transport(), name=name)
     async with client:
         result = await client.initialize()
-        print(f"MCP Server '{name}' initialized with instructions:\n{result.instructions}\n")
         yield MCPServer(
             name=name,
             client=client,
