@@ -6,12 +6,7 @@
 - Do not run any binary using `uvx` or `npx` before asking the user.
 - Do not start a web search before asking the user.
 - Output text in markdown formatting, where appropriate.
-
-## Developing
-
-- Do not add obvious, redundant comments to the code.
-- Do not document what the code is doing, document why it is doing it.
-- Do not document trivial functions or classes.
+- Before starting any development, exploring, or editing tasks, read the `general_developing` skill.
 
 ## Tools
 
@@ -35,15 +30,3 @@
 
 - You have access to a custom MCP server (`coding_assistant.mcp`).
 - Prefer it where other MCPs provide similar tools.
-
-## Exploring 
-
-- Use `pwd` to determine the project you are working on.
-- Use shell tools to explore the codebase, e.g. `fd` or `rg`.
-
-## Editing
-
-- Use `cp` & `mv` to copy/move files. Do not memorize and write contents to copy or move.
-- Do not try to use `applypatch` to edit files. Use e.g. `sed` or `edit_file`.
-- You can use `sed` to search & replace (e.g. to rename variables).
-- Writing full files should be the exception. Try to use `edit_file` to edit existing files.
