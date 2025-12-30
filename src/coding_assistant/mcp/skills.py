@@ -96,6 +96,9 @@ def format_skills_instructions(skills: List[Skill]) -> str:
     for skill in skills:
         lines.append(f"  - Name: {skill.name}")
         lines.append(f"    - Description: {skill.description}")
+        if skill.resources:
+            resources_list = ", ".join(f"`{k}`" for k in sorted(skill.resources.keys()))
+            lines.append(f"    - Resources: {resources_list}")
 
     lines.extend(
         [
