@@ -325,7 +325,9 @@ async def _main(args):
         logger.info(f"Selected random port for background MCP server: {args.mcp_server_port}")
 
     mcp_url = f"http://localhost:{args.mcp_server_port}/mcp" if args.mcp_server else None
-    mcp_server_configs.append(get_default_mcp_server_config(coding_assistant_root, args.skills_directories, mcp_url=mcp_url))
+    mcp_server_configs.append(
+        get_default_mcp_server_config(coding_assistant_root, args.skills_directories, mcp_url=mcp_url)
+    )
 
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
 

@@ -71,7 +71,7 @@ async def _main() -> None:
 
     skills_dir = [Path(d) for d in args.skills_directories]
     skills_server, skills_instr = create_skills_server(skills_dir)
-    
+
     instructions = get_instructions(skills_instr)
 
     mcp = FastMCP("Coding Assistant MCP", instructions=instructions)
