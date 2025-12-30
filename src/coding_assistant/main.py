@@ -155,12 +155,14 @@ def parse_args():
 
 
 def create_config_from_args(args) -> Config:
+    from pathlib import Path
     return Config(
         model=args.model,
         expert_model=args.expert_model or args.model,
         compact_conversation_at_tokens=args.compact_conversation_at_tokens,
         enable_chat_mode=args.task is None,
         enable_ask_user=args.ask_user,
+        skills_directory=Path(args.skills) if args.skills else None,
     )
 
 
@@ -336,6 +338,7 @@ async def _main(args):
             working_directory=working_directory,
             user_instructions=args.instructions,
             mcp_servers=mcp_servers,
+            skills_directory=config.skills_directory,
         )
 
         if args.print_instructions:
