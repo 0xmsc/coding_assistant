@@ -49,26 +49,17 @@ def parse_skill_file(content: str, path: Path) -> Optional[Skill]:
 
 
 def _load_skills_from_traversable(root: Traversable) -> List[Skill]:
-    skills = []
-    try:
-        if not root.is_dir():
-            return []
+    if not root.is_dir():
+        return []
 
-        for skill_dir in root.iterdir():
-            if not skill_dir.is_dir():
-                continue
-            skill_file = skill_dir / "SKILL.md"
-            if skill_file.is_file():
-                try:
-                    content = skill_file.read_text()
-                    # We ensure we have a Path object
-                    skill = parse_skill_file(content, Path(skill_file))
-                    if skill:
-                        skills.append(skill)
-                except Exception as e:
-                    logger.warning(f"Failed to read skill file {skill_file}: {e}")
-    except Exception as e:
-        logger.warning(f"Error while exploring skills in {root}: {e}")
+    skills = []
+    for skill_dir in root.iterdir():
+        skill_file = skill_dir / "SKILL.md"
+        if skill_file.is_file():
+            content = skill_file.read_text()
+            skill = parse_skill_file(content, Path(skill_file))
+            if skill:
+                skills.append(skill)
 
     return skills
 
