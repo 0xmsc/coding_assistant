@@ -74,8 +74,8 @@ def format_skills_instructions(skills: List[Skill]) -> str:
     lines.extend(
         [
             "- Use `skills_list_resources(name=...)` to list the resources available for a skill.",
-            "- Use `skills_read_skill(name=...)` to read the `SKILL.md` of a skill.",
-            "- Use `skills_read_skill(name=..., resource=...)` to read specific resources or scripts of a skill.",
+            "- Use `skills_read(name=...)` to read the `SKILL.md` of a skill.",
+            "- Use `skills_read(name=..., resource=...)` to read specific resources or scripts of a skill.",
             "- If a skill could match the users task, you must read it.",
             "- You **must** read the `develop` skill before performing any of the following tasks:",
             "  - exploring or editing a codebase.",
@@ -127,7 +127,7 @@ def create_skills_server(
         return "\n".join([f"- {r}" for r in skill.resources])
 
     @skills_server.tool()
-    async def read_skill(
+    async def read(
         name: Annotated[str, "The name of the skill to read."],
         resource: Annotated[str | None, "Optional sub-resource to read (e.g. 'references/spec.md')."] = None,
     ) -> str:
