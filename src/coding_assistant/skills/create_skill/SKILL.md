@@ -170,27 +170,23 @@ Analyze each example to identify what resources would help:
 - Resource: `assets/hello-world/` template
 
 ### Step 3: Initialize the Skill
-Create the skill template structure:
+Create a new directory for the skill with the required `SKILL.md` file and optional resource directories:
 
 ```bash
-scripts/init_skill.py <skill-name> --path <output-directory>
+mkdir -p <skill-name>/{scripts,references,assets}
+touch <skill-name>/SKILL.md
 ```
-
-This creates the directory, SKILL.md template, and resource directories with example files.
 
 ### Step 4: Edit the Skill
 
 #### Learn Design Patterns
-Consult guides for specific needs:
-- **Multi-step processes**: references/workflows.md
-- **Output formats**: references/output-patterns.md
+Consult the [Design Patterns](#design-patterns) section below for guidance on structuring complex workflows and maintaining output quality.
 
 #### Start with Resources
 Implement reusable resources first:
 1. Add scripts and test them
 2. Add reference documentation
 3. Add assets/templates
-4. Delete unneeded example files
 
 #### Update SKILL.md
 **Frontmatter**: Write clear name and description.
@@ -201,24 +197,18 @@ Implement reusable resources first:
 - Examples
 - Troubleshooting
 
-### Step 5: Package the Skill
-Validate and package:
-
-```bash
-scripts/package_skill.py <path/to/skill-folder>
-```
-
-The script:
-1. Validates frontmatter, naming, structure
-2. Creates `.skill` file (zip with .skill extension)
-3. Reports errors if validation fails
+### Step 5: Verify the Skill
+Ensure the skill follows the requirements:
+1. Valid frontmatter with `name` and `description`.
+2. The `name` matches the directory name.
+3. All referenced resources exist within the skill directory.
 
 ### Step 6: Iterate
 Test the skill on real tasks, then:
 1. Notice struggles or inefficiencies
 2. Identify needed improvements
 3. Update SKILL.md or resources
-4. Re-package and test again
+4. Re-test and iterate again
 
 ## Design Patterns
 
