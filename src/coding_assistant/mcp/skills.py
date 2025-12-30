@@ -69,8 +69,7 @@ def format_skills_instructions(skills: List[Skill]) -> str:
     ]
 
     for skill in skills:
-        lines.append(f"  - Name: {skill.name}")
-        lines.append(f"    - Description: {skill.description}")
+        lines.append(f"  - **{skill.name}**: {skill.description}")
 
     lines.extend(
         [
