@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, List, Optional
 
 import frontmatter  # type: ignore
 
+from coding_assistant.paths import maybe_collapse_user
+
 if TYPE_CHECKING:
     from importlib.resources.abc import Traversable
 
@@ -58,7 +60,7 @@ def _load_skills_from_traversable(root: Traversable) -> List[Skill]:
         if skill_file.is_file():
             content = skill_file.read_text()
             # TODO: Is this valid, does this work in all circumstances?
-            path_obj = Path(str(skill_file))
+            path_obj = maybe_collapse_user(Path(str(skill_file)))
             skill = parse_skill_file(content, path_obj)
             if skill:
                 skills.append(skill)
