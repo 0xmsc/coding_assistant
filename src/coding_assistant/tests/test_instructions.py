@@ -15,7 +15,7 @@ def test_get_instructions_base_and_user_instructions(tmp_path: Path):
     wd = tmp_path
     instr = get_instructions(working_directory=wd, user_instructions=["  A  ", "B\n"])
 
-    assert "Do not initialize a new git repository" in instr
+    assert "Do not install any software" in instr
     assert "\nA\n" in instr
     # Second item may be at end without trailing newline
     assert "\nB\n" in instr or instr.rstrip().endswith("\nB") or instr.endswith("B")
@@ -73,7 +73,7 @@ def test_get_instructions_ignores_empty_or_missing_mcp_instructions(tmp_path: Pa
     )
 
     # Ensure baseline rule present and nothing from the servers leaked
-    assert "Do not initialize a new git repository" in instr
+    assert "Do not install any software" in instr
     assert "Server" not in instr
 
 

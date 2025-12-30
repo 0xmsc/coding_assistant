@@ -6,7 +6,10 @@
 - Do not run any binary using `uvx` or `npx` before asking the user.
 - Do not start a web search before asking the user.
 - Output text in markdown formatting, where appropriate.
-- Before doing any development tasks, e.g., exploring or editing a codebase, you must read the `developing` skill.
+- You **must** read the `developing skill` before performing any of the following tasks:
+    - exploring or editing a codebase.
+    - performing git operations.
+    - doing any other development-related task.
 
 ## Tools
 
