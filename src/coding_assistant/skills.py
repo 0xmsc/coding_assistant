@@ -7,15 +7,18 @@ Provides functions to parse and load Agent Skills from a directory according to 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict, List, Optional
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
 
-class Skill(TypedDict):
+@dataclass
+class Skill:
     name: str
     description: str
+    path: Path
 
 
 def _parse_frontmatter(content: str) -> dict[str, str]:
@@ -70,7 +73,7 @@ def parse_skill_file(file_path: Path) -> Optional[Skill]:
     Parse a single SKILL.md file and extract name and description.
 
     Returns:
-        Skill dict with name and description, or None if invalid.
+        Skill object with name, description, and path, or None if invalid.
     """
     try:
         content = file_path.read_text()
@@ -106,7 +109,7 @@ def parse_skill_file(file_path: Path) -> Optional[Skill]:
         # Truncate instead of rejecting
         description = description[:1024]
 
-    return {"name": name, "description": description}
+    return Skill(name=name, description=description, path=file_path)
 
 
 def load_skills_from_directory(skills_dir: Path) -> List[Skill]:
@@ -114,7 +117,7 @@ def load_skills_from_directory(skills_dir: Path) -> List[Skill]:
     Recursively scan directory for SKILL.md files and load valid skills.
 
     Returns:
-        List of Skill dicts with name and description.
+        List of Skill objects with name, description, and path.
     """
     if not skills_dir.exists() or not skills_dir.is_dir():
         logger.warning(f"Skills directory does not exist or is not a directory: {skills_dir}")
@@ -144,7 +147,7 @@ def format_skills_section(skills: List[Skill]) -> str:
     lines = ["# Available Agent Skills", ""]
     for skill in skills:
         # Escape any markdown characters in description
-        description = skill["description"].replace("|", "\\|")
-        lines.append(f"- **{skill['name']}**: {description}")
+        description = skill.description.replace("|", "\\|")
+        lines.append(f"- **{skill.name}**: {description}")
 
     return "\n".join(lines)
