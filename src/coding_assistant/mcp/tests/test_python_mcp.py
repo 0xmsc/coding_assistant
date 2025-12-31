@@ -1,3 +1,4 @@
+from typing import Any, cast
 import asyncio
 import pytest
 import httpx
@@ -7,17 +8,17 @@ from coding_assistant.mcp.tasks import TaskManager
 
 
 @pytest.fixture
-def manager():
+def manager() -> Any:
     return TaskManager()
 
 
-async def run_mock_server(mcp: FastMCP, port: int):
+async def run_mock_server(mcp: FastMCP, port: int) -> None:
     """Run the FastMCP server in the background."""
     await mcp.run_async(transport="streamable-http", port=port)
 
 
 @pytest.mark.asyncio
-async def test_python_execute_loopback_with_mock_server(manager):
+async def test_python_execute_loopback_with_mock_server(manager: Any) -> None:
     # 1. Create a Mock MCP server
     mock_mcp = FastMCP("MockServer")
 
@@ -72,7 +73,7 @@ async def run():
 asyncio.run(run())
 """
         # 4. Execute and verify
-        output = await execute_tool.fn(code=code, timeout=30)
+        output = await cast(Any, execute_tool).fn(code=code, timeout=30)
         assert "Hello, World" in output
 
     finally:
