@@ -154,12 +154,7 @@ async def run_chat_loop(
 
             Console().print(f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", justify="right")
             print()
-            try:
-                # Handle KeyboardInterrupt (Ctrl-C) during the user prompt to break the chat loop
-                # and allow the application to shut down gracefully.
-                answer = await ui.prompt(words=command_names)
-            except KeyboardInterrupt:
-                break
+            answer = await ui.prompt(words=command_names)
             answer_strip = answer.strip()
 
             if tool := command_map.get(answer_strip):
