@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.llm.types import UserMessage
+from coding_assistant.tools.mcp_server import start_mcp_server
 
 @pytest.mark.asyncio
 async def test_run_chat_loop_exits_on_keyboard_interrupt_at_prompt():
@@ -34,3 +35,26 @@ async def test_run_chat_loop_exits_on_keyboard_interrupt_at_prompt():
     # Verify prompt was called
     ui.prompt.assert_called_once()
     # If we are here, it means the loop broke as expected
+
+@pytest.mark.asyncio
+async def test_mcp_server_shutdown_logic():
+    """Test that start_mcp_server sets up the expected log configuration."""
+    tools = []
+    port = 9999
+    
+    with patch("fastmcp.FastMCP.run_async", new_callable=AsyncMock) as mock_run:
+        task = await start_mcp_server(tools, port)
+        
+        # Verify run_async parameters
+        _, kwargs = mock_run.call_args
+        assert kwargs["log_level"] == "critical"
+        assert "log_config" in kwargs["uvicorn_config"]
+        assert kwargs["uvicorn_config"]["log_config"]["loggers"]["uvicorn.error"]["level"] == "CRITICAL"
+        
+        # Task is registered in the loop
+        assert not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
