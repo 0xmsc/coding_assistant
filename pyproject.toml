@@ -68,7 +68,6 @@ module = [
     "coding_assistant.framework.tests.test_vision",
     "coding_assistant.framework.types",
     "coding_assistant.history",
-    "coding_assistant.instructions",
     "coding_assistant.llm.adapters",
     "coding_assistant.llm.openai",
     "coding_assistant.llm.test_openai",
