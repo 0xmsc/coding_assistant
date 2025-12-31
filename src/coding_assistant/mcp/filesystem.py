@@ -27,13 +27,15 @@ async def edit_file(
     path: Annotated[Path, "The file to edit."],
     old_text: Annotated[str, "The text to be replaced."],
     new_text: Annotated[str, "The text to replace with."],
+    replace_all: Annotated[bool, "Whether to replace all occurrences (default false)."] = False,
 ) -> str:
     """
     Apply a single text replacement to a file and return a unified diff.
 
     Semantics:
     - The edit is validated against the current content.
-    - The old_text must occur exactly once; otherwise a ValueError is raised.
+    - The old_text must occur exactly once if replace_all is false; otherwise a ValueError is raised.
+    - If replace_all is true, all occurrences are replaced.
     - If validation fails, no changes are written.
     """
 
@@ -45,10 +47,11 @@ async def edit_file(
     if count == 0:
         raise ValueError(f"{old_text} not found in {path}; no changes made")
 
-    if count > 1:
+    if not replace_all and count > 1:
         raise ValueError(f"{old_text} occurs multiple times in {path}; edit is not unique")
 
-    updated = original.replace(old_text, new_text, 1)
+    replace_count = -1 if replace_all else 1
+    updated = original.replace(old_text, new_text, replace_count)
 
     async with aiofiles.open(path, "w", encoding="utf-8") as f:
         await f.write(updated)
