@@ -15,7 +15,7 @@ class TestMainCLI:
         from coding_assistant.main import parse_args
 
         # Test parse_args exits cleanly on --help (SystemExit expected)
-        with patch("sys.argv", ["coding-assistant", "--help"]):
+        with patch("sys.argv", ["coding-assistant", "--help", "--model", "test"]):
             with patch("sys.exit") as mock_exit:
                 try:
                     parse_args()
