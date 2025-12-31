@@ -58,7 +58,7 @@ def _create_start_message(desc: AgentDescription) -> str:
     return message
 
 
-def _handle_finish_task_result(result: FinishTaskResult, state: AgentState):
+def _handle_finish_task_result(result: FinishTaskResult, state: AgentState) -> str:
     state.output = AgentOutput(result=result.result, summary=result.summary)
     return "Agent output set."
 
@@ -68,7 +68,7 @@ def _handle_compact_conversation_result(
     desc: AgentDescription,
     state: AgentState,
     progress_callbacks: ProgressCallbacks,
-):
+) -> str:
     clear_history(state.history)
 
     append_user_message(
@@ -105,7 +105,7 @@ async def run_agent_loop(
     completer: Completer,
     ui: UI,
     compact_conversation_at_tokens: int = 200_000,
-):
+) -> None:
     desc = ctx.desc
     state = ctx.state
 
