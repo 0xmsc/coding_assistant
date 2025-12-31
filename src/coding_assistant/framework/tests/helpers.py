@@ -1,4 +1,4 @@
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.framework.parameters import Parameter
@@ -31,7 +31,7 @@ class FakeCompleter:
         self.script: list[AssistantMessage | Exception] = list(script)
         self._total_tokens = 0
 
-    async def __call__(self, messages, *, model, tools, callbacks) -> Completion:
+    async def __call__(self, messages: Any, *, model: Any, tools: Any, callbacks: Any) -> Completion:
         if hasattr(self, "before_completion") and callable(self.before_completion):
             await self.before_completion()
 

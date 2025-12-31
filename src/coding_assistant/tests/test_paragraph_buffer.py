@@ -1,26 +1,26 @@
 from coding_assistant.callbacks import ParagraphBuffer
 
 
-def test_paragraph_buffer_empty():
+def test_paragraph_buffer_empty() -> None:
     buffer = ParagraphBuffer()
     assert buffer.push("") == []
     assert buffer.flush() is None
 
 
-def test_paragraph_buffer_single_paragraph():
+def test_paragraph_buffer_single_paragraph() -> None:
     buffer = ParagraphBuffer()
     assert buffer.push("Hello world") == []
     assert buffer.flush() == "Hello world"
 
 
-def test_paragraph_buffer_double_newline():
+def test_paragraph_buffer_double_newline() -> None:
     buffer = ParagraphBuffer()
     assert buffer.push("First paragraph\n\nSecond") == ["First paragraph"]
     assert buffer.push(" paragraph") == []
     assert buffer.flush() == "Second paragraph"
 
 
-def test_paragraph_buffer_multiple_paragraphs():
+def test_paragraph_buffer_multiple_paragraphs() -> None:
     buffer = ParagraphBuffer()
     chunks = ["Para 1\n\nPara 2\n", "\nPara 3", "\n\nPara 4"]
 
@@ -30,7 +30,7 @@ def test_paragraph_buffer_multiple_paragraphs():
     assert buffer.flush() == "Para 4"
 
 
-def test_paragraph_buffer_strip():
+def test_paragraph_buffer_strip() -> None:
     buffer = ParagraphBuffer()
     # first push returns the first paragraph
     assert buffer.push("  \n\n  Spaced Para  ") == ["  "]
@@ -38,20 +38,20 @@ def test_paragraph_buffer_strip():
     assert buffer.flush() == "Spaced Para"
 
 
-def test_paragraph_buffer_split_newline():
+def test_paragraph_buffer_split_newline() -> None:
     buffer = ParagraphBuffer()
     assert buffer.push("Para 1\n") == []
     assert buffer.push("\nPara 2") == ["Para 1"]
     assert buffer.flush() == "Para 2"
 
 
-def test_paragraph_buffer_many_newlines():
+def test_paragraph_buffer_many_newlines() -> None:
     buffer = ParagraphBuffer()
     assert buffer.push("Para 1\n\n\nPara 2") == ["Para 1"]
     assert buffer.flush() == "Para 2"
 
 
-def test_paragraph_buffer_code_fence():
+def test_paragraph_buffer_code_fence() -> None:
     buffer = ParagraphBuffer()
     code_chunk = "Here is code:\n\n```python\ndef hello():\n\n    print('world')\n```"
     assert buffer.push(code_chunk) == ["Here is code:"]
@@ -61,14 +61,14 @@ def test_paragraph_buffer_code_fence():
     assert buffer.flush() == "```python\ndef hello():\n\n    print('world')\n```"
 
 
-def test_paragraph_buffer_code_fence_split():
+def test_paragraph_buffer_code_fence_split() -> None:
     buffer = ParagraphBuffer()
     # It should split because the code fence is closed
     assert buffer.push("```python\ncode\n```\n\nNext para") == ["```python\ncode\n```"]
     assert buffer.flush() == "Next para"
 
 
-def test_paragraph_buffer_incomplete_code_fence():
+def test_paragraph_buffer_incomplete_code_fence() -> None:
     buffer = ParagraphBuffer()
     assert buffer.push("```python\n") == []
     assert buffer.push("\n\nin code\n\n") == []

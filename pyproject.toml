@@ -38,36 +38,6 @@ dev = [
 [tool.mypy]
 strict = true
 
-[[tool.mypy.overrides]]
-module = [
-    "coding_assistant.framework.tests.helpers",
-    "coding_assistant.framework.tests.test_chat_loop_interrupts",
-    "coding_assistant.framework.tests.test_chat_mode",
-    "coding_assistant.framework.tests.test_execution",
-    "coding_assistant.framework.tests.test_execution_compact_conversation",
-    "coding_assistant.framework.tests.test_parameters",
-    "coding_assistant.framework.tests.test_run_loop_slices",
-    "coding_assistant.llm.adapters",
-    "coding_assistant.llm.openai",
-    "coding_assistant.llm.test_openai",
-    "coding_assistant.tests.test_adapters",
-    "coding_assistant.tests.test_callbacks_confirmation",
-    "coding_assistant.tests.test_dense_callbacks",
-    "coding_assistant.tests.test_history",
-    "coding_assistant.tests.test_instructions",
-    "coding_assistant.tests.test_main",
-    "coding_assistant.tests.test_mcp",
-    "coding_assistant.tests.test_mcp_aggregator",
-    "coding_assistant.tests.test_mcp_connection",
-    "coding_assistant.tests.test_mcp_wrapped_tool",
-    "coding_assistant.tests.test_paragraph_buffer",
-    "coding_assistant.tests.test_paths",
-    "coding_assistant.tests.test_sandbox",
-    "coding_assistant.tests.test_trace",
-    "coding_assistant.tests.test_ui",
-]
-ignore_errors = true
-
 [tool.uv.sources]
 
 [tool.ruff]

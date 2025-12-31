@@ -8,7 +8,7 @@ from fastmcp.mcp_config import StdioMCPServer, RemoteMCPServer
 
 
 @pytest.mark.asyncio
-async def test_get_mcp_servers_from_config_stdio():
+async def test_get_mcp_servers_from_config_stdio() -> None:
     config = [MCPServerConfig(name="test-stdio", command="test-cmd", args=["--arg1"])]
     working_dir = Path("/tmp")
 
@@ -30,7 +30,7 @@ async def test_get_mcp_servers_from_config_stdio():
 
 
 @pytest.mark.asyncio
-async def test_get_mcp_servers_from_config_sse():
+async def test_get_mcp_servers_from_config_sse() -> None:
     config = [MCPServerConfig(name="test-sse", url="http://localhost:8000/sse")]
     working_dir = Path("/tmp")
 
@@ -50,7 +50,7 @@ async def test_get_mcp_servers_from_config_sse():
 
 
 @pytest.mark.asyncio
-async def test_mcp_server_config_validation():
+async def test_mcp_server_config_validation() -> None:
     with pytest.raises(ValidationError, match="must have either a command or a url"):
         MCPServerConfig(name="invalid")
 

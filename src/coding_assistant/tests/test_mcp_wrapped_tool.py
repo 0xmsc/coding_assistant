@@ -4,7 +4,7 @@ from coding_assistant.tools.mcp import MCPWrappedTool, get_mcp_wrapped_tools, MC
 
 
 @pytest.mark.asyncio
-async def test_mcp_wrapped_tool_name_without_prefix():
+async def test_mcp_wrapped_tool_name_without_prefix() -> None:
     # Setup
     mock_client = MagicMock()
     mock_tool = MagicMock()
@@ -17,7 +17,7 @@ async def test_mcp_wrapped_tool_name_without_prefix():
 
 
 @pytest.mark.asyncio
-async def test_mcp_wrapped_tool_name_with_prefix():
+async def test_mcp_wrapped_tool_name_with_prefix() -> None:
     # Setup
     mock_client = MagicMock()
     mock_tool = MagicMock()
@@ -30,7 +30,7 @@ async def test_mcp_wrapped_tool_name_with_prefix():
 
 
 @pytest.mark.asyncio
-async def test_get_mcp_wrapped_tools_applies_prefix():
+async def test_get_mcp_wrapped_tools_applies_prefix() -> None:
     # Setup
     mock_client = MagicMock(spec=["list_tools"])
     mock_tool = MagicMock()
@@ -49,7 +49,7 @@ async def test_get_mcp_wrapped_tools_applies_prefix():
 
 
 @pytest.mark.asyncio
-async def test_get_mcp_wrapped_tools_collision_detection():
+async def test_get_mcp_wrapped_tools_collision_detection() -> None:
     # Setup
     mock_client1 = MagicMock(spec=["list_tools"])
     mock_tool1 = MagicMock()
@@ -73,7 +73,7 @@ async def test_get_mcp_wrapped_tools_collision_detection():
 
 
 @pytest.mark.asyncio
-async def test_get_mcp_wrapped_tools_prefix_prevents_collision():
+async def test_get_mcp_wrapped_tools_prefix_prevents_collision() -> None:
     # Setup
     mock_client1 = MagicMock(spec=["list_tools"])
     mock_tool1 = MagicMock()
