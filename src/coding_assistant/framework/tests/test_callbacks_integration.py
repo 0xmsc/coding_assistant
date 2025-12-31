@@ -31,7 +31,7 @@ class EchoTool(Tool):
 
 
 @pytest.mark.asyncio
-async def test_agent_loop_runs_successfully():
+async def test_agent_loop_runs_successfully() -> None:
     callbacks = Mock()
     finish = ToolCall("f1", FunctionCall("finish_task", json.dumps({"result": "r", "summary": "s"})))
     completer = FakeCompleter([AssistantMessage(tool_calls=[finish])])
@@ -46,11 +46,12 @@ async def test_agent_loop_runs_successfully():
         ui=make_ui_mock(),
     )
 
+    assert state.output is not None
     assert state.output.result == "r"
 
 
 @pytest.mark.asyncio
-async def test_on_tool_message_called_with_arguments_and_result():
+async def test_on_tool_message_called_with_arguments_and_result() -> None:
     callbacks = Mock()
     call = ToolCall("1", FunctionCall("echo", json.dumps({"text": "hello"})))
     finish = ToolCall("2", FunctionCall("finish_task", json.dumps({"result": "ok", "summary": "s"})))

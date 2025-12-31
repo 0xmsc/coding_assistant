@@ -1,3 +1,4 @@
+from typing import Any
 import pytest
 from unittest.mock import Mock
 
@@ -16,22 +17,22 @@ from coding_assistant.llm.types import (
     ToolMessage,
     UserMessage,
 )
-from coding_assistant.framework.types import AgentContext, TextResult, Tool
+from coding_assistant.framework.types import AgentContext, TextResult, Tool, ToolResult
 from coding_assistant.framework.history import append_assistant_message
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 
 class DummyTool(Tool):
-    def name(self):
+    def name(self) -> str:
         return "dummy"
 
-    def description(self):
+    def description(self) -> str:
         return ""
 
-    def parameters(self):
+    def parameters(self) -> dict[str, Any]:
         return {}
 
-    async def execute(self, parameters):
+    async def execute(self, parameters: dict[str, Any]) -> ToolResult:
         return TextResult(content="ok")
 
 

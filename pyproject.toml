@@ -41,17 +41,12 @@ strict = true
 [[tool.mypy.overrides]]
 module = [
     "coding_assistant.framework.tests.helpers",
-    "coding_assistant.framework.tests.test_agents",
-    "coding_assistant.framework.tests.test_callbacks_integration",
     "coding_assistant.framework.tests.test_chat_loop_interrupts",
     "coding_assistant.framework.tests.test_chat_mode",
     "coding_assistant.framework.tests.test_execution",
     "coding_assistant.framework.tests.test_execution_compact_conversation",
-    "coding_assistant.framework.tests.test_keyboard_interrupt_exit",
-    "coding_assistant.framework.tests.test_model_contract",
     "coding_assistant.framework.tests.test_parameters",
     "coding_assistant.framework.tests.test_run_loop_slices",
-    "coding_assistant.framework.tests.test_vision",
     "coding_assistant.llm.adapters",
     "coding_assistant.llm.openai",
     "coding_assistant.llm.test_openai",
