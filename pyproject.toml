@@ -95,7 +95,6 @@ module = [
     "coding_assistant.mcp.tests.test_todo",
     "coding_assistant.mcp.todo",
     "coding_assistant.mcp.utils",
-    "coding_assistant.paths",
     "coding_assistant.sandbox",
     "coding_assistant.tests.test_adapters",
     "coding_assistant.tests.test_callbacks_confirmation",
