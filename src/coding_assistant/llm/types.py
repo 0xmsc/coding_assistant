@@ -12,13 +12,13 @@ class ProgressCallbacks(Protocol):
 
 
 class ToolResult(Protocol):
-    def to_dict(self) -> dict: ...
+    def to_dict(self) -> dict[str, Any]: ...
 
 
 class Tool(Protocol):
     def name(self) -> str: ...
     def description(self) -> str: ...
-    def parameters(self) -> dict: ...
+    def parameters(self) -> dict[str, Any]: ...
     async def execute(self, parameters: Any) -> ToolResult: ...
 
 
@@ -38,19 +38,19 @@ class ToolCall:
 @dataclass(frozen=True, kw_only=True)
 class BaseMessage:
     role: str
-    content: Optional[str | list[dict]] = None
+    content: Optional[str | list[dict[str, Any]]] = None
     name: Optional[str] = None
 
 
 @dataclass(frozen=True, kw_only=True)
 class SystemMessage(BaseMessage):
-    content: str | list[dict]
+    content: str | list[dict[str, Any]]
     role: Literal["system"] = "system"
 
 
 @dataclass(frozen=True, kw_only=True)
 class UserMessage(BaseMessage):
-    content: str | list[dict]
+    content: str | list[dict[str, Any]]
     role: Literal["user"] = "user"
 
 
@@ -99,7 +99,7 @@ def message_from_dict(d: dict[str, Any]) -> BaseMessage:
 
 
 def message_to_dict(msg: BaseMessage) -> dict[str, Any]:
-    def factory(data):
+    def factory(data: list[tuple[str, Any]]) -> dict[str, Any]:
         return {k: v for k, v in data if v is not None and v != [] and v != {}}
 
     return asdict(msg, dict_factory=factory)
