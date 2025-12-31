@@ -49,12 +49,22 @@ async def start_mcp_server(tools: list[Tool], port: int) -> asyncio.Task:
 
     logger.info(f"Starting background MCP server on port {port}")
 
+    # Silence uvicorn error logging during shutdown to avoid noisy CancelledError tracebacks
+    uvicorn_log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "loggers": {
+            "uvicorn.error": {"level": "CRITICAL"},
+        },
+    }
+
     task = asyncio.create_task(
         mcp.run_async(
             transport="streamable-http",
             port=port,
             show_banner=False,
-            log_level="error",
+            log_level="critical",
+            uvicorn_config={"log_config": uvicorn_log_config},
         )
     )
 
