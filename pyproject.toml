@@ -41,7 +41,6 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = [
-    "coding_assistant",
     "coding_assistant.callbacks",
     "coding_assistant.framework",
     "coding_assistant.framework.agent",
@@ -69,7 +68,6 @@ module = [
     "coding_assistant.llm.adapters",
     "coding_assistant.llm.openai",
     "coding_assistant.llm.test_openai",
-    "coding_assistant.main",
     "coding_assistant.mcp",
     "coding_assistant.mcp.__main__",
     "coding_assistant.mcp.filesystem",
@@ -90,7 +88,6 @@ module = [
     "coding_assistant.mcp.tests.test_todo",
     "coding_assistant.mcp.todo",
     "coding_assistant.mcp.utils",
-    "coding_assistant.sandbox",
     "coding_assistant.tests.test_adapters",
     "coding_assistant.tests.test_callbacks_confirmation",
     "coding_assistant.tests.test_dense_callbacks",
@@ -106,11 +103,6 @@ module = [
     "coding_assistant.tests.test_sandbox",
     "coding_assistant.tests.test_trace",
     "coding_assistant.tests.test_ui",
-    "coding_assistant.tools",
-    "coding_assistant.tools.mcp",
-    "coding_assistant.tools.mcp_server",
-    "coding_assistant.tools.tools",
-    "coding_assistant.ui",
 ]
 ignore_errors = true
 

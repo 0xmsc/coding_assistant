@@ -3,6 +3,7 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
+from typing import Sequence
 
 from landlock import FSAccess, Ruleset  # type: ignore[import-untyped]
 
@@ -41,23 +42,23 @@ DEFAULT_WRITABLE_PATHS = [
 ]
 
 
-def _get_read_only_rule():
+def _get_read_only_rule() -> FSAccess:
     return FSAccess.EXECUTE | FSAccess.READ_DIR | FSAccess.READ_FILE
 
 
-def _get_read_write_file_rule():
+def _get_read_write_file_rule() -> FSAccess:
     return FSAccess.WRITE_FILE | FSAccess.READ_FILE
 
 
-def _get_read_only_file_rule():
+def _get_read_only_file_rule() -> FSAccess:
     return FSAccess.READ_FILE
 
 
-def _to_paths(list):
-    return [Path(entry).expanduser().resolve() for entry in list]
+def _to_paths(items: Sequence[str | Path]) -> list[Path]:
+    return [Path(entry).expanduser().resolve() for entry in items]
 
 
-def allow_read(rs: Ruleset, paths: list[Path]):
+def allow_read(rs: Ruleset, paths: list[Path]) -> None:
     for path in paths:
         if not path.exists():
             continue
@@ -68,7 +69,7 @@ def allow_read(rs: Ruleset, paths: list[Path]):
             rs.allow(path, rules=_get_read_only_file_rule())
 
 
-def allow_write(rs: Ruleset, paths: list[Path]):
+def allow_write(rs: Ruleset, paths: list[Path]) -> None:
     for path in paths:
         if not path.exists():
             continue
@@ -79,26 +80,26 @@ def allow_write(rs: Ruleset, paths: list[Path]):
             rs.allow(path, rules=_get_read_write_file_rule())
 
 
-def sandbox(readable_paths: list[Path], writable_paths: list[Path], include_defaults: bool = False):
+def sandbox(readable_paths: list[Path], writable_paths: list[Path], include_defaults: bool = False) -> None:
     rs = Ruleset()
 
     if include_defaults:
         writable_paths.extend(_to_paths(DEFAULT_WRITABLE_PATHS))
         readable_paths.extend(_to_paths(DEFAULT_READABLE_PATHS))
 
-    writable_paths = list(set(_to_paths(writable_paths)))
-    readable_paths = list(set(_to_paths(readable_paths)) - set(writable_paths))
+    writable_paths_list = list(set(_to_paths(writable_paths)))
+    readable_paths_list = list(set(_to_paths(readable_paths)) - set(writable_paths_list))
 
-    logger.info(f"Writable sandbox directories: {writable_paths}")
-    logger.info(f"Readable sandbox directories: {readable_paths}")
+    logger.info(f"Writable sandbox directories: {writable_paths_list}")
+    logger.info(f"Readable sandbox directories: {readable_paths_list}")
 
-    allow_write(rs, writable_paths)
-    allow_read(rs, readable_paths)
+    allow_write(rs, writable_paths_list)
+    allow_read(rs, readable_paths_list)
 
     rs.apply()
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run a command in a sandboxed environment with restricted filesystem access"
     )
