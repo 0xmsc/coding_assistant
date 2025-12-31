@@ -3,10 +3,9 @@ name = "coding-assistant-cli"
 version = "0.1.8"
 description = "An agent-orchestrated CLI for streamlining and automating coding tasks."
 readme = "README.md"
-authors = []
-license = "MIT"
 requires-python = ">=3.12"
-
+license = "MIT"
+authors = []
 dependencies = [
     "rich",
     "requests",
@@ -48,13 +47,11 @@ module = [
     "coding_assistant.framework.tests.test_chat_mode",
     "coding_assistant.framework.tests.test_execution",
     "coding_assistant.framework.tests.test_execution_compact_conversation",
-    "coding_assistant.framework.tests.test_interrupts",
     "coding_assistant.framework.tests.test_keyboard_interrupt_exit",
     "coding_assistant.framework.tests.test_model_contract",
     "coding_assistant.framework.tests.test_parameters",
     "coding_assistant.framework.tests.test_run_loop_slices",
     "coding_assistant.framework.tests.test_vision",
-    "coding_assistant.framework.types",
     "coding_assistant.llm.adapters",
     "coding_assistant.llm.openai",
     "coding_assistant.llm.test_openai",
@@ -116,21 +113,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
-exclude = [
-  "*.jpg",
-  "*.png",
-  "*.pdf",
-  "*.jpeg",
-]
+exclude = ["*.jpg", "*.png", "*.pdf", "*.jpeg"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/coding_assistant"]
-exclude = [
-  "*.jpg",
-  "*.png",
-  "*.pdf",
-  "*.jpeg",
-]
+exclude = ["*.jpg", "*.png", "*.pdf", "*.jpeg"]
 
 [tool.pytest.ini_options]
 markers = [

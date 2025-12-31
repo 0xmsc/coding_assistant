@@ -10,7 +10,7 @@ from coding_assistant.framework.interrupts import (
 )
 
 
-def test_interrupt_controller_catches_sigint():
+def test_interrupt_controller_catches_sigint() -> None:
     loop = asyncio.new_event_loop()
     try:
         with InterruptController(loop) as controller:
@@ -20,7 +20,7 @@ def test_interrupt_controller_catches_sigint():
         loop.close()
 
 
-def test_interrupt_controller_handles_multiple_sigints():
+def test_interrupt_controller_handles_multiple_sigints() -> None:
     """Test that multiple SIGINTs are handled without exiting."""
     loop = asyncio.new_event_loop()
     try:
@@ -35,11 +35,11 @@ def test_interrupt_controller_handles_multiple_sigints():
 
 
 @pytest.mark.asyncio
-async def test_tool_call_cancellation_manager_cancel_all():
+async def test_tool_call_cancellation_manager_cancel_all() -> None:
     loop = asyncio.get_running_loop()
     manager = ToolCallCancellationManager()
 
-    async def wait_forever():
+    async def wait_forever() -> None:
         await asyncio.Future()
 
     task = loop.create_task(wait_forever(), name="tool-task")
@@ -56,11 +56,11 @@ async def test_tool_call_cancellation_manager_cancel_all():
 
 
 @pytest.mark.asyncio
-async def test_interrupt_controller_cancels_tasks():
+async def test_interrupt_controller_cancels_tasks() -> None:
     loop = asyncio.get_running_loop()
     controller = InterruptController(loop)
 
-    async def wait_forever():
+    async def wait_forever() -> None:
         await asyncio.Future()
 
     task = loop.create_task(wait_forever())

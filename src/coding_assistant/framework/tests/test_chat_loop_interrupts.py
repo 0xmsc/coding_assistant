@@ -1,3 +1,4 @@
+from typing import Any
 import asyncio
 import json
 import os
@@ -35,10 +36,10 @@ class InterruptibleTool(Tool):
     def description(self) -> str:
         return "A tool that can be interrupted"
 
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}, "required": []}
 
-    async def execute(self, parameters: dict) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
         self.called = True
         try:
             # If we have an interrupt event, trigger it partway through

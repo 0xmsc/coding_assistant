@@ -13,7 +13,7 @@ TEST_MODEL = "openrouter/openai/gpt-5-mini"
 
 @pytest.mark.slow
 @pytest.mark.asyncio
-async def test_model_vision_recognizes_car_image():
+async def test_model_vision_recognizes_car_image() -> None:
     # NOTE: Download picture via `wget --output-document car.jpg https://upload.wikimedia.org/wikipedia/commons/0/01/SEAT_Leon_Mk4_IMG_4099.jpg`
 
     image_path = Path(__file__).with_name("car.jpg")
