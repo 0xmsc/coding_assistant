@@ -1,3 +1,4 @@
+from typing import Any
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
@@ -7,7 +8,7 @@ from coding_assistant.framework.parameters import parameters_from_model, format_
 class ExampleSchema(BaseModel):
     name: str = Field(description="Name")
     age: int | None = Field(default=None, description="Age")
-    hobbies: list[str] = Field(default_factory=list, description="Hobbies")
+    hobbies: list[str] = Field(default_factory=list[Any], description="Hobbies")
     active: bool = Field(description="Active status")
 
 
@@ -15,8 +16,8 @@ def test_parameters_from_model_basic_and_optional_skip() -> None:
     model = ExampleSchema(name="Alice", active=True)  # age omitted, hobbies default empty
     params = parameters_from_model(model)
     names = [p.name for p in params]
-    assert names == ["name", "hobbies", "active"]  # age skipped; hobbies present (empty list -> should it appear?)
-    # Empty list should render to empty string list? We currently render it as "" (join of empty). Accept that.
+    assert names == ["name", "hobbies", "active"]  # age skipped; hobbies present (empty list[Any] -> should it appear?)
+    # Empty list[Any] should render to empty string list[Any]? We currently render it as "" (join of empty). Accept that.
     hobbies_param = next(p for p in params if p.name == "hobbies")
     assert hobbies_param.value == ""  # join of []
 
@@ -30,7 +31,7 @@ def test_parameters_from_model_list_rendering() -> None:
 
 def test_parameters_from_model_unsupported_type() -> None:
     class Bad(BaseModel):
-        data: dict = Field(description="Unsupported")
+        data: dict[str, Any] = Field(description="Unsupported")
 
     bad = Bad(data={"a": 1})
     with pytest.raises(RuntimeError, match="Unsupported parameter type for parameter 'data'"):

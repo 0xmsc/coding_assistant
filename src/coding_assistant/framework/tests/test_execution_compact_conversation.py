@@ -28,7 +28,7 @@ from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConv
 
 
 @pytest.mark.asyncio
-async def test_compact_conversation_resets_history():
+async def test_compact_conversation_resets_history() -> None:
     desc, state = make_test_agent(
         tools=[FinishTaskTool(), CompactConversation()],
         history=[
@@ -38,7 +38,7 @@ async def test_compact_conversation_resets_history():
     )
 
     class SpyCallbacks(NullProgressCallbacks):
-        def __init__(self):
+        def __init__(self) -> None:
             self.user_messages = []
 
         def on_user_message(self, context_name: str, content: str, force: bool = False):
