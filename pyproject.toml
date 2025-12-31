@@ -113,7 +113,6 @@ module = [
     "coding_assistant.tools.mcp",
     "coding_assistant.tools.mcp_server",
     "coding_assistant.tools.tools",
-    "coding_assistant.trace",
     "coding_assistant.ui",
 ]
 ignore_errors = true
