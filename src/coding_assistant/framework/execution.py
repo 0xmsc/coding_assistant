@@ -3,6 +3,7 @@ import json
 import logging
 from collections.abc import Callable, Sequence
 from json import JSONDecodeError
+from typing import Any
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.history import append_tool_message
@@ -15,7 +16,7 @@ from coding_assistant.ui import UI
 logger = logging.getLogger(__name__)
 
 
-async def execute_tool_call(function_name: str, function_args: dict, tools: Sequence[Tool]) -> ToolResult:
+async def execute_tool_call(function_name: str, function_args: dict[str, Any], tools: Sequence[Tool]) -> ToolResult:
     """Execute a tool call by finding the matching tool and calling its execute method."""
     for tool in tools:
         if tool.name() == function_name:
@@ -92,9 +93,9 @@ async def handle_tool_calls(
     *,
     ui: UI,
     context_name: str,
-    task_created_callback: Callable[[str, asyncio.Task], None] | None = None,
+    task_created_callback: Callable[[str, asyncio.Task[Any]], None] | None = None,
     handle_tool_result: Callable[[ToolResult], str] | None = None,
-):
+) -> None:
     if isinstance(message, AssistantMessage):
         tool_calls = message.tool_calls
     else:
