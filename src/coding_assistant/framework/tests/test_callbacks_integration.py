@@ -1,3 +1,4 @@
+from typing import Any
 import json
 from unittest.mock import Mock
 
@@ -22,10 +23,10 @@ class EchoTool(Tool):
     def description(self) -> str:
         return "echo"
 
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
 
-    async def execute(self, parameters: dict) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
         return TextResult(content=parameters["text"])
 
 

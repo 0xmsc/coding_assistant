@@ -1,4 +1,4 @@
-from typing import cast
+from typing import Any, cast
 import asyncio
 import time
 import pytest
@@ -32,7 +32,7 @@ from coding_assistant.callbacks import ConfirmationToolCallbacks
 
 class FakeConfirmTool(Tool):
     def __init__(self) -> None:
-        self.calls: list[dict] = []
+        self.calls: list[dict[str, Any]] = []
 
     def name(self) -> str:
         return "execute_shell_command"
@@ -40,10 +40,10 @@ class FakeConfirmTool(Tool):
     def description(self) -> str:
         return "Pretend to execute a shell command"
 
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}
 
-    async def execute(self, parameters: dict) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
         self.calls.append(parameters)
         return TextResult(content=f"ran: {parameters['cmd']}")
 
@@ -61,10 +61,10 @@ async def test_execute_tool_call_regular_tool_and_not_found():
         def description(self) -> str:
             return "desc"
 
-        def parameters(self) -> dict:
+        def parameters(self) -> dict[str, Any]:
             return {}
 
-        async def execute(self, parameters: dict) -> TextResult:
+        async def execute(self, parameters: dict[str, Any]) -> TextResult:
             return TextResult(content=self._result)
 
     tool = DummyTool("echo", "ok")
@@ -144,10 +144,10 @@ async def test_unknown_result_type_raises() -> None:
         def description(self) -> str:
             return ""
 
-        def parameters(self) -> dict:
+        def parameters(self) -> dict[str, Any]:
             return {}
 
-        async def execute(self, parameters: dict) -> ToolResult:
+        async def execute(self, parameters: dict[str, Any]) -> ToolResult:
             return WeirdResult()
 
     history: list[BaseMessage] = []
@@ -167,7 +167,7 @@ async def test_unknown_result_type_raises() -> None:
 
 
 class ParallelSlowTool(Tool):
-    def __init__(self, name: str, delay: float, events: list) -> None:
+    def __init__(self, name: str, delay: float, events: list[Any]) -> None:
         self._name = name
         self._delay = delay
         self._events = events
@@ -178,10 +178,10 @@ class ParallelSlowTool(Tool):
     def description(self) -> str:
         return f"Sleep for {self._delay}s then return its name"
 
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         return {}
 
-    async def execute(self, parameters: dict) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
         self._events.append(("start", self._name, time.monotonic()))
         await asyncio.sleep(self._delay)
         self._events.append(("end", self._name, time.monotonic()))
@@ -227,10 +227,10 @@ async def test_tool_execution_value_error_records_error() -> None:
         def description(self) -> str:
             return "raises"
 
-        def parameters(self) -> dict:
+        def parameters(self) -> dict[str, Any]:
             return {}
 
-        async def execute(self, parameters: dict) -> TextResult:
+        async def execute(self, parameters: dict[str, Any]) -> TextResult:
             self.executed = True
             raise ValueError("boom")
 
@@ -263,7 +263,7 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
     # Simulate the special shell tool name used by confirmation logic
     class FakeShellTool(Tool):
         def __init__(self) -> None:
-            self.calls: list[dict] = []
+            self.calls: list[dict[str, Any]] = []
 
         def name(self) -> str:
             return "shell_execute"
@@ -271,10 +271,10 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
         def description(self) -> str:
             return "shell"
 
-        def parameters(self) -> dict:
+        def parameters(self) -> dict[str, Any]:
             return {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}
 
-        async def execute(self, parameters: dict) -> TextResult:
+        async def execute(self, parameters: dict[str, Any]) -> TextResult:
             self.calls.append(parameters)
             return TextResult(content=f"ran shell: {parameters['command']}")
 
@@ -344,14 +344,14 @@ async def test_before_tool_execution_can_return_finish_task_result() -> None:
         def description(self) -> str:
             return "finish"
 
-        def parameters(self) -> dict:
+        def parameters(self) -> dict[str, Any]:
             return {
                 "type": "object",
                 "properties": {"result": {"type": "string"}, "summary": {"type": "string"}},
                 "required": ["result", "summary"],
             }
 
-        async def execute(self, parameters: dict) -> TextResult:
+        async def execute(self, parameters: dict[str, Any]) -> TextResult:
             self.executed = True
             return TextResult(content="should not run")
 
@@ -484,10 +484,10 @@ async def test_tool_calls_process_as_they_arrive() -> None:
         def description(self) -> str:
             return ""
 
-        def parameters(self) -> dict:
+        def parameters(self) -> dict[str, Any]:
             return {}
 
-        async def execute(self, parameters: dict) -> TextResult:
+        async def execute(self, parameters: dict[str, Any]) -> TextResult:
             events.append("fast_start")
             return TextResult(content="fast_done")
 
@@ -498,10 +498,10 @@ async def test_tool_calls_process_as_they_arrive() -> None:
         def description(self) -> str:
             return ""
 
-        def parameters(self) -> dict:
+        def parameters(self) -> dict[str, Any]:
             return {}
 
-        async def execute(self, parameters: dict) -> TextResult:
+        async def execute(self, parameters: dict[str, Any]) -> TextResult:
             events.append("slow_start")
             await asyncio.sleep(0.3)
             events.append("slow_done")

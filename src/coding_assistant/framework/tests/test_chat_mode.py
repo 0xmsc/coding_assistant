@@ -1,8 +1,8 @@
 import json
 import pytest
-from typing import Iterable
+from typing import Any, Iterable
 
-from coding_assistant.llm.types import UserMessage, Usage, AssistantMessage, Completion
+from coding_assistant.llm.types import BaseMessage, UserMessage, Usage, AssistantMessage, Completion
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FunctionCall,
@@ -17,7 +17,7 @@ from coding_assistant.framework.callbacks import NullProgressCallbacks, NullTool
 
 
 class FakeEchoTool(Tool):
-    def __init__(self):
+    def __init__(self) -> None:
         self.called_with = None
 
     def name(self) -> str:
@@ -26,19 +26,19 @@ class FakeEchoTool(Tool):
     def description(self) -> str:
         return "Echo a provided text"
 
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
 
-    async def execute(self, parameters: dict) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
         self.called_with = parameters
         return TextResult(content=f"echo: {parameters['text']}")
 
 
 @pytest.mark.asyncio
-async def test_chat_step_prompts_user_on_no_tool_calls_once():
+async def test_chat_step_prompts_user_on_no_tool_calls_once() -> None:
     completer = FakeCompleter([FakeMessage(content="Hello")])
-    history = [UserMessage(content="start")]
-    tools = []
+    history: list[BaseMessage] = [UserMessage(content="start")]
+    tools: list[Tool] = []
     model = "test-model"
     instructions = None
 
@@ -62,13 +62,13 @@ async def test_chat_step_prompts_user_on_no_tool_calls_once():
 
 
 @pytest.mark.asyncio
-async def test_chat_step_executes_tools_without_prompt():
+async def test_chat_step_executes_tools_without_prompt() -> None:
     echo_call = ToolCall("1", FunctionCall("fake.echo", json.dumps({"text": "hi"})))
     completer = FakeCompleter([FakeMessage(tool_calls=[echo_call])])
 
     echo_tool = FakeEchoTool()
-    history = [UserMessage(content="start")]
-    tools = [echo_tool]
+    history: list[BaseMessage] = [UserMessage(content="start")]
+    tools: list[Tool] = [echo_tool]
     model = "test-model"
     instructions = None
 
@@ -91,10 +91,10 @@ async def test_chat_step_executes_tools_without_prompt():
 
 
 @pytest.mark.asyncio
-async def test_chat_mode_does_not_require_finish_task_tool():
+async def test_chat_mode_does_not_require_finish_task_tool() -> None:
     completer = FakeCompleter([FakeMessage(content="Hi there")])
-    history = [UserMessage(content="start")]
-    tools = []
+    history: list[BaseMessage] = [UserMessage(content="start")]
+    tools: list[Tool] = []
     model = "test-model"
     instructions = None
 
@@ -118,10 +118,10 @@ async def test_chat_mode_does_not_require_finish_task_tool():
 
 
 @pytest.mark.asyncio
-async def test_chat_exit_command_stops_loop_without_appending_command():
+async def test_chat_exit_command_stops_loop_without_appending_command() -> None:
     completer = FakeCompleter([FakeMessage(content="Hello chat")])
-    history = [UserMessage(content="start")]
-    tools = []
+    history: list[BaseMessage] = [UserMessage(content="start")]
+    tools: list[Tool] = []
     model = "test-model"
     instructions = None
 
@@ -139,12 +139,12 @@ async def test_chat_exit_command_stops_loop_without_appending_command():
         ui=ui,
     )
 
-    assert not any(m.role == "user" and (m.content or "").strip() == "/exit" for m in history)
+    assert not any(m.role == "user" and isinstance(m.content, str) and m.content.strip() == "/exit" for m in history)
     assert history[-1].role == "user"
 
 
 @pytest.mark.asyncio
-async def test_chat_loop_prompts_after_compact_command():
+async def test_chat_loop_prompts_after_compact_command() -> None:
     # Sequence:
     # 1. User enters /compact -> calls _compact_cmd -> appends message, returns PROCEED_WITH_MODEL
     # 2. Model responds with tool_call compact_conversation
@@ -157,8 +157,8 @@ async def test_chat_loop_prompts_after_compact_command():
     )
 
     compact_tool = CompactConversation()
-    history = [UserMessage(content="start")]
-    tools = [compact_tool]
+    history: list[BaseMessage] = [UserMessage(content="start")]
+    tools: list[Tool] = [compact_tool]
     model = "test-model"
     instructions = None
 
@@ -176,24 +176,29 @@ async def test_chat_loop_prompts_after_compact_command():
         ui=ui,
     )
 
+    from unittest.mock import MagicMock, AsyncMock
+
+    assert isinstance(ui.prompt, (MagicMock, AsyncMock))
     assert ui.prompt.call_count == 2
     assert history[-1].role == "tool"
-    assert "compacted" in history[-1].content.lower()
+    content = history[-1].content
+    assert isinstance(content, str)
+    assert "compacted" in content.lower()
 
 
 @pytest.mark.asyncio
-async def test_chat_compact_conversation_not_forced_in_callbacks():
+async def test_chat_compact_conversation_not_forced_in_callbacks() -> None:
     compact_call = ToolCall("1", FunctionCall("compact_conversation", json.dumps({"summary": "Compacted summary"})))
     completer = FakeCompleter([FakeMessage(tool_calls=[compact_call])])
 
     compact_tool = CompactConversation()
-    history = [UserMessage(content="start")]
-    tools = [compact_tool]
+    history: list[BaseMessage] = [UserMessage(content="start")]
+    tools: list[Tool] = [compact_tool]
     model = "test-model"
     instructions = None
 
     class SpyCallbacks(NullProgressCallbacks):
-        def __init__(self):
+        def __init__(self) -> None:
             self.user_messages = []
 
         def on_user_message(self, context_name: str, content: str, force: bool = False):
@@ -226,12 +231,12 @@ async def test_chat_compact_conversation_not_forced_in_callbacks():
 
 
 @pytest.mark.asyncio
-async def test_chat_mode_displays_usage_right_aligned():
+async def test_chat_mode_displays_usage_right_aligned() -> None:
     """Test that usage info is displayed right-aligned after LLM response."""
     # Use two messages to verify cumulative cost tracking
     completer = FakeCompleterWithCost([FakeMessage(content="Hello"), FakeMessage(content="World")])
-    history = [UserMessage(content="start")]
-    tools = []
+    history: list[BaseMessage] = [UserMessage(content="start")]
+    tools: list[Tool] = []
     model = "test-model"
     instructions = None
 
