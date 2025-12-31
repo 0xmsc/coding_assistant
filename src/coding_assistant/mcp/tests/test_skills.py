@@ -1,9 +1,11 @@
+from typing import Any, cast
 from pathlib import Path
 import pytest
+from mcp.types import TextContent
 from coding_assistant.mcp.skills import load_skills_from_directory, parse_skill_file, load_builtin_skills
 
 
-def test_load_skills_from_directory(tmp_path):
+def test_load_skills_from_directory(tmp_path: Any) -> None:
     # Create a temporary skills directory structure
     skill1_dir = tmp_path / "skill1"
     skill1_dir.mkdir()
@@ -26,7 +28,7 @@ def test_load_skills_from_directory(tmp_path):
     assert descriptions == {"First test skill", "Second test skill"}
 
 
-def test_parse_skill_file_name_with_spaces(tmp_path):
+def test_parse_skill_file_name_with_spaces(tmp_path: Any) -> None:
     content = "---\nname: name with spaces\ndescription: test\n---"
     identifier = str(tmp_path / "SKILL.md")
 
@@ -35,7 +37,7 @@ def test_parse_skill_file_name_with_spaces(tmp_path):
     assert skill.name == "name with spaces"
 
 
-def test_format_skills_instructions():
+def test_format_skills_instructions() -> None:
     from coding_assistant.mcp.skills import Skill, format_skills_instructions
 
     skills = [
@@ -52,7 +54,7 @@ def test_format_skills_instructions():
     assert "Use `skills_read(name=...)` to read the `SKILL.md` of a skill." in section
 
 
-def test_parse_skill_file_missing_fields(tmp_path):
+def test_parse_skill_file_missing_fields(tmp_path: Any) -> None:
     content = "---\nname: only-name\n---"
     identifier = str(tmp_path / "SKILL.md")
 
@@ -60,7 +62,7 @@ def test_parse_skill_file_missing_fields(tmp_path):
     assert skill is None
 
 
-def test_load_builtin_skills():
+def test_load_builtin_skills() -> None:
     skills = load_builtin_skills()
 
     # We should have at least the develop skill we just added
@@ -70,7 +72,7 @@ def test_load_builtin_skills():
     assert "develop" in names
 
 
-def test_create_skills_server(tmp_path):
+def test_create_skills_server(tmp_path: Any) -> None:
     from coding_assistant.mcp.skills import create_skills_server
 
     # Create a CLI skill
@@ -88,7 +90,7 @@ def test_create_skills_server(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_skills_tools(tmp_path):
+async def test_skills_tools(tmp_path: Any) -> None:
     from coding_assistant.mcp.skills import create_skills_server
 
     skill_dir = tmp_path / "myskill"
@@ -103,21 +105,21 @@ async def test_skills_tools(tmp_path):
     list_tool = tools["list_resources"]
     result = await list_tool.run({"name": "myskill"})
     # FastMCP returns a ToolResult object. Content is in result.content
-    result_text = result.content[0].text
+    result_text = cast(TextContent, result.content[0]).text
     assert "- SKILL.md" in result_text
     assert "- script.py" in result_text
 
     # Test read
     read_tool = tools["read"]
     result = await read_tool.run({"name": "myskill", "resource": "script.py"})
-    assert result.content[0].text == "print(1)"
+    assert cast(TextContent, result.content[0]).text == "print(1)"
 
     # Test read default
     result_main = await read_tool.run({"name": "myskill"})
-    assert "content" in result_main.content[0].text
+    assert "content" in cast(TextContent, result_main.content[0]).text
 
 
-def test_builtin_skills_parsing_content():
+def test_builtin_skills_parsing_content() -> None:
     # Verify that the placeholder skill has the expected structure
     skills = load_builtin_skills()
     general_skill = next(s for s in skills if s.name == "develop")

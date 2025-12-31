@@ -4,7 +4,7 @@ from coding_assistant.mcp.proc import start_process
 
 
 @pytest.mark.asyncio
-async def test_start_process_env_merging():
+async def test_start_process_env_merging() -> None:
     # Set a unique env var in the parent process
     os.environ["PARENT_VAR"] = "parent_value"
 
@@ -26,7 +26,7 @@ async def test_start_process_env_merging():
 
 
 @pytest.mark.asyncio
-async def test_start_process_env_override():
+async def test_start_process_env_override() -> None:
     os.environ["OVERRIDE_VAR"] = "original"
 
     # Override the existing var
@@ -41,7 +41,7 @@ async def test_start_process_env_override():
 
 
 @pytest.mark.asyncio
-async def test_start_process_no_env_provided():
+async def test_start_process_no_env_provided() -> None:
     os.environ["STAY_VAR"] = "stay"
 
     cmd = ["python3", "-c", "import os; print(os.environ.get('STAY_VAR'))"]
