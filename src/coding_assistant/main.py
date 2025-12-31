@@ -385,12 +385,16 @@ async def _main(args):
             logger.info("Interrupted by user")
         finally:
             if mcp_task:
-                logger.info("Shutting down background MCP server")
-                mcp_task.cancel()
                 try:
-                    await mcp_task
-                except asyncio.CancelledError:
+                    logger.info("Shutting down background MCP server")
+                    mcp_task.cancel()
+                    # Give it a bit of time to shut down gracefully, but don't hang forever
+                    async with asyncio.timeout(2):
+                        await mcp_task
+                except (asyncio.CancelledError, TimeoutError, KeyboardInterrupt):
                     pass
+                except Exception as e:
+                    logger.debug(f"Error during MCP server shutdown: {e}")
 
 
 def main():
