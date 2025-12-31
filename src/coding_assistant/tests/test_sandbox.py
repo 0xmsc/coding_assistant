@@ -1,3 +1,4 @@
+from typing import Any
 import multiprocessing
 import subprocess
 from enum import Enum
@@ -14,7 +15,7 @@ class ProcessResult(Enum):
     ERROR = "error"
 
 
-def _multiprocessing_wrapper(queue, func, *args):
+def _multiprocessing_wrapper(queue: Any, func: Any, *args: Any) -> None:
     """Wrapper function for multiprocessing - needs to be at module level for pickling."""
     try:
         func(*args)
@@ -23,12 +24,12 @@ def _multiprocessing_wrapper(queue, func, *args):
         queue.put((ProcessResult.ERROR, str(e)))
 
 
-def _run_in_sandbox(test_func, *args):
+def _run_in_sandbox(test_func: Any, *args: Any) -> bool:
     """
     Run a test function in a separate process to avoid sandbox affecting pytest cleanup.
     Returns True if the test passed, False if it failed.
     """
-    queue = multiprocessing.Queue()
+    queue: Any = multiprocessing.Queue()
     process = multiprocessing.Process(target=_multiprocessing_wrapper, args=(queue, test_func, *args))
     process.start()
     process.join()
@@ -45,7 +46,7 @@ def _run_in_sandbox(test_func, *args):
         return False
 
 
-def _test_writable_directory_allows_write(writable_dir):
+def _test_writable_directory_allows_write(writable_dir: Any) -> None:
     """Test function to run in child process."""
     sandbox(readable_paths=[], writable_paths=[writable_dir])
 
@@ -57,7 +58,7 @@ def _test_writable_directory_allows_write(writable_dir):
         assert f.read() == "Hello, world!"
 
 
-def _test_readable_directory_denies_write(readable_dir, existing_file):
+def _test_readable_directory_denies_write(readable_dir: Any, existing_file: Any) -> None:
     """Test function to run in child process."""
     sandbox(readable_paths=[readable_dir], writable_paths=[])
 
@@ -80,7 +81,9 @@ def _test_readable_directory_denies_write(readable_dir, existing_file):
         pass  # Expected
 
 
-def _test_directory_access_separation(readable_dir, writable_dir, forbidden_dir, existing_file):
+def _test_directory_access_separation(
+    readable_dir: Any, writable_dir: Any, forbidden_dir: Any, existing_file: Any
+) -> None:
     """Test function to run in child process."""
     sandbox(readable_paths=[readable_dir], writable_paths=[writable_dir])
 
@@ -110,7 +113,7 @@ def _test_directory_access_separation(readable_dir, writable_dir, forbidden_dir,
         pass  # Expected
 
 
-def _test_write_denied_in_non_allowed_directory(tmp_path):
+def _test_write_denied_in_non_allowed_directory(tmp_path: Any) -> None:
     """Test function to run in child process."""
     sandbox(readable_paths=[], writable_paths=[])
 
@@ -123,7 +126,7 @@ def _test_write_denied_in_non_allowed_directory(tmp_path):
         pass  # Expected
 
 
-def _test_nested_directory_permissions(readable_child, writable_child, existing_file):
+def _test_nested_directory_permissions(readable_child: Any, writable_child: Any, existing_file: Any) -> None:
     """Test function to run in child process."""
     sandbox(readable_paths=[readable_child], writable_paths=[writable_child])
 
@@ -146,7 +149,7 @@ def _test_nested_directory_permissions(readable_child, writable_child, existing_
         assert f.read() == "Child writable"
 
 
-def _test_multiple_readable_directories(dir1, dir2, file1, file2):
+def _test_multiple_readable_directories(dir1: Any, dir2: Any, file1: Any, file2: Any) -> None:
     """Test function to run in child process."""
     sandbox(readable_paths=[dir1, dir2], writable_paths=[])
 
@@ -170,7 +173,7 @@ def _test_multiple_readable_directories(dir1, dir2, file1, file2):
         pass  # Expected
 
 
-def _test_multiple_writable_directories(dir1, dir2):
+def _test_multiple_writable_directories(dir1: Any, dir2: Any) -> None:
     """Test function to run in child process."""
     sandbox(readable_paths=[], writable_paths=[dir1, dir2])
 
@@ -188,7 +191,7 @@ def _test_multiple_writable_directories(dir1, dir2):
         assert f.read() == "Content 2"
 
 
-def _test_run_binaries_with_sandbox():
+def _test_run_binaries_with_sandbox() -> None:
     """Test function to run in child process."""
     sandbox(readable_paths=[], writable_paths=[], include_defaults=True)
     subprocess.check_call(["git", "help"])
@@ -196,7 +199,7 @@ def _test_run_binaries_with_sandbox():
     subprocess.check_call(["uvx", "--help"])
 
 
-def test_write_without_sandbox(tmp_path):
+def test_write_without_sandbox(tmp_path: Any) -> None:
     """Test that writing works without any sandbox restrictions."""
     test_file = tmp_path / "test.txt"
 
@@ -207,7 +210,7 @@ def test_write_without_sandbox(tmp_path):
         assert f.read() == "Hello, world!"
 
 
-def test_writable_directory_allows_write(tmp_path):
+def test_writable_directory_allows_write(tmp_path: Any) -> None:
     """Test that directories marked as writable allow writing."""
     writable_dir = tmp_path / "writable"
     writable_dir.mkdir()
@@ -215,7 +218,7 @@ def test_writable_directory_allows_write(tmp_path):
     assert _run_in_sandbox(_test_writable_directory_allows_write, writable_dir)
 
 
-def test_readable_directory_allows_read_but_not_write(tmp_path):
+def test_readable_directory_allows_read_but_not_write(tmp_path: Any) -> None:
     """Test that directories marked as readable allow reading but not writing."""
     readable_dir = tmp_path / "readable"
     readable_dir.mkdir()
@@ -228,7 +231,7 @@ def test_readable_directory_allows_read_but_not_write(tmp_path):
     assert _run_in_sandbox(_test_readable_directory_denies_write, readable_dir, existing_file)
 
 
-def test_directory_access_separation(tmp_path):
+def test_directory_access_separation(tmp_path: Any) -> None:
     """Test that readable and writable directories are properly separated."""
     readable_dir = tmp_path / "readable"
     writable_dir = tmp_path / "writable"
@@ -245,12 +248,12 @@ def test_directory_access_separation(tmp_path):
     assert _run_in_sandbox(_test_directory_access_separation, readable_dir, writable_dir, forbidden_dir, existing_file)
 
 
-def test_write_in_non_allowed_directory(tmp_path):
+def test_write_in_non_allowed_directory(tmp_path: Any) -> None:
     """Test that writing fails in directories not explicitly allowed."""
     assert _run_in_sandbox(_test_write_denied_in_non_allowed_directory, tmp_path)
 
 
-def test_nested_directory_permissions(tmp_path):
+def test_nested_directory_permissions(tmp_path: Any) -> None:
     """Test that nested directories inherit proper permissions."""
     parent_dir = tmp_path / "parent"
     readable_child = parent_dir / "readable_child"
@@ -267,12 +270,12 @@ def test_nested_directory_permissions(tmp_path):
     assert _run_in_sandbox(_test_nested_directory_permissions, readable_child, writable_child, existing_file)
 
 
-def test_run_binaries_with_sandbox():
+def test_run_binaries_with_sandbox() -> None:
     """Test that common binaries still work with sandbox applied."""
     assert _run_in_sandbox(_test_run_binaries_with_sandbox)
 
 
-def test_multiple_readable_directories(tmp_path):
+def test_multiple_readable_directories(tmp_path: Any) -> None:
     """Test that multiple readable directories work correctly."""
     dir1 = tmp_path / "readable1"
     dir2 = tmp_path / "readable2"
@@ -290,7 +293,7 @@ def test_multiple_readable_directories(tmp_path):
     assert _run_in_sandbox(_test_multiple_readable_directories, dir1, dir2, file1, file2)
 
 
-def test_multiple_writable_directories(tmp_path):
+def test_multiple_writable_directories(tmp_path: Any) -> None:
     """Test that multiple writable directories work correctly."""
     dir1 = tmp_path / "writable1"
     dir2 = tmp_path / "writable2"

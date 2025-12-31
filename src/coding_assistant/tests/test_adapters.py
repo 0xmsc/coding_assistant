@@ -1,7 +1,8 @@
+# mypy: ignore-errors
 from coding_assistant.llm import adapters
 
 
-def test_fix_input_schema_removes_uri_format():
+def test_fix_input_schema_removes_uri_format() -> None:
     schema = {
         "type": "object",
         "properties": {

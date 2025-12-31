@@ -1,3 +1,4 @@
+# mypy: ignore-errors
 from typing import Any, cast
 import asyncio
 import time
@@ -49,7 +50,7 @@ class FakeConfirmTool(Tool):
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_call_regular_tool_and_not_found():
+async def test_execute_tool_call_regular_tool_and_not_found() -> None:
     class DummyTool(Tool):
         def __init__(self, name: str, result: str):
             self._name = name
@@ -134,7 +135,7 @@ async def test_tool_confirmation_denied_and_allowed() -> None:
 @pytest.mark.asyncio
 async def test_unknown_result_type_raises() -> None:
     class WeirdResult(ToolResult):
-        def to_dict(self):
+        def to_dict(self) -> Any:
             return {}
 
     class WeirdTool(Tool):
@@ -361,7 +362,9 @@ async def test_before_tool_execution_can_return_finish_task_result() -> None:
     tools: list[Tool] = [finish_tool]
 
     class FabricatingCallbacks(ToolCallbacks):
-        async def before_tool_execution(self, context_name, tool_call_id, tool_name, arguments, *, ui):
+        async def before_tool_execution(
+            self, context_name: Any, tool_call_id: Any, tool_name: Any, arguments: Any, *, ui: Any
+        ) -> None:
             if tool_name == "finish_task":
                 return FinishTaskResult(result="R", summary="S")
             return None
@@ -517,7 +520,7 @@ async def test_tool_calls_process_as_they_arrive() -> None:
         ],
     )
 
-    async def checker():
+    async def checker() -> Any:
         # Poll history until "fast" result appears.
         for _ in range(20):
             if any(getattr(m, "tool_call_id", None) == "f" for m in history):

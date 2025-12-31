@@ -10,7 +10,7 @@ from coding_assistant.framework.tests.helpers import make_ui_mock
 
 
 @pytest.mark.asyncio
-async def test_confirm_tool_if_needed_denied_and_allowed():
+async def test_confirm_tool_if_needed_denied_and_allowed() -> None:
     tool_name = "dangerous_tool"
     arguments = {"path": "/tmp/file.txt"}
     prompt = f"Execute tool `{tool_name}` with arguments `{arguments}`?"
@@ -35,7 +35,7 @@ async def test_confirm_tool_if_needed_denied_and_allowed():
 
 
 @pytest.mark.asyncio
-async def test_confirm_tool_if_needed_no_match_no_prompt():
+async def test_confirm_tool_if_needed_no_match_no_prompt() -> None:
     ui = make_ui_mock()  # no confirm sequence expected
     res = await confirm_tool_if_needed(
         tool_name="safe_tool",
@@ -47,7 +47,7 @@ async def test_confirm_tool_if_needed_no_match_no_prompt():
 
 
 @pytest.mark.asyncio
-async def test_confirm_shell_if_needed_denied_and_allowed():
+async def test_confirm_shell_if_needed_denied_and_allowed() -> None:
     tool_name = "shell_execute"
     command = "rm -rf /tmp"
     args = {"command": command}
@@ -74,7 +74,7 @@ async def test_confirm_shell_if_needed_denied_and_allowed():
 
 
 @pytest.mark.asyncio
-async def test_confirm_shell_if_needed_ignores_other_tools_and_bad_command():
+async def test_confirm_shell_if_needed_ignores_other_tools_and_bad_command() -> None:
     ui = make_ui_mock()
     res = await confirm_shell_if_needed(
         tool_name="some_other_tool",
@@ -94,7 +94,7 @@ async def test_confirm_shell_if_needed_ignores_other_tools_and_bad_command():
 
 
 @pytest.mark.asyncio
-async def test_confirmation_tool_callbacks_tool_pattern():
+async def test_confirmation_tool_callbacks_tool_pattern() -> None:
     callbacks = ConfirmationToolCallbacks(
         tool_confirmation_patterns=[r"^my_tool$"],
         shell_confirmation_patterns=[r"will_not_match"],
@@ -126,7 +126,7 @@ async def test_confirmation_tool_callbacks_tool_pattern():
 
 
 @pytest.mark.asyncio
-async def test_confirmation_tool_callbacks_shell_pattern():
+async def test_confirmation_tool_callbacks_shell_pattern() -> None:
     callbacks = ConfirmationToolCallbacks(
         tool_confirmation_patterns=[],
         shell_confirmation_patterns=[r"danger"],
@@ -159,7 +159,7 @@ async def test_confirmation_tool_callbacks_shell_pattern():
 
 
 @pytest.mark.asyncio
-async def test_confirmation_tool_callbacks_both_patterns_shell_tool_two_prompts():
+async def test_confirmation_tool_callbacks_both_patterns_shell_tool_two_prompts() -> None:
     tool_name = "shell_execute"
     command = "do something risky"
     args = {"command": command}
