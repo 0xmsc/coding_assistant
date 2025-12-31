@@ -1,3 +1,4 @@
+from typing import Any
 import json
 
 import pytest
@@ -18,7 +19,7 @@ from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConv
 
 
 class FakeEchoTool(Tool):
-    def __init__(self):
+    def __init__(self) -> None:
         self.called_with = None
 
     def name(self) -> str:
@@ -27,16 +28,16 @@ class FakeEchoTool(Tool):
     def description(self) -> str:
         return "Echo a provided text"
 
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
 
-    async def execute(self, parameters: dict) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
         self.called_with = parameters
         return TextResult(content=f"echo: {parameters['text']}")
 
 
 @pytest.mark.asyncio
-async def test_tool_selection_then_finish():
+async def test_tool_selection_then_finish() -> None:
     echo_call = ToolCall("1", FunctionCall("fake.echo", json.dumps({"text": "hi"})))
     finish_call = ToolCall(
         "2",
@@ -115,7 +116,7 @@ async def test_tool_selection_then_finish():
 
 
 @pytest.mark.asyncio
-async def test_unknown_tool_error_then_finish(monkeypatch):
+async def test_unknown_tool_error_then_finish(monkeypatch) -> None:
     unknown_call = ToolCall("1", FunctionCall("unknown.tool", "{}"))
     finish_call = ToolCall(
         "2",
@@ -190,7 +191,7 @@ async def test_unknown_tool_error_then_finish(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_assistant_message_without_tool_calls_prompts_correction(monkeypatch):
+async def test_assistant_message_without_tool_calls_prompts_correction(monkeypatch) -> None:
     finish_call = ToolCall(
         "2",
         FunctionCall(
@@ -252,7 +253,7 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_errors_if_output_already_set():
+async def test_errors_if_output_already_set() -> None:
     desc, state = make_test_agent(tools=[FinishTaskTool(), CompactConversation()])
     state.output = AgentOutput(result="r", summary="s")
     with pytest.raises(RuntimeError, match="Agent already has a result or summary."):
@@ -267,7 +268,7 @@ async def test_errors_if_output_already_set():
 
 
 @pytest.mark.asyncio
-async def test_feedback_ok_does_not_reloop():
+async def test_feedback_ok_does_not_reloop() -> None:
     finish_call = ToolCall(
         "1",
         FunctionCall(
@@ -293,7 +294,7 @@ async def test_feedback_ok_does_not_reloop():
 
 
 @pytest.mark.asyncio
-async def test_multiple_tool_calls_processed_in_order():
+async def test_multiple_tool_calls_processed_in_order() -> None:
     call1 = ToolCall("1", FunctionCall("fake.echo", json.dumps({"text": "first"})))
     call2 = ToolCall("2", FunctionCall("fake.echo", json.dumps({"text": "second"})))
     finish_call = ToolCall(
@@ -389,7 +390,7 @@ async def test_multiple_tool_calls_processed_in_order():
 
 
 @pytest.mark.asyncio
-async def test_feedback_loop_then_finish():
+async def test_feedback_loop_then_finish() -> None:
     finish_call_1 = ToolCall(
         "1",
         FunctionCall(

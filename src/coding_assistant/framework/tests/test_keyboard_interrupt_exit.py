@@ -1,18 +1,19 @@
 import asyncio
 import pytest
 from unittest.mock import AsyncMock, patch
+from coding_assistant.framework.types import Tool
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
-from coding_assistant.llm.types import UserMessage
+from coding_assistant.llm.types import BaseMessage, UserMessage
 from coding_assistant.tools.mcp_server import start_mcp_server
 
 
 @pytest.mark.asyncio
-async def test_run_chat_loop_raises_keyboard_interrupt_at_prompt():
+async def test_run_chat_loop_raises_keyboard_interrupt_at_prompt() -> None:
     """Test that run_chat_loop propagates KeyboardInterrupt raised during ui.prompt."""
-    history = [UserMessage(content="start")]
+    history: list[BaseMessage] = [UserMessage(content="start")]
     model = "test-model"
-    tools = []
+    tools: list[Tool] = []
     instructions = None
 
     # Mock UI to raise KeyboardInterrupt when prompt is called
@@ -38,9 +39,9 @@ async def test_run_chat_loop_raises_keyboard_interrupt_at_prompt():
 
 
 @pytest.mark.asyncio
-async def test_mcp_server_shutdown_logic():
+async def test_mcp_server_shutdown_logic() -> None:
     """Test that start_mcp_server sets up the expected log configuration."""
-    tools = []
+    tools: list[Tool] = []
     port = 9999
 
     with patch("fastmcp.FastMCP.run_async", new_callable=AsyncMock) as mock_run:
@@ -62,11 +63,11 @@ async def test_mcp_server_shutdown_logic():
 
 
 @pytest.mark.asyncio
-async def test_stop_mcp_server_timeout_protection():
+async def test_stop_mcp_server_timeout_protection() -> None:
     """Test that _stop_mcp_server doesn't hang forever if a task is stubborn."""
     from coding_assistant.main import _stop_mcp_server
 
-    async def stubborn_task():
+    async def stubborn_task() -> None:
         try:
             while True:
                 await asyncio.sleep(0.1)
