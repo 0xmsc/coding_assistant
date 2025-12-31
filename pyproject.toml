@@ -43,7 +43,6 @@ strict = true
 module = [
     "coding_assistant",
     "coding_assistant.callbacks",
-    "coding_assistant.config",
     "coding_assistant.framework",
     "coding_assistant.framework.agent",
     "coding_assistant.framework.builtin_tools",
