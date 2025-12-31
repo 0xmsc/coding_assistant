@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Any, Optional
 from coding_assistant.framework.results import ToolResult
 
 
@@ -7,42 +7,44 @@ class ProgressCallbacks(ABC):
     """Abstract interface for agent callbacks."""
 
     @abstractmethod
-    def on_user_message(self, context_name: str, content: str, force: bool = False):
+    def on_user_message(self, context_name: str, content: str, force: bool = False) -> None:
         """Handle messages with role: user."""
         pass
 
     @abstractmethod
-    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
+    def on_assistant_message(self, context_name: str, content: str, force: bool = False) -> None:
         """Handle messages with role: assistant."""
         pass
 
     @abstractmethod
-    def on_assistant_reasoning(self, context_name: str, content: str):
+    def on_assistant_reasoning(self, context_name: str, content: str) -> None:
         """Handle reasoning content from assistant."""
         pass
 
     @abstractmethod
-    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
+    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any]) -> None:
         """Handle tool start events."""
         pass
 
     @abstractmethod
-    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
+    def on_tool_message(
+        self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any], result: str
+    ) -> None:
         """Handle messages with role: tool."""
         pass
 
     @abstractmethod
-    def on_content_chunk(self, chunk: str):
+    def on_content_chunk(self, chunk: str) -> None:
         """Handle LLM content chunks."""
         pass
 
     @abstractmethod
-    def on_reasoning_chunk(self, chunk: str):
+    def on_reasoning_chunk(self, chunk: str) -> None:
         """Handle LLM reasoning chunks."""
         pass
 
     @abstractmethod
-    def on_chunks_end(self):
+    def on_chunks_end(self) -> None:
         """Handle end of LLM chunks."""
         pass
 
@@ -50,28 +52,30 @@ class ProgressCallbacks(ABC):
 class NullProgressCallbacks(ProgressCallbacks):
     """Null object implementation that does nothing."""
 
-    def on_user_message(self, context_name: str, content: str, force: bool = False):
+    def on_user_message(self, context_name: str, content: str, force: bool = False) -> None:
         pass
 
-    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
+    def on_assistant_message(self, context_name: str, content: str, force: bool = False) -> None:
         pass
 
-    def on_assistant_reasoning(self, context_name: str, content: str):
+    def on_assistant_reasoning(self, context_name: str, content: str) -> None:
         pass
 
-    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
+    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any]) -> None:
         pass
 
-    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
+    def on_tool_message(
+        self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any], result: str
+    ) -> None:
         pass
 
-    def on_content_chunk(self, chunk: str):
+    def on_content_chunk(self, chunk: str) -> None:
         pass
 
-    def on_reasoning_chunk(self, chunk: str):
+    def on_reasoning_chunk(self, chunk: str) -> None:
         pass
 
-    def on_chunks_end(self):
+    def on_chunks_end(self) -> None:
         pass
 
 
@@ -82,9 +86,9 @@ class ToolCallbacks(ABC):
         context_name: str,
         tool_call_id: str,
         tool_name: str,
-        arguments: dict,
+        arguments: dict[str, Any],
         *,
-        ui,
+        ui: Any,
     ) -> Optional[ToolResult]:
         pass
 
@@ -95,8 +99,8 @@ class NullToolCallbacks(ToolCallbacks):
         context_name: str,
         tool_call_id: str,
         tool_name: str,
-        arguments: dict,
+        arguments: dict[str, Any],
         *,
-        ui,
+        ui: Any,
     ) -> Optional[ToolResult]:
         return None
