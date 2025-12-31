@@ -299,6 +299,46 @@ async def _stop_mcp_server(mcp_task: asyncio.Task | None):
         logger.debug(f"Error during MCP server shutdown: {e}")
 
 
+async def _run_execution_loop(
+    *,
+    config: Config,
+    tools: list[Tool],
+    history: list | None,
+    instructions: str,
+    working_directory: Path,
+    progress_callbacks: ProgressCallbacks,
+    tool_callbacks: ConfirmationToolCallbacks,
+    task: str | None,
+):
+    try:
+        # We wrap the main execution in a try-except KeyboardInterrupt to ensure a clean exit.
+        # Without this, an interrupt during long-running agent tasks or the chat loop could
+        # leave background tasks (like the MCP server) orphaned, causing the process to hang.
+        if config.enable_chat_mode:
+            await run_chat_session(
+                config=config,
+                tools=tools,
+                history=history,
+                instructions=instructions,
+                working_directory=working_directory,
+                progress_callbacks=progress_callbacks,
+                tool_callbacks=tool_callbacks,
+            )
+        else:
+            await run_root_agent(
+                task=task,
+                config=config,
+                tools=tools,
+                history=history,
+                instructions=instructions,
+                working_directory=working_directory,
+                progress_callbacks=progress_callbacks,
+                tool_callbacks=tool_callbacks,
+            )
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+
+
 async def _main(args):
     logger.info(f"Starting Coding Assistant with arguments {args}")
 
@@ -375,32 +415,16 @@ async def _main(args):
         )
 
         try:
-            # We wrap the main execution in a try-except KeyboardInterrupt to ensure a clean exit.
-            # Without this, an interrupt during long-running agent tasks or the chat loop could 
-            # leave background tasks (like the MCP server) orphaned, causing the process to hang.
-            if config.enable_chat_mode:
-                await run_chat_session(
-                    config=config,
-                    tools=tools,
-                    history=resume_history,
-                    instructions=instructions,
-                    working_directory=working_directory,
-                    progress_callbacks=progress_callbacks,
-                    tool_callbacks=tool_callbacks,
-                )
-            else:
-                await run_root_agent(
-                    task=args.task,
-                    config=config,
-                    tools=tools,
-                    history=resume_history,
-                    instructions=instructions,
-                    working_directory=working_directory,
-                    progress_callbacks=progress_callbacks,
-                    tool_callbacks=tool_callbacks,
-                )
-        except KeyboardInterrupt:
-            logger.info("Interrupted by user")
+            await _run_execution_loop(
+                config=config,
+                tools=tools,
+                history=resume_history,
+                instructions=instructions,
+                working_directory=working_directory,
+                progress_callbacks=progress_callbacks,
+                tool_callbacks=tool_callbacks,
+                task=args.task,
+            )
         finally:
             await _stop_mcp_server(mcp_task)
 
