@@ -12,7 +12,7 @@ Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automa
 - Prompt-toolkit powered TUI with dense and regular output modes
 - Shell/tool confirmation patterns to guard dangerous operations
 - Chat mode enabled by default for interactive conversations
-- Configurable via CLI flags (models, planning mode, instructions, etc.)
+- Configurable via CLI flags (models, plan mode, instructions, etc.)
 
 ## Requirements
 
@@ -87,6 +87,10 @@ Notes:
 - `--trace` / `--no-trace` Enable/disable tracing of model requests/responses.
 - `--sandbox` / `--no-sandbox` Enable/disable Landlock-based sandboxing (default: **enabled**).
 - `--wait-for-debugger` Wait for a debugger (debugpy) to attach on port 1234.
+- `--ask-user` / `--no-ask-user` Enable/disable asking the user for input in agent mode (default: **enabled**).
+- `--mcp-server` / `--no-mcp-server` Start an MCP server in the background exposing all available tools (default: **enabled**).
+- `--skills-directories` Paths to directories containing Agent Skills (with SKILL.md files).
+- `--print-reasoning` / `--no-print-reasoning` Print reasoning chunks from the model (default: **enabled**).
 
 Run `coding-assistant --help` to see all options.
 
@@ -208,13 +212,15 @@ Coding Assistant includes a skills system that provides specialized workflows, t
 
 The following skills are available:
 
-- **planning** - Guidelines for iteratively planning tasks and changes before implementation. Use when the user requests a non-trivial task or when you need to align on a complex implementation strategy.
+- **plan** - Guidelines for iteratively planning tasks and changes before implementation. Use this when the user requests a non-trivial task or when you need to align on a complex implementation strategy.
 
-- **code-review** - Provides a structured workflow for planning and executing code reviews like a senior engineer, including checklists for quality, security, and maintainability. Use when asked to review code, PRs, or plan a code review task.
+- **develop** - General principles for exploring, developing, editing, and refactoring code. Use for codebase analysis, implementation tasks, and code quality improvements.
+
+- **commit** - Helps write conventional commit messages, create atomic commits, and follow git best practices. Use when the agent needs to help with git commits, commit message writing, or git workflow guidance.
+
+- **review-code** - Provides a structured workflow for planning and executing code reviews like a senior engineer. Use when asked to review code, PRs, or plan a code review task.
 
 - **create-skill** - Guide for creating new Agent Skills. Use this skill when you need to create a new skill to extend the agent's capabilities with specialized knowledge, workflows, or tool integrations.
-
-- **developing** - General principles for exploring, developing, editing, and refactoring code. Use for codebase analysis, implementation tasks, and code quality improvements.
 
 ### How Skills Work
 
