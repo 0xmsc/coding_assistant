@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Awaitable, Protocol
+from typing import Any, Awaitable, Protocol
 
 from coding_assistant.llm.types import (
     BaseMessage,
@@ -26,10 +26,10 @@ class Tool(LLMTool, ABC):
     def description(self) -> str: ...
 
     @abstractmethod
-    def parameters(self) -> dict: ...
+    def parameters(self) -> dict[str, Any]: ...
 
     @abstractmethod
-    async def execute(self, parameters) -> ToolResult: ...
+    async def execute(self, parameters: dict[str, Any]) -> ToolResult: ...
 
 
 @dataclass(frozen=True)

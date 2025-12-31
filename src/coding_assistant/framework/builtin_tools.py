@@ -1,3 +1,4 @@
+from typing import Any
 from pydantic import BaseModel, Field
 from coding_assistant.framework.types import Tool
 from coding_assistant.framework.results import FinishTaskResult, CompactConversationResult
@@ -19,10 +20,10 @@ class FinishTaskTool(Tool):
     def description(self) -> str:
         return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop. This tool shall not be called when there are still open questions for the client."
 
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         return FinishTaskSchema.model_json_schema()
 
-    async def execute(self, parameters) -> FinishTaskResult:
+    async def execute(self, parameters: dict[str, Any]) -> FinishTaskResult:
         return FinishTaskResult(
             result=parameters["result"],
             summary=parameters["summary"],
@@ -40,8 +41,8 @@ class CompactConversationTool(Tool):
     def description(self) -> str:
         return "Give the framework a summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. Additionally, you should include the next steps you had planned. When the user tells you to call this tool, you must do so immediately! This can also be called when you have reached a milestone and you think that the context you've gathered so far will not be relevant anymore going forward."
 
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         return CompactConversationSchema.model_json_schema()
 
-    async def execute(self, parameters) -> CompactConversationResult:
+    async def execute(self, parameters: dict[str, Any]) -> CompactConversationResult:
         return CompactConversationResult(summary=parameters["summary"])
