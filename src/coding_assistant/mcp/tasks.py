@@ -30,7 +30,7 @@ class TaskManager:
         self._cleanup_finished_tasks()
         return task_id
 
-    def _cleanup_finished_tasks(self):
+    def _cleanup_finished_tasks(self) -> None:
         current_finished = [tid for tid, task in self._tasks.items() if not task.handle.is_running]
         if len(current_finished) > self._max_finished_tasks:
             num_to_remove = len(current_finished) - self._max_finished_tasks
@@ -44,7 +44,7 @@ class TaskManager:
     def list_tasks(self) -> list[Task]:
         return list(self._tasks.values())
 
-    def remove_task(self, task_id: int):
+    def remove_task(self, task_id: int) -> None:
         if task_id in self._tasks:
             task = self._tasks[task_id]
             loop = asyncio.get_running_loop()
