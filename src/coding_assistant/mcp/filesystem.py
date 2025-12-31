@@ -30,7 +30,7 @@ async def edit_file(
     replace_all: Annotated[bool, "Whether to replace all occurrences (default false)."] = False,
 ) -> str:
     """
-    Apply a single text replacement to a file and return a unified diff.
+    Apply text replacement(s) to a file and return a unified diff.
 
     Semantics:
     - The edit is validated against the current content.
