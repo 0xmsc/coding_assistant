@@ -37,7 +37,7 @@ class InterruptController:
         self._original_handler = signal.signal(signal.SIGINT, self._signal_handler)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Restore original SIGINT handler."""
         if self._original_handler is not None:
             signal.signal(signal.SIGINT, self._original_handler)
