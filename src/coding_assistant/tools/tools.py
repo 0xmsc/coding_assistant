@@ -1,5 +1,7 @@
 import logging
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks, NullProgressCallbacks
@@ -51,10 +53,10 @@ class AskClientTool(Tool):
     def description(self) -> str:
         return "Ask the client for input."
 
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         return AskClientSchema.model_json_schema()
 
-    async def execute(self, parameters: dict) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
         validated = AskClientSchema.model_validate(parameters)
         answer = await self._ui.ask(validated.question, default=validated.default_answer)
         return TextResult(content=str(answer))
@@ -72,9 +74,9 @@ class AgentTool(Tool):
         progress_callbacks: ProgressCallbacks,
         tool_callbacks: ToolCallbacks,
         name: str = "launch_agent",
-        history: list | None = None,
+        history: list[Any] | None = None,
         completer: Completer | None = None,
-    ):
+    ) -> None:
         super().__init__()
         self._model = model
         self._expert_model = expert_model
@@ -87,7 +89,7 @@ class AgentTool(Tool):
         self._name = name
         self._history = history
         self._completer = completer or openai_complete
-        self.history: list = []
+        self.history: list[Any] = []
         self.summary: str = ""
 
     def name(self) -> str:
@@ -96,15 +98,15 @@ class AgentTool(Tool):
     def description(self) -> str:
         return "Launch an agent to work on a given task. The agent will refuse to accept any task that is not clearly defined and misses context. It needs to be clear what to do using **only** the information given in the task description."
 
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         return LaunchAgentSchema.model_json_schema()
 
-    def get_model(self, parameters: dict) -> str:
+    def get_model(self, parameters: dict[str, Any]) -> str:
         if parameters.get("expert_knowledge"):
             return self._expert_model
         return self._model
 
-    async def execute(self, parameters: dict) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
         validated = LaunchAgentSchema.model_validate(parameters)
         params = [
             Parameter(

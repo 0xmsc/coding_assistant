@@ -17,7 +17,7 @@ def get_free_port() -> int:
     """Get a free port on localhost."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", 0))
-        return s.getsockname()[1]
+        return int(s.getsockname()[1])
 
 
 class AggregatedTool(FastMCPTool):
@@ -40,7 +40,7 @@ class AggregatedTool(FastMCPTool):
         return FastMCPToolResult(content=result.content)
 
 
-async def start_mcp_server(tools: list[Tool], port: int) -> asyncio.Task:
+async def start_mcp_server(tools: list[Tool], port: int) -> asyncio.Task[Any]:
     mcp = FastMCP("Coding Assistant", instructions="Exposes Coding Assistant tools via MCP")
 
     for tool in tools:
