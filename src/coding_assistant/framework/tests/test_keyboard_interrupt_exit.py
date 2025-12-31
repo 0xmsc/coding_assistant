@@ -57,3 +57,27 @@ async def test_mcp_server_shutdown_logic():
             await task
         except asyncio.CancelledError:
             pass
+
+@pytest.mark.asyncio
+async def test_stop_mcp_server_timeout_protection():
+    """Test that _stop_mcp_server doesn't hang forever if a task is stubborn."""
+    from coding_assistant.main import _stop_mcp_server
+    
+    async def stubborn_task():
+        try:
+            while True:
+                await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            # Simulate a task that takes a long time to clean up or "hangs"
+            await asyncio.sleep(10)
+
+    task = asyncio.create_task(stubborn_task())
+    
+    # This should return after ~2 seconds because of the timeout in _stop_mcp_server
+    # without raising TimeoutError to the caller.
+    with patch("coding_assistant.main.asyncio.timeout", side_effect=lambda t: asyncio.timeout(0.1)):
+        # We patch the timeout to be very short for the test
+        await _stop_mcp_server(task)
+    
+    # The task should have been told to cancel
+    assert task.cancelling() > 0 or task.cancelled()
