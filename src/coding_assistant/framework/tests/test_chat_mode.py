@@ -18,7 +18,7 @@ from coding_assistant.framework.callbacks import NullProgressCallbacks, NullTool
 
 class FakeEchoTool(Tool):
     def __init__(self) -> None:
-        self.called_with = None
+        self.called_with: Any = None
 
     def name(self) -> str:
         return "fake.echo"
@@ -199,9 +199,9 @@ async def test_chat_compact_conversation_not_forced_in_callbacks() -> None:
 
     class SpyCallbacks(NullProgressCallbacks):
         def __init__(self) -> None:
-            self.user_messages = []
+            self.user_messages: Any = []
 
-        def on_user_message(self, context_name: str, content: str, force: bool = False):
+        def on_user_message(self, context_name: str, content: str, force: bool = False) -> Any:
             self.user_messages.append((content, force))
 
     callbacks = SpyCallbacks()
@@ -271,7 +271,7 @@ class FakeCompleterWithCost(FakeCompleter):
         self._total_cost = 0.0
         self._cumulative_cost = 0.0
 
-    async def __call__(self, messages, *, model, tools, callbacks) -> Completion:
+    async def __call__(self, messages: Any, *, model: Any, tools: Any, callbacks: Any) -> Completion:
         if hasattr(self, "before_completion") and callable(self.before_completion):
             await self.before_completion()
 

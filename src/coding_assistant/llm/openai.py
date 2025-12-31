@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import dataclasses
 import asyncio
 import functools
@@ -6,7 +8,7 @@ import logging
 import os
 import re
 from collections.abc import Sequence
-from typing import Literal, cast
+from typing import Literal, cast, Any
 
 import httpx
 from httpx_sse import aconnect_sse, SSEError
@@ -37,11 +39,11 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
         return ("https://api.openai.com/v1", os.environ["OPENAI_API_KEY"])
 
 
-def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
+def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
     full_content = ""
     full_reasoning = ""
-    full_tool_calls: dict[int, dict] = {}
-    full_reasoning_details: list[dict] = []
+    full_tool_calls: dict[int, dict[str, Any]] = {}
+    full_reasoning_details: list[dict[str, Any]] = []
 
     for chunk in chunks:
         delta = chunk["choices"][0]["delta"]
@@ -117,7 +119,7 @@ def _merge_chunks(chunks: list[dict]) -> AssistantMessage:
     )
 
 
-def _extract_usage(chunks: list[dict]) -> Usage | None:
+def _extract_usage(chunks: list[dict[str, Any]]) -> Usage | None:
     if not chunks:
         return None
 
@@ -129,7 +131,7 @@ def _extract_usage(chunks: list[dict]) -> Usage | None:
     return None
 
 
-def _prepare_messages(messages: list[BaseMessage]) -> list[dict]:
+def _prepare_messages(messages: list[BaseMessage]) -> list[dict[str, Any]]:
     result = [message_to_dict(m) for m in messages]
     for m in result:
         if "provider_specific_fields" in m:
@@ -145,7 +147,7 @@ async def _try_completion(
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
-):
+) -> Completion:
     base_url, api_key = _get_base_url_and_api_key()
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -168,7 +170,7 @@ async def _try_completion(
 
     async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=httpx.Timeout(30)) as client:
         async with aconnect_sse(client, "POST", "/chat/completions", json=payload) as source:
-            chunks = []
+            chunks: list[dict[str, Any]] = []
             try:
                 async for event in source.aiter_sse():
                     if event.data == "[DONE]":
@@ -197,7 +199,7 @@ async def _try_completion(
             message = _merge_chunks(chunks)
             usage = _extract_usage(chunks)
 
-    trace_data = {
+    trace_data: dict[str, Any] = {
         "model": model,
         "chunks": chunks,
         "messages": provider_messages,
@@ -222,7 +224,7 @@ async def _try_completion_with_retry(
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
-):
+) -> Completion:
     max_retries = 5
     for attempt in range(max_retries):
         try:
@@ -232,6 +234,7 @@ async def _try_completion_with_retry(
                 raise
             logger.warning(f"Retry {attempt + 1}/{max_retries} due to {e} for model {model}")
             await asyncio.sleep(0.5 + attempt)
+    raise RuntimeError("Unreachable")
 
 
 @functools.cache
@@ -259,7 +262,7 @@ async def complete(
     model: str,
     tools: Sequence[Tool],
     callbacks: ProgressCallbacks,
-):
+) -> Completion:
     try:
         model, reasoning_effort = _parse_model_and_reasoning(model)
         return await _try_completion_with_retry(messages, tools, model, reasoning_effort, callbacks)

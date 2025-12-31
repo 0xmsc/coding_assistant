@@ -18,11 +18,11 @@ from coding_assistant.history import (
 )
 
 
-def test_fix_invalid_history_with_empty_list():
+def test_fix_invalid_history_with_empty_list() -> None:
     assert _fix_invalid_history([]) == []
 
 
-def test_fix_invalid_history_with_valid_history():
+def test_fix_invalid_history_with_valid_history() -> None:
     history = [
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there!"},
@@ -30,7 +30,7 @@ def test_fix_invalid_history_with_valid_history():
     assert _fix_invalid_history(history) == history
 
 
-def test_fix_invalid_history_with_trailing_assistant_message_with_tool_calls():
+def test_fix_invalid_history_with_trailing_assistant_message_with_tool_calls() -> None:
     history = [
         {"role": "user", "content": "Hello"},
         {
@@ -42,7 +42,7 @@ def test_fix_invalid_history_with_trailing_assistant_message_with_tool_calls():
     assert _fix_invalid_history(history) == [{"role": "user", "content": "Hello"}]
 
 
-def test_fix_invalid_history_with_no_trailing_assistant_message():
+def test_fix_invalid_history_with_no_trailing_assistant_message() -> None:
     history = [
         {"role": "user", "content": "Hello"},
         {
@@ -55,7 +55,7 @@ def test_fix_invalid_history_with_no_trailing_assistant_message():
     assert _fix_invalid_history(history) == history
 
 
-def test_fix_invalid_history_with_multiple_trailing_assistant_messages():
+def test_fix_invalid_history_with_multiple_trailing_assistant_messages() -> None:
     history = [
         {"role": "user", "content": "Hello"},
         {
@@ -72,7 +72,7 @@ def test_fix_invalid_history_with_multiple_trailing_assistant_messages():
     assert _fix_invalid_history(history) == [{"role": "user", "content": "Hello"}]
 
 
-def test_fix_invalid_history_with_objects():
+def test_fix_invalid_history_with_objects() -> None:
     history = [
         AssistantMessage(
             content="Thinking...", tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))]
@@ -89,7 +89,7 @@ def test_fix_invalid_history_with_objects():
     assert _fix_invalid_history(history_invalid) == []
 
 
-def test_orchestrator_history_roundtrip(tmp_path: Path):
+def test_orchestrator_history_roundtrip(tmp_path: Path) -> None:
     wd = tmp_path
 
     cache_dir = get_project_cache_dir(wd)
@@ -110,7 +110,7 @@ def test_orchestrator_history_roundtrip(tmp_path: Path):
     assert isinstance(data, list) and data[-1].content == "msg-2"
 
 
-def test_save_orchestrator_history_with_objects(tmp_path: Path):
+def test_save_orchestrator_history_with_objects(tmp_path: Path) -> None:
     wd = tmp_path
     history = [UserMessage(content="Hello")]
     save_orchestrator_history(wd, history)
@@ -123,7 +123,7 @@ def test_save_orchestrator_history_with_objects(tmp_path: Path):
     assert data[0].content == "Hello"
 
 
-def test_save_orchestrator_history_strips_trailing_assistant_tool_calls(tmp_path: Path):
+def test_save_orchestrator_history_strips_trailing_assistant_tool_calls(tmp_path: Path) -> None:
     wd = tmp_path
     invalid = [
         {"role": "user", "content": "hi"},
