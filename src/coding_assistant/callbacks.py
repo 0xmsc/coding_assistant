@@ -6,7 +6,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class ParagraphBuffer:
-    def __init__(self):
+    def __init__(self) -> None:
         self._buffer = ""
 
     def _is_inside_code_fence(self, text: str) -> bool:
@@ -74,7 +74,9 @@ class IdleState:
 ProgressState = Union[ReasoningState, ContentState, ToolState, IdleState, None]
 
 
-async def confirm_tool_if_needed(*, tool_name: str, arguments: dict, patterns: list[str], ui) -> Optional[TextResult]:
+async def confirm_tool_if_needed(
+    *, tool_name: str, arguments: dict[str, Any], patterns: list[str], ui: Any
+) -> Optional[TextResult]:
     for pat in patterns:
         if re.search(pat, tool_name):
             question = f"Execute tool `{tool_name}` with arguments `{arguments}`?"
@@ -85,7 +87,9 @@ async def confirm_tool_if_needed(*, tool_name: str, arguments: dict, patterns: l
     return None
 
 
-async def confirm_shell_if_needed(*, tool_name: str, arguments: dict, patterns: list[str], ui) -> Optional[TextResult]:
+async def confirm_shell_if_needed(
+    *, tool_name: str, arguments: dict[str, Any], patterns: list[str], ui: Any
+) -> Optional[TextResult]:
     if tool_name != "shell_execute":
         return None
 
@@ -118,24 +122,24 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._left_padding = (0, 0, 0, 2)
         self._print_reasoning = print_reasoning
 
-    def on_user_message(self, context_name: str, content: str, force: bool = False):
+    def on_user_message(self, context_name: str, content: str, force: bool = False) -> None:
         if force:
             self._print_banner("User", content)
 
-    def on_assistant_message(self, context_name: str, content: str, force: bool = False):
+    def on_assistant_message(self, context_name: str, content: str, force: bool = False) -> None:
         if force:
             self._print_banner("Assistant", content)
 
-    def _print_banner(self, role: str, content: str):
+    def _print_banner(self, role: str, content: str) -> None:
         self._finalize_state()
         print()
         print(Markdown(f"## {role}\n\n{content}"))
         self._state = IdleState()
 
-    def on_assistant_reasoning(self, context_name: str, content: str):
+    def on_assistant_reasoning(self, context_name: str, content: str) -> None:
         pass
 
-    def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict):
+    def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict[str, Any]) -> None:
         multiline_config = self._SPECIAL_TOOLS.get(tool_name, {})
 
         header_params = []
@@ -171,7 +175,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
                     print(Padding(Markdown(f"````{lang}\n{value}\n````"), self._left_padding))
             print()
 
-    def _get_lang_override(self, tool_name: str, arguments: dict) -> Optional[str]:
+    def _get_lang_override(self, tool_name: str, arguments: dict[str, Any]) -> Optional[str]:
         file_tools = {
             "filesystem_write_file",
             "filesystem_edit_file",
@@ -184,7 +188,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 return ext[1:]
         return None
 
-    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict):
+    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any]) -> None:
         self._finalize_state()
         print()
         self._print_tool_start("▶", tool_name, arguments)
@@ -200,7 +204,9 @@ class DenseProgressCallbacks(ProgressCallbacks):
             return True
         return False
 
-    def on_tool_message(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict, result: str):
+    def on_tool_message(
+        self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any], result: str
+    ) -> None:
         if not isinstance(self._state, ToolState) or self._state.tool_call_id != tool_call_id:
             print()
             self._print_tool_start("◀", tool_name, arguments)
@@ -210,16 +216,16 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
         self._state = ToolState()
 
-    def on_reasoning_chunk(self, chunk: str):
+    def on_reasoning_chunk(self, chunk: str) -> None:
         if self._print_reasoning:
             self._handle_chunk(chunk, ReasoningState, "dim cyan")
 
-    def on_content_chunk(self, chunk: str):
+    def on_content_chunk(self, chunk: str) -> None:
         self._handle_chunk(chunk, ContentState)
 
     def _handle_chunk(
         self, chunk: str, state_class: type[Union[ContentState, ReasoningState]], style: str | None = None
-    ):
+    ) -> None:
         if not isinstance(self._state, state_class):
             self._finalize_state()
             print()
@@ -231,7 +237,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
             md = Markdown(paragraph)
             print(Styled(md, style) if style else md)
 
-    def _finalize_state(self):
+    def _finalize_state(self) -> None:
         if isinstance(self._state, (ContentState, ReasoningState)):
             if flushed := self._state.buffer.flush():
                 print()
@@ -241,7 +247,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
             elif isinstance(self._state, ReasoningState):
                 print()
 
-    def on_chunks_end(self):
+    def on_chunks_end(self) -> None:
         self._finalize_state()
         self._state = IdleState()
 
@@ -261,9 +267,9 @@ class ConfirmationToolCallbacks(ToolCallbacks):
         context_name: str,
         tool_call_id: str,
         tool_name: str,
-        arguments: dict,
+        arguments: dict[str, Any],
         *,
-        ui,
+        ui: Any,
     ) -> Optional[ToolResult]:
         if result := await confirm_tool_if_needed(
             tool_name=tool_name,

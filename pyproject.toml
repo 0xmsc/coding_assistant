@@ -41,9 +41,6 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = [
-    "coding_assistant.callbacks",
-    "coding_assistant.framework",
-    "coding_assistant.framework.agent",
     "coding_assistant.framework.builtin_tools",
     "coding_assistant.framework.callbacks",
     "coding_assistant.framework.chat",
