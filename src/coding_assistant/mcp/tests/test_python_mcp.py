@@ -34,7 +34,7 @@ async def test_python_execute_loopback_with_mock_server(manager):
     try:
         # Wait for server to be ready
         started = False
-        for _ in range(20):
+        for _ in range(10):
             try:
                 async with httpx.AsyncClient() as client:
                     resp = await client.get(mcp_url, timeout=1.0)
@@ -46,7 +46,7 @@ async def test_python_execute_loopback_with_mock_server(manager):
                         break
             except httpx.ConnectError:
                 pass
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.1)
 
         if not started:
             pytest.fail("Mock MCP server failed to start")
