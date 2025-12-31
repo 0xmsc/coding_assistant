@@ -72,34 +72,34 @@ def test_create_config_fallback_to_model():
     assert config.enable_chat_mode is False
 
 
-@patch("coding_assistant.main.asyncio.run")
+@patch("coding_assistant.main._main")
 @patch("coding_assistant.main.enable_tracing")
-def test_main_enables_tracing_when_flag_set(mock_enable_tracing, mock_asyncio_run):
+def test_main_enables_tracing_when_flag_set(mock_enable_tracing, mock_main):
     """Test main enables tracing when --trace is True."""
     with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--trace"]):
         main()
         mock_enable_tracing.assert_called_once()
-        mock_asyncio_run.assert_called_once()
+        mock_main.assert_called_once()
 
 
+@patch("coding_assistant.main._main")
 @patch("coding_assistant.main.debugpy.wait_for_client")
 @patch("coding_assistant.main.debugpy.listen")
-@patch("coding_assistant.main.asyncio.run")
-def test_main_waits_for_debugger(mock_asyncio_run, mock_listen, mock_wait):
+def test_main_waits_for_debugger(mock_listen, mock_wait, mock_main):
     """Test main waits for debugger when --wait-for-debugger is True."""
     with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--wait-for-debugger"]):
         main()
         mock_listen.assert_called_once_with(1234)
         mock_wait.assert_called_once()
-        mock_asyncio_run.assert_called_once()
+        mock_main.assert_called_once()
 
 
-@patch("coding_assistant.main.asyncio.run")
-def test_main_enters_chat_mode_by_default(mock_asyncio_run):
+@patch("coding_assistant.main._main")
+def test_main_enters_chat_mode_by_default(mock_main):
     """Test main enters chat mode when no --task is provided."""
     with patch("sys.argv", ["coding-assistant", "--model", "test-model"]):
         main()
-        mock_asyncio_run.assert_called_once()
+        mock_main.assert_called_once()
 
 
 def test_help_exits_with_zero():
