@@ -1,9 +1,10 @@
+from typing import cast, Any
 from unittest.mock import patch, call
 from coding_assistant import callbacks
 from coding_assistant.callbacks import DenseProgressCallbacks, ReasoningState, ContentState, ToolState, IdleState
 
 
-def test_dense_callbacks_lifecycle():
+def test_dense_callbacks_lifecycle() -> None:
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
@@ -28,7 +29,7 @@ def test_dense_callbacks_lifecycle():
     assert mock_print.called
 
 
-def test_dense_callbacks_tool_formatting():
+def test_dense_callbacks_tool_formatting() -> None:
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
@@ -38,7 +39,7 @@ def test_dense_callbacks_tool_formatting():
     assert mock_print.called
 
 
-def test_dense_callbacks_paragraph_flushing():
+def test_dense_callbacks_paragraph_flushing() -> None:
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
@@ -50,7 +51,7 @@ def test_dense_callbacks_paragraph_flushing():
     assert mock_print.called
 
 
-def test_dense_callbacks_state_transition_flushes():
+def test_dense_callbacks_state_transition_flushes() -> None:
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
@@ -73,7 +74,7 @@ def test_dense_callbacks_state_transition_flushes():
     assert found_reasoning, "Reasoning should have been flushed when switching to content"
 
 
-def test_dense_callbacks_empty_line_logic():
+def test_dense_callbacks_empty_line_logic() -> None:
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
@@ -97,7 +98,7 @@ def test_dense_callbacks_empty_line_logic():
         assert found_newline, "Expected newline when switching from reasoning to content"
 
 
-def test_dense_callbacks_multiline_tool_formatting(capsys):
+def test_dense_callbacks_multiline_tool_formatting(capsys: Any) -> None:
     cb = DenseProgressCallbacks()
     callbacks.console.width = 200
 
@@ -183,14 +184,14 @@ def test_dense_callbacks_multiline_tool_formatting(capsys):
     assert 'python_execute(code="print(1)")' in captured.out
 
 
-def test_dense_callbacks_empty_arg_parentheses(capsys):
+def test_dense_callbacks_empty_arg_parentheses(capsys: Any) -> None:
     cb = DenseProgressCallbacks()
     cb.on_tool_start("TestAgent", "call_1", "tasks_list_tasks", {})
     captured = capsys.readouterr()
     assert "▶ tasks_list_tasks()" in captured.out
 
 
-def test_dense_callbacks_long_arg_parentheses(capsys):
+def test_dense_callbacks_long_arg_parentheses(capsys: Any) -> None:
     cb = DenseProgressCallbacks()
     cb.on_tool_start(
         "TestAgent",
@@ -202,7 +203,7 @@ def test_dense_callbacks_long_arg_parentheses(capsys):
     assert "▶ shell_execute(command, background=false)" in captured.out
 
 
-def test_dense_callbacks_tool_result_stripping():
+def test_dense_callbacks_tool_result_stripping() -> None:
     cb = DenseProgressCallbacks()
     with patch("coding_assistant.callbacks.print") as mock_print:
         cb.on_tool_message(
@@ -239,11 +240,11 @@ def test_dense_callbacks_tool_result_stripping():
         assert found_todo
 
 
-def test_dense_callbacks_tool_lang_extension(capsys):
+def test_dense_callbacks_tool_lang_extension(capsys: Any) -> None:
     cb = DenseProgressCallbacks()
     callbacks.console.width = 200
 
-    with patch("coding_assistant.callbacks.Markdown", side_effect=callbacks.Markdown) as mock_markdown:
+    with patch("coding_assistant.callbacks.Markdown", side_effect=cast(Any, callbacks).Markdown) as mock_markdown:
         cb.on_tool_start(
             "TestAgent",
             "call_1",

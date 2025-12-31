@@ -20,7 +20,7 @@ from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConv
 
 class FakeEchoTool(Tool):
     def __init__(self) -> None:
-        self.called_with = None
+        self.called_with: Any = None
 
     def name(self) -> str:
         return "fake.echo"
@@ -116,7 +116,7 @@ async def test_tool_selection_then_finish() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unknown_tool_error_then_finish(monkeypatch) -> None:
+async def test_unknown_tool_error_then_finish(monkeypatch: Any) -> None:
     unknown_call = ToolCall("1", FunctionCall("unknown.tool", "{}"))
     finish_call = ToolCall(
         "2",
@@ -191,7 +191,7 @@ async def test_unknown_tool_error_then_finish(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_assistant_message_without_tool_calls_prompts_correction(monkeypatch) -> None:
+async def test_assistant_message_without_tool_calls_prompts_correction(monkeypatch: Any) -> None:
     finish_call = ToolCall(
         "2",
         FunctionCall(
