@@ -6,7 +6,7 @@ from coding_assistant.mcp.filesystem import edit_file, write_file
 
 
 @pytest.mark.asyncio
-async def test_write_file_creates_and_writes(tmp_path: Path):
+async def test_write_file_creates_and_writes(tmp_path: Path) -> None:
     p = tmp_path / "a.txt"
     msg = await write_file(p, "hello")
     assert p.read_text(encoding="utf-8") == "hello"
@@ -14,7 +14,7 @@ async def test_write_file_creates_and_writes(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_write_file_overwrites_existing(tmp_path: Path):
+async def test_write_file_overwrites_existing(tmp_path: Path) -> None:
     p = tmp_path / "b.txt"
     await write_file(p, "first")
     await write_file(p, "second")
@@ -22,7 +22,7 @@ async def test_write_file_overwrites_existing(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_write_file_creates_parent_directories(tmp_path: Path):
+async def test_write_file_creates_parent_directories(tmp_path: Path) -> None:
     p = tmp_path / "nested/dir/c.txt"
     assert not p.parent.exists()
     await write_file(p, "content")
@@ -31,7 +31,7 @@ async def test_write_file_creates_parent_directories(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_write_file_utf8_content(tmp_path: Path):
+async def test_write_file_utf8_content(tmp_path: Path) -> None:
     p = tmp_path / "utf8.txt"
     text = "こんにちは世界 🌍"
     await write_file(p, text)
@@ -39,7 +39,7 @@ async def test_write_file_utf8_content(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_unique_replace_and_diff(tmp_path: Path):
+async def test_edit_file_unique_replace_and_diff(tmp_path: Path) -> None:
     p = tmp_path / "sample.txt"
     original = "hello world\nsecond line\n"
     await write_file(p, original)
@@ -54,7 +54,7 @@ async def test_edit_file_unique_replace_and_diff(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_no_match_raises(tmp_path: Path):
+async def test_edit_file_no_match_raises(tmp_path: Path) -> None:
     p = tmp_path / "nomatch.txt"
     await write_file(p, "abc\n")
 
@@ -64,7 +64,7 @@ async def test_edit_file_no_match_raises(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_multiple_matches_raises(tmp_path: Path):
+async def test_edit_file_multiple_matches_raises(tmp_path: Path) -> None:
     p = tmp_path / "multi.txt"
     await write_file(p, "foo bar foo\n")
 
@@ -74,7 +74,7 @@ async def test_edit_file_multiple_matches_raises(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_multiple_edits_success(tmp_path: Path):
+async def test_edit_file_multiple_edits_success(tmp_path: Path) -> None:
     p = tmp_path / "multi_success.txt"
     original = "alpha beta gamma\n"
 
@@ -90,7 +90,7 @@ async def test_edit_file_multiple_edits_success(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_order_applies_sequentially(tmp_path: Path):
+async def test_edit_file_order_applies_sequentially(tmp_path: Path) -> None:
     p = tmp_path / "order.txt"
     await write_file(p, "foo bar\n")
 
@@ -103,7 +103,7 @@ async def test_edit_file_order_applies_sequentially(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_atomicity_on_failure(tmp_path: Path):
+async def test_edit_file_atomicity_on_failure(tmp_path: Path) -> None:
     p = tmp_path / "atomic.txt"
     original = "one two three two\n"
 
@@ -119,7 +119,7 @@ async def test_edit_file_atomicity_on_failure(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_empty_string_replacement(tmp_path: Path):
+async def test_edit_file_empty_string_replacement(tmp_path: Path) -> None:
     """Test replacing with empty string as a form of deletion."""
     p = tmp_path / "empty_noop.txt"
     original = "content\n"
@@ -133,7 +133,7 @@ async def test_edit_file_empty_string_replacement(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_replace_with_empty_string(tmp_path: Path):
+async def test_edit_file_replace_with_empty_string(tmp_path: Path) -> None:
     p = tmp_path / "delete.txt"
     original = "keep delete keep\n"
 
@@ -146,7 +146,7 @@ async def test_edit_file_replace_with_empty_string(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_unicode_replacement(tmp_path: Path):
+async def test_edit_file_unicode_replacement(tmp_path: Path) -> None:
     p = tmp_path / "unicode.txt"
     original = "こんにちは世界\n"
 
@@ -160,7 +160,7 @@ async def test_edit_file_unicode_replacement(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_replace_entire_content(tmp_path: Path):
+async def test_edit_file_replace_entire_content(tmp_path: Path) -> None:
     p = tmp_path / "entire.txt"
     original = "entire content\n"
 
@@ -173,7 +173,7 @@ async def test_edit_file_replace_entire_content(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_replace_all_false_default(tmp_path: Path):
+async def test_edit_file_replace_all_false_default(tmp_path: Path) -> None:
     """Test that replace_all=False (default) behaves as before, rejecting multiple matches."""
     p = tmp_path / "replace_all_false.txt"
     original = "foo bar foo\n"
@@ -185,7 +185,7 @@ async def test_edit_file_replace_all_false_default(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_replace_all_true_multiple_occurrences(tmp_path: Path):
+async def test_edit_file_replace_all_true_multiple_occurrences(tmp_path: Path) -> None:
     """Test that replace_all=True replaces all occurrences of old_text."""
     p = tmp_path / "replace_all_true.txt"
     original = "foo bar foo baz foo\n"
@@ -202,7 +202,7 @@ async def test_edit_file_replace_all_true_multiple_occurrences(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_replace_all_true_single_occurrence(tmp_path: Path):
+async def test_edit_file_replace_all_true_single_occurrence(tmp_path: Path) -> None:
     """Test that replace_all=True works correctly when there's only one occurrence."""
     p = tmp_path / "replace_all_single.txt"
     original = "hello unique world\n"
@@ -217,7 +217,7 @@ async def test_edit_file_replace_all_true_single_occurrence(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_edit_file_replace_all_true_no_occurrences(tmp_path: Path):
+async def test_edit_file_replace_all_true_no_occurrences(tmp_path: Path) -> None:
     """Test that replace_all=True with no matches still raises ValueError."""
     p = tmp_path / "replace_all_none.txt"
     original = "no match here\n"
