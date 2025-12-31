@@ -1,58 +1,7 @@
+import pytest
 from unittest.mock import patch
 
-import coding_assistant.main
 from coding_assistant.main import parse_args, main, create_config_from_args
-
-
-@patch("subprocess.run")
-def test_cli_help_via_subprocess_mock(mock_run):
-    """Mocked test for --help (replace with real CLI testing when setup)."""
-    mock_run.return_value = type("Proc", (), {"returncode": 0, "stdout": "usage: ", "stderr": ""})()
-
-    # Test parse_args exits cleanly on --help (SystemExit expected)
-    with patch("sys.argv", ["coding-assistant", "--help", "--model", "test"]):
-        with patch("sys.exit") as mock_exit:
-            try:
-                parse_args()
-            except SystemExit:
-                pass  # Expected for --help
-            mock_exit.assert_called_once_with(0)  # --help exits with 0
-
-
-@patch("coding_assistant.main.asyncio.run")
-@patch("coding_assistant.main.enable_tracing")
-def test_main_with_trace(mock_enable_tracing, mock_asyncio_run):
-    """Test main enables tracing when --trace is True."""
-    with patch("coding_assistant.main.parse_args") as mock_parse:
-        mock_args = mock_parse.return_value
-        mock_args.trace = True
-        mock_args.wait_for_debugger = False
-        main()
-        mock_enable_tracing.assert_called_once()
-        mock_asyncio_run.assert_called_once()
-
-
-@patch("coding_assistant.main.debugpy.wait_for_client")
-@patch("coding_assistant.main.debugpy.listen")
-@patch("coding_assistant.main.asyncio.run")
-def test_main_with_debugger(mock_asyncio_run, mock_listen, mock_wait):
-    """Test main waits for debugger."""
-    with patch("coding_assistant.main.parse_args") as mock_parse:
-        mock_args = mock_parse.return_value
-        mock_args.trace = False
-        mock_args.wait_for_debugger = True
-        main()
-        mock_listen.assert_called_once_with(1234)
-        mock_wait.assert_called_once()
-        mock_asyncio_run.assert_called_once()
-
-
-@patch("coding_assistant.main.asyncio.run")
-def test_main_full_execution_mocked(mock_asyncio_run):
-    """Test main function execution with real parse_args."""
-    with patch("sys.argv", ["coding-assistant", "--model", "test-model"]):
-        main()
-        mock_asyncio_run.assert_called_once()
 
 
 def test_parse_args_valid():
@@ -72,6 +21,15 @@ def test_parse_args_defaults():
         assert args.compact_conversation_at_tokens == 200000
 
 
+def test_parse_args_with_multiple_flags():
+    """Test parse_args with multiple boolean flags."""
+    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--trace", "--no-sandbox", "--no-ask-user"]):
+        args = parse_args()
+        assert args.trace is True
+        assert args.sandbox is False
+        assert args.ask_user is False
+
+
 def test_create_config_from_args():
     """Test Config object creation from args."""
     args = type("MockArgs", (), {})()
@@ -86,5 +44,67 @@ def test_create_config_from_args():
     assert config.enable_chat_mode is True
 
 
-# Note: Async functions like run_root_agent and run_chat_session can be tested separately with pytest-asyncio
-# For now, focus on getting basic coverage up from 0%
+def test_create_config_with_expert_model():
+    """Test Config creation with explicit expert_model."""
+    args = type("MockArgs", (), {})()
+    args.model = "gpt-4"
+    args.expert_model = "gpt-4-turbo"
+    args.compact_conversation_at_tokens = 100000
+    args.task = None
+    args.ask_user = True
+    config = create_config_from_args(args)
+    assert config.model == "gpt-4"
+    assert config.expert_model == "gpt-4-turbo"
+    assert config.enable_chat_mode is True
+
+
+def test_create_config_fallback_to_model():
+    """Test that expert_model falls back to model when None."""
+    args = type("MockArgs", (), {})()
+    args.model = "gpt-4o"
+    args.expert_model = None
+    args.compact_conversation_at_tokens = 100000
+    args.task = "some task"
+    args.ask_user = True
+    config = create_config_from_args(args)
+    assert config.model == "gpt-4o"
+    assert config.expert_model == "gpt-4o"
+    assert config.enable_chat_mode is False
+
+
+@patch("coding_assistant.main.asyncio.run")
+@patch("coding_assistant.main.enable_tracing")
+def test_main_enables_tracing_when_flag_set(mock_enable_tracing, mock_asyncio_run):
+    """Test main enables tracing when --trace is True."""
+    with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--trace"]):
+        main()
+        mock_enable_tracing.assert_called_once()
+        mock_asyncio_run.assert_called_once()
+
+
+@patch("coding_assistant.main.debugpy.wait_for_client")
+@patch("coding_assistant.main.debugpy.listen")
+@patch("coding_assistant.main.asyncio.run")
+def test_main_waits_for_debugger(mock_asyncio_run, mock_listen, mock_wait):
+    """Test main waits for debugger when --wait-for-debugger is True."""
+    with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--wait-for-debugger"]):
+        main()
+        mock_listen.assert_called_once_with(1234)
+        mock_wait.assert_called_once()
+        mock_asyncio_run.assert_called_once()
+
+
+@patch("coding_assistant.main.asyncio.run")
+def test_main_enters_chat_mode_by_default(mock_asyncio_run):
+    """Test main enters chat mode when no --task is provided."""
+    with patch("sys.argv", ["coding-assistant", "--model", "test-model"]):
+        main()
+        mock_asyncio_run.assert_called_once()
+
+
+def test_help_exits_with_zero():
+    """Test that --help exits cleanly with status 0."""
+    with patch("sys.argv", ["coding-assistant", "--help"]):
+        with pytest.raises(SystemExit) as exc_info:
+            parse_args()
+        assert exc_info.value.code == 0
