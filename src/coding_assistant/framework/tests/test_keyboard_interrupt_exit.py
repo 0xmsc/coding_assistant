@@ -7,8 +7,8 @@ from coding_assistant.llm.types import UserMessage
 from coding_assistant.tools.mcp_server import start_mcp_server
 
 @pytest.mark.asyncio
-async def test_run_chat_loop_exits_on_keyboard_interrupt_at_prompt():
-    """Test that run_chat_loop terminates when KeyboardInterrupt is raised during ui.prompt."""
+async def test_run_chat_loop_raises_keyboard_interrupt_at_prompt():
+    """Test that run_chat_loop propagates KeyboardInterrupt raised during ui.prompt."""
     history = [UserMessage(content="start")]
     model = "test-model"
     tools = []
@@ -18,23 +18,22 @@ async def test_run_chat_loop_exits_on_keyboard_interrupt_at_prompt():
     ui = AsyncMock()
     ui.prompt.side_effect = KeyboardInterrupt()
     
-    # Run chat loop
-    # If the fix works, this should return without raising KeyboardInterrupt
-    await run_chat_loop(
-        history=history,
-        model=model,
-        tools=tools,
-        instructions=instructions,
-        callbacks=NullProgressCallbacks(),
-        tool_callbacks=NullToolCallbacks(),
-        completer=AsyncMock(),
-        ui=ui,
-        context_name="test",
-    )
+    # Verify that KeyboardInterrupt is raised
+    with pytest.raises(KeyboardInterrupt):
+        await run_chat_loop(
+            history=history,
+            model=model,
+            tools=tools,
+            instructions=instructions,
+            callbacks=NullProgressCallbacks(),
+            tool_callbacks=NullToolCallbacks(),
+            completer=AsyncMock(),
+            ui=ui,
+            context_name="test",
+        )
     
     # Verify prompt was called
     ui.prompt.assert_called_once()
-    # If we are here, it means the loop broke as expected
 
 @pytest.mark.asyncio
 async def test_mcp_server_shutdown_logic():
