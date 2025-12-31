@@ -41,10 +41,6 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = [
-    "coding_assistant.framework.execution",
-    "coding_assistant.framework.history",
-    "coding_assistant.framework.interrupts",
-    "coding_assistant.framework.parameters",
     "coding_assistant.framework.tests.helpers",
     "coding_assistant.framework.tests.test_agents",
     "coding_assistant.framework.tests.test_callbacks_integration",
