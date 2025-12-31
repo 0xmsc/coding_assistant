@@ -338,8 +338,9 @@ async def _main(args):
 
         tools = await get_mcp_wrapped_tools(mcp_servers)
 
+        mcp_task = None
         if args.mcp_server:
-            await start_mcp_server(tools, args.mcp_server_port)
+            mcp_task = await start_mcp_server(tools, args.mcp_server_port)
 
         instructions = get_instructions(
             working_directory=working_directory,
@@ -358,27 +359,38 @@ async def _main(args):
             shell_confirmation_patterns=args.shell_confirmation_patterns,
         )
 
-        if config.enable_chat_mode:
-            await run_chat_session(
-                config=config,
-                tools=tools,
-                history=resume_history,
-                instructions=instructions,
-                working_directory=working_directory,
-                progress_callbacks=progress_callbacks,
-                tool_callbacks=tool_callbacks,
-            )
-        else:
-            await run_root_agent(
-                task=args.task,
-                config=config,
-                tools=tools,
-                history=resume_history,
-                instructions=instructions,
-                working_directory=working_directory,
-                progress_callbacks=progress_callbacks,
-                tool_callbacks=tool_callbacks,
-            )
+        try:
+            if config.enable_chat_mode:
+                await run_chat_session(
+                    config=config,
+                    tools=tools,
+                    history=resume_history,
+                    instructions=instructions,
+                    working_directory=working_directory,
+                    progress_callbacks=progress_callbacks,
+                    tool_callbacks=tool_callbacks,
+                )
+            else:
+                await run_root_agent(
+                    task=args.task,
+                    config=config,
+                    tools=tools,
+                    history=resume_history,
+                    instructions=instructions,
+                    working_directory=working_directory,
+                    progress_callbacks=progress_callbacks,
+                    tool_callbacks=tool_callbacks,
+                )
+        except KeyboardInterrupt:
+            logger.info("Interrupted by user")
+        finally:
+            if mcp_task:
+                logger.info("Shutting down background MCP server")
+                mcp_task.cancel()
+                try:
+                    await mcp_task
+                except asyncio.CancelledError:
+                    pass
 
 
 def main():
