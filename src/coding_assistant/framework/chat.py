@@ -154,7 +154,10 @@ async def run_chat_loop(
 
             Console().print(f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", justify="right")
             print()
-            answer = await ui.prompt(words=command_names)
+            try:
+                answer = await ui.prompt(words=command_names)
+            except KeyboardInterrupt:
+                break
             answer_strip = answer.strip()
 
             if tool := command_map.get(answer_strip):
