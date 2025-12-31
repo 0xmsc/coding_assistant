@@ -165,7 +165,7 @@ def create_config_from_args(args) -> Config:
 
 
 async def run_root_agent(
-    task: str,
+    task: str | None,
     config: Config,
     tools: list[Tool],
     history: list | None,
