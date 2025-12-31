@@ -21,7 +21,7 @@ def create_test_config() -> Config:
 
 @pytest.mark.slow
 @pytest.mark.asyncio
-async def test_orchestrator_tool():
+async def test_orchestrator_tool() -> None:
     config = create_test_config()
     tool = AgentTool(
         model=config.model,
@@ -40,7 +40,7 @@ async def test_orchestrator_tool():
 
 @pytest.mark.slow
 @pytest.mark.asyncio
-async def test_orchestrator_tool_resume():
+async def test_orchestrator_tool_resume() -> None:
     config = create_test_config()
     first = AgentTool(
         model=config.model,
@@ -76,7 +76,7 @@ async def test_orchestrator_tool_resume():
 
 @pytest.mark.slow
 @pytest.mark.asyncio
-async def test_orchestrator_tool_instructions():
+async def test_orchestrator_tool_instructions() -> None:
     config = create_test_config()
     tool = AgentTool(
         model=config.model,
