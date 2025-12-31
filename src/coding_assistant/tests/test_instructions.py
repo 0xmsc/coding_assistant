@@ -11,7 +11,7 @@ def _get_project_root() -> Path:
     return Path(__file__).parent.parent.parent.parent.resolve()
 
 
-def test_get_instructions_base_and_user_instructions(tmp_path: Path):
+def test_get_instructions_base_and_user_instructions(tmp_path: Path) -> None:
     wd = tmp_path
     instr = get_instructions(working_directory=wd, user_instructions=["  A  ", "B\n"])
 
@@ -21,7 +21,7 @@ def test_get_instructions_base_and_user_instructions(tmp_path: Path):
     assert "\nB\n" in instr or instr.rstrip().endswith("\nB") or instr.endswith("B")
 
 
-def test_get_instructions_with_plan_and_local_file(tmp_path: Path):
+def test_get_instructions_with_plan_and_local_file(tmp_path: Path) -> None:
     wd = tmp_path
     local_dir = wd / ".coding_assistant"
     local_dir.mkdir()
@@ -33,7 +33,7 @@ def test_get_instructions_with_plan_and_local_file(tmp_path: Path):
     assert "- extra rule" in instr
 
 
-def test_get_instructions_appends_mcp_instructions(tmp_path: Path):
+def test_get_instructions_appends_mcp_instructions(tmp_path: Path) -> None:
     wd = tmp_path
 
     class _FakeServer:
@@ -54,7 +54,7 @@ def test_get_instructions_appends_mcp_instructions(tmp_path: Path):
     assert "Server2: prefer safe operations." in instr
 
 
-def test_get_instructions_ignores_empty_or_missing_mcp_instructions(tmp_path: Path):
+def test_get_instructions_ignores_empty_or_missing_mcp_instructions(tmp_path: Path) -> None:
     wd = tmp_path
 
     class _BlankServer:
@@ -77,7 +77,7 @@ def test_get_instructions_ignores_empty_or_missing_mcp_instructions(tmp_path: Pa
     assert "Server" not in instr
 
 
-def test_get_instructions_includes_mcp_formatting_with_real_mcp_instructions(tmp_path: Path):
+def test_get_instructions_includes_mcp_formatting_with_real_mcp_instructions(tmp_path: Path) -> None:
     wd = tmp_path
     mcp_instructions = """
 ## Shell

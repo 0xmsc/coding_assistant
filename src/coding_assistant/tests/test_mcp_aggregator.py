@@ -1,3 +1,5 @@
+# mypy: ignore-errors
+from typing import Any, cast
 import asyncio
 import pytest
 from fastmcp import Client
@@ -21,16 +23,16 @@ class MockTool(Tool):
             "required": ["val"],
         }
 
-    async def execute(self, parameters: dict) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
         return TextResult(content=f"Mock result: {parameters.get('val')}")
 
 
 @pytest.mark.asyncio
-async def test_mcp_aggregator_integration():
+async def test_mcp_aggregator_integration() -> None:
     port = 58766
     tools = [MockTool()]
 
-    task = await start_mcp_server(tools, port)
+    task = await start_mcp_server(cast(Any, tools), port)
 
     try:
         url = f"http://127.0.0.1:{port}/mcp"

@@ -1,3 +1,5 @@
+# mypy: ignore-errors
+from typing import cast, Any
 import json
 import pytest
 from unittest.mock import MagicMock
@@ -24,30 +26,30 @@ from coding_assistant.llm.openai import (
 class _CB(NullProgressCallbacks):
     """Test callback tracker."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.chunks = []
+        self.chunks: Any = []
         self.end = False
-        self.reasoning = []
+        self.reasoning: Any = []
 
-    def on_assistant_reasoning(self, context_name: str, content: str):
+    def on_assistant_reasoning(self, context_name: str, content: str) -> Any:
         self.reasoning.append(content)
 
-    def on_content_chunk(self, chunk: str):
+    def on_content_chunk(self, chunk: str) -> Any:
         self.chunks.append(chunk)
 
-    def on_reasoning_chunk(self, chunk: str):
+    def on_reasoning_chunk(self, chunk: str) -> Any:
         self.reasoning.append(chunk)
 
-    def on_chunks_end(self):
+    def on_chunks_end(self) -> Any:
         self.end = True
 
 
 class FakeSource:
-    def __init__(self, events_data):
+    def __init__(self, events_data: Any) -> None:
         self.events_data = events_data
 
-    async def aiter_sse(self):
+    async def aiter_sse(self) -> Any:
         for data in self.events_data:
             event = MagicMock()
             event.data = data
@@ -55,20 +57,20 @@ class FakeSource:
 
 
 class FakeContext:
-    def __init__(self, events_data):
+    def __init__(self, events_data: Any) -> None:
         self.source = FakeSource(events_data)
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Any:
         return self.source
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         pass
 
 
 class TestMergeChunks:
     """Tests for the _merge_chunks function."""
 
-    def test_merge_chunks_basic_content(self):
+    def test_merge_chunks_basic_content(self) -> None:
         """Test merging chunks with basic content."""
         chunks = [
             {
@@ -89,15 +91,15 @@ class TestMergeChunks:
             },
         ]
 
-        result = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        result = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
 
         assert result.content == "Hello world"
         assert result.role == "assistant"
         assert result.reasoning_content is None
         assert usage is None
 
-    def test_merge_chunks_with_reasoning(self):
+    def test_merge_chunks_with_reasoning(self) -> None:
         """Test merging chunks with reasoning content."""
         chunks = [
             {
@@ -126,14 +128,14 @@ class TestMergeChunks:
             },
         ]
 
-        result = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        result = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
 
         assert result.content == "Answer"
         assert result.reasoning_content == "Thinking more thoughts"
         assert usage is None
 
-    def test_merge_chunks_with_tool_calls(self):
+    def test_merge_chunks_with_tool_calls(self) -> None:
         """Test merging chunks with tool calls."""
         chunks = [
             {
@@ -169,14 +171,14 @@ class TestMergeChunks:
             },
         ]
 
-        result = _merge_chunks(chunks)
+        result = _merge_chunks(cast(Any, chunks))
 
         assert len(result.tool_calls) == 1
         assert result.tool_calls[0].id == "call_"
         assert result.tool_calls[0].function.name == "test"
         assert result.tool_calls[0].function.arguments == '{"key": "value"}'
 
-    def test_merge_chunks_empty(self):
+    def test_merge_chunks_empty(self) -> None:
         """Test merging empty chunk list."""
         result = _merge_chunks([])
         usage = _extract_usage([])
@@ -186,7 +188,7 @@ class TestMergeChunks:
         assert result.tool_calls == []
         assert usage is None
 
-    def test_merge_chunks_only_role(self):
+    def test_merge_chunks_only_role(self) -> None:
         """Test chunks with only role in first delta."""
         chunks = [
             {
@@ -199,14 +201,14 @@ class TestMergeChunks:
             },
         ]
 
-        result = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        result = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
 
         assert result.content is None
         assert result.role == "assistant"
         assert usage is None
 
-    def test_merge_chunks_with_usage(self):
+    def test_merge_chunks_with_usage(self) -> None:
         """Test merging chunks with usage information."""
         chunks = [
             {
@@ -228,14 +230,16 @@ class TestMergeChunks:
             },
         ]
 
-        result = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        result = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
 
         assert result.content == "Hello"
-        assert usage.tokens == 150
-        assert usage.cost == 0.0015
+        assert usage is not None
+        assert cast(Any, usage).tokens == 150
+        assert usage is not None
+        assert cast(Any, usage).cost == 0.0015
 
-    def test_merge_chunks_usage_overwritten(self):
+    def test_merge_chunks_usage_overwritten(self) -> None:
         """Test that usage is taken from the last chunk with usage."""
         chunks = [
             {
@@ -267,52 +271,54 @@ class TestMergeChunks:
             },
         ]
 
-        result = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        result = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
 
         assert result.content == "Part 1 Part 2"
-        assert usage.tokens == 20
-        assert usage.cost == 0.0002
+        assert usage is not None
+        assert cast(Any, usage).tokens == 20
+        assert usage is not None
+        assert cast(Any, usage).cost == 0.0002
 
-    def test_merge_chunks_reasoning_content_alt(self):
+    def test_merge_chunks_reasoning_content_alt(self) -> None:
         """Test alternate field name used by some providers."""
         chunks = [
             {"choices": [{"delta": {"reasoning_content": "Deep"}}]},
             {"choices": [{"delta": {"reasoning_content": " thought"}}]},
         ]
-        msg = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        msg = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
         assert msg.reasoning_content == "Deep thought"
         assert usage is None
 
-    def test_merge_chunks_reasoning_details_openrouter(self):
+    def test_merge_chunks_reasoning_details_openrouter(self) -> None:
         """Test OpenRouter reasoning_details field."""
         chunks = [
             {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.thought", "text": "step 1"}]}}]},
             {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.thought", "text": "step 2"}]}}]},
         ]
-        msg = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        msg = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
         assert msg.provider_specific_fields["reasoning_details"] == [
             {"type": "reasoning.thought", "text": "step 1"},
             {"type": "reasoning.thought", "text": "step 2"},
         ]
         assert usage is None
 
-    def test_merge_chunks_reasoning_details_merge_text_chunks(self):
+    def test_merge_chunks_reasoning_details_merge_text_chunks(self) -> None:
         """Test merging reasoning.text chunks with same index."""
         chunks = [
             {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Part 1"}]}}]},
             {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Part 2"}]}}]},
         ]
-        msg = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        msg = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
         # Chunks with same index should be merged
         assert len(msg.provider_specific_fields["reasoning_details"]) == 1
         assert msg.provider_specific_fields["reasoning_details"][0]["text"] == "Part 1Part 2"
         assert usage is None
 
-    def test_merge_chunks_reasoning_details_merge_with_signature(self):
+    def test_merge_chunks_reasoning_details_merge_with_signature(self) -> None:
         """Test merging reasoning.text chunks updates signature."""
         chunks = [
             {
@@ -338,29 +344,29 @@ class TestMergeChunks:
                 ]
             },
         ]
-        msg = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        msg = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
         # Signature should be updated to the latest one
         assert len(msg.provider_specific_fields["reasoning_details"]) == 1
         assert msg.provider_specific_fields["reasoning_details"][0]["text"] == "Step 1Step 2"
         assert msg.provider_specific_fields["reasoning_details"][0]["signature"] == "sig2"
         assert usage is None
 
-    def test_merge_chunks_reasoning_details_different_indices(self):
+    def test_merge_chunks_reasoning_details_different_indices(self) -> None:
         """Test that reasoning.text chunks with different indices are not merged."""
         chunks = [
             {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "First"}]}}]},
             {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 1, "text": "Second"}]}}]},
         ]
-        msg = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        msg = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
         # Chunks with different indices should remain separate
         assert len(msg.provider_specific_fields["reasoning_details"]) == 2
         assert msg.provider_specific_fields["reasoning_details"][0]["text"] == "First"
         assert msg.provider_specific_fields["reasoning_details"][1]["text"] == "Second"
         assert usage is None
 
-    def test_merge_chunks_reasoning_details_mixed_types(self):
+    def test_merge_chunks_reasoning_details_mixed_types(self) -> None:
         """Test that different reasoning_detail types are not merged."""
         chunks = [
             {
@@ -370,15 +376,15 @@ class TestMergeChunks:
             },
             {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.other", "index": 0, "data": "value"}]}}]},
         ]
-        msg = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        msg = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
         # Different types should remain separate even with same index
         assert len(msg.provider_specific_fields["reasoning_details"]) == 2
         assert msg.provider_specific_fields["reasoning_details"][0]["type"] == "reasoning.text"
         assert msg.provider_specific_fields["reasoning_details"][1]["type"] == "reasoning.other"
         assert usage is None
 
-    def test_merge_chunks_reasoning_details_summary(self):
+    def test_merge_chunks_reasoning_details_summary(self) -> None:
         """Test merging reasoning.summary chunks."""
         chunks = [
             {
@@ -398,24 +404,24 @@ class TestMergeChunks:
                 ]
             },
         ]
-        msg = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        msg = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
         # Chunks with same index should be merged
         assert len(msg.provider_specific_fields["reasoning_details"]) == 1
         assert msg.provider_specific_fields["reasoning_details"][0]["summary"] == "Summary part 1 part 2"
         assert usage is None
 
-    def test_merge_chunks_reasoning_details_empty_list(self):
+    def test_merge_chunks_reasoning_details_empty_list(self) -> None:
         """Test that empty reasoning_details list is handled."""
-        chunks = [
+        chunks: Any = [
             {"choices": [{"delta": {"reasoning_details": []}}]},
         ]
-        msg = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        msg = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
         assert msg.provider_specific_fields["reasoning_details"] == []
         assert usage is None
 
-    def test_merge_chunks_multiple_tool_calls(self):
+    def test_merge_chunks_multiple_tool_calls(self) -> None:
         """Test merging multiple tool calls."""
         chunks = [
             {
@@ -431,8 +437,8 @@ class TestMergeChunks:
             {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "arg1"}}]}}]},
             {"choices": [{"delta": {"tool_calls": [{"index": 1, "function": {"arguments": "arg2"}}]}}]},
         ]
-        msg = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        msg = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
         assert len(msg.tool_calls) == 2
         assert msg.tool_calls[0].id == "c1"
         assert msg.tool_calls[0].function.arguments == "arg1"
@@ -440,7 +446,7 @@ class TestMergeChunks:
         assert msg.tool_calls[1].function.arguments == "arg2"
         assert usage is None
 
-    def test_merge_chunks_mixed(self):
+    def test_merge_chunks_mixed(self) -> None:
         """Test merging mixed content types."""
         chunks = [
             {"choices": [{"delta": {"content": "I am"}}]},
@@ -458,8 +464,8 @@ class TestMergeChunks:
             },
             {"choices": [{"delta": {"content": " searching"}}]},
         ]
-        msg = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        msg = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
         assert msg.content == "I am searching"
         assert msg.reasoning_content == "Planning"
         assert len(msg.tool_calls) == 1
@@ -471,17 +477,17 @@ class TestMergeChunks:
 class TestCompletionType:
     """Tests for the Completion type with Usage."""
 
-    def test_completion_with_usage(self):
+    def test_completion_with_usage(self) -> None:
         """Test Completion with usage object."""
         message = AssistantMessage(content="Hello")
         usage = Usage(tokens=100, cost=0.005)
         completion = Completion(message=message, usage=usage)
 
         assert completion.message == message
-        assert completion.usage.tokens == 100
-        assert completion.usage.cost == 0.005
+        assert cast(Any, completion.usage).tokens == 100
+        assert cast(Any, completion.usage).cost == 0.005
 
-    def test_completion_without_usage(self):
+    def test_completion_without_usage(self) -> None:
         """Test Completion without usage object."""
         message = AssistantMessage(content="Hello")
         completion = Completion(message=message)
@@ -489,7 +495,7 @@ class TestCompletionType:
         assert completion.message == message
         assert completion.usage is None
 
-    def test_completion_with_tool_calls(self):
+    def test_completion_with_tool_calls(self) -> None:
         """Test Completion with tool calls and usage info."""
         tool_call = ToolCall(id="test", function=FunctionCall(name="test_func", arguments="{}"))
         message = AssistantMessage(content=None, tool_calls=[tool_call])
@@ -497,24 +503,24 @@ class TestCompletionType:
         completion = Completion(message=message, usage=usage)
 
         assert completion.message.tool_calls == [tool_call]
-        assert completion.usage.tokens == 200
-        assert completion.usage.cost == 0.01
+        assert cast(Any, completion.usage).tokens == 200
+        assert cast(Any, completion.usage).cost == 0.01
 
-    def test_completion_with_reasoning(self):
+    def test_completion_with_reasoning(self) -> None:
         """Test Completion with reasoning content and usage info."""
         message = AssistantMessage(content="Answer", reasoning_content="Reasoning")
         usage = Usage(tokens=150, cost=0.0075)
         completion = Completion(message=message, usage=usage)
 
         assert completion.message.reasoning_content == "Reasoning"
-        assert completion.usage.tokens == 150
-        assert completion.usage.cost == 0.0075
+        assert cast(Any, completion.usage).tokens == 150
+        assert cast(Any, completion.usage).cost == 0.0075
 
 
 class TestIntegration:
     """Integration tests for usage extraction workflow."""
 
-    def test_full_workflow_with_usage(self):
+    def test_full_workflow_with_usage(self) -> None:
         """Test complete workflow from chunks to Completion with usage."""
         chunks = [
             {
@@ -545,21 +551,23 @@ class TestIntegration:
         ]
 
         # Merge chunks into message and usage
-        message = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        message = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
         assert message.content == "The answer is 42."
 
-        assert usage.tokens == 520
-        assert usage.cost == 0.00052
+        assert usage is not None
+        assert cast(Any, usage).tokens == 520
+        assert usage is not None
+        assert cast(Any, usage).cost == 0.00052
 
         # Create completion
         completion = Completion(message=message, usage=usage)
 
         assert completion.message.content == "The answer is 42."
-        assert completion.usage.tokens == 520
-        assert completion.usage.cost == 0.00052
+        assert cast(Any, completion.usage).tokens == 520
+        assert cast(Any, completion.usage).cost == 0.00052
 
-    def test_workflow_without_cost(self):
+    def test_workflow_without_cost(self) -> None:
         """Test workflow when provider doesn't return cost."""
         chunks = [
             {
@@ -580,21 +588,22 @@ class TestIntegration:
             },
         ]
 
-        message = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        message = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
 
         assert message.content == "Response"
         assert usage is not None
-        assert usage.tokens == 110
-        assert usage.cost is None  # cost is None when not provided
+        assert usage is not None
+        assert cast(Any, usage).tokens == 110
+        assert cast(Any, usage).cost is None  # cost is None when not provided
 
         completion = Completion(message=message, usage=usage)
 
         assert completion.usage is not None
-        assert completion.usage.tokens == 110
-        assert completion.usage.cost is None
+        assert cast(Any, completion.usage).tokens == 110
+        assert cast(Any, completion.usage).cost is None
 
-    def test_workflow_with_reasoning_and_usage(self):
+    def test_workflow_with_reasoning_and_usage(self) -> None:
         """Test workflow with reasoning content and usage."""
         chunks = [
             {
@@ -636,26 +645,28 @@ class TestIntegration:
             },
         ]
 
-        message = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        message = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
 
         assert message.reasoning_content == "Step 1 Step 2"
         assert message.content == "Final"
-        assert usage.tokens == 230
-        assert usage.cost == 0.0023
+        assert usage is not None
+        assert cast(Any, usage).tokens == 230
+        assert usage is not None
+        assert cast(Any, usage).cost == 0.0023
 
         completion = Completion(message=message, usage=usage)
 
         assert completion.message.reasoning_content == "Step 1 Step 2"
-        assert completion.usage.tokens == 230
-        assert completion.usage.cost == 0.0023
+        assert cast(Any, completion.usage).tokens == 230
+        assert cast(Any, completion.usage).cost == 0.0023
 
-    def test_workflow_empty_chunks(self):
+    def test_workflow_empty_chunks(self) -> None:
         """Test workflow with empty chunk list."""
-        chunks = []
+        chunks: Any = []
 
-        message = _merge_chunks(chunks)
-        usage = _extract_usage(chunks)
+        message = _merge_chunks(cast(Any, chunks))
+        usage = _extract_usage(cast(Any, chunks))
 
         assert message.content is None
         assert usage is None
@@ -669,7 +680,7 @@ class TestIntegration:
 class TestHelperFunctions:
     """Tests for helper functions."""
 
-    def test_get_base_url_and_api_key_openai(self, monkeypatch):
+    def test_get_base_url_and_api_key_openai(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
@@ -677,14 +688,14 @@ class TestHelperFunctions:
         assert url == "https://api.openai.com/v1"
         assert key == "sk-openai"
 
-    def test_get_base_url_and_api_key_openrouter(self, monkeypatch):
+    def test_get_base_url_and_api_key_openrouter(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter")
         monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
         url, key = _get_base_url_and_api_key()
         assert url == "https://openrouter.ai/api/v1"
         assert key == "sk-openrouter"
 
-    def test_get_base_url_and_api_key_custom(self, monkeypatch):
+    def test_get_base_url_and_api_key_custom(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("OPENAI_BASE_URL", "https://custom.api/v1")
         monkeypatch.setenv("OPENAI_API_KEY", "sk-custom")
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
@@ -692,7 +703,7 @@ class TestHelperFunctions:
         assert url == "https://custom.api/v1"
         assert key == "sk-custom"
 
-    def test_prepare_messages(self):
+    def test_prepare_messages(self) -> None:
         msgs = [
             UserMessage(content="user stuff"),
             AssistantMessage(
@@ -713,7 +724,7 @@ class TestOpenAIComplete:
     """Integration tests for the complete() function."""
 
     @pytest.mark.asyncio
-    async def test_openai_complete_streaming_happy_path(self, monkeypatch):
+    async def test_openai_complete_streaming_happy_path(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
         fake_events = [
             json.dumps({"choices": [{"delta": {"content": "Hello"}}]}),
@@ -732,7 +743,7 @@ class TestOpenAIComplete:
         assert cb.end is True
 
     @pytest.mark.asyncio
-    async def test_openai_complete_tool_calls(self, monkeypatch):
+    async def test_openai_complete_tool_calls(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
         fake_events = [
             json.dumps(
@@ -760,7 +771,7 @@ class TestOpenAIComplete:
         cb = _CB()
 
         msgs = [UserMessage(content="What's the weather in New York")]
-        tools = []
+        tools: Any = []
 
         ret = await openai_model.complete(msgs, "gpt-4o", tools, cb)
 
@@ -769,7 +780,7 @@ class TestOpenAIComplete:
         assert ret.message.tool_calls[0].function.arguments == '{"location": "New York"}'
 
     @pytest.mark.asyncio
-    async def test_openai_complete_with_reasoning(self, monkeypatch):
+    async def test_openai_complete_with_reasoning(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
         fake_events = [
             json.dumps({"choices": [{"delta": {"reasoning": "Thinking"}}]}),
@@ -788,14 +799,14 @@ class TestOpenAIComplete:
         assert cb.reasoning == ["Thinking", " step by step"]
 
     @pytest.mark.asyncio
-    async def test_openai_complete_with_reasoning_effort(self, monkeypatch):
+    async def test_openai_complete_with_reasoning_effort(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
 
         # We want to check if reasoning_effort is passed to the payload.
         # We'll mock the AsyncClient.post or just check what's passed to aconnect_sse
         captured_payload = None
 
-        def mock_aconnect_sse(client, method, url, **kwargs):
+        def mock_aconnect_sse(client: Any, method: Any, url: Any, **kwargs) -> None:
             nonlocal captured_payload
             captured_payload = kwargs.get("json")
             return FakeContext([json.dumps({"choices": [{"delta": {"content": "ok"}}]})])
@@ -809,16 +820,16 @@ class TestOpenAIComplete:
 
         await openai_model.complete(msgs, "o1:high", [], cb)
 
-        assert captured_payload["model"] == "o1"
-        assert captured_payload["reasoning_effort"] == "high"
+        assert cast(Any, captured_payload)["model"] == "o1"
+        assert cast(Any, captured_payload)["reasoning_effort"] == "high"
 
     @pytest.mark.asyncio
-    async def test_openai_complete_error_retry(self, monkeypatch):
+    async def test_openai_complete_error_retry(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
 
         call_count = 0
 
-        def mock_aconnect_sse(*args, **kwargs):
+        def mock_aconnect_sse(*args, **kwargs) -> None:
             nonlocal call_count
             call_count += 1
             raise httpx.ReadTimeout("Timeout")
@@ -826,7 +837,7 @@ class TestOpenAIComplete:
         monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
 
         # Patch sleep to avoid waiting
-        async def mocked_sleep(delay):
+        async def mocked_sleep(delay: Any) -> None:
             pass
 
         monkeypatch.setattr("asyncio.sleep", mocked_sleep)
@@ -839,12 +850,12 @@ class TestOpenAIComplete:
         assert call_count == 5
 
     @pytest.mark.asyncio
-    async def test_openai_complete_error_recovery(self, monkeypatch):
+    async def test_openai_complete_error_recovery(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
 
         call_count = 0
 
-        def mock_aconnect_sse(*args, **kwargs):
+        def mock_aconnect_sse(*args, **kwargs) -> None:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -854,7 +865,7 @@ class TestOpenAIComplete:
         monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
 
         # Patch sleep to avoid waiting
-        async def mocked_sleep(delay):
+        async def mocked_sleep(delay: Any) -> None:
             pass
 
         monkeypatch.setattr("asyncio.sleep", mocked_sleep)

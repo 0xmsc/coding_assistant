@@ -1,3 +1,4 @@
+from typing import Any
 import json
 
 import pytest
@@ -39,9 +40,9 @@ async def test_compact_conversation_resets_history() -> None:
 
     class SpyCallbacks(NullProgressCallbacks):
         def __init__(self) -> None:
-            self.user_messages = []
+            self.user_messages: Any = []
 
-        def on_user_message(self, context_name: str, content: str, force: bool = False):
+        def on_user_message(self, context_name: str, content: str, force: bool = False) -> Any:
             self.user_messages.append((content, force))
 
     callbacks = SpyCallbacks()
