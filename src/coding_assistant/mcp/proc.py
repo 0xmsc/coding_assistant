@@ -11,7 +11,7 @@ class OutputBuffer:
         self._buf = bytearray()
         self._read_task = asyncio.create_task(self._read_stream())
 
-    async def _read_stream(self):
+    async def _read_stream(self) -> None:
         while True:
             chunk = await self._stream.read(4096)
             if not chunk:
@@ -22,7 +22,7 @@ class OutputBuffer:
     def text(self) -> str:
         return self._buf.decode(errors="replace")
 
-    async def wait_for_finish(self, timeout: float | None = 5.0):
+    async def wait_for_finish(self, timeout: float | None = 5.0) -> None:
         try:
             await asyncio.wait_for(self._read_task, timeout=timeout)
         except asyncio.TimeoutError:
@@ -58,7 +58,7 @@ class ProcessHandle:
         except asyncio.TimeoutError:
             return False
 
-    async def terminate(self):
+    async def terminate(self) -> None:
         if not self.is_running:
             return
 
