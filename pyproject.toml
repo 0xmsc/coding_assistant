@@ -15,12 +15,12 @@ dependencies = [
     "debugpy",
     "prompt-toolkit",
     "fastmcp",
-    "dacite>=1.9.2",
-    "json5>=0.12.1",
-    "httpx>=0.28.1",
-    "httpx-sse>=0.4.3",
+    "dacite",
+    "json5",
+    "httpx",
+    "httpx-sse",
     "aiofiles",
-    "python-frontmatter>=1.1.0",
+    "python-frontmatter",
 ]
 
 [dependency-groups]
@@ -33,7 +33,7 @@ dev = [
     "ruff",
     "types-requests",
     "types-aiofiles",
-    "pytest-cov>=7.0.0",
+    "pytest-cov",
 ]
 
 [tool.uv.sources]
