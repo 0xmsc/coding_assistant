@@ -2,8 +2,11 @@ import logging
 import re
 from abc import ABC, abstractmethod
 
+from typing import Iterable
+
 from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import Completer, WordCompleter
+from prompt_toolkit.completion import CompleteEvent, Completer, Completion, WordCompleter
+from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.shortcuts import create_confirm_session
 from rich.console import Console
@@ -34,17 +37,17 @@ class SlashCompleter(Completer):
         self.pattern = re.compile(r"/[a-zA-Z0-9_]*")
         self.word_completer = WordCompleter(words, pattern=self.pattern)
 
-    def get_completions(self, document, complete_event):
+    def get_completions(self, document: Document, complete_event: CompleteEvent) -> Iterable[Completion]:
         if document.text_before_cursor.startswith("/"):
             yield from self.word_completer.get_completions(document, complete_event)
 
 
 class PromptToolkitUI(UI):
-    def __init__(self):
+    def __init__(self) -> None:
         history_dir = get_app_cache_dir()
         history_dir.mkdir(parents=True, exist_ok=True)
         history_file = history_dir / "history"
-        self._session = PromptSession(
+        self._session: PromptSession[str] = PromptSession(
             history=FileHistory(str(history_file)),
             enable_open_in_editor=True,
         )

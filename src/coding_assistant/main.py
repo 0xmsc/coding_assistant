@@ -1,12 +1,14 @@
 import asyncio
+from typing import Any
 import logging
 import os
 import sys
 import importlib.resources
+import argparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 
-import debugpy  # type: ignore[import-untyped]
+import debugpy
 from rich import print as rich_print
 from rich.logging import RichHandler
 from rich.markdown import Markdown
@@ -36,7 +38,7 @@ logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant CLI")
     parser.add_argument(
         "--task", type=str, help="Task for the orchestrator agent. If provided, the agent runs in autonomous mode."
@@ -154,7 +156,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def create_config_from_args(args) -> Config:
+def create_config_from_args(args: argparse.Namespace) -> Config:
     return Config(
         model=args.model,
         expert_model=args.expert_model or args.model,
@@ -168,12 +170,12 @@ async def run_root_agent(
     task: str | None,
     config: Config,
     tools: list[Tool],
-    history: list | None,
+    history: list[Any] | None,
     instructions: str | None,
     working_directory: Path,
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
-):
+) -> Any:
     agent_ui = PromptToolkitUI() if config.enable_ask_user else DefaultAnswerUI()
 
     agent_mode_tools = [
@@ -214,12 +216,12 @@ async def run_chat_session(
     *,
     config: Config,
     tools: list[Tool],
-    history: list | None,
+    history: list[Any] | None,
     instructions: str | None,
     working_directory: Path,
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
-):
+) -> None:
     chat_history = history or []
 
     try:
@@ -260,7 +262,7 @@ def get_default_mcp_server_config(
     )
 
 
-def enable_sandboxing(args, working_directory, root):
+def enable_sandboxing(args: argparse.Namespace, working_directory: Path, root: Path) -> None:
     if args.sandbox:
         logger.info("Sandboxing is enabled.")
 
@@ -284,7 +286,7 @@ def enable_sandboxing(args, working_directory, root):
         logger.warning("Sandboxing is disabled")
 
 
-async def _stop_mcp_server(mcp_task: asyncio.Task | None):
+async def _stop_mcp_server(mcp_task: asyncio.Task[Any] | None) -> None:
     if not mcp_task:
         return
     try:
@@ -303,13 +305,13 @@ async def _run_execution_loop(
     *,
     config: Config,
     tools: list[Tool],
-    history: list | None,
+    history: list[Any] | None,
     instructions: str,
     working_directory: Path,
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ConfirmationToolCallbacks,
     task: str | None,
-):
+) -> Any:
     # This function runs the core application logic (chat session or autonomous agent).
     # We allow KeyboardInterrupt to propagate up to _main, where it is caught
     # to trigger the graceful shutdown of background services like the MCP server.
@@ -336,7 +338,7 @@ async def _run_execution_loop(
         )
 
 
-async def _main(args):
+async def _main(args: argparse.Namespace) -> None:
     logger.info(f"Starting Coding Assistant with arguments {args}")
 
     config = create_config_from_args(args)
@@ -428,7 +430,7 @@ async def _main(args):
             await _stop_mcp_server(mcp_task)
 
 
-def main():
+def main() -> None:
     args = parse_args()
 
     if args.trace:

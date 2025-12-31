@@ -3,7 +3,7 @@ import os
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, cast
 
 from fastmcp import Client
 from fastmcp.mcp_config import RemoteMCPServer, StdioMCPServer
@@ -20,13 +20,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MCPServer:
     name: str
-    client: Client
+    client: Client[Any]
     instructions: str | None = None
     prefix: str | None = None
 
 
 class MCPWrappedTool(Tool):
-    def __init__(self, client: Client, server_name: str, tool, prefix: str | None = None):
+    def __init__(self, client: Client[Any], server_name: str, tool: Any, prefix: str | None = None) -> None:
         self._client = client
         self._server_name = server_name
         self._tool = tool
@@ -35,15 +35,15 @@ class MCPWrappedTool(Tool):
     def name(self) -> str:
         if self._prefix:
             return f"{self._prefix}{self._tool.name}"
-        return self._tool.name
+        return str(self._tool.name)
 
     def description(self) -> str:
-        return self._tool.description or ""
+        return str(self._tool.description or "")
 
-    def parameters(self) -> dict:
-        return self._tool.inputSchema
+    def parameters(self) -> dict[str, Any]:
+        return cast(dict[str, Any], self._tool.inputSchema)
 
-    async def execute(self, parameters) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
         result = await self._client.call_tool(self._tool.name, parameters)
 
         if len(result.content) != 1:
@@ -76,8 +76,8 @@ async def get_mcp_wrapped_tools(mcp_servers: list[MCPServer]) -> list[Tool]:
     return wrapped
 
 
-def get_default_env():
-    default_env = dict()
+def get_default_env() -> dict[str, str]:
+    default_env: dict[str, str] = dict()
     if "HTTPS_PROXY" in os.environ:
         default_env["HTTPS_PROXY"] = os.environ["HTTPS_PROXY"]
     return default_env
@@ -152,7 +152,7 @@ async def get_mcp_servers_from_config(
         yield servers
 
 
-async def print_mcp_tools(mcp_servers):
+async def print_mcp_tools(mcp_servers: list[MCPServer]) -> None:
     console = Console()
 
     if not mcp_servers:
