@@ -284,6 +284,21 @@ def enable_sandboxing(args, working_directory, root):
         logger.warning("Sandboxing is disabled")
 
 
+async def _stop_mcp_server(mcp_task: asyncio.Task | None):
+    if not mcp_task:
+        return
+    try:
+        logger.info("Shutting down background MCP server")
+        mcp_task.cancel()
+        # Give it a bit of time to shut down gracefully, but don't hang forever
+        async with asyncio.timeout(2):
+            await mcp_task
+    except (asyncio.CancelledError, TimeoutError, KeyboardInterrupt):
+        pass
+    except Exception as e:
+        logger.debug(f"Error during MCP server shutdown: {e}")
+
+
 async def _main(args):
     logger.info(f"Starting Coding Assistant with arguments {args}")
 
@@ -360,6 +375,9 @@ async def _main(args):
         )
 
         try:
+            # We wrap the main execution in a try-except KeyboardInterrupt to ensure a clean exit.
+            # Without this, an interrupt during long-running agent tasks or the chat loop could 
+            # leave background tasks (like the MCP server) orphaned, causing the process to hang.
             if config.enable_chat_mode:
                 await run_chat_session(
                     config=config,
@@ -384,17 +402,7 @@ async def _main(args):
         except KeyboardInterrupt:
             logger.info("Interrupted by user")
         finally:
-            if mcp_task:
-                try:
-                    logger.info("Shutting down background MCP server")
-                    mcp_task.cancel()
-                    # Give it a bit of time to shut down gracefully, but don't hang forever
-                    async with asyncio.timeout(2):
-                        await mcp_task
-                except (asyncio.CancelledError, TimeoutError, KeyboardInterrupt):
-                    pass
-                except Exception as e:
-                    logger.debug(f"Error during MCP server shutdown: {e}")
+            await _stop_mcp_server(mcp_task)
 
 
 def main():
