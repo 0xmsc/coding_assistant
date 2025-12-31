@@ -117,9 +117,9 @@ async def test_cleanup_exactly_max_finished(manager):
     shell_execute_tool = await shell_server.get_tool("execute")
 
     for i in range(10):
-        await shell_execute_tool.fn(command=f"sleep 0.5; echo 'task {i + 1}'")
+        await shell_execute_tool.fn(command=f"sleep 0.05; echo 'task {i + 1}'")
 
-    await asyncio.sleep(1)
+    await asyncio.sleep(0.1)
     await shell_execute_tool.fn(command="echo 'task 11'")  # Trigger cleanup
 
     tasks = manager.list_tasks()
