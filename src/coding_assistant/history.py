@@ -2,7 +2,8 @@ import logging
 import json
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
-from coding_assistant.llm.types import message_from_dict
+from typing import Any
+from coding_assistant.llm.types import BaseMessage, message_from_dict
 
 logger = logging.getLogger("coding_assistant.cache")
 
@@ -19,7 +20,7 @@ def get_orchestrator_history_file(working_directory: Path) -> Path:
     return get_project_cache_dir(working_directory) / "history.json"
 
 
-def _fix_invalid_history(history: list) -> list:
+def _fix_invalid_history(history: list[Any]) -> list[Any]:
     """
     Fixes an invalid history by removing trailing assistant messages with tool_calls
     that are not followed by a tool message.
@@ -44,7 +45,7 @@ def _fix_invalid_history(history: list) -> list:
     return fixed_history
 
 
-def save_orchestrator_history(working_directory: Path, agent_history: list):
+def save_orchestrator_history(working_directory: Path, agent_history: list[Any]) -> None:
     """Save orchestrator agent history for crash recovery. Only saves agent_history."""
     history_file = get_orchestrator_history_file(working_directory)
     fixed_history = _fix_invalid_history(agent_history)
@@ -69,7 +70,7 @@ def get_latest_orchestrator_history_file(working_directory: Path) -> Path | None
     return history_file if history_file.exists() else None
 
 
-def load_orchestrator_history(file: str | Path) -> list | None:
+def load_orchestrator_history(file: str | Path) -> list[BaseMessage] | None:
     """Load orchestrator agent history from a specific file. Returns agent_history list or None."""
     file_path = Path(file)
     if not file_path.exists():
