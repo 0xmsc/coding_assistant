@@ -5,7 +5,7 @@ from enum import Enum
 
 from rich.console import Console
 
-from coding_assistant.llm.types import Usage
+from coding_assistant.llm.types import BaseMessage, Usage
 
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
@@ -52,7 +52,7 @@ def _create_chat_start_message(instructions: str | None) -> str:
 
 def handle_tool_result_chat(
     result: ToolResult,
-    history: list,
+    history: list[BaseMessage],
     callbacks: ProgressCallbacks,
     context_name: str,
 ) -> str:
@@ -87,7 +87,7 @@ class ChatCommand:
 
 
 async def run_chat_loop(
-    history: list,
+    history: list[BaseMessage],
     model: str,
     tools: list[Tool],
     instructions: str | None,
@@ -97,7 +97,7 @@ async def run_chat_loop(
     completer: Completer,
     ui: UI,
     context_name: str,
-):
+) -> None:
     tools = list(tools)
     if not any(tool.name() == "compact_conversation" for tool in tools):
         tools.append(CompactConversationTool())
@@ -106,17 +106,19 @@ async def run_chat_loop(
         for message in history:
             if message.role == "assistant":
                 if content := message.content:
-                    callbacks.on_assistant_message(context_name, content, force=True)
+                    if isinstance(content, str):
+                        callbacks.on_assistant_message(context_name, content, force=True)
             elif message.role == "user":
                 if content := message.content:
-                    callbacks.on_user_message(context_name, content, force=True)
+                    if isinstance(content, str):
+                        callbacks.on_user_message(context_name, content, force=True)
 
     need_user_input = True
 
-    async def _exit_cmd():
+    async def _exit_cmd() -> ChatCommandResult:
         return ChatCommandResult.EXIT
 
-    async def _compact_cmd():
+    async def _compact_cmd() -> ChatCommandResult:
         append_user_message(
             history,
             callbacks,
@@ -130,7 +132,7 @@ async def run_chat_loop(
 
         return ChatCommandResult.PROCEED_WITH_MODEL
 
-    async def _clear_cmd():
+    async def _clear_cmd() -> ChatCommandResult:
         clear_history(history)
         print("History cleared.")
         return ChatCommandResult.PROCEED_WITH_PROMPT
