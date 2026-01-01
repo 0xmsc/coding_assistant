@@ -15,6 +15,7 @@ class Task:
     id: int
     name: str
     handle: ProcessHandle
+    read_offset: int = 0
 
 
 class TaskManager:
@@ -90,7 +91,9 @@ def create_task_server(manager: TaskManager) -> FastMCP:
             result += f"Status: finished (Exit code: {task.handle.exit_code})\n"
 
         result += "\n\n"
-        output = task.handle.stdout
+        current_length = task.handle.stdout_length
+        output = task.handle.get_stdout_slice(task.read_offset, current_length)
+        task.read_offset = current_length
         result += truncate_output(output, truncate_at)
 
         return result
