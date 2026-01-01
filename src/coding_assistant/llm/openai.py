@@ -131,7 +131,7 @@ def _extract_usage(chunks: list[dict[str, Any]]) -> Usage | None:
     return None
 
 
-def _prepare_messages(messages: list[BaseMessage]) -> list[dict[str, Any]]:
+def _prepare_messages(messages: Sequence[BaseMessage]) -> list[dict[str, Any]]:
     result = [message_to_dict(m) for m in messages]
     for m in result:
         if "provider_specific_fields" in m:
