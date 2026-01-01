@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 from typing import cast, Any
 import json
 import pytest
@@ -806,7 +805,7 @@ class TestOpenAIComplete:
         # We'll mock the AsyncClient.post or just check what's passed to aconnect_sse
         captured_payload = None
 
-        def mock_aconnect_sse(client: Any, method: Any, url: Any, **kwargs) -> None:
+        def mock_aconnect_sse(client: Any, method: Any, url: Any, **kwargs: Any) -> Any:
             nonlocal captured_payload
             captured_payload = kwargs.get("json")
             return FakeContext([json.dumps({"choices": [{"delta": {"content": "ok"}}]})])
@@ -829,7 +828,7 @@ class TestOpenAIComplete:
 
         call_count = 0
 
-        def mock_aconnect_sse(*args, **kwargs) -> None:
+        def mock_aconnect_sse(*args: Any, **kwargs: Any) -> Any:
             nonlocal call_count
             call_count += 1
             raise httpx.ReadTimeout("Timeout")
@@ -855,7 +854,7 @@ class TestOpenAIComplete:
 
         call_count = 0
 
-        def mock_aconnect_sse(*args, **kwargs) -> None:
+        def mock_aconnect_sse(*args: Any, **kwargs: Any) -> Any:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
