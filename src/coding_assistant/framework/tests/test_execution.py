@@ -1,5 +1,4 @@
-# mypy: ignore-errors
-from typing import Any, cast
+from typing import Any, cast, Optional
 import asyncio
 import time
 import pytest
@@ -364,7 +363,7 @@ async def test_before_tool_execution_can_return_finish_task_result() -> None:
     class FabricatingCallbacks(ToolCallbacks):
         async def before_tool_execution(
             self, context_name: Any, tool_call_id: Any, tool_name: Any, arguments: Any, *, ui: Any
-        ) -> None:
+        ) -> Optional[ToolResult]:
             if tool_name == "finish_task":
                 return FinishTaskResult(result="R", summary="S")
             return None
