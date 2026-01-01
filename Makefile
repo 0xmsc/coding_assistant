@@ -12,15 +12,15 @@ test:
 
 # Development linting (auto-fixes)
 lint:
-	uv run ruff check --fix src/coding_assistant
-	uv run ruff format src/coding_assistant
-	uv run mypy src/coding_assistant
+	uv run ruff check --fix
+	uv run ruff format
+	uv run mypy .
 
 # CI linting (fail if not formatted/invalid)
 lint-check:
-	uv run ruff check src/coding_assistant
-	uv run ruff format --check src/coding_assistant
-	uv run mypy src/coding_assistant
+	uv run ruff check
+	uv run ruff format --check
+	uv run mypy .
 
 # Integration tests
 test-integration:
