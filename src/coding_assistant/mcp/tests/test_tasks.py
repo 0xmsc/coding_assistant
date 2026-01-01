@@ -140,3 +140,39 @@ async def test_kill_task(shell_execute: Any, tasks_kill_task: Any, tasks_get_out
 
     status = await cast(Any, tasks_get_output).fn(task_id=1)
     assert "finished" in status
+
+
+@pytest.mark.asyncio
+async def test_incremental_output(shell_execute: Any, tasks_get_output: Any) -> None:
+    # Run a command that produces output over time
+    cmd = "echo 'line 1'; sleep 0.2; echo 'line 2'; sleep 0.2; echo 'line 3'"
+    await cast(Any, shell_execute).fn(command=cmd, background=True)
+
+    # Wait for the first line
+    await asyncio.sleep(0.1)
+    out1 = await cast(Any, tasks_get_output).fn(task_id=1)
+    assert "line 1" in out1
+    assert "line 2" not in out1
+    assert "line 3" not in out1
+
+    # Wait for the second line
+    await asyncio.sleep(0.2)
+    out2 = await cast(Any, tasks_get_output).fn(task_id=1)
+    # The header still contains the task name (which might have 'line 1'),
+    # but the actual output part should only have 'line 2'
+    assert out2.count("line 1") == 1  # only in the header/name
+    assert "line 2" in out2
+    assert "line 3" not in out2
+
+    # Wait for the third line
+    await asyncio.sleep(0.2)
+    out3 = await cast(Any, tasks_get_output).fn(task_id=1)
+    assert out3.count("line 1") == 1
+    assert "line 2" not in out3
+    assert "line 3" in out3
+
+    # Another call should return nothing new
+    out4 = await cast(Any, tasks_get_output).fn(task_id=1)
+    assert "line 1" in out4  # header
+    assert "line 2" not in out4
+    assert "line 3" not in out4
