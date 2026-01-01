@@ -11,7 +11,7 @@ jobs:
     runs-on: docker
     steps:
       - name: Install uv
-        uses: https://github.com/astral-sh/setup-uv
+        uses: https://github.com/astral-sh/setup-uv@v7
       - uses: actions/checkout@v4
       - name: Run CI
         run: make ci
