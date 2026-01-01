@@ -99,6 +99,16 @@ def create_task_server(manager: TaskManager) -> FastMCP:
         return result
 
     @task_server.tool()
+    async def get_status(task_id: int) -> str:
+        """Get the current status of a task without its output."""
+        task = manager.get_task(task_id)
+        if not task:
+            return f"Error: Task {task_id} not found."
+
+        status = "running" if task.handle.is_running else f"finished (Exit code: {task.handle.exit_code})"
+        return f"Task {task_id} ({task.name}) | Status: {status}"
+
+    @task_server.tool()
     async def kill_task(task_id: int) -> str:
         """Terminate a running task."""
         task = manager.get_task(task_id)
