@@ -17,5 +17,5 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Run CI script
-        run: ./scripts/ci.sh
+      - name: Run CI
+        run: make ci
