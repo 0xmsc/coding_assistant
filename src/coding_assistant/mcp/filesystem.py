@@ -16,6 +16,7 @@ async def write_file(
 ) -> str:
     """Overwrite (or create) a file with the given content."""
 
+    path = path.expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
     async with aiofiles.open(path, "w", encoding="utf-8") as f:
         await f.write(content)
@@ -39,6 +40,7 @@ async def edit_file(
     - If validation fails, no changes are written.
     """
 
+    path = path.expanduser()
     async with aiofiles.open(path, "r", encoding="utf-8") as f:
         original = await f.read()
 
