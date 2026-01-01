@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 from typing import cast, Any
 import asyncio
 import json
@@ -10,7 +9,7 @@ from unittest.mock import patch
 from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.interrupts import InterruptController
-from coding_assistant.llm.types import UserMessage
+from coding_assistant.llm.types import UserMessage, BaseMessage
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FunctionCall,
@@ -72,7 +71,7 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input() -> None:
         ]
     )
 
-    history = [UserMessage(content="start")]
+    history: list[BaseMessage] = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
     instructions = None
@@ -88,7 +87,7 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input() -> None:
 
     original_init = InterruptController.__init__
 
-    def capture_init(self, loop: Any) -> None:
+    def capture_init(self: Any, loop: Any) -> None:
         captured_controller.append(self)
         original_init(self, loop)
 
@@ -143,7 +142,7 @@ async def test_interrupt_during_do_single_step() -> None:
         ]
     )
 
-    history = [UserMessage(content="start")]
+    history: list[BaseMessage] = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
     instructions = None
@@ -159,7 +158,7 @@ async def test_interrupt_during_do_single_step() -> None:
 
     original_init = InterruptController.__init__
 
-    def capture_init(self, loop: Any) -> None:
+    def capture_init(self: Any, loop: Any) -> None:
         captured_controller.append(self)
         original_init(self, loop)
 
@@ -215,7 +214,7 @@ async def test_multiple_tool_calls_with_interrupt() -> None:
         ]
     )
 
-    history = [UserMessage(content="start")]
+    history: list[BaseMessage] = [UserMessage(content="start")]
     tools = [tool1, tool2]
     model = "test-model"
     instructions = None
@@ -231,7 +230,7 @@ async def test_multiple_tool_calls_with_interrupt() -> None:
 
     original_init = InterruptController.__init__
 
-    def capture_init(self, loop: Any) -> None:
+    def capture_init(self: Any, loop: Any) -> None:
         captured_controller.append(self)
         original_init(self, loop)
 
@@ -277,7 +276,7 @@ async def test_chat_loop_without_interrupts_works_normally() -> None:
         ]
     )
 
-    history = [UserMessage(content="start")]
+    history: list[BaseMessage] = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
     instructions = None
@@ -323,7 +322,7 @@ async def test_interrupt_recovery_continues_conversation() -> None:
         ]
     )
 
-    history = [UserMessage(content="start")]
+    history: list[BaseMessage] = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
     instructions = None
@@ -340,7 +339,7 @@ async def test_interrupt_recovery_continues_conversation() -> None:
 
     original_init = InterruptController.__init__
 
-    def capture_init(self, loop: Any) -> None:
+    def capture_init(self: Any, loop: Any) -> None:
         captured_controller.append(self)
         original_init(self, loop)
 
@@ -396,7 +395,7 @@ async def test_interrupt_during_second_tool_call() -> None:
         ]
     )
 
-    history = [UserMessage(content="start")]
+    history: list[BaseMessage] = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
     instructions = None
@@ -412,7 +411,7 @@ async def test_interrupt_during_second_tool_call() -> None:
 
     original_init = InterruptController.__init__
 
-    def capture_init(self, loop: Any) -> None:
+    def capture_init(self: Any, loop: Any) -> None:
         captured_controller.append(self)
         original_init(self, loop)
 
@@ -463,7 +462,7 @@ async def test_sigint_interrupts_tool_execution() -> None:
         ]
     )
 
-    history = [UserMessage(content="start")]
+    history: list[BaseMessage] = [UserMessage(content="start")]
     tools = [tool]
     model = "test-model"
     instructions = None
@@ -512,12 +511,13 @@ async def test_interrupt_during_llm_call() -> None:
 
     llm_started = asyncio.Event()
 
-    async def slow_completer(history: Any, model: Any, tools: Any, callbacks: Any) -> None:
+    async def slow_completer(history: Any, model: Any, tools: Any, callbacks: Any) -> Any:
         llm_started.set()
         await asyncio.sleep(2.0)
-        return FakeCompleter([FakeMessage(content="Response from LLM")])._completions[0]
+        completer = FakeCompleter([FakeMessage(content="Response from LLM")])
+        return await completer(history, model=model, tools=tools, callbacks=callbacks)
 
-    history = [UserMessage(content="test")]
+    history: list[BaseMessage] = [UserMessage(content="test")]
     tools: Any = []
     model = "test-model"
     instructions = None
@@ -533,7 +533,7 @@ async def test_interrupt_during_llm_call() -> None:
 
     original_init = InterruptController.__init__
 
-    def capture_init(self, loop: Any) -> None:
+    def capture_init(self: Any, loop: Any) -> None:
         captured_controller.append(self)
         original_init(self, loop)
 
