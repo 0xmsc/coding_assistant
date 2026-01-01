@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  test:
+    runs-on: docker
+    container:
+      image: ghcr.io/astral-sh/uv:debian-slim
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install just
+        run: apt-get update && apt-get install -y just
+      - name: Run tests
+        run: just test
+
+  lint:
+    runs-on: docker
+    container:
+      image: ghcr.io/astral-sh/uv:debian-slim
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install just
+        run: apt-get update && apt-get install -y just
+      - name: Run lint
+        run: just lint
