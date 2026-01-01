@@ -11,16 +11,11 @@ jobs:
     runs-on: docker
     steps:
       - name: Install uv
-        uses: https://github.com/astral-sh/setup-uv@v7
+        uses: https://github.com/astral-sh/setup-uv@v5
+        with:
+          version: "0.5.11"
 
       - uses: actions/checkout@v4
 
-      - name: Run tests
-        run: |
-          uv run pytest -n auto -m "not slow"
-
-      - name: Run lint
-        run: |
-          uv run ruff check src/coding_assistant
-          uv run ruff format --check src/coding_assistant
-          uv run mypy src/coding_assistant
+      - name: Run CI script
+        run: ./scripts/ci.sh
