@@ -1,22 +1,17 @@
 .PHONY: test lint lint-check ci test-integration
 
-# Default target
 all: ci
 
-# CI target (strictly checks, no auto-fixing)
 ci: lint-check test
 
-# Standard test runner
 test:
 	uv run pytest -n auto -m "not slow"
 
-# Development linting (auto-fixes)
 lint:
 	uv run ruff check --fix
 	uv run ruff format
 	uv run mypy .
 
-# CI linting (fail if not formatted/invalid)
 lint-check:
 	uv run ruff check
 	uv run ruff format --check

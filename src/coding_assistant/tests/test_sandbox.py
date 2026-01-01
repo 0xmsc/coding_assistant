@@ -196,7 +196,7 @@ def _test_run_binaries_with_sandbox() -> None:
     sandbox(readable_paths=[], writable_paths=[], include_defaults=True)
     subprocess.check_call(["git", "help"])
     subprocess.check_call(["npm", "help"])
-    subprocess.check_call(["uvx", "--help"])
+    subprocess.check_call(["uv", "--help"])
 
 
 def test_write_without_sandbox(tmp_path: Any) -> None:
