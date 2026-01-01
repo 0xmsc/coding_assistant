@@ -18,6 +18,7 @@ DEFAULT_READABLE_PATHS = [
     "/run",
     "/sys",
     "/mnt/wsl",
+    "/opt",
     "~/.ssh",
     "~/.rustup",
     "~/.config",
