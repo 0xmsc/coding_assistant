@@ -6,11 +6,6 @@ lint:
     uv run ruff format src/coding_assistant
     uv run mypy src/coding_assistant
 
-ci:
-    #!/usr/bin/env -S parallel --shebang --jobs {{ num_cpus() }}
-    just test
-    just lint
-
 test-integration:
     uv run coding-assistant \
         --model "google/gemini-3-flash-preview (medium)" \
