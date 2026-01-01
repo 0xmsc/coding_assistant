@@ -142,6 +142,29 @@ async def test_kill_task(shell_execute: Any, tasks_kill_task: Any, tasks_get_out
     assert "finished" in status
 
 
+@pytest_asyncio.fixture
+async def tasks_get_status(manager: Any) -> Any:
+    server = create_task_server(manager)
+    return await server.get_tool("get_status")
+
+
+@pytest.mark.asyncio
+async def test_get_status(shell_execute: Any, tasks_get_status: Any) -> None:
+    # Test running status
+    await cast(Any, shell_execute).fn(command="sleep 0.5", background=True)
+    status_running = await cast(Any, tasks_get_status).fn(task_id=1)
+    assert "Status: running" in status_running
+
+    # Test finished status
+    await asyncio.sleep(0.6)
+    status_finished = await cast(Any, tasks_get_status).fn(task_id=1)
+    assert "Status: finished (Exit code: 0)" in status_finished
+
+    # Test non-existent task
+    status_missing = await cast(Any, tasks_get_status).fn(task_id=999)
+    assert "Error: Task 999 not found" in status_missing
+
+
 @pytest.mark.asyncio
 async def test_incremental_output(shell_execute: Any, tasks_get_output: Any) -> None:
     # Run a command that produces output over time
