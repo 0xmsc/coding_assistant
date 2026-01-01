@@ -20,14 +20,9 @@ class OutputBuffer:
 
     @property
     def text(self) -> str:
-        return self._buf.decode(errors="replace")
-
-    @property
-    def length(self) -> int:
-        return len(self._buf)
-
-    def get_text_slice(self, start: int, end: int) -> str:
-        return self._buf[start:end].decode(errors="replace")
+        content = self._buf.decode(errors="replace")
+        self._buf.clear()
+        return content
 
     async def wait_for_finish(self, timeout: float | None = 5.0) -> None:
         try:
@@ -52,13 +47,6 @@ class ProcessHandle:
     @property
     def stdout(self) -> str:
         return self.output.text
-
-    @property
-    def stdout_length(self) -> int:
-        return self.output.length
-
-    def get_stdout_slice(self, start: int, end: int) -> str:
-        return self.output.get_text_slice(start, end)
 
     @property
     def is_running(self) -> bool:
