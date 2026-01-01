@@ -14,9 +14,11 @@ jobs:
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install just
-        run: apt-get update && apt-get install -y just
+        run: |
+          apt-get update && apt-get install -y wget
+          wget -qO - https://just.systems/install.sh | bash -s -- --dest /usr/local/bin
       - name: Run tests
-        run: just test
+        run: /usr/local/bin/just test
 
   lint:
     runs-on: docker
@@ -25,6 +27,8 @@ jobs:
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
       - name: Install just
-        run: apt-get update && apt-get install -y just
+        run: |
+          apt-get update && apt-get install -y wget
+          wget -qO - https://just.systems/install.sh | bash -s -- --dest /usr/local/bin
       - name: Run lint
-        run: just lint
+        run: /usr/local/bin/just lint
