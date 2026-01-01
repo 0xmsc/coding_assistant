@@ -10,13 +10,13 @@ jobs:
   ci:
     runs-on: docker
     steps:
-      - uses: actions/checkout@v4
-
       - name: Install uv
         uses: https://github.com/astral-sh/setup-uv@v3
 
       - name: Install just
         uses: https://github.com/extractions/setup-just@v2
+
+      - uses: actions/checkout@v4
 
       - name: Run ci
         run: just ci
