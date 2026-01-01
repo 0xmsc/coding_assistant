@@ -1,5 +1,5 @@
 test:
-    uv run pytest -n auto -m "not slow"
+    ./scripts/ci.sh
 
 lint:
     uv run ruff check --fix src/coding_assistant
