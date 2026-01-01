@@ -1,8 +1,41 @@
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from coding_assistant.mcp.filesystem import edit_file, write_file
+
+
+@pytest.mark.asyncio
+async def test_write_file_expands_tilde(tmp_path: Path) -> None:
+    # We mock HOME to a temporary directory
+    fake_home = tmp_path / "fake_home"
+    fake_home.mkdir()
+
+    with patch.dict(os.environ, {"HOME": str(fake_home)}):
+        # We need to use a relative path with ~ because Path('~/...') doesn't expand automatically
+        # unless expanduser() is called, which our tool now does.
+        tilde_path = Path("~/test.txt")
+        await write_file(tilde_path, "tilde content")
+
+        expected_path = fake_home / "test.txt"
+        assert expected_path.exists()
+        assert expected_path.read_text(encoding="utf-8") == "tilde content"
+
+
+@pytest.mark.asyncio
+async def test_edit_file_expands_tilde(tmp_path: Path) -> None:
+    fake_home = tmp_path / "fake_home_edit"
+    fake_home.mkdir()
+    file_path = fake_home / "edit_test.txt"
+    file_path.write_text("original content", encoding="utf-8")
+
+    with patch.dict(os.environ, {"HOME": str(fake_home)}):
+        tilde_path = Path("~/edit_test.txt")
+        await edit_file(tilde_path, old_text="original", new_text="updated")
+
+        assert file_path.read_text(encoding="utf-8") == "updated content"
 
 
 @pytest.mark.asyncio
