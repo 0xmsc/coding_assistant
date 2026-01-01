@@ -7,16 +7,28 @@ on:
     branches: [ "master" ]
 
 jobs:
-  ci:
+  test:
     runs-on: docker
     steps:
-      - name: Install uv
-        uses: https://github.com/astral-sh/setup-uv@v3
-
-      - name: Install just
-        uses: https://github.com/extractions/setup-just@v2
-
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.9.21"
+      - uses: extractions/setup-just@v2
+        with:
+          version: "1.45.0"
+      - name: Run tests
+        run: just test
 
-      - name: Run ci
-        run: just ci
+  lint:
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.9.21"
+      - uses: extractions/setup-just@v2
+        with:
+          version: "1.45.0"
+      - name: Run lint
+        run: just lint
