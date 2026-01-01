@@ -142,7 +142,7 @@ def _prepare_messages(messages: list[BaseMessage]) -> list[dict[str, Any]]:
 
 
 async def _try_completion(
-    messages: list[BaseMessage],
+    messages: Sequence[BaseMessage],
     tools: Sequence[Tool],
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
@@ -219,7 +219,7 @@ async def _try_completion(
 
 
 async def _try_completion_with_retry(
-    messages: list[BaseMessage],
+    messages: Sequence[BaseMessage],
     tools: Sequence[Tool],
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
@@ -258,7 +258,7 @@ def _parse_model_and_reasoning(
 
 
 async def complete(
-    messages: list[BaseMessage],
+    messages: Sequence[BaseMessage],
     model: str,
     tools: Sequence[Tool],
     callbacks: ProgressCallbacks,
