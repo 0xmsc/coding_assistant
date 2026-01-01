@@ -11,9 +11,7 @@ jobs:
     runs-on: docker
     steps:
       - name: Install uv
-        uses: https://github.com/astral-sh/setup-uv@v5
-        with:
-          version: "0.5.11"
+        uses: https://github.com/astral-sh/setup-uv@v7
 
       - uses: actions/checkout@v4
 
