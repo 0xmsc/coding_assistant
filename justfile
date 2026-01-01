@@ -1,10 +1,11 @@
-test:
+ci:
     ./scripts/ci.sh
 
 lint:
-    uv run ruff check --fix src/coding_assistant
-    uv run ruff format src/coding_assistant
-    uv run mypy src/coding_assistant
+    ./scripts/ci.sh --fix
+
+test:
+    ./scripts/ci.sh
 
 test-integration:
     uv run coding-assistant \
