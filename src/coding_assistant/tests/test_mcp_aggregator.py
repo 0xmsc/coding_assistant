@@ -1,4 +1,3 @@
-# mypy: ignore-errors
 from typing import Any, cast
 import asyncio
 import pytest
@@ -16,7 +15,7 @@ class MockTool(Tool):
     def description(self) -> str:
         return "mock description"
 
-    def parameters(self) -> dict:
+    def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {"val": {"type": "string"}},
