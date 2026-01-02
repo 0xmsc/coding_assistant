@@ -225,4 +225,4 @@ async def test_edit_file_replace_all_true_no_occurrences(tmp_path: Path):
 
     with pytest.raises(ValueError) as ei:
         await edit_file(p, old_text="foo", new_text="bar", replace_all=True)
-    assert "not found" in str(ei.value) 
+    assert "not found" in str(ei.value)
