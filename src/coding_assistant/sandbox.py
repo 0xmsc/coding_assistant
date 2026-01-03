@@ -13,6 +13,7 @@ DEFAULT_READABLE_PATHS = [
     "/usr",
     "/lib",
     "/etc",
+    "/var",
     "/dev/urandom",
     "/proc",
     "/run",
