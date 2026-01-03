@@ -121,7 +121,8 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
                 stdout_text += f"\n\nFull output available via `tasks_get_output(task_id={task_id})`"
 
             if handle.exit_code != 0:
-                return f"Exception (exit code {handle.exit_code}):\n\n{handle.stdout}"
+                error_output = handle.stdout
+                return f"Exception (exit code {handle.exit_code}):\n\n{error_output}"
 
             return stdout_text
 

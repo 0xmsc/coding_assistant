@@ -90,7 +90,7 @@ def create_task_server(manager: TaskManager) -> FastMCP:
             result += f"Status: finished (Exit code: {task.handle.exit_code})\n"
 
         result += "\n\n"
-        output = task.handle.stdout
+        output = task.handle.consume_text()
         result += truncate_output(output, truncate_at)
 
         return result

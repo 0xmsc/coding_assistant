@@ -20,6 +20,9 @@ class OutputBuffer:
 
     @property
     def text(self) -> str:
+        return self._buf.decode(errors="replace")
+
+    def consume_text(self) -> str:
         content = self._buf.decode(errors="replace")
         self._buf.clear()
         return content
@@ -51,6 +54,9 @@ class ProcessHandle:
     @property
     def is_running(self) -> bool:
         return self.exit_code is None
+
+    def consume_text(self) -> str:
+        return self.output.consume_text()
 
     async def wait(self, timeout: float | None = None) -> bool:
         try:
