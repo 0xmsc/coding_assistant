@@ -183,18 +183,18 @@ async def test_incremental_output(shell_execute: Any, tasks_get_output: Any) -> 
     out2 = await cast(Any, tasks_get_output).fn(task_id=1)
     # The header still contains the task name (which might have 'line 1'),
     # but the actual output part should only have 'line 2'
-    assert "line 1" not in out2[out2.find("\n\n")+2:]
+    assert "line 1" not in out2[out2.find("\n\n") + 2 :]
     assert "line 2" in out2
     assert "line 3" not in out2
 
     # Wait for the third line
     await asyncio.sleep(0.2)
     out3 = await cast(Any, tasks_get_output).fn(task_id=1)
-    assert "line 1" not in out3[out3.find("\n\n")+2:]
-    assert "line 2" not in out3[out3.find("\n\n")+2:]
+    assert "line 1" not in out3[out3.find("\n\n") + 2 :]
+    assert "line 2" not in out3[out3.find("\n\n") + 2 :]
     assert "line 3" in out3
 
     # Another call should return nothing new
     out4 = await cast(Any, tasks_get_output).fn(task_id=1)
-    actual_output = out4[out4.find("\n\n")+2:]
+    actual_output = out4[out4.find("\n\n") + 2 :]
     assert actual_output.strip() == ""
