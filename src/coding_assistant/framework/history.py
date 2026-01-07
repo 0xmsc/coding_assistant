@@ -32,9 +32,7 @@ def append_assistant_message(
     message: AssistantMessage,
     force: bool = False,
 ) -> None:
-    if message.content:
-        callbacks.on_assistant_message(context_name, message, force=force)
-
+    callbacks.on_assistant_message(context_name, message, force=force)
     history.append(message)
 
 
