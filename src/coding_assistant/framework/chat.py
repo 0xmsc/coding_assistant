@@ -79,6 +79,45 @@ def handle_tool_result_chat(
     raise RuntimeError(f"Tool produced unexpected result of type {type(result).__name__}")
 
 
+
+async def get_image(arg: str) -> tuple[str, str]:
+    """Load image from local file or URL, return (data_url, mime_type)."""
+    # Determine if URL or path
+    is_url = arg.startswith("http://") or arg.startswith("https://")
+    if is_url:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(arg, timeout=15.0)
+            response.raise_for_status()
+            image_bytes = response.content
+        # Guess MIME type from Content-Type header if present
+        mime_type = response.headers.get("content-type", "image/jpeg")
+        if not mime_type.startswith("image/"):
+            mime_type = "image/jpeg"
+    else:
+        path = pathlib.Path(arg)
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {arg}")
+        # Check file size (warn if > 5MB)
+        size = path.stat().st_size
+        if size > 5 * 1024 * 1024:
+            print(f"Warning: Image size {size / 1024 / 1024:.1f}MB is large and may exceed token limits.")
+        image_bytes = path.read_bytes()
+        # Guess MIME type from extension
+        suffix = path.suffix.lower()
+        if suffix in [".jpg", ".jpeg"]:
+            mime_type = "image/jpeg"
+        elif suffix == ".png":
+            mime_type = "image/png"
+        elif suffix == ".gif":
+            mime_type = "image/gif"
+        elif suffix == ".webp":
+            mime_type = "image/webp"
+        else:
+            mime_type = "image/jpeg"  # fallback
+    b64 = base64.b64encode(image_bytes).decode("ascii")
+    data_url = f"data:{mime_type};base64,{b64}"
+    return data_url, mime_type
+
 class ChatCommandResult(Enum):
     PROCEED_WITH_MODEL = 1
     PROCEED_WITH_PROMPT = 2
@@ -146,43 +185,8 @@ async def run_chat_loop(
         if arg is None:
             print("Error: /image requires a path or URL argument.")
             return ChatCommandResult.PROCEED_WITH_PROMPT
-        arg = arg.strip()
-        # Determine if URL or path
-        is_url = arg.startswith("http://") or arg.startswith("https://")
         try:
-            if is_url:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(arg, timeout=15.0)
-                    response.raise_for_status()
-                    image_bytes = response.content
-                # Guess MIME type from Content-Type header if present
-                mime_type = response.headers.get("content-type", "image/jpeg")
-                if not mime_type.startswith("image/"):
-                    mime_type = "image/jpeg"
-            else:
-                path = pathlib.Path(arg)
-                if not path.exists():
-                    print(f"Error: File not found: {arg}")
-                    return ChatCommandResult.PROCEED_WITH_PROMPT
-                # Check file size (warn if > 5MB)
-                size = path.stat().st_size
-                if size > 5 * 1024 * 1024:
-                    print(f"Warning: Image size {size / 1024 / 1024:.1f}MB is large and may exceed token limits.")
-                image_bytes = path.read_bytes()
-                # Guess MIME type from extension
-                suffix = path.suffix.lower()
-                if suffix in [".jpg", ".jpeg"]:
-                    mime_type = "image/jpeg"
-                elif suffix == ".png":
-                    mime_type = "image/png"
-                elif suffix == ".gif":
-                    mime_type = "image/gif"
-                elif suffix == ".webp":
-                    mime_type = "image/webp"
-                else:
-                    mime_type = "image/jpeg"  # fallback
-            b64 = base64.b64encode(image_bytes).decode("ascii")
-            data_url = f"data:{mime_type};base64,{b64}"
+            data_url, mime_type = await get_image(arg.strip())
             image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
             user_msg = UserMessage(content=image_content)
             append_user_message(history, callbacks, context_name, user_msg)
@@ -191,7 +195,6 @@ async def run_chat_loop(
         except Exception as e:
             print(f"Error loading image: {e}")
             return ChatCommandResult.PROCEED_WITH_PROMPT
-
     async def _help_cmd(arg: str | None = None) -> ChatCommandResult:
         print("Available commands:")
         for cmd in commands:
