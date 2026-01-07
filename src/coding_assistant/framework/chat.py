@@ -26,6 +26,9 @@ from coding_assistant.framework.types import (
     ToolResult,
 )
 from coding_assistant.ui import UI
+import base64
+import pathlib
+import httpx
 
 CHAT_START_MESSAGE_TEMPLATE = """
 ## General
@@ -86,7 +89,7 @@ class ChatCommandResult(Enum):
 class ChatCommand:
     name: str
     help: str
-    execute: Callable[[], Awaitable[ChatCommandResult]]
+    execute: Callable[[str | None], Awaitable[ChatCommandResult]]
 
 
 async def run_chat_loop(
@@ -114,10 +117,10 @@ async def run_chat_loop(
 
     need_user_input = True
 
-    async def _exit_cmd() -> ChatCommandResult:
+    async def _exit_cmd(arg: str | None = None) -> ChatCommandResult:
         return ChatCommandResult.EXIT
 
-    async def _compact_cmd() -> ChatCommandResult:
+    async def _compact_cmd(arg: str | None = None) -> ChatCommandResult:
         compact_msg = UserMessage(
             content="Immediately compact our conversation so far by using the `compact_conversation` tool."
         )
@@ -134,15 +137,73 @@ async def run_chat_loop(
 
         return ChatCommandResult.PROCEED_WITH_MODEL
 
-    async def _clear_cmd() -> ChatCommandResult:
+    async def _clear_cmd(arg: str | None = None) -> ChatCommandResult:
         clear_history(history)
         print("History cleared.")
+        return ChatCommandResult.PROCEED_WITH_PROMPT
+
+    async def _image_cmd(arg: str | None = None) -> ChatCommandResult:
+        if arg is None:
+            print("Error: /image requires a path or URL argument.")
+            return ChatCommandResult.PROCEED_WITH_PROMPT
+        arg = arg.strip()
+        # Determine if URL or path
+        is_url = arg.startswith("http://") or arg.startswith("https://")
+        try:
+            if is_url:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(arg, timeout=15.0)
+                    response.raise_for_status()
+                    image_bytes = response.content
+                # Guess MIME type from Content-Type header if present
+                mime_type = response.headers.get("content-type", "image/jpeg")
+                if not mime_type.startswith("image/"):
+                    mime_type = "image/jpeg"
+            else:
+                path = pathlib.Path(arg)
+                if not path.exists():
+                    print(f"Error: File not found: {arg}")
+                    return ChatCommandResult.PROCEED_WITH_PROMPT
+                # Check file size (warn if > 5MB)
+                size = path.stat().st_size
+                if size > 5 * 1024 * 1024:
+                    print(f"Warning: Image size {size / 1024 / 1024:.1f}MB is large and may exceed token limits.")
+                image_bytes = path.read_bytes()
+                # Guess MIME type from extension
+                suffix = path.suffix.lower()
+                if suffix in [".jpg", ".jpeg"]:
+                    mime_type = "image/jpeg"
+                elif suffix == ".png":
+                    mime_type = "image/png"
+                elif suffix == ".gif":
+                    mime_type = "image/gif"
+                elif suffix == ".webp":
+                    mime_type = "image/webp"
+                else:
+                    mime_type = "image/jpeg"  # fallback
+            b64 = base64.b64encode(image_bytes).decode("ascii")
+            data_url = f"data:{mime_type};base64,{b64}"
+            image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
+            user_msg = UserMessage(content=image_content)
+            append_user_message(history, callbacks, context_name, user_msg)
+            print(f"Image added from {arg}.")
+            return ChatCommandResult.PROCEED_WITH_PROMPT
+        except Exception as e:
+            print(f"Error loading image: {e}")
+            return ChatCommandResult.PROCEED_WITH_PROMPT
+
+    async def _help_cmd(arg: str | None = None) -> ChatCommandResult:
+        print("Available commands:")
+        for cmd in commands:
+            print(f"  {cmd.name} - {cmd.help}")
         return ChatCommandResult.PROCEED_WITH_PROMPT
 
     commands = [
         ChatCommand("/exit", "Exit the chat", _exit_cmd),
         ChatCommand("/compact", "Compact the conversation history", _compact_cmd),
         ChatCommand("/clear", "Clear the conversation history", _clear_cmd),
+        ChatCommand("/image", "Add an image (path or URL) to history", _image_cmd),
+        ChatCommand("/help", "Show this help", _help_cmd),
     ]
     command_map = {cmd.name: cmd for cmd in commands}
     command_names = list(command_map.keys())
@@ -162,8 +223,12 @@ async def run_chat_loop(
             answer = await ui.prompt(words=command_names)
             answer_strip = answer.strip()
 
-            if tool := command_map.get(answer_strip):
-                result = await tool.execute()
+            # Split answer into command and argument
+            parts = answer_strip.split(maxsplit=1)
+            cmd = parts[0]
+            arg = parts[1] if len(parts) > 1 else None
+            if tool := command_map.get(cmd):
+                result = await tool.execute(arg)
                 if result == ChatCommandResult.EXIT:
                     break
                 elif result == ChatCommandResult.PROCEED_WITH_PROMPT:
