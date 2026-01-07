@@ -31,7 +31,7 @@ async def get_image(path_or_url: str) -> str:
         # Expand ~ in the path
         path = path.expanduser()
         if not path.exists():
-            raise FileNotFoundError(f"File not found: {path_or_url}")
+            raise FileNotFoundError(f"File not found: {path}")
         with open(path, "rb") as f:
             content = f.read()
 
