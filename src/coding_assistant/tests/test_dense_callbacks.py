@@ -2,6 +2,7 @@ from typing import cast, Any
 from unittest.mock import patch, call
 from coding_assistant import callbacks
 from coding_assistant.callbacks import DenseProgressCallbacks, ReasoningState, ContentState, ToolState, IdleState
+from coding_assistant.llm.types import ToolCall, ToolMessage, FunctionCall
 
 
 def test_dense_callbacks_lifecycle() -> None:
@@ -18,9 +19,11 @@ def test_dense_callbacks_lifecycle() -> None:
         assert isinstance(cb._state, ContentState)
         cb.on_content_chunk(" world!\n\n")
 
-        cb.on_tool_start("TestAgent", "call_1", "test_tool", {"arg": "val"})
+        tool_call = ToolCall(id="call_1", function=FunctionCall(name="test_tool", arguments='{"arg": "val"}'))
+        cb.on_tool_start("TestAgent", tool_call, {"arg": "val"})
         assert isinstance(cb._state, ToolState)
-        cb.on_tool_message("TestAgent", "call_1", "test_tool", {"arg": "val"}, "Tool result")
+        tool_msg = ToolMessage(content="Tool result", tool_call_id="call_1", name="test_tool")
+        cb.on_tool_message("TestAgent", tool_msg, "test_tool", {"arg": "val"})
 
         cb.on_content_chunk("Final bit")
         cb.on_chunks_end()
@@ -33,8 +36,10 @@ def test_dense_callbacks_tool_formatting() -> None:
     cb = DenseProgressCallbacks()
 
     with patch("coding_assistant.callbacks.print") as mock_print:
-        cb.on_tool_start("TestAgent", "call_1", "shell_execute", {"command": "ls"})
-        cb.on_tool_message("TestAgent", "call_1", "shell_execute", {"command": "ls"}, "file1\nfile2")
+        tool_call = ToolCall(id="call_1", function=FunctionCall(name="shell_execute", arguments='{"command": "ls"}'))
+        cb.on_tool_start("TestAgent", tool_call, {"command": "ls"})
+        tool_msg = ToolMessage(content="file1\nfile2", tool_call_id="call_1", name="shell_execute")
+        cb.on_tool_message("TestAgent", tool_msg, "shell_execute", {"command": "ls"})
 
     assert mock_print.called
 
@@ -84,7 +89,8 @@ def test_dense_callbacks_empty_line_logic() -> None:
 
         cb.on_content_chunk("Hello")
 
-        cb.on_tool_start("TestAgent", "call_1", "test_tool", {"arg": 1})
+        tool_call = ToolCall(id="call_1", function=FunctionCall(name="test_tool", arguments='{"arg": 1}'))
+        cb.on_tool_start("TestAgent", tool_call, {"arg": 1})
 
         cb.on_content_chunk("Result")
 
@@ -102,37 +108,48 @@ def test_dense_callbacks_multiline_tool_formatting(capsys: Any) -> None:
     cb = DenseProgressCallbacks()
     callbacks.console.width = 200
 
-    cb.on_tool_start("TestAgent", "call_1", "unknown_tool", {"arg": "line1\nline2"})
+    tool_call = ToolCall(id="call_1", function=FunctionCall(name="unknown_tool", arguments='{"arg": "line1\\nline2"}'))
+    cb.on_tool_start("TestAgent", tool_call, {"arg": "line1\nline2"})
     captured = capsys.readouterr()
     assert 'unknown_tool(arg="line1\\nline2")' in captured.out
 
-    cb.on_tool_start("TestAgent", "call_2", "shell_execute", {"command": "ls\npwd"})
+    tool_call = ToolCall(id="call_2", function=FunctionCall(name="shell_execute", arguments='{"command": "ls\\npwd"}'))
+    cb.on_tool_start("TestAgent", tool_call, {"command": "ls\npwd"})
     captured = capsys.readouterr()
     assert "▶ shell_execute(command)" in captured.out
     assert "  command:" in captured.out
     assert "  ls" in captured.out
     assert "  pwd" in captured.out
 
-    cb.on_tool_start("TestAgent", "call_3", "shell_execute", {"command": "ls"})
+    tool_call = ToolCall(id="call_3", function=FunctionCall(name="shell_execute", arguments='{"command": "ls"}'))
+    cb.on_tool_start("TestAgent", tool_call, {"command": "ls"})
     captured = capsys.readouterr()
     assert 'shell_execute(command="ls")' in captured.out
 
-    cb.on_tool_start(
-        "TestAgent",
-        "call_4",
-        "filesystem_write_file",
-        {"path": "test.py", "content": "def hello():\n    pass"},
+    tool_call = ToolCall(
+        id="call_4",
+        function=FunctionCall(
+            name="filesystem_write_file",
+            arguments='{"path": "test.py", "content": "def hello():\\n    pass"}',
+        ),
     )
+    cb.on_tool_start("TestAgent", tool_call, {"path": "test.py", "content": "def hello():\n    pass"})
     assert cb._SPECIAL_TOOLS["filesystem_write_file"]["content"] == ""
     captured = capsys.readouterr()
     assert 'filesystem_write_file(path="test.py", content)' in captured.out
     assert "  content:" in captured.out
     assert "  def hello():" in captured.out
 
+    tool_call = ToolCall(
+        id="call_5",
+        function=FunctionCall(
+            name="filesystem_edit_file",
+            arguments='{"path": "script.sh", "old_text": "line1\\nold", "new_text": "line1\\nline2"}',
+        ),
+    )
     cb.on_tool_start(
         "TestAgent",
-        "call_5",
-        "filesystem_edit_file",
+        tool_call,
         {"path": "script.sh", "old_text": "line1\nold", "new_text": "line1\nline2"},
     )
     assert "old_text" in cb._SPECIAL_TOOLS["filesystem_edit_file"]
@@ -143,20 +160,32 @@ def test_dense_callbacks_multiline_tool_formatting(capsys: Any) -> None:
     assert "  old_text:" in captured.out
     assert "  new_text:" in captured.out
 
+    tool_call = ToolCall(
+        id="call_6",
+        function=FunctionCall(
+            name="python_execute",
+            arguments='{"code": "import os\\nprint(os.getcwd())"}',
+        ),
+    )
     cb.on_tool_start(
         "TestAgent",
-        "call_6",
-        "python_execute",
+        tool_call,
         {"code": "import os\nprint(os.getcwd())"},
     )
     captured = capsys.readouterr()
     assert "▶ python_execute(code)" in captured.out
     assert "  code:" in captured.out
 
+    tool_call = ToolCall(
+        id="call_7",
+        function=FunctionCall(
+            name="todo_add",
+            arguments='{"descriptions": ["task 1", "task 2"]}',
+        ),
+    )
     cb.on_tool_start(
         "TestAgent",
-        "call_7",
-        "todo_add",
+        tool_call,
         {"descriptions": ["task 1", "task 2"]},
     )
     captured = capsys.readouterr()
@@ -165,19 +194,27 @@ def test_dense_callbacks_multiline_tool_formatting(capsys: Any) -> None:
     assert '"task 1"' in captured.out
     assert '"task 2"' in captured.out
 
-    cb.on_tool_start(
-        "TestAgent",
-        "call_8",
-        "python_execute",
-        {"not_code": "line1\nline2"},
+    tool_call = ToolCall(
+        id="call_8",
+        function=FunctionCall(
+            name="python_execute",
+            arguments='{"not_code": "line1\\nline2"}',
+        ),
     )
+    cb.on_tool_start("TestAgent", tool_call, {"not_code": "line1\nline2"})
     captured = capsys.readouterr()
     assert 'python_execute(not_code="line1\\nline2")' in captured.out
 
+    tool_call = ToolCall(
+        id="call_9",
+        function=FunctionCall(
+            name="python_execute",
+            arguments='{"code": "print(1)"}',
+        ),
+    )
     cb.on_tool_start(
         "TestAgent",
-        "call_9",
-        "python_execute",
+        tool_call,
         {"code": "print(1)"},
     )
     captured = capsys.readouterr()
@@ -186,17 +223,24 @@ def test_dense_callbacks_multiline_tool_formatting(capsys: Any) -> None:
 
 def test_dense_callbacks_empty_arg_parentheses(capsys: Any) -> None:
     cb = DenseProgressCallbacks()
-    cb.on_tool_start("TestAgent", "call_1", "tasks_list_tasks", {})
+    tool_call = ToolCall(id="call_1", function=FunctionCall(name="tasks_list_tasks", arguments="{}"))
+    cb.on_tool_start("TestAgent", tool_call, {})
     captured = capsys.readouterr()
     assert "▶ tasks_list_tasks()" in captured.out
 
 
 def test_dense_callbacks_long_arg_parentheses(capsys: Any) -> None:
     cb = DenseProgressCallbacks()
+    tool_call = ToolCall(
+        id="call_1",
+        function=FunctionCall(
+            name="shell_execute",
+            arguments='{"command": "echo line1\\necho line2", "background": false}',
+        ),
+    )
     cb.on_tool_start(
         "TestAgent",
-        "call_1",
-        "shell_execute",
+        tool_call,
         {"command": "echo line1\necho line2", "background": False},
     )
     captured = capsys.readouterr()
@@ -206,12 +250,16 @@ def test_dense_callbacks_long_arg_parentheses(capsys: Any) -> None:
 def test_dense_callbacks_tool_result_stripping() -> None:
     cb = DenseProgressCallbacks()
     with patch("coding_assistant.callbacks.print") as mock_print:
+        tool_msg = ToolMessage(
+            content="--- test.py\n+++ test.py\n-old\n+new\n",
+            tool_call_id="call_1",
+            name="filesystem_edit_file",
+        )
         cb.on_tool_message(
             "TestAgent",
-            "call_1",
+            tool_msg,
             "filesystem_edit_file",
             {"path": "test.py", "old_text": "old", "new_text": "new"},
-            "--- test.py\n+++ test.py\n-old\n+new\n",
         )
 
         found_diff = False
@@ -227,7 +275,8 @@ def test_dense_callbacks_tool_result_stripping() -> None:
 
         mock_print.reset_mock()
 
-        cb.on_tool_message("TestAgent", "call_2", "todo_list_todos", {}, "- [ ] Task 1\n")
+        tool_msg = ToolMessage(content="- [ ] Task 1\n", tool_call_id="call_2", name="todo_list_todos")
+        cb.on_tool_message("TestAgent", tool_msg, "todo_list_todos", {})
 
         found_todo = False
         for call_args in mock_print.call_args_list:
@@ -245,10 +294,16 @@ def test_dense_callbacks_tool_lang_extension(capsys: Any) -> None:
     callbacks.console.width = 200
 
     with patch("coding_assistant.callbacks.Markdown", side_effect=cast(Any, callbacks).Markdown) as mock_markdown:
+        tool_call = ToolCall(
+            id="call_1",
+            function=FunctionCall(
+                name="filesystem_write_file",
+                arguments='{"path": "test.py", "content": "def hello():\\n    pass"}',
+            ),
+        )
         cb.on_tool_start(
             "TestAgent",
-            "call_1",
-            "filesystem_write_file",
+            tool_call,
             {"path": "test.py", "content": "def hello():\n    pass"},
         )
         found_py = False
@@ -260,10 +315,16 @@ def test_dense_callbacks_tool_lang_extension(capsys: Any) -> None:
 
         mock_markdown.reset_mock()
 
+        tool_call = ToolCall(
+            id="call_2",
+            function=FunctionCall(
+                name="filesystem_write_file",
+                arguments='{"path": "script.sh", "content": "echo hello\\nls"}',
+            ),
+        )
         cb.on_tool_start(
             "TestAgent",
-            "call_2",
-            "filesystem_write_file",
+            tool_call,
             {"path": "script.sh", "content": "echo hello\nls"},
         )
         found_sh = False
@@ -275,10 +336,16 @@ def test_dense_callbacks_tool_lang_extension(capsys: Any) -> None:
 
         mock_markdown.reset_mock()
 
+        tool_call = ToolCall(
+            id="call_3",
+            function=FunctionCall(
+                name="filesystem_edit_file",
+                arguments='{"path": "index.js", "old_text": "const x = 1\\n", "new_text": "const x = 2\\n"}',
+            ),
+        )
         cb.on_tool_start(
             "TestAgent",
-            "call_3",
-            "filesystem_edit_file",
+            tool_call,
             {"path": "index.js", "old_text": "const x = 1\n", "new_text": "const x = 2\n"},
         )
         found_js = False
@@ -290,10 +357,16 @@ def test_dense_callbacks_tool_lang_extension(capsys: Any) -> None:
 
         mock_markdown.reset_mock()
 
+        tool_call = ToolCall(
+            id="call_4",
+            function=FunctionCall(
+                name="filesystem_write_file",
+                arguments='{"path": "Dockerfile", "content": "FROM alpine\\nRUN ls"}',
+            ),
+        )
         cb.on_tool_start(
             "TestAgent",
-            "call_4",
-            "filesystem_write_file",
+            tool_call,
             {"path": "Dockerfile", "content": "FROM alpine\nRUN ls"},
         )
         found_default = False
@@ -305,10 +378,16 @@ def test_dense_callbacks_tool_lang_extension(capsys: Any) -> None:
 
         mock_markdown.reset_mock()
 
+        tool_call = ToolCall(
+            id="call_5",
+            function=FunctionCall(
+                name="filesystem_write_file",
+                arguments='{"path": "dir.old/script", "content": "echo hello\\nline2"}',
+            ),
+        )
         cb.on_tool_start(
             "TestAgent",
-            "call_5",
-            "filesystem_write_file",
+            tool_call,
             {"path": "dir.old/script", "content": "echo hello\nline2"},
         )
         found_none = False
@@ -320,10 +399,16 @@ def test_dense_callbacks_tool_lang_extension(capsys: Any) -> None:
 
         mock_markdown.reset_mock()
 
+        tool_call = ToolCall(
+            id="call_6",
+            function=FunctionCall(
+                name="filesystem_write_file",
+                arguments='{"path": ".gitignore", "content": "node_modules/\\nline2"}',
+            ),
+        )
         cb.on_tool_start(
             "TestAgent",
-            "call_6",
-            "filesystem_write_file",
+            tool_call,
             {"path": ".gitignore", "content": "node_modules/\nline2"},
         )
         found_none = False
@@ -335,10 +420,16 @@ def test_dense_callbacks_tool_lang_extension(capsys: Any) -> None:
 
         mock_markdown.reset_mock()
 
+        tool_call = ToolCall(
+            id="call_7",
+            function=FunctionCall(
+                name="filesystem_write_file",
+                arguments='{"path": "README.", "content": "content\\nline2"}',
+            ),
+        )
         cb.on_tool_start(
             "TestAgent",
-            "call_7",
-            "filesystem_write_file",
+            tool_call,
             {"path": "README.", "content": "content\nline2"},
         )
         found_none = False

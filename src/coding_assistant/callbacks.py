@@ -14,6 +14,7 @@ from rich.padding import Padding
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.results import TextResult, ToolResult
+from coding_assistant.llm.types import UserMessage, AssistantMessage, ToolCall, ToolMessage
 
 console = Console()
 print = console.print
@@ -122,12 +123,14 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._left_padding = (0, 0, 0, 2)
         self._print_reasoning = print_reasoning
 
-    def on_user_message(self, context_name: str, content: str, force: bool = False) -> None:
+    def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
         if force:
+            content = message.content if isinstance(message.content, str) else str(message.content)
             self._print_banner("User", content)
 
-    def on_assistant_message(self, context_name: str, content: str, force: bool = False) -> None:
+    def on_assistant_message(self, context_name: str, message: AssistantMessage, force: bool = False) -> None:
         if force:
+            content = message.content if isinstance(message.content, str) else ""
             self._print_banner("Assistant", content)
 
     def _print_banner(self, role: str, content: str) -> None:
@@ -135,9 +138,6 @@ class DenseProgressCallbacks(ProgressCallbacks):
         print()
         print(Markdown(f"## {role}\n\n{content}"))
         self._state = IdleState()
-
-    def on_assistant_reasoning(self, context_name: str, content: str) -> None:
-        pass
 
     def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict[str, Any]) -> None:
         multiline_config = self._SPECIAL_TOOLS.get(tool_name, {})
@@ -188,11 +188,11 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 return ext[1:]
         return None
 
-    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any]) -> None:
+    def on_tool_start(self, context_name: str, tool_call: ToolCall, arguments: dict[str, Any]) -> None:
         self._finalize_state()
         print()
-        self._print_tool_start("▶", tool_name, arguments)
-        self._state = ToolState(tool_call_id=tool_call_id)
+        self._print_tool_start("▶", tool_call.function.name, arguments)
+        self._state = ToolState(tool_call_id=tool_call.id)
 
     def _special_handle_full_result(self, tool_name: str, result: str) -> bool:
         if tool_name == "filesystem_edit_file":
@@ -205,14 +205,14 @@ class DenseProgressCallbacks(ProgressCallbacks):
         return False
 
     def on_tool_message(
-        self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any], result: str
+        self, context_name: str, message: ToolMessage, tool_name: str, arguments: dict[str, Any]
     ) -> None:
-        if not isinstance(self._state, ToolState) or self._state.tool_call_id != tool_call_id:
+        if not isinstance(self._state, ToolState) or self._state.tool_call_id != message.tool_call_id:
             print()
             self._print_tool_start("◀", tool_name, arguments)
 
-        if not self._special_handle_full_result(tool_name, result):
-            print(f"  [dim]→ {len(result.splitlines())} lines[/dim]")
+        if not self._special_handle_full_result(tool_name, message.content):
+            print(f"  [dim]→ {len(message.content.splitlines())} lines[/dim]")
 
         self._state = ToolState()
 

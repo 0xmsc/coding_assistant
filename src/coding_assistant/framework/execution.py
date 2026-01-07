@@ -51,7 +51,7 @@ async def handle_tool_call(
 
     logger.debug(f"[{tool_call.id}] [{context_name}] Calling tool '{function_name}' with arguments {function_args}")
 
-    progress_callbacks.on_tool_start(context_name, tool_call.id, function_name, function_args)
+    progress_callbacks.on_tool_start(context_name, tool_call, function_args)
 
     function_call_result: ToolResult
     try:
@@ -185,8 +185,5 @@ async def do_single_step(
         callbacks=progress_callbacks,
     )
     message = completion.message
-
-    if isinstance(message, AssistantMessage) and message.reasoning_content:
-        progress_callbacks.on_assistant_reasoning(context_name, message.reasoning_content)
 
     return message, completion.usage

@@ -11,7 +11,7 @@ from coding_assistant.framework.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.llm.types import AssistantMessage, ToolCall, FunctionCall
+from coding_assistant.llm.types import AssistantMessage, ToolCall, FunctionCall, ToolMessage
 from coding_assistant.framework.types import TextResult, Tool, AgentContext
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
@@ -72,12 +72,13 @@ async def test_on_tool_message_called_with_arguments_and_result() -> None:
         # on_tool_message is called positionally in code; args tuple
         args = call_args[0]
         if (
-            len(args) == 5
+            len(args) == 4
             and args[0] == desc.name
-            and args[1] == "1"
+            and isinstance(args[1], ToolMessage)
+            and args[1].tool_call_id == "1"
+            and args[1].content == "hello"
             and args[2] == "echo"
             and args[3] == {"text": "hello"}
-            and args[4] == "hello"
         ):
             found = True
             break
