@@ -1,6 +1,7 @@
 import io
 import base64
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
@@ -126,7 +127,7 @@ async def test_get_image_png_to_jpeg(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_image_tilde_expansion(small_image: bytes, tmp_path: Path, monkeypatch) -> None:
+async def test_get_image_tilde_expansion(small_image: bytes, tmp_path: Path, monkeypatch: Any) -> None:
     """Test that ~ is expanded to home directory."""
     # Set HOME to a temporary directory
     monkeypatch.setenv("HOME", str(tmp_path))
