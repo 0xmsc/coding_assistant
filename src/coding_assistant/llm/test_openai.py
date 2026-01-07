@@ -31,9 +31,6 @@ class _CB(NullProgressCallbacks):
         self.end = False
         self.reasoning: Any = []
 
-    def on_assistant_reasoning(self, context_name: str, content: str) -> Any:
-        self.reasoning.append(content)
-
     def on_content_chunk(self, chunk: str) -> Any:
         self.chunks.append(chunk)
 

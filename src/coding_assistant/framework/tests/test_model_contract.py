@@ -136,9 +136,6 @@ async def test_reasoning_is_forwarded_and_not_stored() -> None:
         context_name=desc.name,
     )
 
-    # Assert reasoning was forwarded via callback
-    callbacks.on_assistant_reasoning.assert_called_once_with(desc.name, "These are my private thoughts")
-
     # Assert reasoning is not stored in history anywhere
     for entry in state.history:
         assert getattr(entry, "reasoning_content", None) is None

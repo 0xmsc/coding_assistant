@@ -201,7 +201,8 @@ async def test_chat_compact_conversation_not_forced_in_callbacks() -> None:
         def __init__(self) -> None:
             self.user_messages: Any = []
 
-        def on_user_message(self, context_name: str, content: str, force: bool = False) -> Any:
+        def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> Any:
+            content = message.content if isinstance(message.content, str) else str(message.content)
             self.user_messages.append((content, force))
 
     callbacks = SpyCallbacks()
