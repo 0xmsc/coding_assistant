@@ -31,7 +31,10 @@ import pathlib
 import httpx
 
 import mimetypes
+import io
 from urllib.parse import urlparse
+from PIL import Image
+
 CHAT_START_MESSAGE_TEMPLATE = """
 ## General
 

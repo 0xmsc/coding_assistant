@@ -20,6 +20,7 @@ dependencies = [
     "httpx-sse",
     "aiofiles",
     "python-frontmatter",
+    "Pillow",
 ]
 
 [dependency-groups]
