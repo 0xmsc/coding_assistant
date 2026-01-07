@@ -12,18 +12,18 @@ from coding_assistant.framework.image import get_image
 @pytest.fixture
 def small_image() -> bytes:
     """Create a small test image (100x100)."""
-    img = Image.new('RGB', (100, 100), color='red')
+    img = Image.new("RGB", (100, 100), color="red")
     buf = io.BytesIO()
-    img.save(buf, format='JPEG')
+    img.save(buf, format="JPEG")
     return buf.getvalue()
 
 
 @pytest.fixture
 def large_image() -> bytes:
     """Create a large test image (3000x2000)."""
-    img = Image.new('RGB', (3000, 2000), color='blue')
+    img = Image.new("RGB", (3000, 2000), color="blue")
     buf = io.BytesIO()
-    img.save(buf, format='PNG')
+    img.save(buf, format="PNG")
     return buf.getvalue()
 
 
@@ -32,9 +32,9 @@ async def test_get_image_local_small(small_image: bytes, tmp_path: Path) -> None
     """Local image that does not need downsampling."""
     file_path = tmp_path / "small.jpg"
     file_path.write_bytes(small_image)
-    
+
     data_uri = await get_image(str(file_path))
-    
+
     assert data_uri.startswith("data:image/jpeg;base64,")
     assert data_uri.startswith("data:image/jpeg;base64,")
     # Ensure the image is still roughly the same size (maybe compressed)
@@ -49,9 +49,9 @@ async def test_get_image_local_large_downscaled(large_image: bytes, tmp_path: Pa
     """Large local image that should be downsampled to max 1024px."""
     file_path = tmp_path / "large.png"
     file_path.write_bytes(large_image)
-    
+
     data_uri = await get_image(str(file_path))
-    
+
     assert data_uri.startswith("data:image/jpeg;base64,")
     decoded = base64.b64decode(data_uri.split(",")[1])
     with Image.open(io.BytesIO(decoded)) as img:
@@ -70,12 +70,12 @@ async def test_get_image_url_success(small_image: bytes) -> None:
     mock_response = MagicMock()
     mock_response.content = small_image
     mock_response.headers = {"content-type": "image/jpeg"}
-    
+
     with patch("coding_assistant.framework.image.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
-        
+
         data_uri = await get_image("https://example.com/image.jpg")
-        
+
         assert data_uri.startswith("data:image/jpeg;base64,")
         assert data_uri.startswith("data:image/jpeg;base64,")
 
@@ -85,7 +85,7 @@ async def test_get_image_url_failure() -> None:
     """URL that returns an error."""
     with patch("coding_assistant.framework.image.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(side_effect=Exception("Network error"))
-        
+
         with pytest.raises(Exception, match="Network error"):
             await get_image("https://example.com/missing.jpg")
 
@@ -102,7 +102,7 @@ async def test_get_image_invalid_image(tmp_path: Path) -> None:
     """Invalid image file (not a valid image)."""
     file_path = tmp_path / "invalid.txt"
     file_path.write_text("This is not an image")
-    
+
     with pytest.raises(Exception):
         await get_image(str(file_path))
 
@@ -110,12 +110,12 @@ async def test_get_image_invalid_image(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_get_image_png_to_jpeg(tmp_path: Path) -> None:
     """PNG image should be converted to JPEG."""
-    img = Image.new('RGBA', (200, 200), color=(255, 0, 0, 128))  # Red with alpha
+    img = Image.new("RGBA", (200, 200), color=(255, 0, 0, 128))  # Red with alpha
     buf = io.BytesIO()
-    img.save(buf, format='PNG')
+    img.save(buf, format="PNG")
     file_path = tmp_path / "alpha.png"
     file_path.write_bytes(buf.getvalue())
-    
+
     data_uri = await get_image(str(file_path))
     assert data_uri.startswith("data:image/jpeg;base64,")
     decoded = base64.b64decode(data_uri.split(",")[1])
@@ -123,6 +123,7 @@ async def test_get_image_png_to_jpeg(tmp_path: Path) -> None:
         # Should be RGB, not RGBA
         assert result.mode == "RGB"
         assert result.size == (200, 200)
+
 
 @pytest.mark.asyncio
 async def test_get_image_tilde_expansion(small_image: bytes, tmp_path: Path, monkeypatch) -> None:
