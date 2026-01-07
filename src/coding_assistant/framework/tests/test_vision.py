@@ -8,7 +8,7 @@ from coding_assistant.framework.tests.test_agents import create_test_config
 from coding_assistant.tools.tools import AgentTool
 from coding_assistant.ui import NullUI
 
-TEST_MODEL = "openrouter/openai/gpt-5-mini"
+TEST_MODEL = "openai/gpt-5-mini"
 
 
 @pytest.mark.slow
