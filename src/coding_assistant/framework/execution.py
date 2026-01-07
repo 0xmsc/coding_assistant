@@ -7,7 +7,7 @@ from typing import Any
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
 from coding_assistant.framework.history import append_tool_message
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolCall, Usage
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolCall, ToolMessage, Usage
 from coding_assistant.framework.types import Tool, Completer
 from coding_assistant.framework.results import ToolResult, TextResult
 from coding_assistant.trace import trace_json
@@ -152,14 +152,17 @@ async def handle_tool_calls(
             except JSONDecodeError:
                 function_args = {}
 
+            tool_message = ToolMessage(
+                tool_call_id=tool_call.id,
+                name=tool_call.function.name,
+                content=result_summary,
+            )
             append_tool_message(
                 history,
                 progress_callbacks,
                 context_name,
-                tool_call.id,
-                tool_call.function.name,
+                tool_message,
                 function_args,
-                result_summary,
             )
 
     if any_cancelled:

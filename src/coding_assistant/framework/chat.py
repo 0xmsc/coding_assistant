@@ -58,11 +58,14 @@ def handle_tool_result_chat(
 ) -> str:
     if isinstance(result, CompactConversationResult):
         clear_history(history)
+        compact_result_msg = UserMessage(
+            content=f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work."
+        )
         append_user_message(
             history,
             callbacks,
             context_name,
-            f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work.",
+            compact_result_msg,
             force=False,
         )
         return "Conversation compacted and history reset."
@@ -115,11 +118,14 @@ async def run_chat_loop(
         return ChatCommandResult.EXIT
 
     async def _compact_cmd() -> ChatCommandResult:
+        compact_msg = UserMessage(
+            content="Immediately compact our conversation so far by using the `compact_conversation` tool."
+        )
         append_user_message(
             history,
             callbacks,
             context_name,
-            "Immediately compact our conversation so far by using the `compact_conversation` tool.",
+            compact_msg,
             force=True,
         )
 
@@ -142,7 +148,8 @@ async def run_chat_loop(
     command_names = list(command_map.keys())
 
     start_message = _create_chat_start_message(instructions)
-    append_user_message(history, callbacks, context_name, start_message, force=True)
+    start_user_msg = UserMessage(content=start_message)
+    append_user_message(history, callbacks, context_name, start_user_msg, force=True)
 
     usage = Usage(0, 0.0)
 
@@ -165,7 +172,8 @@ async def run_chat_loop(
                 elif result == ChatCommandResult.PROCEED_WITH_MODEL:
                     pass
             else:
-                append_user_message(history, callbacks, context_name, answer)
+                user_msg = UserMessage(content=answer)
+                append_user_message(history, callbacks, context_name, user_msg)
 
         loop = asyncio.get_running_loop()
         with InterruptController(loop) as interrupt_controller:
