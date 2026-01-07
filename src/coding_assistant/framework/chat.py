@@ -5,7 +5,7 @@ from enum import Enum
 
 from rich.console import Console
 
-from coding_assistant.llm.types import BaseMessage, Usage
+from coding_assistant.llm.types import BaseMessage, UserMessage, AssistantMessage, Usage
 
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
@@ -107,11 +107,13 @@ async def run_chat_loop(
             if message.role == "assistant":
                 if content := message.content:
                     if isinstance(content, str):
-                        callbacks.on_assistant_message(context_name, content, force=True)
+                        assert isinstance(message, AssistantMessage)
+                        callbacks.on_assistant_message(context_name, message, force=True)
             elif message.role == "user":
                 if content := message.content:
                     if isinstance(content, str):
-                        callbacks.on_user_message(context_name, content, force=True)
+                        assert isinstance(message, UserMessage)
+                        callbacks.on_user_message(context_name, message, force=True)
 
     need_user_input = True
 
