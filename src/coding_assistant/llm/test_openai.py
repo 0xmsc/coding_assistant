@@ -524,6 +524,31 @@ class TestMergeChunks:
         assert json.loads(result.tool_calls[1].function.arguments) == {"p2": "v2"}
 
 
+    def test_merge_chunks_unconventional_tool_calls_wrapped(self) -> None:
+        """Test merging chunks with unconventional tool calls wrapped in <tool_call>."""
+        content = "I will read the file now.\n<tool_call>\n<function=filesystem_read_file> <parameter=path>/home/marcel/README.md  </tool_call>\nLet me know if you need anything else."
+        chunks = [
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "role": "assistant",
+                            "content": content,
+                        },
+                        "finish_reason": None,
+                    }
+                ]
+            }
+        ]
+
+        result = _merge_chunks(cast(Any, chunks))
+
+        assert result.content == content
+        assert len(result.tool_calls) == 1
+        assert result.tool_calls[0].function.name == "filesystem_read_file"
+        assert json.loads(result.tool_calls[0].function.arguments) == {"path": "/home/marcel/README.md"}
+
+
 class TestCompletionType:
     """Tests for the Completion type with Usage."""
 
