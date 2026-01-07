@@ -5,8 +5,10 @@ import pytest
 
 from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
 from coding_assistant.framework.tests.test_agents import create_test_config
+from coding_assistant.llm.types import UserMessage
 from coding_assistant.tools.tools import AgentTool
 from coding_assistant.ui import NullUI
+
 
 @pytest.mark.slow
 @pytest.mark.asyncio
@@ -19,8 +21,7 @@ async def test_model_vision_recognizes_car_image() -> None:
     b64 = base64.b64encode(image_bytes).decode("ascii")
     data_url = f"data:image/jpeg;base64,{b64}"
 
-    history = []
-    history.append({"role": "user", "content": [{"type": "image_url", "image_url": {"url": data_url}}]})
+    history = [UserMessage(content=[{"type": "image_url", "image_url": {"url": data_url}}])]
 
     config = create_test_config()
     tool = AgentTool(
