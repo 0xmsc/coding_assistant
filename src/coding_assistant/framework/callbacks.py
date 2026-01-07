@@ -1,34 +1,30 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 from coding_assistant.framework.results import ToolResult
+from coding_assistant.llm.types import UserMessage, AssistantMessage, ToolMessage, ToolCall
 
 
 class ProgressCallbacks(ABC):
     """Abstract interface for agent callbacks."""
 
     @abstractmethod
-    def on_user_message(self, context_name: str, content: str, force: bool = False) -> None:
+    def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
         """Handle messages with role: user."""
         pass
 
     @abstractmethod
-    def on_assistant_message(self, context_name: str, content: str, force: bool = False) -> None:
+    def on_assistant_message(self, context_name: str, message: AssistantMessage, force: bool = False) -> None:
         """Handle messages with role: assistant."""
         pass
 
     @abstractmethod
-    def on_assistant_reasoning(self, context_name: str, content: str) -> None:
-        """Handle reasoning content from assistant."""
-        pass
-
-    @abstractmethod
-    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any]) -> None:
+    def on_tool_start(self, context_name: str, tool_call: ToolCall, arguments: dict[str, Any]) -> None:
         """Handle tool start events."""
         pass
 
     @abstractmethod
     def on_tool_message(
-        self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any], result: str
+        self, context_name: str, message: ToolMessage, tool_name: str, arguments: dict[str, Any]
     ) -> None:
         """Handle messages with role: tool."""
         pass
@@ -52,20 +48,17 @@ class ProgressCallbacks(ABC):
 class NullProgressCallbacks(ProgressCallbacks):
     """Null object implementation that does nothing."""
 
-    def on_user_message(self, context_name: str, content: str, force: bool = False) -> None:
+    def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
         pass
 
-    def on_assistant_message(self, context_name: str, content: str, force: bool = False) -> None:
+    def on_assistant_message(self, context_name: str, message: AssistantMessage, force: bool = False) -> None:
         pass
 
-    def on_assistant_reasoning(self, context_name: str, content: str) -> None:
-        pass
-
-    def on_tool_start(self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any]) -> None:
+    def on_tool_start(self, context_name: str, tool_call: ToolCall, arguments: dict[str, Any]) -> None:
         pass
 
     def on_tool_message(
-        self, context_name: str, tool_call_id: str, tool_name: str, arguments: dict[str, Any], result: str
+        self, context_name: str, message: ToolMessage, tool_name: str, arguments: dict[str, Any]
     ) -> None:
         pass
 
