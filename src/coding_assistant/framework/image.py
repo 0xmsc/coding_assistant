@@ -5,18 +5,11 @@ import pathlib
 from urllib.parse import urlparse
 
 import httpx
-from PIL import Image  # type: ignore
+from PIL import Image
 
 
 async def get_image(path_or_url: str) -> tuple[str, str]:
-    """Load image from local file or URL, downscale if needed, convert to JPEG.
-    
-    Args:
-        path_or_url: Local file path or HTTP(S) URL.
-        
-    Returns:
-        Tuple of (data_uri, mime_type). Mime type is always 'image/jpeg'.
-    """
+    """Load image from local file or URL, downscale if needed, convert to JPEG."""
     MAX_DIMENSION = 1024
 
     is_url = urlparse(path_or_url).scheme in ('http', 'https')
@@ -37,12 +30,12 @@ async def get_image(path_or_url: str) -> tuple[str, str]:
     with Image.open(io.BytesIO(content)) as img:
         # Convert to RGB (remove alpha)
         if img.mode in ('RGBA', 'LA', 'P'):
-            img = img.convert('RGB')
+            img = img.convert('RGB')  # type: ignore
         width, height = img.size
         if width > MAX_DIMENSION or height > MAX_DIMENSION:
             ratio = MAX_DIMENSION / max(width, height)
             new_size = (int(width * ratio), int(height * ratio))
-            img = img.resize(new_size, Image.LANCZOS)
+            img = img.resize(new_size, Image.LANCZOS)  # type: ignore
         output = io.BytesIO()
         img.save(output, format='JPEG', optimize=True, quality=85)
         content = output.getvalue()
