@@ -84,15 +84,12 @@ def handle_tool_result_chat(
 
 
 async def get_image(path_or_url: str) -> tuple[str, str]:
-    """Load image from local file or URL, downscale if needed, convert to JPEG, return (data_uri, 'image/jpeg')."""
-    
-    # Constants for downsampling
-    MAX_DIMENSION = 2048
-    DOWNSAMPLE_TO = 1024
-    
-    # Determine if URL
+    """Load image from local file or URL, downscale if needed, convert to JPEG."""
+
+    MAX_DIMENSION = 1024
+
     is_url = urlparse(path_or_url).scheme in ('http', 'https')
-    
+
     if is_url:
         async with httpx.AsyncClient() as client:
             response = await client.get(path_or_url, timeout=15.0)
@@ -102,40 +99,28 @@ async def get_image(path_or_url: str) -> tuple[str, str]:
         path = pathlib.Path(path_or_url)
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path_or_url}")
-        # Check file size (warn if > 5MB)
-        size = path.stat().st_size
-        if size > 5 * 1024 * 1024:
-            print(f"Warning: Image size {size / 1024 / 1024:.1f}MB is large.")
         with open(path, "rb") as f:
             content = f.read()
-    
-    # Convert to JPEG using PIL, downsampling if needed
-    if Image is not None:
-        try:
-            with Image.open(io.BytesIO(content)) as img:
-                # Convert to RGB (remove alpha)
-                if img.mode in ('RGBA', 'LA', 'P'):
-                    img = img.convert('RGB')
-                width, height = img.size
-                if width > MAX_DIMENSION or height > MAX_DIMENSION:
-                    ratio = min(DOWNSAMPLE_TO / width, DOWNSAMPLE_TO / height)
-                    new_size = (int(width * ratio), int(height * ratio))
-                    img = img.resize(new_size, Image.LANCZOS)
-                # Save as JPEG
-                output = io.BytesIO()
-                img.save(output, format='JPEG', optimize=True, quality=85)
-                content = output.getvalue()
-                print("Converted to JPEG.")
-        except Exception as e:
-            print(f"Warning: Could not convert to JPEG: {e}. Keeping original format.")
-    else:
-        print("Warning: Pillow not installed. Keeping original format. Install Pillow to enable JPEG conversion and downsampling.")
-    
-    # Always set mime_type to image/jpeg (even if conversion failed)
+
+    # Convert to JPEG and downscale if needed
+    with Image.open(io.BytesIO(content)) as img:
+        # Convert to RGB (remove alpha)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        width, height = img.size
+        if width > MAX_DIMENSION or height > MAX_DIMENSION:
+            ratio = MAX_DIMENSION / max(width, height)
+            new_size = (int(width * ratio), int(height * ratio))
+            img = img.resize(new_size, Image.LANCZOS)
+        output = io.BytesIO()
+        img.save(output, format='JPEG', optimize=True, quality=85)
+        content = output.getvalue()
+
     mime_type = 'image/jpeg'
     encoded_string = base64.b64encode(content).decode('ascii')
     data_uri = f"data:{mime_type};base64,{encoded_string}"
     return data_uri, mime_type
+
 class ChatCommandResult(Enum):
     PROCEED_WITH_MODEL = 1
     PROCEED_WITH_PROMPT = 2
