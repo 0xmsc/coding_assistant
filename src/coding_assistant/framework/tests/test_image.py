@@ -78,7 +78,7 @@ async def test_get_image_url_success(small_image: bytes) -> None:
         data_uri = await get_image("https://example.com/image.jpg")
 
         assert data_uri.startswith("data:image/jpeg;base64,")
-        assert data_uri.startswith("data:image/jpeg;base64,")
+
 
 
 @pytest.mark.asyncio
