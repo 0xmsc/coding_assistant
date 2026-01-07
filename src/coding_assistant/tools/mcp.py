@@ -76,10 +76,26 @@ async def get_mcp_wrapped_tools(mcp_servers: list[MCPServer]) -> list[Tool]:
     return wrapped
 
 
+DEFAULT_VARS = [
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "NO_PROXY",
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "LANG",
+    "LC_ALL",
+    "TERM",
+]
+
+
 def get_default_env() -> dict[str, str]:
     default_env: dict[str, str] = dict()
-    if "HTTPS_PROXY" in os.environ:
-        default_env["HTTPS_PROXY"] = os.environ["HTTPS_PROXY"]
+    for var in DEFAULT_VARS:
+        if var in os.environ:
+            default_env[var] = os.environ[var]
     return default_env
 
 
