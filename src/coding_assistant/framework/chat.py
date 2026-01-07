@@ -29,7 +29,6 @@ from coding_assistant.ui import UI
 import base64
 import pathlib
 import httpx
-
 import io
 from urllib.parse import urlparse
 from PIL import Image  # type: ignore
@@ -84,8 +83,6 @@ def handle_tool_result_chat(
 
 
 async def get_image(path_or_url: str) -> tuple[str, str]:
-    """Load image from local file or URL, downscale if needed, convert to JPEG."""
-
     MAX_DIMENSION = 1024
 
     is_url = urlparse(path_or_url).scheme in ('http', 'https')
