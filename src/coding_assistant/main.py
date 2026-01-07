@@ -93,6 +93,12 @@ def parse_args() -> argparse.Namespace:
         help='MCP server configurations as JSON strings. Format: \'{"name": "server_name", "command": "command", "args": ["arg1", "arg2"], "env": ["ENV_VAR1", "ENV_VAR2"]}\' or \'{"name": "server_name", "url": "http://localhost:8000/sse"}\'',
     )
     parser.add_argument(
+        "--mcp-env",
+        nargs="*",
+        default=[],
+        help="Environment variables to pass to the default MCP server.",
+    )
+    parser.add_argument(
         "--compact-conversation-at-tokens",
         type=int,
         default=200_000,
@@ -241,7 +247,7 @@ async def run_chat_session(
 
 
 def get_default_mcp_server_config(
-    root_directory: Path, skills_directories: list[str], mcp_url: str | None = None
+    root_directory: Path, skills_directories: list[str], mcp_url: str | None = None, env: list[str] | None = None
 ) -> MCPServerConfig:
     args = [
         "-m",
@@ -259,6 +265,7 @@ def get_default_mcp_server_config(
         name="coding_assistant.mcp",
         command=sys.executable,
         args=args,
+        env=env or [],
     )
 
 
@@ -380,7 +387,7 @@ async def _main(args: argparse.Namespace) -> None:
 
     mcp_url = f"http://localhost:{args.mcp_server_port}/mcp" if args.mcp_server else None
     mcp_server_configs.append(
-        get_default_mcp_server_config(coding_assistant_root, args.skills_directories, mcp_url=mcp_url)
+        get_default_mcp_server_config(coding_assistant_root, args.skills_directories, mcp_url=mcp_url, env=args.mcp_env)
     )
 
     logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
