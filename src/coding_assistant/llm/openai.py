@@ -168,7 +168,7 @@ async def _try_completion(
         # TODO: Does OpenAI support this?
         # payload["reasoning"]["effort"] = reasoning_effort
 
-    async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=httpx.Timeout(30)) as client:
+    async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=httpx.Timeout(60)) as client:
         async with aconnect_sse(client, "POST", "/chat/completions", json=payload) as source:
             chunks: list[dict[str, Any]] = []
             try:
