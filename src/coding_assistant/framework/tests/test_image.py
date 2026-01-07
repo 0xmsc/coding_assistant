@@ -1,4 +1,3 @@
-"""Tests for image.py"""
 import io
 import base64
 from pathlib import Path
