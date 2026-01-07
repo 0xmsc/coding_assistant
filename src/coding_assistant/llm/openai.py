@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import uuid
 from collections.abc import Sequence
 from typing import Literal, cast, Any
 
@@ -37,6 +38,34 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
         return (os.environ["OPENAI_BASE_URL"], os.environ["OPENAI_API_KEY"])
     else:
         return ("https://api.openai.com/v1", os.environ["OPENAI_API_KEY"])
+
+
+def _extract_unconventional_tool_calls(content: str) -> list[ToolCall]:
+    # regex for the whole tool call
+    tool_call_regex = r"<function=(?P<name>[\w_]+)>\s*(?P<params_str>.*?)<\/tool_call>"
+
+    new_tool_calls = []
+
+    for match in re.finditer(tool_call_regex, content, re.DOTALL):
+        name = match.group("name")
+        params_str = match.group("params_str")
+
+        # Parse parameters
+        param_regex = r"<parameter=(?P<param_name>[\w_]+)>(?P<param_value>.*?)(?=\s*<parameter=|\s*$)"
+        params = {}
+        for p_match in re.finditer(param_regex, params_str, re.DOTALL):
+            p_name = p_match.group("param_name")
+            p_value = p_match.group("param_value").strip()
+            params[p_name] = p_value
+
+        tool_call = ToolCall(
+            id=f"synth_{uuid.uuid4().hex[:8]}",
+            function=FunctionCall(name=name, arguments=json.dumps(params)),
+        )
+        new_tool_calls.append(tool_call)
+        logger.info(f"Fixed up unconventional tool call: {tool_call}")
+
+    return new_tool_calls
 
 
 def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
@@ -107,6 +136,9 @@ def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
                 ),
             )
         )
+
+    if full_content:
+        final_tool_calls.extend(_extract_unconventional_tool_calls(full_content))
 
     return AssistantMessage(
         role="assistant",

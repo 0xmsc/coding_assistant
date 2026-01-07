@@ -472,6 +472,57 @@ class TestMergeChunks:
         assert msg.tool_calls[0].function.name == "calc"
         assert usage is None
 
+    def test_merge_chunks_unconventional_tool_calls(self) -> None:
+        """Test merging chunks with unconventional tool calls in content."""
+        content = "I will read the file now.\n<function=filesystem_read_file> <parameter=path>/home/marcel/README.md  </tool_call>\nLet me know if you need anything else."
+        chunks = [
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "role": "assistant",
+                            "content": content,
+                        },
+                        "finish_reason": None,
+                    }
+                ]
+            }
+        ]
+
+        result = _merge_chunks(cast(Any, chunks))
+
+        # We now preserve the content as requested
+        assert result.content == content
+        assert len(result.tool_calls) == 1
+        assert result.tool_calls[0].function.name == "filesystem_read_file"
+        assert json.loads(result.tool_calls[0].function.arguments) == {"path": "/home/marcel/README.md"}
+
+    def test_merge_chunks_multiple_unconventional_tool_calls(self) -> None:
+        """Test merging chunks with multiple unconventional tool calls."""
+        content = "<function=f1> <parameter=p1>v1 </tool_call> <function=f2> <parameter=p2>v2 </tool_call>"
+        chunks = [
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "role": "assistant",
+                            "content": content,
+                        },
+                        "finish_reason": None,
+                    }
+                ]
+            }
+        ]
+
+        result = _merge_chunks(cast(Any, chunks))
+
+        assert result.content == content
+        assert len(result.tool_calls) == 2
+        assert result.tool_calls[0].function.name == "f1"
+        assert json.loads(result.tool_calls[0].function.arguments) == {"p1": "v1"}
+        assert result.tool_calls[1].function.name == "f2"
+        assert json.loads(result.tool_calls[1].function.arguments) == {"p2": "v2"}
+
 
 class TestCompletionType:
     """Tests for the Completion type with Usage."""
