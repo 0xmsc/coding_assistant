@@ -33,9 +33,9 @@ async def test_get_image_local_small(small_image: bytes, tmp_path: Path) -> None
     file_path = tmp_path / "small.jpg"
     file_path.write_bytes(small_image)
     
-    data_uri, mime = await get_image(str(file_path))
+    data_uri = await get_image(str(file_path))
     
-    assert mime == "image/jpeg"
+    assert data_uri.startswith("data:image/jpeg;base64,")
     assert data_uri.startswith("data:image/jpeg;base64,")
     # Ensure the image is still roughly the same size (maybe compressed)
     decoded = base64.b64decode(data_uri.split(",")[1])
@@ -50,9 +50,9 @@ async def test_get_image_local_large_downscaled(large_image: bytes, tmp_path: Pa
     file_path = tmp_path / "large.png"
     file_path.write_bytes(large_image)
     
-    data_uri, mime = await get_image(str(file_path))
+    data_uri = await get_image(str(file_path))
     
-    assert mime == "image/jpeg"
+    assert data_uri.startswith("data:image/jpeg;base64,")
     decoded = base64.b64decode(data_uri.split(",")[1])
     with Image.open(io.BytesIO(decoded)) as img:
         # Should be downsampled to max 1024px (aspect ratio preserved)
@@ -74,9 +74,9 @@ async def test_get_image_url_success(small_image: bytes) -> None:
     with patch("coding_assistant.framework.image.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
         
-        data_uri, mime = await get_image("https://example.com/image.jpg")
+        data_uri = await get_image("https://example.com/image.jpg")
         
-        assert mime == "image/jpeg"
+        assert data_uri.startswith("data:image/jpeg;base64,")
         assert data_uri.startswith("data:image/jpeg;base64,")
 
 
@@ -116,8 +116,8 @@ async def test_get_image_png_to_jpeg(tmp_path: Path) -> None:
     file_path = tmp_path / "alpha.png"
     file_path.write_bytes(buf.getvalue())
     
-    data_uri, mime = await get_image(str(file_path))
-    assert mime == "image/jpeg"
+    data_uri = await get_image(str(file_path))
+    assert data_uri.startswith("data:image/jpeg;base64,")
     decoded = base64.b64decode(data_uri.split(",")[1])
     with Image.open(io.BytesIO(decoded)) as result:
         # Should be RGB, not RGBA

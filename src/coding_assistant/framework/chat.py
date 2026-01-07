@@ -145,7 +145,7 @@ async def run_chat_loop(
             print("Error: /image requires a path or URL argument.")
             return ChatCommandResult.PROCEED_WITH_PROMPT
         try:
-            data_url, mime_type = await get_image(arg.strip())
+            data_url = await get_image(arg.strip())
             image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
             user_msg = UserMessage(content=image_content)
             append_user_message(history, callbacks, context_name, user_msg)

@@ -8,8 +8,12 @@ import httpx
 from PIL import Image
 
 
-async def get_image(path_or_url: str) -> tuple[str, str]:
-    """Load image from local file or URL, downscale if needed, convert to JPEG."""
+async def get_image(path_or_url: str) -> str:
+    """Load image from local file or URL, downscale if needed, convert to JPEG.
+    
+    Returns:
+        Data URI (str) of the converted image.
+    """
     MAX_DIMENSION = 1024
 
     is_url = urlparse(path_or_url).scheme in ('http', 'https')
@@ -43,4 +47,4 @@ async def get_image(path_or_url: str) -> tuple[str, str]:
     mime_type = 'image/jpeg'
     encoded_string = base64.b64encode(content).decode('ascii')
     data_uri = f"data:{mime_type};base64,{encoded_string}"
-    return data_uri, mime_type
+    return data_uri
