@@ -42,9 +42,7 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
 
 def _extract_unconventional_tool_calls(content: str) -> list[ToolCall]:
     # regex for the whole tool call, optionally wrapped in <tool_call>
-    tool_call_regex = (
-        r"(?:<tool_call>\s*)?<function=(?P<name>[\w_]+)>\s*(?P<params_str>.*?)<\/tool_call>"
-    )
+    tool_call_regex = r"(?:<tool_call>\s*)?<function=(?P<name>[\w_]+)>\s*(?P<params_str>.*?)<\/tool_call>"
 
     new_tool_calls = []
 
