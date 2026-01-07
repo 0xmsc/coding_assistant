@@ -103,6 +103,13 @@ def test_main_enters_chat_mode_by_default(mock_main: Any) -> None:
         mock_main.assert_called_once()
 
 
+def test_parse_args_mcp_env() -> None:
+    """Test parse_args with --mcp-env."""
+    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--mcp-env", "VAR1", "VAR2"]):
+        args = parse_args()
+        assert args.mcp_env == ["VAR1", "VAR2"]
+
+
 def test_help_exits_with_zero() -> None:
     """Test that --help exits cleanly with status 0."""
     with patch("sys.argv", ["coding-assistant", "--help"]):
