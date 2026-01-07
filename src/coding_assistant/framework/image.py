@@ -11,6 +11,8 @@ from PIL import Image
 async def get_image(path_or_url: str) -> str:
     """Load image from local file or URL, downscale if needed, convert to JPEG.
     
+    Supports ~ expansion for local paths.
+    
     Returns:
         Data URI (str) of the converted image.
     """
@@ -25,6 +27,8 @@ async def get_image(path_or_url: str) -> str:
             content = response.content
     else:
         path = pathlib.Path(path_or_url)
+        # Expand ~ in the path
+        path = path.expanduser()
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path_or_url}")
         with open(path, "rb") as f:
