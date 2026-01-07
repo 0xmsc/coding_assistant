@@ -26,6 +26,7 @@ from coding_assistant.framework.results import (
     TextResult,
     ToolResult,
 )
+from coding_assistant.llm.types import UserMessage
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
@@ -71,11 +72,14 @@ def _handle_compact_conversation_result(
 ) -> str:
     clear_history(state.history)
 
+    user_msg = UserMessage(
+        content=f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work."
+    )
     append_user_message(
         state.history,
         progress_callbacks,
         desc.name,
-        f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work.",
+        user_msg,
         force=True,
     )
 
@@ -119,7 +123,8 @@ async def run_agent_loop(
         tools.append(CompactConversationTool())
 
     start_message = _create_start_message(desc)
-    append_user_message(state.history, progress_callbacks, desc.name, start_message)
+    user_msg = UserMessage(content=start_message)
+    append_user_message(state.history, progress_callbacks, desc.name, user_msg)
 
     while state.output is None:
         message, usage = await do_single_step(
@@ -145,18 +150,24 @@ async def run_agent_loop(
                 handle_tool_result=lambda result: handle_tool_result_agent(result, desc, state, progress_callbacks),
             )
         else:
+            user_msg2 = UserMessage(
+                content="I detected a step from you without any tool calls. This is not allowed. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work."
+            )
             append_user_message(
                 state.history,
                 progress_callbacks,
                 desc.name,
-                "I detected a step from you without any tool calls. This is not allowed. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work.",
+                user_msg2,
             )
         if usage is not None and usage.tokens > compact_conversation_at_tokens:
+            user_msg3 = UserMessage(
+                content="Your conversation history has grown too large. Compact it immediately by using the `compact_conversation` tool."
+            )
             append_user_message(
                 state.history,
                 progress_callbacks,
                 desc.name,
-                "Your conversation history has grown too large. Compact it immediately by using the `compact_conversation` tool.",
+                user_msg3,
             )
 
     assert state.output is not None
