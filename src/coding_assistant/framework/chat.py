@@ -30,6 +30,8 @@ import base64
 import pathlib
 import httpx
 
+import mimetypes
+from urllib.parse import urlparse
 CHAT_START_MESSAGE_TEMPLATE = """
 ## General
 
@@ -80,44 +82,37 @@ def handle_tool_result_chat(
 
 
 
-async def get_image(arg: str) -> tuple[str, str]:
-    """Load image from local file or URL, return (data_url, mime_type)."""
-    # Determine if URL or path
-    is_url = arg.startswith("http://") or arg.startswith("https://")
+async def get_image(path_or_url: str) -> tuple[str, str]:
+    """Load image from local file or URL, return (data_uri, mime_type)."""
+    # Determine if URL
+    is_url = urlparse(path_or_url).scheme in ('http', 'https')
+    
     if is_url:
         async with httpx.AsyncClient() as client:
-            response = await client.get(arg, timeout=15.0)
+            response = await client.get(path_or_url, timeout=15.0)
             response.raise_for_status()
-            image_bytes = response.content
-        # Guess MIME type from Content-Type header if present
-        mime_type = response.headers.get("content-type", "image/jpeg")
-        if not mime_type.startswith("image/"):
-            mime_type = "image/jpeg"
+            content = response.content
+        mime_type = response.headers.get('content-type', 'application/octet-stream')
+        if not mime_type.startswith('image/'):
+            # Fallback to image/jpeg? but keep whatever content-type given
+            pass
     else:
-        path = pathlib.Path(arg)
+        path = pathlib.Path(path_or_url)
         if not path.exists():
-            raise FileNotFoundError(f"File not found: {arg}")
+            raise FileNotFoundError(f"File not found: {path_or_url}")
         # Check file size (warn if > 5MB)
         size = path.stat().st_size
         if size > 5 * 1024 * 1024:
             print(f"Warning: Image size {size / 1024 / 1024:.1f}MB is large and may exceed token limits.")
-        image_bytes = path.read_bytes()
-        # Guess MIME type from extension
-        suffix = path.suffix.lower()
-        if suffix in [".jpg", ".jpeg"]:
-            mime_type = "image/jpeg"
-        elif suffix == ".png":
-            mime_type = "image/png"
-        elif suffix == ".gif":
-            mime_type = "image/gif"
-        elif suffix == ".webp":
-            mime_type = "image/webp"
-        else:
-            mime_type = "image/jpeg"  # fallback
-    b64 = base64.b64encode(image_bytes).decode("ascii")
-    data_url = f"data:{mime_type};base64,{b64}"
-    return data_url, mime_type
-
+        with open(path, "rb") as f:
+            content = f.read()
+        mime_type, _ = mimetypes.guess_type(path_or_url)
+        if mime_type is None:
+            mime_type = 'application/octet-stream'  # fallback
+    
+    encoded_string = base64.b64encode(content).decode('ascii')
+    data_uri = f"data:{mime_type};base64,{encoded_string}"
+    return data_uri, mime_type
 class ChatCommandResult(Enum):
     PROCEED_WITH_MODEL = 1
     PROCEED_WITH_PROMPT = 2
