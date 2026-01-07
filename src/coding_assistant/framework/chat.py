@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
+import logging
 
 from rich.console import Console
 
@@ -27,6 +28,8 @@ from coding_assistant.framework.types import (
 )
 from coding_assistant.ui import UI
 from coding_assistant.framework.image import get_image
+
+logger = logging.getLogger(__name__)
 
 CHAT_START_MESSAGE_TEMPLATE = """
 ## General
@@ -142,17 +145,17 @@ async def run_chat_loop(
 
     async def _image_cmd(arg: str | None = None) -> ChatCommandResult:
         if arg is None:
-            print("Error: /image requires a path or URL argument.")
+            logger.error("/image requires a path or URL argument.")
             return ChatCommandResult.PROCEED_WITH_PROMPT
         try:
             data_url = await get_image(arg.strip())
             image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
             user_msg = UserMessage(content=image_content)
             append_user_message(history, callbacks, context_name, user_msg)
-            print(f"Image added from {arg}.")
-            return ChatCommandResult.PROCEED_WITH_PROMPT
+            logger.info(f"Image added from {arg}.")
+            return ChatCommandResult.PROCEED_WITH_MODEL
         except Exception as e:
-            print(f"Error loading image: {e}")
+            logger.error(f"Loading image: {e}")
             return ChatCommandResult.PROCEED_WITH_PROMPT
 
     async def _help_cmd(arg: str | None = None) -> ChatCommandResult:
@@ -246,3 +249,4 @@ async def run_chat_loop(
                     need_user_input = True
             except asyncio.CancelledError:
                 need_user_input = True
+
