@@ -104,16 +104,10 @@ async def run_chat_loop(
 
     if history:
         for message in history:
-            if message.role == "assistant":
-                if content := message.content:
-                    if isinstance(content, str):
-                        assert isinstance(message, AssistantMessage)
-                        callbacks.on_assistant_message(context_name, message, force=True)
-            elif message.role == "user":
-                if content := message.content:
-                    if isinstance(content, str):
-                        assert isinstance(message, UserMessage)
-                        callbacks.on_user_message(context_name, message, force=True)
+            if isinstance(message, AssistantMessage):
+                callbacks.on_assistant_message(context_name, message, force=True)
+            elif isinstance(message, UserMessage):
+                callbacks.on_user_message(context_name, message, force=True)
 
     need_user_input = True
 
