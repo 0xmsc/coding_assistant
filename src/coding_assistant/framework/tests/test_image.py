@@ -123,3 +123,15 @@ async def test_get_image_png_to_jpeg(tmp_path: Path) -> None:
         # Should be RGB, not RGBA
         assert result.mode == "RGB"
         assert result.size == (200, 200)
+
+@pytest.mark.asyncio
+async def test_get_image_tilde_expansion(small_image: bytes, tmp_path: Path, monkeypatch) -> None:
+    """Test that ~ is expanded to home directory."""
+    # Set HOME to a temporary directory
+    monkeypatch.setenv("HOME", str(tmp_path))
+    # Create a file under the fake home directory
+    home_file = tmp_path / "test.jpg"
+    home_file.write_bytes(small_image)
+    # Use tilde path
+    data_uri = await get_image("~/test.jpg")
+    assert data_uri.startswith("data:image/jpeg;base64,")
