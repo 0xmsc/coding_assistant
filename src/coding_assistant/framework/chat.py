@@ -26,7 +26,7 @@ from coding_assistant.framework.types import (
     ToolResult,
 )
 from coding_assistant.ui import UI
-from .image import get_image
+from coding_assistant.framework.image import get_image
 
 CHAT_START_MESSAGE_TEMPLATE = """
 ## General
