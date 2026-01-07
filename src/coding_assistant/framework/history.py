@@ -7,18 +7,10 @@ def append_tool_message(
     history: list[BaseMessage],
     callbacks: ProgressCallbacks,
     context_name: str,
-    tool_call_id: str,
-    function_name: str,
-    function_args: dict[str, Any],
-    function_call_result: str,
+    message: ToolMessage,
+    arguments: dict[str, Any],
 ) -> None:
-    message = ToolMessage(
-        tool_call_id=tool_call_id,
-        name=function_name,
-        content=function_call_result,
-    )
-    callbacks.on_tool_message(context_name, message, function_name, function_args)
-
+    callbacks.on_tool_message(context_name, message, message.name or "", arguments)
     history.append(message)
 
 
@@ -26,12 +18,10 @@ def append_user_message(
     history: list[BaseMessage],
     callbacks: ProgressCallbacks,
     context_name: str,
-    content: str,
+    message: UserMessage,
     force: bool = False,
 ) -> None:
-    message = UserMessage(content=content)
     callbacks.on_user_message(context_name, message, force=force)
-
     history.append(message)
 
 
