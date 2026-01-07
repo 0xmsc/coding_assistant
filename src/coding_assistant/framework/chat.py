@@ -153,7 +153,7 @@ async def run_chat_loop(
             user_msg = UserMessage(content=image_content)
             append_user_message(history, callbacks, context_name, user_msg)
             logger.info(f"Image added from {arg}.")
-            return ChatCommandResult.PROCEED_WITH_MODEL
+            return ChatCommandResult.PROCEED_WITH_PROMPT
         except Exception as e:
             logger.error(f"Loading image: {e}")
             return ChatCommandResult.PROCEED_WITH_PROMPT
