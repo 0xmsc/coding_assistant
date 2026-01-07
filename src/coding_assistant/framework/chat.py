@@ -155,7 +155,7 @@ async def run_chat_loop(
             logger.info(f"Image added from {arg}.")
             return ChatCommandResult.PROCEED_WITH_PROMPT
         except Exception as e:
-            logger.error(f"Loading image: {e}")
+            logger.error(f"Error loading image: {e}")
             return ChatCommandResult.PROCEED_WITH_PROMPT
 
     async def _help_cmd(arg: str | None = None) -> ChatCommandResult:
