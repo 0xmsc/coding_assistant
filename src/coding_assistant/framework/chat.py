@@ -30,10 +30,9 @@ import base64
 import pathlib
 import httpx
 
-import mimetypes
 import io
 from urllib.parse import urlparse
-from PIL import Image
+from PIL import Image  # type: ignore
 
 CHAT_START_MESSAGE_TEMPLATE = """
 ## General
@@ -84,9 +83,13 @@ def handle_tool_result_chat(
     raise RuntimeError(f"Tool produced unexpected result of type {type(result).__name__}")
 
 
-
 async def get_image(path_or_url: str) -> tuple[str, str]:
-    """Load image from local file or URL, return (data_uri, mime_type)."""
+    """Load image from local file or URL, downscale if needed, convert to JPEG, return (data_uri, 'image/jpeg')."""
+    
+    # Constants for downsampling
+    MAX_DIMENSION = 2048
+    DOWNSAMPLE_TO = 1024
+    
     # Determine if URL
     is_url = urlparse(path_or_url).scheme in ('http', 'https')
     
@@ -95,10 +98,6 @@ async def get_image(path_or_url: str) -> tuple[str, str]:
             response = await client.get(path_or_url, timeout=15.0)
             response.raise_for_status()
             content = response.content
-        mime_type = response.headers.get('content-type', 'application/octet-stream')
-        if not mime_type.startswith('image/'):
-            # Fallback to image/jpeg? but keep whatever content-type given
-            pass
     else:
         path = pathlib.Path(path_or_url)
         if not path.exists():
@@ -106,13 +105,34 @@ async def get_image(path_or_url: str) -> tuple[str, str]:
         # Check file size (warn if > 5MB)
         size = path.stat().st_size
         if size > 5 * 1024 * 1024:
-            print(f"Warning: Image size {size / 1024 / 1024:.1f}MB is large and may exceed token limits.")
+            print(f"Warning: Image size {size / 1024 / 1024:.1f}MB is large.")
         with open(path, "rb") as f:
             content = f.read()
-        mime_type, _ = mimetypes.guess_type(path_or_url)
-        if mime_type is None:
-            mime_type = 'application/octet-stream'  # fallback
     
+    # Convert to JPEG using PIL, downsampling if needed
+    if Image is not None:
+        try:
+            with Image.open(io.BytesIO(content)) as img:
+                # Convert to RGB (remove alpha)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    img = img.convert('RGB')
+                width, height = img.size
+                if width > MAX_DIMENSION or height > MAX_DIMENSION:
+                    ratio = min(DOWNSAMPLE_TO / width, DOWNSAMPLE_TO / height)
+                    new_size = (int(width * ratio), int(height * ratio))
+                    img = img.resize(new_size, Image.LANCZOS)
+                # Save as JPEG
+                output = io.BytesIO()
+                img.save(output, format='JPEG', optimize=True, quality=85)
+                content = output.getvalue()
+                print("Converted to JPEG.")
+        except Exception as e:
+            print(f"Warning: Could not convert to JPEG: {e}. Keeping original format.")
+    else:
+        print("Warning: Pillow not installed. Keeping original format. Install Pillow to enable JPEG conversion and downsampling.")
+    
+    # Always set mime_type to image/jpeg (even if conversion failed)
+    mime_type = 'image/jpeg'
     encoded_string = base64.b64encode(content).decode('ascii')
     data_uri = f"data:{mime_type};base64,{encoded_string}"
     return data_uri, mime_type
@@ -193,6 +213,7 @@ async def run_chat_loop(
         except Exception as e:
             print(f"Error loading image: {e}")
             return ChatCommandResult.PROCEED_WITH_PROMPT
+
     async def _help_cmd(arg: str | None = None) -> ChatCommandResult:
         print("Available commands:")
         for cmd in commands:
