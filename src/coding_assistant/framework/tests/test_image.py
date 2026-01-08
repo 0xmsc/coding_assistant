@@ -80,7 +80,6 @@ async def test_get_image_url_success(small_image: bytes) -> None:
         assert data_uri.startswith("data:image/jpeg;base64,")
 
 
-
 @pytest.mark.asyncio
 async def test_get_image_url_failure() -> None:
     """URL that returns an error."""
