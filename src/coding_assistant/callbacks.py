@@ -6,7 +6,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union, TypedDict
+from typing import Any, NotRequired, Optional, Union, TypedDict
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -32,7 +32,7 @@ class SpecialToolConfig(TypedDict):
     """Configuration for special tool display handling."""
 
     languages: dict[str, str]  # param_name -> language hint
-    hide_value: list[str]  # Parameters to hide from display
+    hide_value: NotRequired[list[str]]  # Parameters to hide from display
 
 
 class ParagraphBuffer:
@@ -127,15 +127,12 @@ class DenseProgressCallbacks(ProgressCallbacks):
     _SPECIAL_TOOLS: dict[str, SpecialToolConfig] = {
         "shell_execute": {
             "languages": {"command": "bash"},
-            "hide_value": [],
         },
         "python_execute": {
             "languages": {"code": "python"},
-            "hide_value": [],
         },
         "filesystem_write_file": {
             "languages": {"content": ""},
-            "hide_value": [],
         },
         "filesystem_edit_file": {
             "languages": {"old_text": "", "new_text": ""},
@@ -143,11 +140,9 @@ class DenseProgressCallbacks(ProgressCallbacks):
         },
         "todo_add": {
             "languages": {"descriptions": "json"},
-            "hide_value": [],
         },
         "compact_conversation": {
             "languages": {"summary": "markdown"},
-            "hide_value": [],
         },
     }
 
@@ -184,7 +179,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._state = IdleState()
 
     def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict[str, Any]) -> None:
-        config: SpecialToolConfig = self._SPECIAL_TOOLS.get(tool_name, {"languages": {}, "hide_value": []})
+        config: SpecialToolConfig = self._SPECIAL_TOOLS.get(tool_name, {"languages": {}})
         hide_value_keys = config.get("hide_value", [])
         lang_hints = config.get("languages", {})
 
