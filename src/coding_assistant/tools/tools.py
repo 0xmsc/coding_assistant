@@ -15,6 +15,7 @@ from coding_assistant.framework.types import (
     TextResult,
     Tool,
 )
+from coding_assistant.llm.types import BaseMessage
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.ui import DefaultAnswerUI, UI
 
@@ -74,7 +75,7 @@ class AgentTool(Tool):
         progress_callbacks: ProgressCallbacks,
         tool_callbacks: ToolCallbacks,
         name: str = "launch_agent",
-        history: list[Any] | None = None,
+        history: list[BaseMessage] | None = None,
         completer: Completer | None = None,
     ) -> None:
         super().__init__()
@@ -89,7 +90,7 @@ class AgentTool(Tool):
         self._name = name
         self._history = history
         self._completer = completer or openai_complete
-        self.history: list[Any] = []
+        self.history: list[BaseMessage] = []
         self.summary: str = ""
 
     def name(self) -> str:
