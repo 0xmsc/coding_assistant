@@ -125,6 +125,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
     def on_status_message(self, message: str, level: StatusLevel = StatusLevel.INFO) -> None:
         self._finalize_state()
+        print()
         symbol = {
             StatusLevel.INFO: "ℹ️",
             StatusLevel.SUCCESS: "✅",
