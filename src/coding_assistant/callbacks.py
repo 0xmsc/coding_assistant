@@ -6,7 +6,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, TypedDict
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -20,6 +20,20 @@ console = Console()
 print = console.print
 
 logger = logging.getLogger(__name__)
+
+
+class SpecialToolParameterConfig(TypedDict):
+    """Configuration for a single parameter's display behavior."""
+
+    language: str  # Language hint for syntax highlighting (empty string = no highlighting)
+
+
+class SpecialToolConfig(TypedDict):
+    """Configuration for special tool display handling."""
+
+    languages: dict[str, str]  # param_name -> language hint
+    hide_value: list[str]  # Parameters to hide from display
+    per_value_language: dict[str, dict[str, str]]  # param -> value -> language override
 
 
 class ParagraphBuffer:
@@ -109,13 +123,39 @@ async def confirm_shell_if_needed(
 
 
 class DenseProgressCallbacks(ProgressCallbacks):
-    _SPECIAL_TOOLS: dict[str, dict[str, Any]] = {
-        "shell_execute": {"command": "bash"},
-        "python_execute": {"code": "python"},
-        "filesystem_write_file": {"content": ""},
-        "filesystem_edit_file": {"old_text": "", "new_text": "", "hide_value": ["old_text", "new_text"]},
-        "todo_add": {"descriptions": "json"},
-        "compact_conversation": {"summary": "markdown"},
+    """Callbacks for displaying progress and tool calls with rich formatting."""
+
+    _SPECIAL_TOOLS: dict[str, SpecialToolConfig] = {
+        "shell_execute": {
+            "languages": {"command": "bash"},
+            "hide_value": [],
+            "per_value_language": {},
+        },
+        "python_execute": {
+            "languages": {"code": "python"},
+            "hide_value": [],
+            "per_value_language": {},
+        },
+        "filesystem_write_file": {
+            "languages": {"content": ""},
+            "hide_value": [],
+            "per_value_language": {},
+        },
+        "filesystem_edit_file": {
+            "languages": {"old_text": "", "new_text": ""},
+            "hide_value": ["old_text", "new_text"],
+            "per_value_language": {},
+        },
+        "todo_add": {
+            "languages": {"descriptions": "json"},
+            "hide_value": [],
+            "per_value_language": {},
+        },
+        "compact_conversation": {
+            "languages": {"summary": "markdown"},
+            "hide_value": [],
+            "per_value_language": {},
+        },
     }
 
     def __init__(self, print_reasoning: bool = True):
@@ -151,8 +191,11 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._state = IdleState()
 
     def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict[str, Any]) -> None:
-        multiline_config = self._SPECIAL_TOOLS.get(tool_name, {})
-        hide_value_keys = multiline_config.get("hide_value", [])
+        config: SpecialToolConfig = self._SPECIAL_TOOLS.get(
+            tool_name, {"languages": {}, "hide_value": [], "per_value_language": {}}
+        )
+        hide_value_keys = config.get("hide_value", [])
+        lang_hints = config.get("languages", {})
 
         header_params = []
         multi_line_params = []
@@ -162,14 +205,16 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 header_params.append(key)
                 continue
 
-            if key in multiline_config:
+            # Only treat as multi-line if explicitly configured in _SPECIAL_TOOLS
+            if key in lang_hints:
+                lang_hint = lang_hints[key]
                 if isinstance(value, str):
                     formatted_value = value
                 else:
                     formatted_value = json.dumps(value, indent=2)
 
                 if "\n" in formatted_value:
-                    multi_line_params.append((key, formatted_value))
+                    multi_line_params.append((key, formatted_value, lang_hint))
                     header_params.append(key)
                     continue
 
@@ -181,8 +226,8 @@ class DenseProgressCallbacks(ProgressCallbacks):
         if multi_line_params:
             lang_override = self._get_lang_override(tool_name, arguments)
 
-            for key, value in multi_line_params:
-                lang = lang_override or multiline_config[key]
+            for key, value, lang_hint in multi_line_params:
+                lang = lang_override or lang_hint
                 print()
                 print(Padding(f"[dim]{key}:[/dim]", self._left_padding))
                 if lang == "markdown":

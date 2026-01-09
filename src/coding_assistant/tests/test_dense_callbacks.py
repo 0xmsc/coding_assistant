@@ -134,7 +134,7 @@ def test_dense_callbacks_multiline_tool_formatting(capsys: Any) -> None:
         ),
     )
     cb.on_tool_start("TestAgent", tool_call, {"path": "test.py", "content": "def hello():\n    pass"})
-    assert cb._SPECIAL_TOOLS["filesystem_write_file"]["content"] == ""
+    assert cb._SPECIAL_TOOLS["filesystem_write_file"]["languages"]["content"] == ""
     captured = capsys.readouterr()
     assert 'filesystem_write_file(path="test.py", content)' in captured.out
     assert "  content:" in captured.out
@@ -152,8 +152,8 @@ def test_dense_callbacks_multiline_tool_formatting(capsys: Any) -> None:
         tool_call,
         {"path": "script.sh", "old_text": "line1\nold", "new_text": "line1\nline2"},
     )
-    assert "old_text" in cb._SPECIAL_TOOLS["filesystem_edit_file"]
-    assert "new_text" in cb._SPECIAL_TOOLS["filesystem_edit_file"]
+    assert "old_text" in cb._SPECIAL_TOOLS["filesystem_edit_file"]["languages"]
+    assert "new_text" in cb._SPECIAL_TOOLS["filesystem_edit_file"]["languages"]
 
     captured = capsys.readouterr()
     assert 'filesystem_edit_file(path="script.sh", old_text, new_text)' in captured.out
