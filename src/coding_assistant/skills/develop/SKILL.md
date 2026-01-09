@@ -26,6 +26,10 @@ For non-trivial changes:
 - **Edge Cases**: Consider and test error scenarios.
 - **Existing Style**: Match existing patterns and formatting.
 
+## Language-Specific References
+When working with specific languages, consult the following references:
+- **Python**: Refer to `references/python.md`.
+
 ## File Operations
 - **Prefer `edit_file`**: Use for targeted changes; avoid rewriting full files.
 - **Verification**: Always verify changes after editing.
