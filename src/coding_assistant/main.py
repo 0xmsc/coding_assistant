@@ -1,5 +1,4 @@
 import asyncio
-from typing import Any
 import logging
 import os
 import sys
@@ -14,23 +13,16 @@ from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from coding_assistant.framework.callbacks import ProgressCallbacks
-from coding_assistant.llm.openai import complete as openai_complete
-from coding_assistant.framework.chat import run_chat_loop
-from coding_assistant.framework.types import Tool
 from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
     get_latest_orchestrator_history_file,
     load_orchestrator_history,
-    save_orchestrator_history,
 )
-from coding_assistant.instructions import get_instructions
-from coding_assistant.sandbox import sandbox
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
-from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools, print_mcp_tools
-from coding_assistant.tools.mcp_server import start_mcp_server, get_free_port
-from coding_assistant.tools.tools import AgentTool, AskClientTool
+from coding_assistant.tools.mcp import print_mcp_tools
+from coding_assistant.tools.mcp_server import get_free_port
+from coding_assistant.session import Session
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
@@ -172,80 +164,6 @@ def create_config_from_args(args: argparse.Namespace) -> Config:
     )
 
 
-async def run_root_agent(
-    task: str | None,
-    config: Config,
-    tools: list[Tool],
-    history: list[Any] | None,
-    instructions: str | None,
-    working_directory: Path,
-    progress_callbacks: ProgressCallbacks,
-    tool_callbacks: ConfirmationToolCallbacks,
-) -> Any:
-    agent_ui = PromptToolkitUI() if config.enable_ask_user else DefaultAnswerUI()
-
-    agent_mode_tools = [
-        AskClientTool(ui=agent_ui),
-        *tools,
-    ]
-
-    tool = AgentTool(
-        model=config.model,
-        expert_model=config.expert_model,
-        compact_conversation_at_tokens=config.compact_conversation_at_tokens,
-        enable_ask_user=config.enable_ask_user,
-        tools=agent_mode_tools,
-        history=history,
-        progress_callbacks=progress_callbacks,
-        ui=agent_ui,
-        tool_callbacks=tool_callbacks,
-        name="launch_orchestrator_agent",
-        completer=openai_complete,
-    )
-
-    orchestrator_params = {
-        "task": task,
-        "instructions": instructions,
-        "expert_knowledge": True,
-    }
-
-    try:
-        result = await tool.execute(orchestrator_params)
-    finally:
-        save_orchestrator_history(working_directory, tool.history)
-
-    print(f"🎉 Final Result\n\nResult:\n\n{result.content}")
-    return result
-
-
-async def run_chat_session(
-    *,
-    config: Config,
-    tools: list[Tool],
-    history: list[Any] | None,
-    instructions: str | None,
-    working_directory: Path,
-    progress_callbacks: ProgressCallbacks,
-    tool_callbacks: ConfirmationToolCallbacks,
-) -> None:
-    chat_history = history or []
-
-    try:
-        await run_chat_loop(
-            history=chat_history,
-            model=config.model,
-            tools=tools,
-            instructions=instructions,
-            callbacks=progress_callbacks,
-            tool_callbacks=tool_callbacks,
-            completer=openai_complete,
-            ui=PromptToolkitUI(),
-            context_name="Orchestrator",
-        )
-    finally:
-        save_orchestrator_history(working_directory, chat_history)
-
-
 def get_default_mcp_server_config(
     root_directory: Path, skills_directories: list[str], mcp_url: str | None = None, env: list[str] | None = None
 ) -> MCPServerConfig:
@@ -269,98 +187,16 @@ def get_default_mcp_server_config(
     )
 
 
-def enable_sandboxing(args: argparse.Namespace, working_directory: Path, root: Path) -> None:
-    if args.sandbox:
-        logger.info("Sandboxing is enabled.")
-
-        readable_sandbox_directories = [
-            *[Path(d).resolve() for d in args.readable_sandbox_directories],
-            *[Path(d).resolve() for d in args.skills_directories],
-            root,
-        ]
-
-        writable_sandbox_directories = [
-            *[Path(d).resolve() for d in args.writable_sandbox_directories],
-            working_directory,
-        ]
-
-        sandbox(
-            readable_paths=readable_sandbox_directories,
-            writable_paths=writable_sandbox_directories,
-            include_defaults=True,
-        )
-    else:
-        logger.warning("Sandboxing is disabled")
-
-
-async def _stop_mcp_server(mcp_task: asyncio.Task[Any] | None) -> None:
-    if not mcp_task:
-        return
-    try:
-        logger.info("Shutting down background MCP server")
-        mcp_task.cancel()
-        # Give it a bit of time to shut down gracefully, but don't hang forever
-        async with asyncio.timeout(2):
-            await mcp_task
-    except (asyncio.CancelledError, TimeoutError, KeyboardInterrupt):
-        pass
-    except Exception as e:
-        logger.debug(f"Error during MCP server shutdown: {e}")
-
-
-async def _run_execution_loop(
-    *,
-    config: Config,
-    tools: list[Tool],
-    history: list[Any] | None,
-    instructions: str,
-    working_directory: Path,
-    progress_callbacks: ProgressCallbacks,
-    tool_callbacks: ConfirmationToolCallbacks,
-    task: str | None,
-) -> Any:
-    # This function runs the core application logic (chat session or autonomous agent).
-    # We allow KeyboardInterrupt to propagate up to _main, where it is caught
-    # to trigger the graceful shutdown of background services like the MCP server.
-    if config.enable_chat_mode:
-        await run_chat_session(
-            config=config,
-            tools=tools,
-            history=history,
-            instructions=instructions,
-            working_directory=working_directory,
-            progress_callbacks=progress_callbacks,
-            tool_callbacks=tool_callbacks,
-        )
-    else:
-        await run_root_agent(
-            task=task,
-            config=config,
-            tools=tools,
-            history=history,
-            instructions=instructions,
-            working_directory=working_directory,
-            progress_callbacks=progress_callbacks,
-            tool_callbacks=tool_callbacks,
-        )
-
-
 async def _main(args: argparse.Namespace) -> None:
     logger.info(f"Starting Coding Assistant with arguments {args}")
 
     config = create_config_from_args(args)
-    logger.info(f"Using configuration from command line arguments: {config}")
-
     working_directory = Path(os.getcwd())
-    logger.info(f"Running in working directory: {working_directory}")
-
     coding_assistant_root = Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
-    logger.info(f"Coding Assistant root directory: {coding_assistant_root}")
 
     if args.resume_file:
         if not args.resume_file.exists():
             raise FileNotFoundError(f"Resume file {args.resume_file} does not exist.")
-        logger.info(f"Resuming session from file: {args.resume_file}")
         resume_history = load_orchestrator_history(args.resume_file)
     elif args.resume:
         latest_history_file = get_latest_orchestrator_history_file(working_directory)
@@ -368,73 +204,61 @@ async def _main(args: argparse.Namespace) -> None:
             raise FileNotFoundError(
                 f"No latest orchestrator history file found in {working_directory}/.coding_assistant/history."
             )
-        logger.info(f"Resuming session from latest saved agent history: {latest_history_file}")
         resume_history = load_orchestrator_history(latest_history_file)
     else:
         resume_history = None
-
-    enable_sandboxing(
-        args,
-        working_directory=working_directory,
-        root=coding_assistant_root,
-    )
 
     mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
 
     if args.mcp_server and args.mcp_server_port == 0:
         args.mcp_server_port = get_free_port()
-        logger.info(f"Selected random port for background MCP server: {args.mcp_server_port}")
 
     mcp_url = f"http://localhost:{args.mcp_server_port}/mcp" if args.mcp_server else None
     mcp_server_configs.append(
         get_default_mcp_server_config(coding_assistant_root, args.skills_directories, mcp_url=mcp_url, env=args.mcp_env)
     )
 
-    logger.info(f"Using MCP server configurations: {[s.name for s in mcp_server_configs]}")
+    ui = PromptToolkitUI() if args.task is None else DefaultAnswerUI()
+    progress_callbacks = DenseProgressCallbacks(print_reasoning=args.print_reasoning)
+    tool_callbacks = ConfirmationToolCallbacks(
+        tool_confirmation_patterns=args.tool_confirmation_patterns,
+        shell_confirmation_patterns=args.shell_confirmation_patterns,
+    )
 
-    async with get_mcp_servers_from_config(mcp_server_configs, working_directory) as mcp_servers:
-        if args.print_mcp_tools:
-            await print_mcp_tools(mcp_servers)
-            return
+    session = Session(
+        config=config,
+        ui=ui,
+        callbacks=progress_callbacks,
+        tool_callbacks=tool_callbacks,
+        working_directory=working_directory,
+        coding_assistant_root=coding_assistant_root,
+        mcp_server_configs=mcp_server_configs,
+        mcp_server_port=args.mcp_server_port if args.mcp_server else 0,
+        skills_directories=args.skills_directories,
+        mcp_env=args.mcp_env,
+        sandbox_enabled=args.sandbox,
+        readable_sandbox_directories=[Path(d).resolve() for d in args.readable_sandbox_directories],
+        writable_sandbox_directories=[Path(d).resolve() for d in args.writable_sandbox_directories],
+        user_instructions=args.instructions,
+    )
 
-        tools = await get_mcp_wrapped_tools(mcp_servers)
+    try:
+        async with session:
+            if args.print_mcp_tools:
+                await print_mcp_tools(session._mcp_servers)
+                return
 
-        mcp_task = None
-        if args.mcp_server:
-            mcp_task = await start_mcp_server(tools, args.mcp_server_port)
+            if args.print_instructions:
+                rich_print(Panel(Markdown(session.instructions), title="Instructions"))
+                return
 
-        instructions = get_instructions(
-            working_directory=working_directory,
-            user_instructions=args.instructions,
-            mcp_servers=mcp_servers,
-        )
-
-        if args.print_instructions:
-            rich_print(Panel(Markdown(instructions), title="Instructions"))
-            return
-
-        progress_callbacks = DenseProgressCallbacks(print_reasoning=args.print_reasoning)
-
-        tool_callbacks = ConfirmationToolCallbacks(
-            tool_confirmation_patterns=args.tool_confirmation_patterns,
-            shell_confirmation_patterns=args.shell_confirmation_patterns,
-        )
-
-        try:
-            await _run_execution_loop(
-                config=config,
-                tools=tools,
-                history=resume_history,
-                instructions=instructions,
-                working_directory=working_directory,
-                progress_callbacks=progress_callbacks,
-                tool_callbacks=tool_callbacks,
-                task=args.task,
-            )
-        except KeyboardInterrupt:
-            logger.info("Interrupted by user")
-        finally:
-            await _stop_mcp_server(mcp_task)
+            if config.enable_chat_mode:
+                await session.run_chat(history=resume_history)
+            else:
+                result = await session.run_agent(task=args.task, history=resume_history)
+                print(f"🎉 Final Result\n\nResult:\n\n{result.content}")
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
 
 
 def main() -> None:
