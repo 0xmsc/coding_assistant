@@ -4,8 +4,23 @@ from coding_assistant.framework.results import ToolResult
 from coding_assistant.llm.types import UserMessage, AssistantMessage, ToolMessage, ToolCall
 
 
+from enum import Enum
+
+
+class StatusLevel(Enum):
+    INFO = "info"
+    SUCCESS = "success"
+    WARNING = "warning"
+    ERROR = "error"
+
+
 class ProgressCallbacks(ABC):
     """Abstract interface for agent callbacks."""
+
+    @abstractmethod
+    def on_status_message(self, message: str, level: StatusLevel = StatusLevel.INFO) -> None:
+        """Handle status messages from the system."""
+        pass
 
     @abstractmethod
     def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
@@ -47,6 +62,9 @@ class ProgressCallbacks(ABC):
 
 class NullProgressCallbacks(ProgressCallbacks):
     """Null object implementation that does nothing."""
+
+    def on_status_message(self, message: str, level: StatusLevel = StatusLevel.INFO) -> None:
+        pass
 
     def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
         pass
