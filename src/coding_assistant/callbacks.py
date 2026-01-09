@@ -109,11 +109,11 @@ async def confirm_shell_if_needed(
 
 
 class DenseProgressCallbacks(ProgressCallbacks):
-    _SPECIAL_TOOLS: dict[str, dict[str, str]] = {
+    _SPECIAL_TOOLS: dict[str, dict[str, Any]] = {
         "shell_execute": {"command": "bash"},
         "python_execute": {"code": "python"},
         "filesystem_write_file": {"content": ""},
-        "filesystem_edit_file": {"old_text": "", "new_text": ""},
+        "filesystem_edit_file": {"old_text": "", "new_text": "", "exclude": ["old_text", "new_text"]},
         "todo_add": {"descriptions": "json"},
         "compact_conversation": {"summary": "markdown"},
     }
@@ -152,11 +152,15 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
     def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict[str, Any]) -> None:
         multiline_config = self._SPECIAL_TOOLS.get(tool_name, {})
+        exclude_keys = multiline_config.get("exclude", [])
 
         header_params = []
         multi_line_params = []
 
         for key, value in arguments.items():
+            if key in exclude_keys:
+                continue
+
             if key in multiline_config:
                 if isinstance(value, str):
                     formatted_value = value

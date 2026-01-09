@@ -156,9 +156,9 @@ def test_dense_callbacks_multiline_tool_formatting(capsys: Any) -> None:
     assert "new_text" in cb._SPECIAL_TOOLS["filesystem_edit_file"]
 
     captured = capsys.readouterr()
-    assert 'filesystem_edit_file(path="script.sh", old_text, new_text)' in captured.out
-    assert "  old_text:" in captured.out
-    assert "  new_text:" in captured.out
+    assert 'filesystem_edit_file(path="script.sh")' in captured.out
+    assert "  old_text:" not in captured.out
+    assert "  new_text:" not in captured.out
 
     tool_call = ToolCall(
         id="call_6",
@@ -353,7 +353,12 @@ def test_dense_callbacks_tool_lang_extension(capsys: Any) -> None:
             arg = call_args.args[0]
             if "````js\nconst x = " in arg:
                 found_js = True
-        assert found_js
+
+        # Now that filesystem_edit_file excludes old_text/new_text from header
+        # and doesn't print them as multiline params anymore, found_js should be False
+        # as it was previously matching the multiline parameter printout which is now gone.
+        # We verify that it is NOT found.
+        assert not found_js
 
         mock_markdown.reset_mock()
 
