@@ -4,14 +4,13 @@ from dataclasses import dataclass
 from enum import Enum
 import logging
 
-from rich.console import Console
 
 from coding_assistant.llm.types import BaseMessage, UserMessage, AssistantMessage, Usage
 
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
 )
-from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
+from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks, StatusLevel
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
 from coding_assistant.framework.history import (
     append_assistant_message,
@@ -140,28 +139,27 @@ async def run_chat_loop(
 
     async def _clear_cmd(arg: str | None = None) -> ChatCommandResult:
         clear_history(history)
-        print("History cleared.")
+        callbacks.on_status_message("History cleared.", level=StatusLevel.SUCCESS)
         return ChatCommandResult.PROCEED_WITH_PROMPT
 
     async def _image_cmd(arg: str | None = None) -> ChatCommandResult:
         if arg is None:
-            logger.error("/image requires a path or URL argument.")
+            callbacks.on_status_message("/image requires a path or URL argument.", level=StatusLevel.ERROR)
             return ChatCommandResult.PROCEED_WITH_PROMPT
         try:
             data_url = await get_image(arg.strip())
             image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
             user_msg = UserMessage(content=image_content)
             append_user_message(history, callbacks, context_name, user_msg)
-            logger.info(f"Image added from {arg}.")
+            callbacks.on_status_message(f"Image added from {arg}.", level=StatusLevel.SUCCESS)
             return ChatCommandResult.PROCEED_WITH_PROMPT
         except Exception as e:
-            logger.error(f"Error loading image: {e}")
+            callbacks.on_status_message(f"Error loading image: {e}", level=StatusLevel.ERROR)
             return ChatCommandResult.PROCEED_WITH_PROMPT
 
     async def _help_cmd(arg: str | None = None) -> ChatCommandResult:
-        print("Available commands:")
-        for cmd in commands:
-            print(f"  {cmd.name} - {cmd.help}")
+        help_text = "Available commands:\n" + "\n".join(f"  {cmd.name} - {cmd.help}" for cmd in commands)
+        callbacks.on_status_message(help_text, level=StatusLevel.INFO)
         return ChatCommandResult.PROCEED_WITH_PROMPT
 
     commands = [
@@ -184,8 +182,7 @@ async def run_chat_loop(
         if need_user_input:
             need_user_input = False
 
-            Console().print(f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", justify="right")
-            print()
+            callbacks.on_status_message(f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", level=StatusLevel.INFO)
             answer = await ui.prompt(words=command_names)
             answer_strip = answer.strip()
 

@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.padding import Padding
 
-from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
+from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks, StatusLevel
 from coding_assistant.framework.results import TextResult, ToolResult
 from coding_assistant.llm.types import UserMessage, AssistantMessage, ToolCall, ToolMessage
 
@@ -122,6 +122,16 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._state: ProgressState = None
         self._left_padding = (0, 0, 0, 2)
         self._print_reasoning = print_reasoning
+
+    def on_status_message(self, message: str, level: StatusLevel = StatusLevel.INFO) -> None:
+        self._finalize_state()
+        color = {
+            StatusLevel.INFO: "blue",
+            StatusLevel.SUCCESS: "green",
+            StatusLevel.WARNING: "yellow",
+            StatusLevel.ERROR: "red",
+        }.get(level, "white")
+        print(f"[{color}]ℹ[/{color}] {message}")
 
     def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
         if force:
