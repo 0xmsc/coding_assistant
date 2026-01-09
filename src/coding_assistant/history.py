@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from dataclasses import asdict, is_dataclass
 from typing import Any
-from coding_assistant.llm.types import BaseMessage, message_from_dict
+from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
 
 logger = logging.getLogger("coding_assistant.cache")
 
@@ -51,9 +51,10 @@ def save_orchestrator_history(working_directory: Path, agent_history: list[Any])
     fixed_history = _fix_invalid_history(agent_history)
 
     serializable_history = []
-    # Argument 1 to "asdict" has incompatible type "DataclassInstance | type[DataclassInstance]"; expected "DataclassInstance"
     for msg in fixed_history:
-        if isinstance(msg, dict):
+        if isinstance(msg, BaseMessage):
+            serializable_history.append(message_to_dict(msg))
+        elif isinstance(msg, dict):
             serializable_history.append(msg)
         elif is_dataclass(msg) and not isinstance(msg, type):
             serializable_history.append(asdict(msg))
