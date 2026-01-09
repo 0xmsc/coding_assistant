@@ -9,6 +9,7 @@ from prompt_toolkit.completion import CompleteEvent, Completer, Completion, Word
 from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.shortcuts import create_confirm_session
+from rich import print
 from rich.console import Console
 from rich.rule import Rule
 
