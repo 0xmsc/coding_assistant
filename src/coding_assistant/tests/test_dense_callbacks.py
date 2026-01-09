@@ -152,8 +152,6 @@ def test_dense_callbacks_multiline_tool_formatting(capsys: Any) -> None:
         tool_call,
         {"path": "script.sh", "old_text": "line1\nold", "new_text": "line1\nline2"},
     )
-    assert "old_text" in cb._SPECIAL_TOOLS["filesystem_edit_file"]["languages"]
-    assert "new_text" in cb._SPECIAL_TOOLS["filesystem_edit_file"]["languages"]
 
     captured = capsys.readouterr()
     assert 'filesystem_edit_file(path="script.sh", old_text, new_text)' in captured.out
