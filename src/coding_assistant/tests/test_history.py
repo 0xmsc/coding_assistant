@@ -24,52 +24,48 @@ def test_fix_invalid_history_with_empty_list() -> None:
 
 def test_fix_invalid_history_with_valid_history() -> None:
     history = [
-        {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there!"},
+        UserMessage(content="Hello"),
+        AssistantMessage(content="Hi there!"),
     ]
     assert _fix_invalid_history(history) == history
 
 
 def test_fix_invalid_history_with_trailing_assistant_message_with_tool_calls() -> None:
     history = [
-        {"role": "user", "content": "Hello"},
-        {
-            "role": "assistant",
-            "content": "Thinking...",
-            "tool_calls": [{"id": "123", "function": {"name": "test", "arguments": "{}"}}],
-        },
+        UserMessage(content="Hello"),
+        AssistantMessage(
+            content="Thinking...",
+            tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))],
+        ),
     ]
-    assert _fix_invalid_history(history) == [{"role": "user", "content": "Hello"}]
+    assert _fix_invalid_history(history) == [UserMessage(content="Hello")]
 
 
 def test_fix_invalid_history_with_no_trailing_assistant_message() -> None:
     history = [
-        {"role": "user", "content": "Hello"},
-        {
-            "role": "assistant",
-            "content": "Thinking...",
-            "tool_calls": [{"id": "123", "function": {"name": "test", "arguments": "{}"}}],
-        },
-        {"role": "tool", "content": "Result", "tool_call_id": "123"},
+        UserMessage(content="Hello"),
+        AssistantMessage(
+            content="Thinking...",
+            tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))],
+        ),
+        ToolMessage(content="Result", tool_call_id="123"),
     ]
     assert _fix_invalid_history(history) == history
 
 
 def test_fix_invalid_history_with_multiple_trailing_assistant_messages() -> None:
     history = [
-        {"role": "user", "content": "Hello"},
-        {
-            "role": "assistant",
-            "content": "Thinking...",
-            "tool_calls": [{"id": "123", "function": {"name": "test", "arguments": "{}"}}],
-        },
-        {
-            "role": "assistant",
-            "content": "Thinking...",
-            "tool_calls": [{"id": "456", "function": {"name": "test", "arguments": "{}"}}],
-        },
+        UserMessage(content="Hello"),
+        AssistantMessage(
+            content="Thinking...",
+            tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))],
+        ),
+        AssistantMessage(
+            content="Thinking...",
+            tool_calls=[ToolCall(id="456", function=FunctionCall(name="test", arguments="{}"))],
+        ),
     ]
-    assert _fix_invalid_history(history) == [{"role": "user", "content": "Hello"}]
+    assert _fix_invalid_history(history) == [UserMessage(content="Hello")]
 
 
 def test_fix_invalid_history_with_objects() -> None:
@@ -95,7 +91,7 @@ def test_orchestrator_history_roundtrip(tmp_path: Path) -> None:
     cache_dir = get_project_cache_dir(wd)
     assert cache_dir.exists()
 
-    save_orchestrator_history(wd, [{"role": "user", "content": "msg-1"}])
+    save_orchestrator_history(wd, [UserMessage(content="msg-1")])
     latest = get_latest_orchestrator_history_file(wd)
     assert latest is not None and latest.exists()
     assert latest == get_orchestrator_history_file(wd)
@@ -104,7 +100,7 @@ def test_orchestrator_history_roundtrip(tmp_path: Path) -> None:
     assert data is not None
     assert isinstance(data, list) and data[-1].content == "msg-1"
 
-    save_orchestrator_history(wd, [{"role": "user", "content": "msg-2"}])
+    save_orchestrator_history(wd, [UserMessage(content="msg-2")])
     data = load_orchestrator_history(latest)
     assert data is not None
     assert isinstance(data, list) and data[-1].content == "msg-2"
@@ -126,12 +122,11 @@ def test_save_orchestrator_history_with_objects(tmp_path: Path) -> None:
 def test_save_orchestrator_history_strips_trailing_assistant_tool_calls(tmp_path: Path) -> None:
     wd = tmp_path
     invalid = [
-        {"role": "user", "content": "hi"},
-        {
-            "role": "assistant",
-            "content": "Thinking...",
-            "tool_calls": [{"id": "1", "function": {"name": "x", "arguments": "{}"}}],
-        },
+        UserMessage(content="hi"),
+        AssistantMessage(
+            content="Thinking...",
+            tool_calls=[ToolCall(id="1", function=FunctionCall(name="x", arguments="{}"))],
+        ),
     ]
 
     save_orchestrator_history(wd, invalid)
