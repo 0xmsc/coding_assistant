@@ -125,14 +125,13 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
     def on_status_message(self, message: str, level: StatusLevel = StatusLevel.INFO) -> None:
         self._finalize_state()
-        config = {
-            StatusLevel.INFO: ("ℹ", "blue"),
-            StatusLevel.SUCCESS: ("✔", "green"),
-            StatusLevel.WARNING: ("⚠", "yellow"),
-            StatusLevel.ERROR: ("✖", "red"),
-        }.get(level, ("•", "white"))
-        symbol, color = config
-        print(f"[{color}]{symbol}[/{color}] {message}")
+        symbol = {
+            StatusLevel.INFO: "ℹ️",
+            StatusLevel.SUCCESS: "✅",
+            StatusLevel.WARNING: "⚠️",
+            StatusLevel.ERROR: "❌",
+        }.get(level, "•")
+        print(f"{symbol} {message}")
 
     def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
         if force:
