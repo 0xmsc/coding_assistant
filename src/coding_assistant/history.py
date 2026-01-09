@@ -32,7 +32,7 @@ def _fix_invalid_history(history: Sequence[BaseMessage]) -> list[BaseMessage]:
         last_message = fixed_history[-1]
         has_tool_calls = isinstance(last_message, AssistantMessage) and bool(last_message.tool_calls)
 
-        if isinstance(last_message, AssistantMessage) and has_tool_calls:
+        if has_tool_calls:
             fixed_history.pop()
         else:
             break
