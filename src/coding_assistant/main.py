@@ -218,7 +218,7 @@ async def _main(args: argparse.Namespace) -> None:
         get_default_mcp_server_config(coding_assistant_root, args.skills_directories, mcp_url=mcp_url, env=args.mcp_env)
     )
 
-    ui = PromptToolkitUI() if args.task is None else DefaultAnswerUI()
+    ui = PromptToolkitUI() if (args.task is None or config.enable_ask_user) else DefaultAnswerUI()
     progress_callbacks = DenseProgressCallbacks(print_reasoning=args.print_reasoning)
     tool_callbacks = ConfirmationToolCallbacks(
         tool_confirmation_patterns=args.tool_confirmation_patterns,
