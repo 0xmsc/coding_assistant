@@ -69,8 +69,9 @@ async def test_mcp_server_shutdown_logic() -> None:
 
 
 @pytest.mark.asyncio
-async def test_session_mcp_server_shutdown_timeout_protection() -> None:
-    """Test that Session cleanup doesn't hang forever if a task is stubborn."""
+async def test_stop_mcp_server_timeout_protection() -> None:
+    """Test that stop_mcp_server doesn't hang forever if a task is stubborn."""
+    from coding_assistant.session import stop_mcp_server
 
     async def stubborn_task() -> None:
         try:
@@ -80,24 +81,11 @@ async def test_session_mcp_server_shutdown_timeout_protection() -> None:
             # Simulate a task that takes a long time to clean up or "hangs"
             await asyncio.sleep(10)
 
-    # Note: the task needs to be started in the current loop
     task: asyncio.Task[Any] = asyncio.create_task(stubborn_task())
 
-    callbacks = NullProgressCallbacks()
-    session = Session(
-        config=MagicMock(),
-        ui=MagicMock(),
-        callbacks=callbacks,
-        tool_callbacks=NullToolCallbacks(),
-        working_directory=Path("."),
-        coding_assistant_root=Path("."),
-        mcp_server_configs=[],
-    )
-    session._mcp_task = task
-
-    # This should return because of the timeout in Session.__aexit__
+    # This should return because of the timeout in stop_mcp_server
     with patch("coding_assistant.session.asyncio.timeout", side_effect=lambda t: real_timeout(0.1)):
-        await session.__aexit__(None, None, None)
+        await stop_mcp_server(task, NullProgressCallbacks())
 
     # The task should have been told to cancel
     assert task.cancelling() > 0 or task.cancelled()
