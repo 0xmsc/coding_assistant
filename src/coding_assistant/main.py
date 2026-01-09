@@ -24,7 +24,6 @@ from coding_assistant.tools.mcp_server import get_free_port
 from coding_assistant.session import Session
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 
-logging.basicConfig(level=logging.WARNING, handlers=[])
 logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
 
@@ -33,7 +32,7 @@ def setup_logging() -> None:
     """Setup logging to file only."""
     log_file = get_log_file()
     file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.DEBUG)
+    file_handler.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     file_handler.setFormatter(formatter)
 
@@ -45,7 +44,7 @@ def setup_logging() -> None:
         root_logger.removeHandler(handler)
 
     root_logger.addHandler(file_handler)
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(logging.INFO)
 
     # Set 'coding_assistant' logger to INFO
     logger.setLevel(logging.INFO)
