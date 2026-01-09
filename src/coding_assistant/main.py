@@ -12,6 +12,7 @@ from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.panel import Panel
 
+from coding_assistant.paths import get_log_file
 from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.history import (
@@ -27,6 +28,24 @@ from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
 logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
+
+
+def setup_logging() -> None:
+    """Setup logging to both console and file."""
+    log_file = get_log_file()
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
+
+    # Root logger for capture all logs in file
+    root_logger = logging.getLogger()
+    root_logger.addHandler(file_handler)
+    root_logger.setLevel(logging.DEBUG)
+
+    # Re-apply console settings for our specific logger via basicConfig (already done global)
+    # But we want to make sure 'coding_assistant' stays INFO on console
+    logger.setLevel(logging.INFO)
 
 
 def parse_args() -> argparse.Namespace:
@@ -236,6 +255,7 @@ async def _main(args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
+    setup_logging()
 
     if args.trace:
         enable_tracing(get_default_trace_dir())
