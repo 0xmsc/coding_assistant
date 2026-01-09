@@ -20,6 +20,17 @@ from coding_assistant.ui import UI
 logger = logging.getLogger(__name__)
 
 
+async def stop_mcp_server(mcp_task: Optional[asyncio.Task[Any]], callbacks: ProgressCallbacks) -> None:
+    if mcp_task:
+        callbacks.on_status_message("Shutting down external MCP server...", level=StatusLevel.INFO)
+        mcp_task.cancel()
+        try:
+            async with asyncio.timeout(2):
+                await mcp_task
+        except (asyncio.CancelledError, TimeoutError, KeyboardInterrupt):
+            pass
+
+
 class Session:
     def __init__(
         self,
@@ -98,14 +109,7 @@ class Session:
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if self._mcp_task:
-            self.callbacks.on_status_message("Shutting down external MCP server...", level=StatusLevel.INFO)
-            self._mcp_task.cancel()
-            try:
-                async with asyncio.timeout(2):
-                    await self._mcp_task
-            except (asyncio.CancelledError, TimeoutError, KeyboardInterrupt):
-                pass
+        await stop_mcp_server(self._mcp_task, self.callbacks)
 
         if self._mcp_servers_cm:
             await self._mcp_servers_cm.__aexit__(exc_type, exc_val, exc_tb)
