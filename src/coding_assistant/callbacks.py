@@ -147,6 +147,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._finalize_state()
         print()
         print(Markdown(f"## {role}\n\n{content}"))
+        print()
         self._state = IdleState()
 
     def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict[str, Any]) -> None:
@@ -254,8 +255,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 md = Markdown(flushed)
                 style = "dim cyan" if isinstance(self._state, ReasoningState) else None
                 print(Styled(md, style) if style else md)
-            elif isinstance(self._state, ReasoningState):
-                print()
+            print()
 
     def on_chunks_end(self) -> None:
         self._finalize_state()
