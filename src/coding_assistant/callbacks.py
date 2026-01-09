@@ -31,7 +31,7 @@ class SpecialToolParameterConfig(TypedDict):
 class SpecialToolConfig(TypedDict):
     """Configuration for special tool display handling."""
 
-    languages: dict[str, str]  # param_name -> language hint
+    languages: NotRequired[dict[str, str]]  # param_name -> language hint
     hide_value: NotRequired[list[str]]  # Parameters to hide from display
 
 
@@ -135,7 +135,6 @@ class DenseProgressCallbacks(ProgressCallbacks):
             "languages": {"content": ""},
         },
         "filesystem_edit_file": {
-            "languages": {"old_text": "", "new_text": ""},
             "hide_value": ["old_text", "new_text"],
         },
         "todo_add": {
