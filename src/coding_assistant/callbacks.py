@@ -258,9 +258,6 @@ class DenseProgressCallbacks(ProgressCallbacks):
                 print(Styled(md, style) if style else md)
             elif isinstance(self._state, ReasoningState):
                 print()
-            print()
-            print(Rule(style="dim"))
-            print()
 
     def on_chunks_end(self) -> None:
         self._finalize_state()
