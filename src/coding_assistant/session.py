@@ -64,7 +64,11 @@ class Session:
 
         # Sandbox setup
         if self.sandbox_enabled:
-            readable = [*self.readable_sandbox_directories, self.coding_assistant_root]
+            readable = [
+                *self.readable_sandbox_directories,
+                *[Path(d).resolve() for d in self.skills_directories],
+                self.coding_assistant_root,
+            ]
             writable = [*self.writable_sandbox_directories, self.working_directory]
             sandbox(readable_paths=readable, writable_paths=writable, include_defaults=True)
             self.callbacks.on_status_message("Sandboxing enabled.", level=StatusLevel.INFO)
