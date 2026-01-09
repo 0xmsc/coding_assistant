@@ -1,19 +1,18 @@
 import json5
-from datetime import datetime
 from pathlib import Path
 import logging
 from typing import Any
 
-from coding_assistant.paths import get_app_cache_dir
+from coding_assistant.paths import get_traces_dir
 
 _trace_dir: Path | None = None
-_session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+_trace_counter = 0
 
 logger = logging.getLogger(__name__)
 
 
 def get_default_trace_dir() -> Path:
-    return get_app_cache_dir() / "traces" / _session_id
+    return get_traces_dir()
 
 
 def enable_tracing(directory: Path, clear: bool = False) -> None:
@@ -35,11 +34,12 @@ def trace_enabled() -> bool:
 
 
 def _get_trace_path(name: str) -> Path:
+    global _trace_counter
     if _trace_dir is None:
         raise RuntimeError("Tracing is not enabled")
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    path = _trace_dir / f"{timestamp}_{name}"
+    _trace_counter += 1
+    path = _trace_dir / f"{_trace_counter:03d}_{name}"
     return path
 
 
