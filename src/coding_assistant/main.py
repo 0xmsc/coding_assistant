@@ -8,7 +8,6 @@ from pathlib import Path
 
 import debugpy
 from rich import print as rich_print
-from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.panel import Panel
 
@@ -25,13 +24,13 @@ from coding_assistant.tools.mcp_server import get_free_port
 from coding_assistant.session import Session
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 
-logging.basicConfig(level=logging.WARNING, handlers=[RichHandler()])
+logging.basicConfig(level=logging.WARNING, handlers=[])
 logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
 
 
 def setup_logging() -> None:
-    """Setup logging to both console and file."""
+    """Setup logging to file only."""
     log_file = get_log_file()
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.DEBUG)
@@ -40,11 +39,15 @@ def setup_logging() -> None:
 
     # Root logger for capture all logs in file
     root_logger = logging.getLogger()
+
+    # Clear existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
     root_logger.addHandler(file_handler)
     root_logger.setLevel(logging.DEBUG)
 
-    # Re-apply console settings for our specific logger via basicConfig (already done global)
-    # But we want to make sure 'coding_assistant' stays INFO on console
+    # Set 'coding_assistant' logger to INFO
     logger.setLevel(logging.INFO)
 
 

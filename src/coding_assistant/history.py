@@ -1,8 +1,7 @@
 import logging
 import json
 from pathlib import Path
-from dataclasses import asdict, is_dataclass
-from typing import Any
+from typing import Sequence
 from coding_assistant.llm.types import BaseMessage, AssistantMessage, message_from_dict, message_to_dict
 
 logger = logging.getLogger("coding_assistant.cache")
@@ -20,7 +19,7 @@ def get_orchestrator_history_file(working_directory: Path) -> Path:
     return get_project_cache_dir(working_directory) / "history.json"
 
 
-def _fix_invalid_history(history: list[BaseMessage]) -> list[BaseMessage]:
+def _fix_invalid_history(history: Sequence[BaseMessage]) -> list[BaseMessage]:
     """
     Fixes an invalid history by removing trailing assistant messages with tool_calls
     that are not followed by a tool message.
@@ -40,7 +39,7 @@ def _fix_invalid_history(history: list[BaseMessage]) -> list[BaseMessage]:
     return fixed_history
 
 
-def save_orchestrator_history(working_directory: Path, agent_history: list[BaseMessage]) -> None:
+def save_orchestrator_history(working_directory: Path, agent_history: Sequence[BaseMessage]) -> None:
     """Save orchestrator agent history for crash recovery. Only saves agent_history."""
     history_file = get_orchestrator_history_file(working_directory)
     fixed_history = _fix_invalid_history(agent_history)

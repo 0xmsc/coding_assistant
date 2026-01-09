@@ -1,6 +1,6 @@
 import logging
 
-from typing import Any
+from typing import Any, Sequence
 
 from pydantic import BaseModel, Field
 
@@ -75,7 +75,7 @@ class AgentTool(Tool):
         progress_callbacks: ProgressCallbacks,
         tool_callbacks: ToolCallbacks,
         name: str = "launch_agent",
-        history: list[BaseMessage] | None = None,
+        history: Sequence[BaseMessage] | None = None,
         completer: Completer | None = None,
     ) -> None:
         super().__init__()
@@ -137,7 +137,7 @@ class AgentTool(Tool):
                 *self._tools,
             ],
         )
-        state = AgentState(history=self._history or [])
+        state = AgentState(history=list(self._history) if self._history is not None else [])
         ctx = AgentContext(desc=desc, state=state)
 
         try:
