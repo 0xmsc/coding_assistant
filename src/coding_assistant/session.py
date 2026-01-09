@@ -70,6 +70,10 @@ class Session:
         self._mcp_servers: Optional[list[Any]] = None
         self._mcp_task: Optional[asyncio.Task[Any]] = None
 
+    @property
+    def mcp_servers(self) -> Optional[list[Any]]:
+        return self._mcp_servers
+
     async def __aenter__(self) -> "Session":
         self.callbacks.on_status_message("Initializing session...", level=StatusLevel.INFO)
 
