@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import sys
 import importlib.resources
 import argparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction

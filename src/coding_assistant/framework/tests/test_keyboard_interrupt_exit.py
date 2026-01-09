@@ -1,8 +1,7 @@
 import asyncio
 from asyncio import timeout as real_timeout
-from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -10,7 +9,7 @@ from coding_assistant.framework.callbacks import NullProgressCallbacks, NullTool
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.types import Tool
 from coding_assistant.llm.types import BaseMessage, UserMessage
-from coding_assistant.session import Session, stop_mcp_server
+from coding_assistant.session import stop_mcp_server
 from coding_assistant.tools.mcp_server import start_mcp_server
 
 
@@ -71,6 +70,7 @@ async def test_mcp_server_shutdown_logic() -> None:
 @pytest.mark.asyncio
 async def test_stop_mcp_server_timeout_protection() -> None:
     """Test that stop_mcp_server doesn't hang forever if a task is stubborn."""
+
     async def stubborn_task() -> None:
         try:
             while True:
