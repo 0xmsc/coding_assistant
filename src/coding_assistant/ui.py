@@ -10,6 +10,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.shortcuts import create_confirm_session
 from rich.console import Console
+from rich.rule import Rule
 
 from coding_assistant.paths import get_app_cache_dir
 
@@ -54,15 +55,18 @@ class PromptToolkitUI(UI):
 
     async def ask(self, prompt_text: str, default: str | None = None) -> str:
         Console().bell()
+        print(Rule(style="dim"))
         print(prompt_text)
         return await self._session.prompt_async("> ", default=default or "")
 
     async def confirm(self, prompt_text: str) -> bool:
         Console().bell()
+        print(Rule(style="dim"))
         return await create_confirm_session(prompt_text).prompt_async()
 
     async def prompt(self, words: list[str] | None = None) -> str:
         Console().bell()
+        print(Rule(style="dim"))
         completer = SlashCompleter(words) if words else None
         return await self._session.prompt_async("> ", completer=completer, complete_while_typing=True)
 
