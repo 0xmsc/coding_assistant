@@ -63,9 +63,13 @@ async def test_mcp_server_shutdown_logic() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stop_mcp_server_timeout_protection() -> None:
-    """Test that _stop_mcp_server doesn't hang forever if a task is stubborn."""
-    from coding_assistant.main import _stop_mcp_server
+async def test_session_mcp_server_shutdown_timeout_protection() -> None:
+    """Test that Session cleanup doesn't hang forever if a task is stubborn."""
+    from coding_assistant.session import Session
+    from coding_assistant.framework.callbacks import NullProgressCallbacks
+    from coding_assistant.framework.callbacks import NullToolCallbacks
+    from pathlib import Path
+    from unittest.mock import MagicMock
 
     async def stubborn_task() -> None:
         try:
@@ -77,11 +81,23 @@ async def test_stop_mcp_server_timeout_protection() -> None:
 
     task = asyncio.create_task(stubborn_task())
 
-    # This should return after ~2 seconds because of the timeout in _stop_mcp_server
-    # without raising TimeoutError to the caller.
-    with patch("coding_assistant.main.asyncio.timeout", side_effect=lambda t: asyncio.timeout(0.1)):
-        # We patch the timeout to be very short for the test
-        await _stop_mcp_server(task)
+    callbacks = NullProgressCallbacks()
+    session = Session(
+        config=MagicMock(),
+        ui=MagicMock(),
+        callbacks=callbacks,
+        tool_callbacks=NullToolCallbacks(),
+        working_directory=Path("."),
+        coding_assistant_root=Path("."),
+        mcp_server_configs=[],
+    )
+    session._mcp_task = task
+
+    # This should return because of the timeout in Session.__aexit__
+    from asyncio import timeout as real_timeout
+
+    with patch("coding_assistant.session.asyncio.timeout", side_effect=lambda t: real_timeout(0.1)):
+        await session.__aexit__(None, None, None)
 
     # The task should have been told to cancel
     assert task.cancelling() > 0 or task.cancelled()
