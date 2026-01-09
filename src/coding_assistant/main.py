@@ -245,8 +245,8 @@ async def _main(args: argparse.Namespace) -> None:
     try:
         async with session:
             if args.print_mcp_tools:
-                assert session._mcp_servers is not None
-                await print_mcp_tools(session._mcp_servers)
+                assert session.mcp_servers is not None
+                await print_mcp_tools(session.mcp_servers)
                 return
 
             if args.print_instructions:
