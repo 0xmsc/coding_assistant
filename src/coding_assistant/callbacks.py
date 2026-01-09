@@ -33,7 +33,6 @@ class SpecialToolConfig(TypedDict):
 
     languages: dict[str, str]  # param_name -> language hint
     hide_value: list[str]  # Parameters to hide from display
-    per_value_language: dict[str, dict[str, str]]  # param -> value -> language override
 
 
 class ParagraphBuffer:
@@ -129,32 +128,26 @@ class DenseProgressCallbacks(ProgressCallbacks):
         "shell_execute": {
             "languages": {"command": "bash"},
             "hide_value": [],
-            "per_value_language": {},
         },
         "python_execute": {
             "languages": {"code": "python"},
             "hide_value": [],
-            "per_value_language": {},
         },
         "filesystem_write_file": {
             "languages": {"content": ""},
             "hide_value": [],
-            "per_value_language": {},
         },
         "filesystem_edit_file": {
             "languages": {"old_text": "", "new_text": ""},
             "hide_value": ["old_text", "new_text"],
-            "per_value_language": {},
         },
         "todo_add": {
             "languages": {"descriptions": "json"},
             "hide_value": [],
-            "per_value_language": {},
         },
         "compact_conversation": {
             "languages": {"summary": "markdown"},
             "hide_value": [],
-            "per_value_language": {},
         },
     }
 
@@ -191,9 +184,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         self._state = IdleState()
 
     def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict[str, Any]) -> None:
-        config: SpecialToolConfig = self._SPECIAL_TOOLS.get(
-            tool_name, {"languages": {}, "hide_value": [], "per_value_language": {}}
-        )
+        config: SpecialToolConfig = self._SPECIAL_TOOLS.get(tool_name, {"languages": {}, "hide_value": []})
         hide_value_keys = config.get("hide_value", [])
         lang_hints = config.get("languages", {})
 
