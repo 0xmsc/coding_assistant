@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 import pytest
 from unittest.mock import AsyncMock, patch
 from coding_assistant.framework.types import Tool
@@ -79,7 +80,8 @@ async def test_session_mcp_server_shutdown_timeout_protection() -> None:
             # Simulate a task that takes a long time to clean up or "hangs"
             await asyncio.sleep(10)
 
-    task = asyncio.create_task(stubborn_task())
+    # Note: the task needs to be started in the current loop
+    task: asyncio.Task[Any] = asyncio.create_task(stubborn_task())
 
     callbacks = NullProgressCallbacks()
     session = Session(

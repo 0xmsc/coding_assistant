@@ -245,6 +245,7 @@ async def _main(args: argparse.Namespace) -> None:
     try:
         async with session:
             if args.print_mcp_tools:
+                assert session._mcp_servers is not None
                 await print_mcp_tools(session._mcp_servers)
                 return
 
@@ -252,10 +253,11 @@ async def _main(args: argparse.Namespace) -> None:
                 rich_print(Panel(Markdown(session.instructions), title="Instructions"))
                 return
 
+            history = resume_history if resume_history is not None else []
             if config.enable_chat_mode:
-                await session.run_chat(history=resume_history)
+                await session.run_chat(history=history)
             else:
-                result = await session.run_agent(task=args.task, history=resume_history)
+                result = await session.run_agent(task=args.task, history=history)
                 print(f"🎉 Final Result\n\nResult:\n\n{result.content}")
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
