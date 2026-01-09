@@ -164,29 +164,6 @@ def create_config_from_args(args: argparse.Namespace) -> Config:
     )
 
 
-def get_default_mcp_server_config(
-    root_directory: Path, skills_directories: list[str], mcp_url: str | None = None, env: list[str] | None = None
-) -> MCPServerConfig:
-    args = [
-        "-m",
-        "coding_assistant.mcp",
-    ]
-
-    if skills_directories:
-        args.append("--skills-directories")
-        args.extend(skills_directories)
-
-    if mcp_url:
-        args.extend(["--mcp-url", mcp_url])
-
-    return MCPServerConfig(
-        name="coding_assistant.mcp",
-        command=sys.executable,
-        args=args,
-        env=env or [],
-    )
-
-
 async def _main(args: argparse.Namespace) -> None:
     logger.info(f"Starting Coding Assistant with arguments {args}")
 
@@ -212,11 +189,6 @@ async def _main(args: argparse.Namespace) -> None:
 
     if args.mcp_server and args.mcp_server_port == 0:
         args.mcp_server_port = get_free_port()
-
-    mcp_url = f"http://localhost:{args.mcp_server_port}/mcp" if args.mcp_server else None
-    mcp_server_configs.append(
-        get_default_mcp_server_config(coding_assistant_root, args.skills_directories, mcp_url=mcp_url, env=args.mcp_env)
-    )
 
     ui = PromptToolkitUI() if (args.task is None or config.enable_ask_user) else DefaultAnswerUI()
     progress_callbacks = DenseProgressCallbacks(print_reasoning=args.print_reasoning)
