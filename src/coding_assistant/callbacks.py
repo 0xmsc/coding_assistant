@@ -113,7 +113,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
         "shell_execute": {"command": "bash"},
         "python_execute": {"code": "python"},
         "filesystem_write_file": {"content": ""},
-        "filesystem_edit_file": {"old_text": "", "new_text": "", "exclude": ["old_text", "new_text"]},
+        "filesystem_edit_file": {"old_text": "", "new_text": "", "hide_value": ["old_text", "new_text"]},
         "todo_add": {"descriptions": "json"},
         "compact_conversation": {"summary": "markdown"},
     }
@@ -152,13 +152,14 @@ class DenseProgressCallbacks(ProgressCallbacks):
 
     def _print_tool_start(self, symbol: str, tool_name: str, arguments: dict[str, Any]) -> None:
         multiline_config = self._SPECIAL_TOOLS.get(tool_name, {})
-        exclude_keys = multiline_config.get("exclude", [])
+        hide_value_keys = multiline_config.get("hide_value", [])
 
         header_params = []
         multi_line_params = []
 
         for key, value in arguments.items():
-            if key in exclude_keys:
+            if key in hide_value_keys:
+                header_params.append(key)
                 continue
 
             if key in multiline_config:
