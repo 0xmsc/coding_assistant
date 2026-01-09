@@ -11,6 +11,7 @@ from typing import Any, Optional, Union
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.padding import Padding
+from rich.rule import Rule
 
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks, StatusLevel
 from coding_assistant.framework.results import TextResult, ToolResult
@@ -258,7 +259,7 @@ class DenseProgressCallbacks(ProgressCallbacks):
             elif isinstance(self._state, ReasoningState):
                 print()
             print()
-            print("-" * 24)
+            print(Rule(style="dim"))
             print()
 
     def on_chunks_end(self) -> None:
