@@ -1,12 +1,12 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks, StatusLevel
 from coding_assistant.framework.chat import run_chat_loop
-from coding_assistant.framework.history import BaseMessage
+from coding_assistant.llm.types import BaseMessage
 from coding_assistant.framework.types import Tool
 from coding_assistant.history import save_orchestrator_history
 from coding_assistant.instructions import get_instructions
@@ -31,12 +31,12 @@ class Session:
         coding_assistant_root: Path,
         mcp_server_configs: list[MCPServerConfig],
         mcp_server_port: int = 0,
-        skills_directories: list[str] = None,
-        mcp_env: list[str] = None,
+        skills_directories: Optional[list[str]] = None,
+        mcp_env: Optional[list[str]] = None,
         sandbox_enabled: bool = True,
-        readable_sandbox_directories: list[Path] = None,
-        writable_sandbox_directories: list[Path] = None,
-        user_instructions: list[str] = None,
+        readable_sandbox_directories: Optional[list[Path]] = None,
+        writable_sandbox_directories: Optional[list[Path]] = None,
+        user_instructions: Optional[list[str]] = None,
     ):
         self.config = config
         self.ui = ui
@@ -55,11 +55,11 @@ class Session:
 
         self.tools: list[Tool] = []
         self.instructions: str = ""
-        self._mcp_servers_cm = None
-        self._mcp_servers = None
-        self._mcp_task = None
+        self._mcp_servers_cm: Optional[Any] = None
+        self._mcp_servers: Optional[list[Any]] = None
+        self._mcp_task: Optional[asyncio.Task[Any]] = None
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "Session":
         self.callbacks.on_status_message("Initializing session...", level=StatusLevel.INFO)
 
         # Sandbox setup
@@ -71,8 +71,10 @@ class Session:
 
         # MCP Servers setup
         self._mcp_servers_cm = get_mcp_servers_from_config(self.mcp_server_configs, self.working_directory)
+        assert self._mcp_servers_cm is not None
         self._mcp_servers = await self._mcp_servers_cm.__aenter__()
 
+        assert self._mcp_servers is not None
         self.tools = await get_mcp_wrapped_tools(self._mcp_servers)
 
         if self.mcp_server_port > 0:
@@ -91,7 +93,7 @@ class Session:
         self.callbacks.on_status_message("Session initialized.", level=StatusLevel.SUCCESS)
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self._mcp_task:
             self.callbacks.on_status_message("Shutting down external MCP server...", level=StatusLevel.INFO)
             self._mcp_task.cancel()
@@ -106,7 +108,7 @@ class Session:
 
         self.callbacks.on_status_message("Session closed.", level=StatusLevel.INFO)
 
-    async def run_chat(self, history: list[BaseMessage] = None):
+    async def run_chat(self, history: Optional[list[BaseMessage]] = None) -> None:
         chat_history = history or []
         try:
             await run_chat_loop(
@@ -123,7 +125,7 @@ class Session:
         finally:
             save_orchestrator_history(self.working_directory, chat_history)
 
-    async def run_agent(self, task: str, history: list[BaseMessage] = None) -> Any:
+    async def run_agent(self, task: str, history: Optional[list[BaseMessage]] = None) -> Any:
         agent_mode_tools = [
             AskClientTool(ui=self.ui),
             *self.tools,
