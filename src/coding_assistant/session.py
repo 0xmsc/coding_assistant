@@ -55,14 +55,16 @@ class Session:
         self.tool_callbacks = tool_callbacks
         self.working_directory = working_directory
         self.coding_assistant_root = coding_assistant_root
-        self.mcp_server_configs = mcp_server_configs
         self.mcp_server_port = mcp_server_port
         self.skills_directories = skills_directories or []
-        self.mcp_env = mcp_env or []
+        self.mcp_env_list = mcp_env or []
         self.sandbox_enabled = sandbox_enabled
         self.readable_sandbox_directories = readable_sandbox_directories or []
         self.writable_sandbox_directories = writable_sandbox_directories or []
         self.user_instructions = user_instructions or []
+
+        # Build initial list of server configs
+        self.mcp_server_configs = list(mcp_server_configs)
 
         self.tools: list[Tool] = []
         self.instructions: str = ""
@@ -73,6 +75,31 @@ class Session:
     @property
     def mcp_servers(self) -> Optional[list[Any]]:
         return self._mcp_servers
+
+    @staticmethod
+    def get_default_mcp_server_config(
+        root_directory: Path, skills_directories: list[str], mcp_url: str | None = None, env: list[str] | None = None
+    ) -> MCPServerConfig:
+        import sys
+
+        args = [
+            "-m",
+            "coding_assistant.mcp",
+        ]
+
+        if skills_directories:
+            args.append("--skills-directories")
+            args.extend(skills_directories)
+
+        if mcp_url:
+            args.extend(["--mcp-url", mcp_url])
+
+        return MCPServerConfig(
+            name="coding_assistant.mcp",
+            command=sys.executable,
+            args=args,
+            env=env or [],
+        )
 
     async def __aenter__(self) -> "Session":
         self.callbacks.on_status_message("Initializing session...", level=StatusLevel.INFO)
@@ -88,8 +115,18 @@ class Session:
             sandbox(readable_paths=readable, writable_paths=writable, include_defaults=True)
             self.callbacks.on_status_message("Sandboxing enabled.", level=StatusLevel.INFO)
 
+        # Build default server config
+        mcp_url = f"http://localhost:{self.mcp_server_port}/mcp" if self.mcp_server_port > 0 else None
+        default_config = self.get_default_mcp_server_config(
+            self.coding_assistant_root,
+            self.skills_directories,
+            mcp_url=mcp_url,
+            env=self.mcp_env_list,
+        )
+        all_configs = [*self.mcp_server_configs, default_config]
+
         # MCP Servers setup
-        self._mcp_servers_cm = get_mcp_servers_from_config(self.mcp_server_configs, self.working_directory)
+        self._mcp_servers_cm = get_mcp_servers_from_config(all_configs, self.working_directory)
         assert self._mcp_servers_cm is not None
         self._mcp_servers = await self._mcp_servers_cm.__aenter__()
 
