@@ -14,11 +14,14 @@ from coding_assistant.framework.tests.helpers import (
 from coding_assistant.llm.types import (
     AssistantMessage,
     FunctionCall,
+    Tool,
     ToolCall,
     ToolMessage,
+    ToolResult,
     UserMessage,
 )
-from coding_assistant.framework.types import AgentContext, TextResult, Tool, ToolResult
+from coding_assistant.framework.types import AgentContext
+from coding_assistant.framework.results import TextResult
 from coding_assistant.framework.history import append_assistant_message
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 

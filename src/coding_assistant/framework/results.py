@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Any
-from coding_assistant.llm.types import ToolResult as ToolResult
+from coding_assistant.llm.types import ToolResult
 
 
 @dataclass

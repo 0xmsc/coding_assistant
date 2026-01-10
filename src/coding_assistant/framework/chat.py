@@ -5,13 +5,18 @@ from enum import Enum
 import logging
 
 
-from coding_assistant.llm.types import BaseMessage, UserMessage, AssistantMessage, Usage
-
-from coding_assistant.framework.builtin_tools import (
-    CompactConversationTool,
-)
+from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import ToolCallbacks
-from coding_assistant.llm.types import ProgressCallbacks, StatusLevel
+from coding_assistant.llm.types import (
+    AssistantMessage,
+    BaseMessage,
+    ProgressCallbacks,
+    StatusLevel,
+    Tool,
+    ToolResult,
+    Usage,
+    UserMessage,
+)
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
 from coding_assistant.framework.history import (
     append_assistant_message,
@@ -19,13 +24,8 @@ from coding_assistant.framework.history import (
     clear_history,
 )
 from coding_assistant.framework.interrupts import InterruptController
-from coding_assistant.framework.types import (
-    CompactConversationResult,
-    Completer,
-    TextResult,
-    Tool,
-    ToolResult,
-)
+from coding_assistant.framework.types import Completer
+from coding_assistant.framework.results import CompactConversationResult, TextResult
 from coding_assistant.ui import UI
 from coding_assistant.framework.image import get_image
 

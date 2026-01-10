@@ -2,13 +2,14 @@ from typing import Any, Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.framework.parameters import Parameter
-from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext, Tool
+from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext
 from coding_assistant.llm.types import (
     AssistantMessage,
-    FunctionCall as FunctionCall,
     BaseMessage,
-    ToolCall as ToolCall,
     Completion,
+    FunctionCall as FunctionCall,
+    Tool,
+    ToolCall as ToolCall,
     Usage,
 )
 from coding_assistant.ui import UI
