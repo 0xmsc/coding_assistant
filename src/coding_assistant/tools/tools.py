@@ -1,5 +1,7 @@
+import json
 import logging
-
+import tempfile
+from pathlib import Path
 from typing import Any, Sequence
 
 from pydantic import BaseModel, Field
@@ -65,6 +67,68 @@ class AskClientTool(Tool):
         validated = AskClientSchema.model_validate(parameters)
         answer = await self._ui.ask(validated.question, default=validated.default_answer)
         return TextResult(content=str(answer))
+
+
+class CallToolWithFileOutputSchema(BaseModel):
+    tool_name: str = Field(description="The name of the tool to call.")
+    tool_args: dict[str, Any] = Field(description="The arguments to pass to the tool.")
+    output_file: str | None = Field(
+        default=None,
+        description="The path where the output should be written. If omitted, a temporary file will be created.",
+    )
+
+
+class CallToolWithFileOutputTool(Tool):
+    def __init__(self, tools: list[Tool]):
+        super().__init__()
+        self._tools = tools
+
+    def name(self) -> str:
+        return "call_tool_with_file_output"
+
+    def description(self) -> str:
+        return "Call another tool and write its output to a file. Use this when the output of a tool is too large to be handled in the conversation or when you need to save the result for later use."
+
+    def parameters(self) -> dict[str, Any]:
+        return CallToolWithFileOutputSchema.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
+        validated = CallToolWithFileOutputSchema.model_validate(parameters)
+        tool_name = validated.tool_name
+        tool_args = validated.tool_args
+        output_file = validated.output_file
+
+        if tool_name == self.name():
+            return TextResult(content="Error: Cannot call call_tool_with_file_output recursively.")
+
+        target_tool = next((t for t in self._tools if t.name() == tool_name), None)
+        if not target_tool:
+            return TextResult(content=f"Error: Tool '{tool_name}' not found.")
+
+        try:
+            result = await target_tool.execute(tool_args)
+            content: str
+            if isinstance(result, TextResult):
+                content = result.content
+            else:
+                # Fallback for structured results (FinishTaskResult, CompactConversationResult, etc.)
+                content = json.dumps(result.to_dict(), indent=2)
+
+            if output_file:
+                path = Path(output_file)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content)
+                return TextResult(content=f"Tool '{tool_name}' executed. Output written to {output_file}")
+            else:
+                with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
+                    tmp.write(content)
+                    return TextResult(
+                        content=f"Tool '{tool_name}' executed. Output written to temporary file: {tmp.name}"
+                    )
+
+        except Exception as e:
+            logger.exception(f"Error executing tool '{tool_name}' via call_tool_with_file_output")
+            return TextResult(content=f"Error executing tool '{tool_name}': {e}")
 
 
 class AgentTool(Tool):
