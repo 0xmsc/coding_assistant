@@ -133,10 +133,10 @@ class NullProgressCallbacks(ProgressCallbacks):
     def on_status_message(self, message: str, level: StatusLevel = StatusLevel.INFO) -> None:
         pass
 
-    def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
+    def on_user_message(self, context_name: str, message: UserMessage, *, force: bool = False) -> None:
         pass
 
-    def on_assistant_message(self, context_name: str, message: AssistantMessage, force: bool = False) -> None:
+    def on_assistant_message(self, context_name: str, message: AssistantMessage, *, force: bool = False) -> None:
         pass
 
     def on_tool_start(self, context_name: str, tool_call: ToolCall, arguments: dict[str, Any]) -> None:
