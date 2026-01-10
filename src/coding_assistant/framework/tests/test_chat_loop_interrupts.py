@@ -6,18 +6,10 @@ import signal
 import pytest
 from unittest.mock import patch
 
-from coding_assistant.framework.callbacks import NullToolCallbacks
-from coding_assistant.llm.types import NullProgressCallbacks
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.interrupts import InterruptController
 from coding_assistant.llm.types import UserMessage, BaseMessage, Tool
-from coding_assistant.framework.tests.helpers import (
-    FakeCompleter,
-    FunctionCall,
-    FakeMessage,
-    ToolCall,
-    make_ui_mock,
-)
+from coding_assistant.framework.tests.helpers import FakeCompleter, FunctionCall, FakeMessage, ToolCall, make_ui_mock
 from coding_assistant.framework.results import TextResult
 
 
@@ -101,8 +93,6 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input() -> None:
                     model=model,
                     tools=cast(Any, tools),
                     instructions=instructions,
-                    callbacks=NullProgressCallbacks(),
-                    tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
                     context_name="test",
@@ -172,8 +162,6 @@ async def test_interrupt_during_do_single_step() -> None:
                     model=model,
                     tools=cast(Any, tools),
                     instructions=instructions,
-                    callbacks=NullProgressCallbacks(),
-                    tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
                     context_name="test",
@@ -244,8 +232,6 @@ async def test_multiple_tool_calls_with_interrupt() -> None:
                     model=model,
                     tools=cast(Any, tools),
                     instructions=instructions,
-                    callbacks=NullProgressCallbacks(),
-                    tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
                     context_name="test",
@@ -294,8 +280,6 @@ async def test_chat_loop_without_interrupts_works_normally() -> None:
         model=model,
         tools=cast(Any, tools),
         instructions=instructions,
-        callbacks=NullProgressCallbacks(),
-        tool_callbacks=NullToolCallbacks(),
         completer=completer,
         ui=ui,
         context_name="test",
@@ -353,8 +337,6 @@ async def test_interrupt_recovery_continues_conversation() -> None:
                     model=model,
                     tools=cast(Any, tools),
                     instructions=instructions,
-                    callbacks=NullProgressCallbacks(),
-                    tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
                     context_name="test",
@@ -425,8 +407,6 @@ async def test_interrupt_during_second_tool_call() -> None:
                     model=model,
                     tools=cast(Any, tools),
                     instructions=instructions,
-                    callbacks=NullProgressCallbacks(),
-                    tool_callbacks=NullToolCallbacks(),
                     completer=completer,
                     ui=ui,
                     context_name="test",
@@ -482,8 +462,6 @@ async def test_sigint_interrupts_tool_execution() -> None:
                 model=model,
                 tools=cast(Any, tools),
                 instructions=instructions,
-                callbacks=NullProgressCallbacks(),
-                tool_callbacks=NullToolCallbacks(),
                 completer=completer,
                 ui=ui,
                 context_name="test",
@@ -547,8 +525,6 @@ async def test_interrupt_during_llm_call() -> None:
                     model=model,
                     tools=cast(Any, tools),
                     instructions=instructions,
-                    callbacks=NullProgressCallbacks(),
-                    tool_callbacks=NullToolCallbacks(),
                     completer=cast(Any, slow_completer),
                     ui=ui,
                     context_name="test",
