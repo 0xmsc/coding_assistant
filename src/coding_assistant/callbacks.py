@@ -13,9 +13,16 @@ from rich.markdown import Markdown
 from rich.padding import Padding
 
 from coding_assistant.framework.callbacks import ToolCallbacks
-from coding_assistant.llm.types import ProgressCallbacks, StatusLevel
-from coding_assistant.framework.results import TextResult, ToolResult
-from coding_assistant.llm.types import UserMessage, AssistantMessage, ToolCall, ToolMessage
+from coding_assistant.llm.types import (
+    AssistantMessage,
+    ProgressCallbacks,
+    StatusLevel,
+    ToolCall,
+    ToolMessage,
+    ToolResult,
+    UserMessage,
+)
+from coding_assistant.framework.results import TextResult
 
 console = Console()
 print = console.print

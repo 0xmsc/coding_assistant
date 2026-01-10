@@ -5,7 +5,12 @@ from typing import Any, Sequence
 from pydantic import BaseModel, Field
 
 from coding_assistant.framework.callbacks import ToolCallbacks
-from coding_assistant.llm.types import ProgressCallbacks, NullProgressCallbacks
+from coding_assistant.llm.types import (
+    BaseMessage,
+    NullProgressCallbacks,
+    ProgressCallbacks,
+    Tool,
+)
 from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.parameters import Parameter, parameters_from_model
 from coding_assistant.framework.types import (
@@ -13,10 +18,8 @@ from coding_assistant.framework.types import (
     AgentDescription,
     AgentState,
     Completer,
-    TextResult,
-    Tool,
 )
-from coding_assistant.llm.types import BaseMessage
+from coding_assistant.framework.results import TextResult
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.ui import DefaultAnswerUI, UI
 

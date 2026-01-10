@@ -16,16 +16,25 @@ from coding_assistant.framework.agent import (
     _handle_compact_conversation_result,
     _handle_finish_task_result,
 )
-from coding_assistant.llm.types import UserMessage, AssistantMessage, message_to_dict
+from coding_assistant.llm.types import (
+    AssistantMessage,
+    ToolResult,
+    UserMessage,
+    message_to_dict,
+)
 from coding_assistant.framework.tests.helpers import (
-    FunctionCall,
-    FakeMessage,
-    ToolCall,
     FakeCompleter,
+    FakeMessage,
+    FunctionCall,
+    ToolCall,
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.framework.types import ToolResult, FinishTaskResult, CompactConversationResult, TextResult
+from coding_assistant.framework.results import (
+    CompactConversationResult,
+    FinishTaskResult,
+    TextResult,
+)
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional
-from coding_assistant.framework.results import ToolResult
+from coding_assistant.llm.types import ToolResult
 
 
 class ToolCallbacks(ABC):

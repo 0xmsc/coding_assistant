@@ -5,8 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from coding_assistant.session import Session
 from coding_assistant.config import Config
 from coding_assistant.framework.callbacks import ToolCallbacks
-from coding_assistant.llm.types import StatusLevel, ProgressCallbacks
-from coding_assistant.framework.types import Tool
+from coding_assistant.llm.types import StatusLevel, ProgressCallbacks, Tool
 from coding_assistant.ui import UI
 
 
