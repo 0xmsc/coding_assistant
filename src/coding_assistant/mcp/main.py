@@ -48,7 +48,6 @@ INSTRUCTIONS = """
 
 async def _main() -> None:
     parser = argparse.ArgumentParser(description="Coding Assistant MCP Server")
-    parser.add_argument("--mcp-url", help="The URL of the MCP server (passed to Python scripts)")
     parser.add_argument(
         "--skills-directories",
         nargs="*",
@@ -68,7 +67,7 @@ async def _main() -> None:
     mcp = FastMCP("Coding Assistant MCP", instructions=instructions)
     await mcp.import_server(create_todo_server(), prefix="todo")
     await mcp.import_server(create_shell_server(manager), prefix="shell")
-    await mcp.import_server(create_python_server(manager, args.mcp_url), prefix="python")
+    await mcp.import_server(create_python_server(manager), prefix="python")
     await mcp.import_server(filesystem_server, prefix="filesystem")
     await mcp.import_server(create_task_server(manager), prefix="tasks")
     await mcp.import_server(skills_server, prefix="skills")
