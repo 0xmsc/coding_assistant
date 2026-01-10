@@ -732,7 +732,7 @@ class TestOpenAIComplete:
 
         cb = _CB()
         msgs = [UserMessage(content="Hello")]
-        ret = await openai_model.complete(msgs, "gpt-4o", [], cb)
+        ret = await openai_model.complete(msgs, model="gpt-4o", tools=[], callbacks=cb)
         assert ret.message.content == "Hello world"
         assert ret.message.tool_calls == []
         assert cb.chunks == ["Hello", " world"]
@@ -769,7 +769,7 @@ class TestOpenAIComplete:
         msgs = [UserMessage(content="What's the weather in New York")]
         tools: Any = []
 
-        ret = await openai_model.complete(msgs, "gpt-4o", tools, cb)
+        ret = await openai_model.complete(msgs, model="gpt-4o", tools=tools, callbacks=cb)
 
         assert ret.message.tool_calls[0].id == "call_123"
         assert ret.message.tool_calls[0].function.name == "get_weather"
@@ -789,7 +789,7 @@ class TestOpenAIComplete:
 
         cb = _CB()
         msgs = [UserMessage(content="Reason")]
-        ret = await openai_model.complete(msgs, "o1-preview", [], cb)
+        ret = await openai_model.complete(msgs, model="o1-preview", tools=[], callbacks=cb)
         assert ret.message.content == "Answer"
         assert ret.message.reasoning_content == "Thinking step by step"
         assert cb.reasoning == ["Thinking", " step by step"]
@@ -814,7 +814,7 @@ class TestOpenAIComplete:
         # Mock _parse_model_and_reasoning
         monkeypatch.setattr("coding_assistant.llm.openai._parse_model_and_reasoning", lambda m: ("o1", "high"))
 
-        await openai_model.complete(msgs, "o1:high", [], cb)
+        await openai_model.complete(msgs, model="o1:high", tools=[], callbacks=cb)
 
         assert cast(Any, captured_payload)["model"] == "o1"
         assert cast(Any, captured_payload)["reasoning_effort"] == "high"
@@ -841,7 +841,7 @@ class TestOpenAIComplete:
         cb = _CB()
         # Now that we have max_retries = 5, it should call 5 times before failing
         with pytest.raises(httpx.ReadTimeout):
-            await openai_model.complete([UserMessage(content="hi")], "gpt-4o", [], cb)
+            await openai_model.complete([UserMessage(content="hi")], model="gpt-4o", tools=[], callbacks=cb)
 
         assert call_count == 5
 
@@ -867,7 +867,7 @@ class TestOpenAIComplete:
         monkeypatch.setattr("asyncio.sleep", mocked_sleep)
 
         cb = _CB()
-        ret = await openai_model.complete([UserMessage(content="hi")], "gpt-4o", [], cb)
+        ret = await openai_model.complete([UserMessage(content="hi")], model="gpt-4o", tools=[], callbacks=cb)
 
         assert ret.message.content == "Recovered"
         assert call_count == 2
