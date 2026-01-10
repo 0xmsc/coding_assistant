@@ -96,7 +96,7 @@ async def handle_tool_call(
 
 
 async def handle_tool_calls(
-    message: BaseMessage,
+    message: AssistantMessage,
     *,
     history: list[BaseMessage],
     tools: Sequence[Tool],
@@ -107,10 +107,7 @@ async def handle_tool_calls(
     task_created_callback: Callable[[str, asyncio.Task[Any]], None] | None = None,
     handle_tool_result: Callable[[ToolResult], str] | None = None,
 ) -> None:
-    if isinstance(message, AssistantMessage):
-        tool_calls = message.tool_calls
-    else:
-        tool_calls = []
+    tool_calls = message.tool_calls
 
     if not tool_calls:
         return
