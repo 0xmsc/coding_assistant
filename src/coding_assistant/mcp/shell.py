@@ -16,7 +16,7 @@ def create_shell_server(manager: TaskManager) -> FastMCP:
     async def execute(
         command: Annotated[
             str,
-            "The shell command to execute. Do not include 'bash -c'. You can use shell features like pipes (|) and redirections (>, >>). If you need to capture very large output, redirect it to a file directly (e.g. 'long_cmd > output.txt') and read it later.",
+            "The shell command to execute. Do not include 'bash -c'. You can use shell features like pipes (|) and redirections (>, >>).",
         ],
         timeout: Annotated[int, "The timeout for the command in seconds."] = 30,
         truncate_at: Annotated[int, "Maximum number of characters to return in stdout/stderr combined."] = 50_000,
