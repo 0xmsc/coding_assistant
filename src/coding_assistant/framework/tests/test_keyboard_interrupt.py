@@ -5,8 +5,7 @@ import pytest
 from coding_assistant.framework.callbacks import NullToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks
 from coding_assistant.framework.chat import run_chat_loop
-from coding_assistant.framework.types import Tool
-from coding_assistant.llm.types import BaseMessage, UserMessage
+from coding_assistant.llm.types import BaseMessage, Tool, UserMessage
 
 
 @pytest.mark.asyncio
