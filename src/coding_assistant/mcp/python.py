@@ -9,7 +9,7 @@ from coding_assistant.mcp.utils import truncate_output
 from coding_assistant.mcp.tasks import TaskManager
 
 
-def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> FastMCP:
+def create_python_server(manager: TaskManager) -> FastMCP:
     python_server = FastMCP("Python")
 
     @python_server.tool()
@@ -32,71 +32,18 @@ def create_python_server(manager: TaskManager, mcp_url: str | None = None) -> Fa
         import requests
         print(requests.get("https://github.com").status_code)
         ```
-
-        If the environment variable MCP_SERVER_URL is set, the code will have access to an MCP server. A `fastmcp` dependency will also be present. Use `fastmcp` to access the server and call its tools.
-
-        ```python
-        import asyncio
-        import os
-        from fastmcp import Client
-
-        async def use_mcp():
-            mcp_url = os.environ.get("MCP_SERVER_URL")
-            async with Client(mcp_url) as client:
-                # Example: List available tools
-                tools = await client.list_tools()
-                print(f"Available tools: {[t.name for t in tools]}")
-
-                # Example: Call tool
-                result = await client.call_tool("shell_execute", {"command": "ls"})
-                print(result.content[0].text)
-
-        asyncio.run(use_mcp())
-        ```
-
-        Use Python to combine results from different tools and build complex pipelines without leaving the Python context. This is preferred for complex logic, data processing, or batch operations involving multiple tool calls.
-
-        ```python
-        import asyncio
-        import os
-        from fastmcp import Client
-
-        async def pipeline():
-            mcp_url = os.environ.get("MCP_SERVER_URL")
-            async with Client(mcp_url) as client:
-                # Example: Pipeline combining shell tools
-                # 1. List files using shell
-                ls_result = await client.call_tool("shell_execute", {"command": "ls *.md"})
-                files = ls_result.content[0].text.strip().split("\n")
-
-                # 2. Process content in Python
-                for file in files:
-                    # Use cat to read the file content
-                    content_result = await client.call_tool("shell_execute", {"command": f"cat {file}"})
-                    content = content_result.content[0].text
-                    # ... perform complex logic on content ...
-                    print(f"Processed {file}")
-
-        asyncio.run(pipeline())
-        ```
         """
 
         code = code.strip()
 
         args = ["uv", "run", "-q"]
-        env = {}
-        if mcp_url:
-            env["MCP_SERVER_URL"] = mcp_url
-            # We use --with fastmcp to ensure Client works out of the box
-            args.extend(["--with", "fastmcp"])
-
         args.append("-")
 
         try:
             handle = await start_process(
                 args=args,
                 stdin_input=code,
-                env=env,
+                env={},
             )
 
             task_name = "python script"
