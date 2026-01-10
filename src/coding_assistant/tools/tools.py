@@ -69,7 +69,7 @@ class AskClientTool(Tool):
         return TextResult(content=str(answer))
 
 
-class CallToolWithFileOutputSchema(BaseModel):
+class RedirectToolCallSchema(BaseModel):
     tool_name: str = Field(description="The name of the tool to call.")
     tool_args: dict[str, Any] = Field(description="The arguments to pass to the tool.")
     output_file: str | None = Field(
@@ -78,28 +78,28 @@ class CallToolWithFileOutputSchema(BaseModel):
     )
 
 
-class CallToolWithFileOutputTool(Tool):
+class RedirectToolCallTool(Tool):
     def __init__(self, tools: list[Tool]):
         super().__init__()
         self._tools = tools
 
     def name(self) -> str:
-        return "call_tool_with_file_output"
+        return "redirect_tool_call"
 
     def description(self) -> str:
-        return "Call another tool and write its output to a file. Use this when the output of a tool is too large to be handled in the conversation or when you need to save the result for later use."
+        return "Call another tool and redirect its output to a file. Use this when the output of a tool is too large to be handled in the conversation or when you need to pipeline the result into another tool (e.g., search -> file -> python)."
 
     def parameters(self) -> dict[str, Any]:
-        return CallToolWithFileOutputSchema.model_json_schema()
+        return RedirectToolCallSchema.model_json_schema()
 
     async def execute(self, parameters: dict[str, Any]) -> TextResult:
-        validated = CallToolWithFileOutputSchema.model_validate(parameters)
+        validated = RedirectToolCallSchema.model_validate(parameters)
         tool_name = validated.tool_name
         tool_args = validated.tool_args
         output_file = validated.output_file
 
         if tool_name == self.name():
-            return TextResult(content="Error: Cannot call call_tool_with_file_output recursively.")
+            return TextResult(content="Error: Cannot call redirect_tool_call recursively.")
 
         target_tool = next((t for t in self._tools if t.name() == tool_name), None)
         if not target_tool:
@@ -118,16 +118,16 @@ class CallToolWithFileOutputTool(Tool):
                 path = Path(output_file)
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content)
-                return TextResult(content=f"Tool '{tool_name}' executed. Output written to {output_file}")
+                return TextResult(content=f"Tool '{tool_name}' executed. Output redirected to {output_file}")
             else:
                 with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
                     tmp.write(content)
                     return TextResult(
-                        content=f"Tool '{tool_name}' executed. Output written to temporary file: {tmp.name}"
+                        content=f"Tool '{tool_name}' executed. Output redirected to temporary file: {tmp.name}"
                     )
 
         except Exception as e:
-            logger.exception(f"Error executing tool '{tool_name}' via call_tool_with_file_output")
+            logger.exception(f"Error executing tool '{tool_name}' via redirect_tool_call")
             return TextResult(content=f"Error executing tool '{tool_name}': {e}")
 
 
