@@ -1,9 +1,9 @@
 ---
-name: create-skill
-description: Guide for creating new Agent Skills. Use this skill when you need to create a new skill.
+name: edit-skill
+description: Guide for creating and editing Agent Skills. Use this skill when you need to create or modify a skill.
 ---
 
-# Create Skill
+# Edit Skill
 
 ## Skill Structure
 ```

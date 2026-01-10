@@ -10,7 +10,8 @@ from coding_assistant.llm.types import BaseMessage, UserMessage, AssistantMessag
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
 )
-from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks, StatusLevel
+from coding_assistant.framework.callbacks import ToolCallbacks
+from coding_assistant.llm.types import ProgressCallbacks, StatusLevel
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
 from coding_assistant.framework.history import (
     append_assistant_message,

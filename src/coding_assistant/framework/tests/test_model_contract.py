@@ -2,7 +2,8 @@ from typing import Any
 import pytest
 from unittest.mock import Mock
 
-from coding_assistant.framework.callbacks import ProgressCallbacks, NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.callbacks import NullToolCallbacks
+from coding_assistant.llm.types import ProgressCallbacks, NullProgressCallbacks
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
 from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
