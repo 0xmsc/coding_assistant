@@ -2,19 +2,26 @@ import json
 import pytest
 from typing import Any, Iterable
 
-from coding_assistant.llm.types import BaseMessage, UserMessage, Usage, AssistantMessage, Completion
+from coding_assistant.llm.types import (
+    AssistantMessage,
+    BaseMessage,
+    Completion,
+    NullProgressCallbacks,
+    Tool,
+    Usage,
+    UserMessage,
+)
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
-    FunctionCall,
     FakeMessage,
+    FunctionCall,
     ToolCall,
     make_ui_mock,
 )
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
-from coding_assistant.framework.types import Tool, TextResult
+from coding_assistant.framework.results import TextResult
 from coding_assistant.framework.callbacks import NullToolCallbacks
-from coding_assistant.llm.types import NullProgressCallbacks
 
 
 class FakeEchoTool(Tool):

@@ -10,7 +10,7 @@ from coding_assistant.framework.callbacks import NullToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.interrupts import InterruptController
-from coding_assistant.llm.types import UserMessage, BaseMessage
+from coding_assistant.llm.types import UserMessage, BaseMessage, Tool
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FunctionCall,
@@ -18,7 +18,7 @@ from coding_assistant.framework.tests.helpers import (
     ToolCall,
     make_ui_mock,
 )
-from coding_assistant.framework.types import TextResult, Tool
+from coding_assistant.framework.results import TextResult
 
 
 class InterruptibleTool(Tool):

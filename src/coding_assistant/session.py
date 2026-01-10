@@ -6,8 +6,7 @@ from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.callbacks import ToolCallbacks
 from coding_assistant.llm.types import ProgressCallbacks, StatusLevel
 from coding_assistant.framework.chat import run_chat_loop
-from coding_assistant.llm.types import BaseMessage
-from coding_assistant.framework.types import Tool
+from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.history import save_orchestrator_history
 from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
