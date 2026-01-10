@@ -211,7 +211,6 @@ async def _main(args: argparse.Namespace) -> None:
         working_directory=working_directory,
         coding_assistant_root=coding_assistant_root,
         mcp_server_configs=mcp_server_configs,
-        mcp_server_port=0,
         skills_directories=args.skills_directories,
         mcp_env=args.mcp_env,
         sandbox_enabled=args.sandbox,

@@ -88,7 +88,6 @@ Notes:
 - `--sandbox` / `--no-sandbox` Enable/disable Landlock-based sandboxing (default: **enabled**).
 - `--wait-for-debugger` Wait for a debugger (debugpy) to attach on port 1234.
 - `--ask-user` / `--no-ask-user` Enable/disable asking the user for input in agent mode (default: **enabled**).
-- `--mcp-server` / `--no-mcp-server` Start an MCP server in the background exposing all available tools (default: **enabled**).
 - `--skills-directories` Paths to directories containing Agent Skills (with SKILL.md files).
 - `--print-reasoning` / `--no-print-reasoning` Print reasoning chunks from the model (default: **enabled**).
 
