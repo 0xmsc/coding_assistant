@@ -6,7 +6,7 @@ from coding_assistant.session import Session
 from coding_assistant.config import Config
 from coding_assistant.framework.callbacks import ToolCallbacks
 from coding_assistant.llm.types import StatusLevel, ProgressCallbacks, Tool
-from coding_assistant.tools.tools import CallToolWithFileOutputTool
+from coding_assistant.tools.tools import RedirectToolCallTool
 from coding_assistant.ui import UI
 
 
@@ -78,8 +78,8 @@ async def test_session_context_manager(session_args: dict[str, Any]) -> None:
         async with session:
             assert len(session.tools) == 2
             assert session.tools[0] == mock_tool
-            # The second tool should be CallToolWithFileOutputTool
-            assert isinstance(session.tools[1], CallToolWithFileOutputTool)
+            # The second tool should be RedirectToolCallTool
+            assert isinstance(session.tools[1], RedirectToolCallTool)
             assert session.instructions == "test instructions"
             assert session.mcp_servers == ["mock_server"]
             mock_sandbox.assert_called_once()
