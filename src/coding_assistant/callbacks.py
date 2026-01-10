@@ -168,12 +168,12 @@ class DenseProgressCallbacks(ProgressCallbacks):
         }.get(level, "•")
         print(f"{symbol} {message}")
 
-    def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
+    def on_user_message(self, context_name: str, message: UserMessage, *, force: bool = False) -> None:
         if force:
             content = message.content if isinstance(message.content, str) else str(message.content)
             self._print_banner("User", content)
 
-    def on_assistant_message(self, context_name: str, message: AssistantMessage, force: bool = False) -> None:
+    def on_assistant_message(self, context_name: str, message: AssistantMessage, *, force: bool = False) -> None:
         if force:
             content = message.content if isinstance(message.content, str) else ""
             self._print_banner("Assistant", content)
