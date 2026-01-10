@@ -211,8 +211,8 @@ async def run_chat_loop(
                     do_single_step(
                         history,
                         model,
-                        tools,
-                        callbacks,
+                        tools=tools,
+                        progress_callbacks=callbacks,
                         completer=completer,
                         context_name=context_name,
                     ),
@@ -232,10 +232,10 @@ async def run_chat_loop(
                 if getattr(message, "tool_calls", []):
                     await handle_tool_calls(
                         message,
-                        tools,
                         history,
-                        callbacks,
-                        tool_callbacks,
+                        tools=tools,
+                        progress_callbacks=callbacks,
+                        tool_callbacks=tool_callbacks,
                         ui=ui,
                         context_name=context_name,
                         task_created_callback=interrupt_controller.register_task,
