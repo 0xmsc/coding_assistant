@@ -42,7 +42,7 @@ class Session:
         working_directory: Path,
         coding_assistant_root: Path,
         mcp_server_configs: list[MCPServerConfig],
-        mcp_server_port: int = 0,
+        mcp_server_port: Optional[int] = None,
         skills_directories: Optional[list[str]] = None,
         mcp_env: Optional[list[str]] = None,
         sandbox_enabled: bool = True,
@@ -117,7 +117,7 @@ class Session:
             self.callbacks.on_status_message("Sandboxing enabled.", level=StatusLevel.INFO)
 
         # Build default server config
-        mcp_url = f"http://localhost:{self.mcp_server_port}/mcp" if self.mcp_server_port > 0 else None
+        mcp_url = f"http://localhost:{self.mcp_server_port}/mcp" if self.mcp_server_port is not None else None
         default_config = self.get_default_mcp_server_config(
             self.coding_assistant_root,
             self.skills_directories,
@@ -134,7 +134,7 @@ class Session:
         assert self._mcp_servers is not None
         self.tools = await get_mcp_wrapped_tools(self._mcp_servers)
 
-        if self.mcp_server_port > 0:
+        if self.mcp_server_port is not None:
             self._mcp_task = await start_mcp_server(self.tools, self.mcp_server_port)
             self.callbacks.on_status_message(
                 f"External MCP server started on port {self.mcp_server_port}", level=StatusLevel.SUCCESS
