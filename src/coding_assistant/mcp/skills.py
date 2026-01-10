@@ -96,6 +96,7 @@ def load_skills_from_directory(skills_dir: Path) -> List[Skill]:
 
 
 def create_skills_server(
+    *,
     skills_directories: Optional[List[Path]] = None,
 ) -> tuple[FastMCP, str]:
     """

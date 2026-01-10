@@ -81,7 +81,7 @@ def test_create_skills_server(tmp_path: Any) -> None:
     (cli_skills_dir / "my_cli_skill").mkdir()
     (cli_skills_dir / "my_cli_skill" / "SKILL.md").write_text("---\nname: my_cli_skill\ndescription: CLI skill\n---\n")
 
-    server, instr = create_skills_server([cli_skills_dir])
+    server, instr = create_skills_server(skills_directories=[cli_skills_dir])
 
     assert "develop" in instr
     assert "my_cli_skill" in instr
@@ -98,7 +98,7 @@ async def test_skills_tools(tmp_path: Any) -> None:
     (skill_dir / "SKILL.md").write_text("---\nname: myskill\ndescription: desc\n---\ncontent")
     (skill_dir / "script.py").write_text("print(1)")
 
-    server, _ = create_skills_server([tmp_path])
+    server, _ = create_skills_server(skills_directories=[tmp_path])
 
     # Test list_resources
     tools = await server.get_tools()
