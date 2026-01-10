@@ -53,10 +53,10 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold() -> None:
     )
 
     msg, usage = await do_single_step(
-        state.history,
-        desc.model,
-        desc.tools,
-        NullProgressCallbacks(),
+        history=state.history,
+        model=desc.model,
+        tools=desc.tools,
+        progress_callbacks=NullProgressCallbacks(),
         completer=completer,
         context_name=desc.name,
     )
@@ -68,9 +68,9 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold() -> None:
     # Simulate loop behavior: execute tools and then append shorten prompt due to tokens
     await handle_tool_calls(
         msg,
-        desc.tools,
-        state.history,
-        NullProgressCallbacks(),
+        history=state.history,
+        tools=desc.tools,
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         ui=make_ui_mock(),
         context_name=desc.name,
@@ -132,10 +132,10 @@ async def test_reasoning_is_forwarded_and_not_stored() -> None:
     callbacks = Mock(spec=ProgressCallbacks)
 
     _, _ = await do_single_step(
-        state.history,
-        desc.model,
-        desc.tools,
-        callbacks,
+        history=state.history,
+        model=desc.model,
+        tools=desc.tools,
+        progress_callbacks=callbacks,
         completer=completer,
         context_name=desc.name,
     )
@@ -193,10 +193,10 @@ async def test_requires_non_empty_history() -> None:
     desc, state = make_test_agent(tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[])
     with pytest.raises(RuntimeError, match="History is required in order to run a step."):
         await do_single_step(
-            state.history,
-            desc.model,
-            desc.tools,
-            NullProgressCallbacks(),
+            history=state.history,
+            model=desc.model,
+            tools=desc.tools,
+            progress_callbacks=NullProgressCallbacks(),
             completer=FakeCompleter([AssistantMessage(content="hi")]),
             context_name=desc.name,
         )

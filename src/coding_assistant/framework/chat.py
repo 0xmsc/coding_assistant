@@ -209,8 +209,8 @@ async def run_chat_loop(
             try:
                 do_single_step_task = loop.create_task(
                     do_single_step(
-                        history,
-                        model,
+                        history=history,
+                        model=model,
                         tools=tools,
                         progress_callbacks=callbacks,
                         completer=completer,
@@ -232,7 +232,7 @@ async def run_chat_loop(
                 if getattr(message, "tool_calls", []):
                     await handle_tool_calls(
                         message,
-                        history,
+                        history=history,
                         tools=tools,
                         progress_callbacks=callbacks,
                         tool_callbacks=tool_callbacks,

@@ -90,12 +90,12 @@ class ProgressCallbacks(ABC):
         pass
 
     @abstractmethod
-    def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
+    def on_user_message(self, context_name: str, message: UserMessage, *, force: bool = False) -> None:
         """Handle messages with role: user."""
         pass
 
     @abstractmethod
-    def on_assistant_message(self, context_name: str, message: AssistantMessage, force: bool = False) -> None:
+    def on_assistant_message(self, context_name: str, message: AssistantMessage, *, force: bool = False) -> None:
         """Handle messages with role: assistant."""
         pass
 
