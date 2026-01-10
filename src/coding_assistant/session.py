@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Optional
@@ -30,7 +29,6 @@ class Session:
         working_directory: Path,
         coding_assistant_root: Path,
         mcp_server_configs: list[MCPServerConfig],
-        mcp_server_port: Optional[int] = None,
         skills_directories: Optional[list[str]] = None,
         mcp_env: Optional[list[str]] = None,
         sandbox_enabled: bool = True,
@@ -44,7 +42,6 @@ class Session:
         self.tool_callbacks = tool_callbacks
         self.working_directory = working_directory
         self.coding_assistant_root = coding_assistant_root
-        self.mcp_server_port = mcp_server_port
         self.skills_directories = skills_directories or []
         self.mcp_env_list = mcp_env or []
         self.sandbox_enabled = sandbox_enabled
@@ -59,7 +56,6 @@ class Session:
         self.instructions: str = ""
         self._mcp_servers_cm: Optional[Any] = None
         self._mcp_servers: Optional[list[Any]] = None
-        self._mcp_task: Optional[asyncio.Task[Any]] = None
 
     @property
     def mcp_servers(self) -> Optional[list[Any]]:
