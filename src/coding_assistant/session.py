@@ -156,10 +156,8 @@ class Session:
             *self.tools,
         ]
 
-        # Update RedirectToolCallTool to have access to all tools including AskClientTool
-        for tool in agent_mode_tools:
-            if isinstance(tool, RedirectToolCallTool):
-                tool._tools = agent_mode_tools
+        # TODO: Consider if Meta-tools should have access to AskClientTool.
+        # Currently they only see tools available in the base session.
 
         tool = AgentTool(
             model=self.config.model,
