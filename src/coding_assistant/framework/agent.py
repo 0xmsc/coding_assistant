@@ -128,8 +128,8 @@ async def run_agent_loop(
 
     while state.output is None:
         message, usage = await do_single_step(
-            state.history,
-            desc.model,
+            history=state.history,
+            model=desc.model,
             tools=tools,
             progress_callbacks=progress_callbacks,
             completer=completer,
@@ -141,7 +141,7 @@ async def run_agent_loop(
         if getattr(message, "tool_calls", []):
             await handle_tool_calls(
                 message,
-                state.history,
+                history=state.history,
                 tools=tools,
                 progress_callbacks=progress_callbacks,
                 tool_callbacks=tool_callbacks,
