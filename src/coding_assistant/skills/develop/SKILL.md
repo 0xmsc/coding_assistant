@@ -34,3 +34,4 @@ When working with specific languages, consult the following references:
 - **Prefer `edit_file`**: Use for targeted changes; avoid rewriting full files.
 - **Verification**: Always verify changes after editing.
 - **Tools**: Use `fd` and `rg` for exploration; standard shell tools for navigation.
+- **Reading**: Use `cat` or `sed` for reading file contents.
