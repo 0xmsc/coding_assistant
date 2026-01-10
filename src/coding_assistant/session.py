@@ -12,7 +12,7 @@ from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools
-from coding_assistant.tools.tools import AgentTool, AskClientTool, CallToolWithFileOutputTool
+from coding_assistant.tools.tools import AgentTool, AskClientTool, RedirectToolCallTool
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ class Session:
         self.tools = await get_mcp_wrapped_tools(self._mcp_servers)
 
         # Meta tools
-        self.tools.append(CallToolWithFileOutputTool(self.tools))
+        self.tools.append(RedirectToolCallTool(self.tools))
 
         # Instructions setup
         self.instructions = get_instructions(
@@ -156,9 +156,9 @@ class Session:
             *self.tools,
         ]
 
-        # Update CallToolWithFileOutputTool to have access to all tools including AskClientTool
+        # Update RedirectToolCallTool to have access to all tools including AskClientTool
         for tool in agent_mode_tools:
-            if isinstance(tool, CallToolWithFileOutputTool):
+            if isinstance(tool, RedirectToolCallTool):
                 tool._tools = agent_mode_tools
 
         tool = AgentTool(
