@@ -5,8 +5,8 @@ from collections.abc import Callable, Sequence
 from json import JSONDecodeError
 from typing import Any
 
-from coding_assistant.framework.callbacks import ToolCallbacks
-from coding_assistant.llm.types import ProgressCallbacks
+from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
+from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
 from coding_assistant.framework.history import append_tool_message
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -38,8 +38,8 @@ async def handle_tool_call(
     *,
     history: list[BaseMessage],
     tools: Sequence[Tool],
-    progress_callbacks: ProgressCallbacks,
-    tool_callbacks: ToolCallbacks,
+    progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
+    tool_callbacks: ToolCallbacks = NullToolCallbacks(),
     ui: UI,
     context_name: str,
 ) -> ToolResult:
@@ -100,8 +100,8 @@ async def handle_tool_calls(
     *,
     history: list[BaseMessage],
     tools: Sequence[Tool],
-    progress_callbacks: ProgressCallbacks,
-    tool_callbacks: ToolCallbacks,
+    progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
+    tool_callbacks: ToolCallbacks = NullToolCallbacks(),
     ui: UI,
     context_name: str,
     task_created_callback: Callable[[str, asyncio.Task[Any]], None] | None = None,
@@ -185,7 +185,7 @@ async def do_single_step(
     history: list[BaseMessage],
     model: str,
     tools: Sequence[Tool],
-    progress_callbacks: ProgressCallbacks,
+    progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
     completer: Completer,
     context_name: str,
 ) -> tuple[AssistantMessage, Usage | None]:

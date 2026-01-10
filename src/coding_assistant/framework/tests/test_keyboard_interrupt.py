@@ -2,8 +2,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from coding_assistant.framework.callbacks import NullToolCallbacks
-from coding_assistant.llm.types import NullProgressCallbacks
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.llm.types import BaseMessage, Tool, UserMessage
 
@@ -27,8 +25,6 @@ async def test_run_chat_loop_raises_keyboard_interrupt_at_prompt() -> None:
             model=model,
             tools=tools,
             instructions=instructions,
-            callbacks=NullProgressCallbacks(),
-            tool_callbacks=NullToolCallbacks(),
             completer=AsyncMock(),
             ui=ui,
             context_name="test",
