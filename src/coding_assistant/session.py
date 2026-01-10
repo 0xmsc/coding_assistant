@@ -14,22 +14,12 @@ from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools
-from coding_assistant.tools.mcp_server import start_mcp_server
 from coding_assistant.tools.tools import AgentTool, AskClientTool
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
 
 
-async def stop_mcp_server(mcp_task: Optional[asyncio.Task[Any]], callbacks: ProgressCallbacks) -> None:
-    if mcp_task:
-        callbacks.on_status_message("Shutting down external MCP server...", level=StatusLevel.INFO)
-        mcp_task.cancel()
-        try:
-            async with asyncio.timeout(2):
-                await mcp_task
-        except (asyncio.CancelledError, TimeoutError, KeyboardInterrupt):
-            pass
 
 
 class Session:
@@ -79,7 +69,7 @@ class Session:
 
     @staticmethod
     def get_default_mcp_server_config(
-        root_directory: Path, skills_directories: list[str], mcp_url: str | None = None, env: list[str] | None = None
+        root_directory: Path, skills_directories: list[str], env: list[str] | None = None
     ) -> MCPServerConfig:
         import sys
 
@@ -92,8 +82,7 @@ class Session:
             args.append("--skills-directories")
             args.extend(skills_directories)
 
-        if mcp_url:
-            args.extend(["--mcp-url", mcp_url])
+
 
         return MCPServerConfig(
             name="coding_assistant.mcp",
@@ -134,11 +123,7 @@ class Session:
         assert self._mcp_servers is not None
         self.tools = await get_mcp_wrapped_tools(self._mcp_servers)
 
-        if self.mcp_server_port is not None:
-            self._mcp_task = await start_mcp_server(self.tools, self.mcp_server_port)
-            self.callbacks.on_status_message(
-                f"External MCP server started on port {self.mcp_server_port}", level=StatusLevel.SUCCESS
-            )
+
 
         # Instructions setup
         self.instructions = get_instructions(
@@ -151,7 +136,7 @@ class Session:
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        await stop_mcp_server(self._mcp_task, self.callbacks)
+(self.callbacks)
 
         if self._mcp_servers_cm:
             await self._mcp_servers_cm.__aexit__(exc_type, exc_val, exc_tb)
