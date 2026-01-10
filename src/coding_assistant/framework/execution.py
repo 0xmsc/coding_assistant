@@ -25,7 +25,7 @@ from coding_assistant.ui import UI
 logger = logging.getLogger(__name__)
 
 
-async def execute_tool_call(function_name: str, function_args: dict[str, Any], tools: Sequence[Tool]) -> ToolResult:
+async def execute_tool_call(*, function_name: str, function_args: dict[str, Any], tools: Sequence[Tool]) -> ToolResult:
     """Execute a tool call by finding the matching tool and calling its execute method."""
     for tool in tools:
         if tool.name() == function_name:
@@ -35,8 +35,8 @@ async def execute_tool_call(function_name: str, function_args: dict[str, Any], t
 
 async def handle_tool_call(
     tool_call: ToolCall,
-    history: list[BaseMessage],
     *,
+    history: list[BaseMessage],
     tools: Sequence[Tool],
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
@@ -76,7 +76,9 @@ async def handle_tool_call(
             )
             function_call_result = callback_result
         else:
-            function_call_result = await execute_tool_call(function_name, function_args, tools=tools)
+            function_call_result = await execute_tool_call(
+                function_name=function_name, function_args=function_args, tools=tools
+            )
     except Exception as e:
         function_call_result = TextResult(content=f"Error executing tool: {e}")
 
@@ -95,11 +97,11 @@ async def handle_tool_call(
 
 async def handle_tool_calls(
     message: BaseMessage,
-    tools: Sequence[Tool],
+    *,
     history: list[BaseMessage],
+    tools: Sequence[Tool],
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
-    *,
     ui: UI,
     context_name: str,
     task_created_callback: Callable[[str, asyncio.Task[Any]], None] | None = None,
@@ -119,7 +121,7 @@ async def handle_tool_calls(
         task = loop.create_task(
             handle_tool_call(
                 tool_call,
-                history,
+                history=history,
                 tools=tools,
                 progress_callbacks=progress_callbacks,
                 tool_callbacks=tool_callbacks,
@@ -179,9 +181,9 @@ async def handle_tool_calls(
 
 
 async def do_single_step(
+    *,
     history: list[BaseMessage],
     model: str,
-    *,
     tools: Sequence[Tool],
     progress_callbacks: ProgressCallbacks,
     completer: Completer,

@@ -76,9 +76,9 @@ async def test_compact_conversation_resets_history() -> None:
 
     await handle_tool_calls(
         msg,
-        desc.tools,
-        state.history,
-        callbacks,
+        history=state.history,
+        tools=desc.tools,
+        progress_callbacks=callbacks,
         tool_callbacks=NullToolCallbacks(),
         ui=make_ui_mock(),
         context_name=desc.name,
@@ -115,10 +115,10 @@ async def test_compact_conversation_resets_history() -> None:
     completer = FakeCompleter([FakeMessage(tool_calls=[finish_call])])
 
     msg, _ = await do_single_step(
-        state.history,
-        desc.model,
-        desc.tools,
-        callbacks,
+        history=state.history,
+        model=desc.model,
+        tools=desc.tools,
+        progress_callbacks=callbacks,
         completer=completer,
         context_name=desc.name,
     )
@@ -134,10 +134,10 @@ async def test_compact_conversation_resets_history() -> None:
 
     await handle_tool_calls(
         msg,
-        desc.tools,
-        state.history,
-        callbacks,
-        NullToolCallbacks(),
+        history=state.history,
+        tools=desc.tools,
+        progress_callbacks=callbacks,
+        tool_callbacks=NullToolCallbacks(),
         ui=make_ui_mock(),
         context_name=desc.name,
         handle_tool_result=handle_tool_result_2,
