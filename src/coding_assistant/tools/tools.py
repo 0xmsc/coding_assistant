@@ -102,22 +102,25 @@ class RedirectToolCallTool(Tool):
 
         target_tool = next((t for t in self._tools if t.name() == tool_name), None)
         if not target_tool:
-            return TextResult(content=f"Error: Tool '{tool_name}' not found or cannot be redirected.")
+            return TextResult(content=f"Error: Tool '{tool_name}' not found.")
 
         try:
             result = await target_tool.execute(tool_args)
-
-            if not isinstance(result, TextResult):
-                return TextResult(content=f"Error: Tool '{tool_name}' did not return a TextResult.")
+            content: str
+            if isinstance(result, TextResult):
+                content = result.content
+            else:
+                # Fallback for structured results (FinishTaskResult, CompactConversationResult, etc.)
+                content = json.dumps(result.to_dict(), indent=2)
 
             if output_file:
                 path = Path(output_file)
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(result.content)
+                path.write_text(content)
                 return TextResult(content=f"Tool '{tool_name}' executed. Output redirected to {output_file}")
             else:
                 with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
-                    tmp.write(result.content)
+                    tmp.write(content)
                     return TextResult(
                         content=f"Tool '{tool_name}' executed. Output redirected to temporary file: {tmp.name}"
                     )
