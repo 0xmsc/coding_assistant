@@ -25,9 +25,8 @@ from coding_assistant.framework.results import (
     CompactConversationResult,
     FinishTaskResult,
     TextResult,
-    ToolResult,
 )
-from coding_assistant.llm.types import UserMessage
+from coding_assistant.llm.types import UserMessage, ToolResult
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)

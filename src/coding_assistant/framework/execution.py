@@ -8,9 +8,17 @@ from typing import Any
 from coding_assistant.framework.callbacks import ToolCallbacks
 from coding_assistant.llm.types import ProgressCallbacks
 from coding_assistant.framework.history import append_tool_message
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolCall, ToolMessage, Usage
-from coding_assistant.framework.types import Tool, Completer
-from coding_assistant.framework.results import ToolResult, TextResult
+from coding_assistant.llm.types import (
+    AssistantMessage,
+    BaseMessage,
+    Tool,
+    ToolCall,
+    ToolMessage,
+    ToolResult,
+    Usage,
+)
+from coding_assistant.framework.types import Completer
+from coding_assistant.framework.results import TextResult
 from coding_assistant.trace import trace_json
 from coding_assistant.ui import UI
 

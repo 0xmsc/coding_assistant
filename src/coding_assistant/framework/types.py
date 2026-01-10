@@ -5,16 +5,10 @@ from typing import Awaitable, Protocol
 from coding_assistant.llm.types import (
     BaseMessage,
     Completion,
-    Tool as Tool,
+    Tool,
     ProgressCallbacks as LLMProgressCallbacks,
 )
 from coding_assistant.framework.parameters import Parameter
-from coding_assistant.framework.results import (
-    CompactConversationResult as CompactConversationResult,
-    FinishTaskResult as FinishTaskResult,
-    TextResult as TextResult,
-    ToolResult as ToolResult,
-)
 
 
 @dataclass(frozen=True)

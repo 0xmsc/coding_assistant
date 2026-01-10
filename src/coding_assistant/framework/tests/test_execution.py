@@ -14,20 +14,19 @@ from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
     FunctionCall,
+    NullProgressCallbacks,
+    Tool,
     ToolCall,
     ToolMessage,
-    NullProgressCallbacks,
+    ToolResult,
 )
 from coding_assistant.framework.tests.helpers import (
     make_ui_mock,
 )
 from coding_assistant.framework.types import (
     AgentState,
-    FinishTaskResult,
-    TextResult,
-    Tool,
-    ToolResult,
 )
+from coding_assistant.framework.results import FinishTaskResult, TextResult
 from coding_assistant.callbacks import ConfirmationToolCallbacks
 
 
