@@ -264,6 +264,7 @@ def _parse_model_and_reasoning(
 
 async def complete(
     messages: Sequence[BaseMessage],
+    *,
     model: str,
     tools: Sequence[Tool],
     callbacks: ProgressCallbacks,
