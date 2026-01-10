@@ -17,20 +17,16 @@ Commonly used with Search tools (like Tavily) or Web Browsing tools:
 
 ## The Log Analysis Pipeline
 
-When analyzing production logs or large test outputs:
+When analyzing production logs or large test outputs, prefer standard shell redirection for efficiency:
 
-1. **Capture**: `redirect_tool_call(tool_name="shell_execute", tool_args={"command": "journalctl -u service > logs.txt"})`
+1. **Direct Redirect**: `shell_execute(command="journalctl -u service > logs.txt")`
 2. **Filter**: `shell_execute(command="rg 'ERROR' logs.txt | head -n 20")`
 3. **Report**: Summarize only the found errors.
 
-## Advantages of Redirection
+## Advantages of Redirection vs redirect_tool_call
 
-| Feature | Direct Call | Redirected Call |
-|---------|-------------|-----------------|
-| **Context Load** | Uses tokens immediately | Zero tokens for raw data |
-| **Persistence** | Lost after compaction | Available throughout session |
-| **Tool Chaining** | Manual copy-paste | File-based passing |
-| **Data Integrity** | May be truncated | Preserves full output |
+- **Standard Redirection**: Fastest for shell commands and command-line tools. Use whenever you are already inside `shell_execute`.
+- **redirect_tool_call**: Use for MCP tools (like `tavily_search`), `python_execute` results, or any other non-shell tool output.
 
 ## Infinite Recursion Warning
 The `redirect_tool_call` tool is protected against calling itself, but be careful not to create circular dependencies in your pipelines where two tools depend on each other's file outputs indefinitely.
