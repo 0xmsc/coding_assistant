@@ -9,7 +9,7 @@ from coding_assistant.mcp.utils import truncate_output
 from coding_assistant.mcp.tasks import TaskManager
 
 
-def create_python_server(manager: TaskManager) -> FastMCP:
+def create_python_server(*, manager: TaskManager) -> FastMCP:
     python_server = FastMCP("Python")
 
     @python_server.tool()
