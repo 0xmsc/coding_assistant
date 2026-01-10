@@ -1,7 +1,5 @@
 import pytest
 
-from coding_assistant.framework.callbacks import NullToolCallbacks
-from coding_assistant.llm.types import NullProgressCallbacks
 from coding_assistant.config import Config
 from coding_assistant.tools.tools import AgentTool
 from coding_assistant.ui import NullUI
@@ -13,11 +11,7 @@ TEST_MODEL = "openai/gpt-5-mini"
 
 def create_test_config() -> Config:
     """Helper function to create a test Config with all required parameters."""
-    return Config(
-        model=TEST_MODEL,
-        expert_model=TEST_MODEL,
-        compact_conversation_at_tokens=200_000,
-    )
+    return Config(model=TEST_MODEL, expert_model=TEST_MODEL, compact_conversation_at_tokens=200_000)
 
 
 @pytest.mark.slow
@@ -31,9 +25,7 @@ async def test_orchestrator_tool() -> None:
         enable_ask_user=config.enable_ask_user,
         tools=[],
         history=None,
-        progress_callbacks=NullProgressCallbacks(),
         ui=NullUI(),
-        tool_callbacks=NullToolCallbacks(),
     )
     result = await tool.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result.content == "Hello, World!"
@@ -50,9 +42,7 @@ async def test_orchestrator_tool_resume() -> None:
         enable_ask_user=config.enable_ask_user,
         tools=[],
         history=None,
-        progress_callbacks=NullProgressCallbacks(),
         ui=NullUI(),
-        tool_callbacks=NullToolCallbacks(),
     )
 
     result = await first.execute(parameters={"task": "Say 'Hello, World!'"})
@@ -65,9 +55,7 @@ async def test_orchestrator_tool_resume() -> None:
         enable_ask_user=config.enable_ask_user,
         tools=[],
         history=first.history,
-        progress_callbacks=NullProgressCallbacks(),
         ui=NullUI(),
-        tool_callbacks=NullToolCallbacks(),
     )
     result = await second.execute(
         parameters={"task": "Re-do your previous task, just translate your output to German."}
@@ -86,9 +74,7 @@ async def test_orchestrator_tool_instructions() -> None:
         enable_ask_user=config.enable_ask_user,
         tools=[],
         history=None,
-        progress_callbacks=NullProgressCallbacks(),
         ui=NullUI(),
-        tool_callbacks=NullToolCallbacks(),
     )
     result = await tool.execute(
         parameters={

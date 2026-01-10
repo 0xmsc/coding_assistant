@@ -5,7 +5,7 @@ from typing import Any, Sequence
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.framework.callbacks import ToolCallbacks
+from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import (
     BaseMessage,
     NullProgressCallbacks,
@@ -138,8 +138,8 @@ class AgentTool(Tool):
         enable_ask_user: bool,
         tools: list[Tool],
         ui: UI,
-        progress_callbacks: ProgressCallbacks,
-        tool_callbacks: ToolCallbacks,
+        progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
+        tool_callbacks: ToolCallbacks = NullToolCallbacks(),
         name: str = "launch_agent",
         history: Sequence[BaseMessage] | None = None,
         completer: Completer | None = None,

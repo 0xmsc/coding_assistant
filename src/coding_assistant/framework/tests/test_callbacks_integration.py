@@ -5,12 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from coding_assistant.framework.agent import run_agent_loop
-from coding_assistant.framework.callbacks import NullToolCallbacks
-from coding_assistant.framework.tests.helpers import (
-    FakeCompleter,
-    make_test_agent,
-    make_ui_mock,
-)
+from coding_assistant.framework.tests.helpers import FakeCompleter, make_test_agent, make_ui_mock
 from coding_assistant.llm.types import AssistantMessage, ToolCall, FunctionCall, ToolMessage, Tool
 from coding_assistant.framework.types import AgentContext
 from coding_assistant.framework.results import TextResult
@@ -41,7 +36,6 @@ async def test_agent_loop_runs_successfully() -> None:
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
         progress_callbacks=callbacks,
-        tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,
         ui=make_ui_mock(),
@@ -62,7 +56,6 @@ async def test_on_tool_message_called_with_arguments_and_result() -> None:
     await run_agent_loop(
         AgentContext(desc=desc, state=state),
         progress_callbacks=callbacks,
-        tool_callbacks=NullToolCallbacks(),
         compact_conversation_at_tokens=200_000,
         completer=completer,
         ui=make_ui_mock(),
