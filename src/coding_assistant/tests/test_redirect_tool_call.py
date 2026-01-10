@@ -61,7 +61,7 @@ class MockErrorTool(Tool):
 @pytest.mark.asyncio
 async def test_redirect_to_specific_file() -> None:
     mock = MockTextTool()
-    redirect = RedirectToolCallTool([mock])
+    redirect = RedirectToolCallTool(tools=[mock])
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         output_file = Path(tmp_dir) / "output.txt"
@@ -75,7 +75,7 @@ async def test_redirect_to_specific_file() -> None:
 @pytest.mark.asyncio
 async def test_redirect_to_nested_file() -> None:
     mock = MockTextTool()
-    redirect = RedirectToolCallTool([mock])
+    redirect = RedirectToolCallTool(tools=[mock])
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         output_file = Path(tmp_dir) / "subdir" / "nested" / "output.txt"
@@ -91,7 +91,7 @@ async def test_redirect_to_nested_file() -> None:
 @pytest.mark.asyncio
 async def test_redirect_structured_result_error() -> None:
     mock = MockStructuredTool()
-    redirect = RedirectToolCallTool([mock])
+    redirect = RedirectToolCallTool(tools=[mock])
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         output_file = Path(tmp_dir) / "output.json"
@@ -104,7 +104,7 @@ async def test_redirect_structured_result_error() -> None:
 @pytest.mark.asyncio
 async def test_redirect_to_temp_file() -> None:
     mock = MockTextTool()
-    redirect = RedirectToolCallTool([mock])
+    redirect = RedirectToolCallTool(tools=[mock])
 
     result = await redirect.execute({"tool_name": "mock_text", "tool_args": {}})
 
@@ -122,7 +122,7 @@ async def test_redirect_to_temp_file() -> None:
 
 @pytest.mark.asyncio
 async def test_recursion_protection() -> None:
-    redirect = RedirectToolCallTool([])
+    redirect = RedirectToolCallTool(tools=[])
     # It adds itself to the internal list in actual usage, here we just test the name check
     result = await redirect.execute({"tool_name": "redirect_tool_call", "tool_args": {}})
     assert "Error: Cannot call redirect_tool_call recursively." in result.content
@@ -130,7 +130,7 @@ async def test_recursion_protection() -> None:
 
 @pytest.mark.asyncio
 async def test_tool_not_found() -> None:
-    redirect = RedirectToolCallTool([])
+    redirect = RedirectToolCallTool(tools=[])
     result = await redirect.execute({"tool_name": "non_existent", "tool_args": {}})
     assert "Error: Tool 'non_existent' not found or cannot be redirected." in result.content
 
@@ -138,6 +138,6 @@ async def test_tool_not_found() -> None:
 @pytest.mark.asyncio
 async def test_redirect_tool_exception() -> None:
     mock = MockErrorTool()
-    redirect = RedirectToolCallTool([mock])
+    redirect = RedirectToolCallTool(tools=[mock])
     result = await redirect.execute({"tool_name": "mock_error", "tool_args": {}})
     assert "Error executing tool 'mock_error': Something went wrong" in result.content
