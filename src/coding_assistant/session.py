@@ -102,11 +102,9 @@ class Session:
             self.callbacks.on_status_message("Sandboxing enabled.", level=StatusLevel.INFO)
 
         # Build default server config
-        mcp_url = f"http://localhost:{self.mcp_server_port}/mcp" if self.mcp_server_port is not None else None
         default_config = self.get_default_mcp_server_config(
             self.coding_assistant_root,
             self.skills_directories,
-            mcp_url=mcp_url,
             env=self.mcp_env_list,
         )
         all_configs = [*self.mcp_server_configs, default_config]
