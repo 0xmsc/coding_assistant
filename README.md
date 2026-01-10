@@ -23,7 +23,7 @@ Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automa
   - Node.js/npm for `npx` (for NPM-based MCP servers)
   - Network access to fetch packages
 - API keys as needed by your chosen model/tooling, e.g.:
-  - `OPENAI_API_KEY` (or other LiteLLM-compatible provider keys)
+  - `OPENAI_API_KEY` (or other OpenAI-compatible provider keys like `OPENROUTER_API_KEY`)
   - Additional keys for external MCP servers (e.g., `TAVILY_API_KEY`)
 
 ## Installation
@@ -72,7 +72,7 @@ coding-assistant \
 ```
 
 Notes:
-- Model names are routed via LiteLLM. Use any provider/model you have keys for; set the corresponding API key env vars.
+- This tool uses OpenAI-compatible APIs. Use any provider/model you have keys for (e.g., set `OPENROUTER_API_KEY` for OpenRouter).
 - The `--mcp-servers` values are JSON strings; arguments support variable substitution for `{home_directory}` and `{working_directory}`.
 
 ## Usage Highlights
@@ -80,9 +80,9 @@ Notes:
 - `--model` Select model for the orchestrator agent (required).
 - `--expert-model` Select model for expert tasks (defaults to the same value as `--model`).
 - `--tool-confirmation-patterns` / `--shell-confirmation-patterns` Regex patterns to require user confirmation before tool/shell execution.
-- `--chat-mode` / `--no-chat-mode` Enable/disable open-ended chat mode (default: **enabled**).
 - `--resume` / `--resume-file` Resume from the latest/specific orchestrator history in `.coding_assistant/history/`.
 - `--instructions` Provide extra instructions that are composed with defaults. Can be repeated.
+- `--mcp-env` Environment variables to pass to the default MCP server.
 - `--compact-conversation-at-tokens` Number of tokens after which conversation should be shortened (default: 200,000).
 - `--trace` / `--no-trace` Enable/disable tracing of model requests/responses.
 - `--sandbox` / `--no-sandbox` Enable/disable Landlock-based sandboxing (default: **enabled**).
@@ -90,6 +90,8 @@ Notes:
 - `--ask-user` / `--no-ask-user` Enable/disable asking the user for input in agent mode (default: **enabled**).
 - `--skills-directories` Paths to directories containing Agent Skills (with SKILL.md files).
 - `--print-reasoning` / `--no-print-reasoning` Print reasoning chunks from the model (default: **enabled**).
+
+Note: Chat mode is enabled by default when no `--task` is provided.
 
 Run `coding-assistant --help` to see all options.
 
@@ -124,6 +126,8 @@ This repository includes a built-in MCP server (package `coding_assistant.mcp`) 
 - **python**: `python_execute` — Execute Python code with timeout and output truncation
 - **filesystem**: `filesystem_write_file`, `filesystem_edit_file` — Write new files or apply targeted edits
 - **todo**: `todo_add`, `todo_list_todos`, `todo_complete` — Simple in-memory TODO list management
+- **tasks**: `tasks_list_tasks`, `tasks_get_status`, `tasks_get_output`, `tasks_kill_task`, `tasks_remove_task` — Manage background tasks
+- **skills**: `skills_list_resources`, `skills_read` — Discover and read agent skills and their resources
 
 When connected, tools are exposed to the agent as fully-qualified names (e.g., `shell_execute`).
 
@@ -220,6 +224,8 @@ The following skills are available:
 - **review-code** - Provides a structured workflow for planning and executing code reviews like a senior engineer. Use when asked to review code, PRs, or plan a code review task.
 
 - **edit-skill** - Guide for creating and editing Agent Skills. Use this skill when you need to create or modify a skill to extend the agent's capabilities with specialized knowledge, workflows, or tool integrations.
+
+- **advanced-tool-usage** - Guidelines for multi-stage tool orchestration and handling large data using 'redirect_tool_call'. Use this when you need to process large amounts of data without exhausting the context window or when building complex data pipelines.
 
 ### How Skills Work
 
