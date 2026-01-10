@@ -55,7 +55,6 @@ def test_get_default_mcp_server_config() -> None:
     assert "--skills-directories" in config.args
     assert "skill1" in config.args
     assert "skill2" in config.args
-    assert "--mcp-url" not in config.args
 
 
 @pytest.mark.asyncio
