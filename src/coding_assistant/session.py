@@ -20,8 +20,6 @@ from coding_assistant.ui import UI
 logger = logging.getLogger(__name__)
 
 
-
-
 class Session:
     def __init__(
         self,
@@ -82,8 +80,6 @@ class Session:
             args.append("--skills-directories")
             args.extend(skills_directories)
 
-
-
         return MCPServerConfig(
             name="coding_assistant.mcp",
             command=sys.executable,
@@ -123,8 +119,6 @@ class Session:
         assert self._mcp_servers is not None
         self.tools = await get_mcp_wrapped_tools(self._mcp_servers)
 
-
-
         # Instructions setup
         self.instructions = get_instructions(
             working_directory=self.working_directory,
@@ -136,8 +130,6 @@ class Session:
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-(self.callbacks)
-
         if self._mcp_servers_cm:
             await self._mcp_servers_cm.__aexit__(exc_type, exc_val, exc_tb)
 
