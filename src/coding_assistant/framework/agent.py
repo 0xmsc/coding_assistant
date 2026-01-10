@@ -49,7 +49,7 @@ Your client has provided the following parameters for your task:
 """.strip()
 
 
-def _create_start_message(desc: AgentDescription) -> str:
+def _create_start_message(*, desc: AgentDescription) -> str:
     parameters_str = format_parameters(desc.parameters)
     message = START_MESSAGE_TEMPLATE.format(
         name=desc.name,
@@ -126,7 +126,7 @@ async def run_agent_loop(
     if not any(tool.name() == "compact_conversation" for tool in tools):
         tools.append(CompactConversationTool())
 
-    start_message = _create_start_message(desc)
+    start_message = _create_start_message(desc=desc)
     user_msg = UserMessage(content=start_message)
     append_user_message(state.history, callbacks=progress_callbacks, context_name=desc.name, message=user_msg)
 
