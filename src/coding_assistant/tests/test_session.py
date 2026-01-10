@@ -1,9 +1,8 @@
 import pytest
-import asyncio
 from typing import Any
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
-from coding_assistant.session import Session, stop_mcp_server
+from coding_assistant.session import Session
 from coding_assistant.config import Config
 from coding_assistant.framework.callbacks import ToolCallbacks
 from coding_assistant.llm.types import StatusLevel, ProgressCallbacks
@@ -49,39 +48,14 @@ def session_args(
 def test_get_default_mcp_server_config() -> None:
     root = Path("/root")
     skills = ["skill1", "skill2"]
-    config = Session.get_default_mcp_server_config(root, skills, mcp_url="http://localhost:1234/mcp")
+    config = Session.get_default_mcp_server_config(root, skills)
 
     assert config.name == "coding_assistant.mcp"
     assert config.args is not None
     assert "--skills-directories" in config.args
     assert "skill1" in config.args
     assert "skill2" in config.args
-    assert "--mcp-url" in config.args
-    assert "http://localhost:1234/mcp" in config.args
-
-
-@pytest.mark.asyncio
-async def test_stop_mcp_server() -> None:
-    callbacks = MagicMock(spec=ProgressCallbacks)
-    mcp_task: asyncio.Future[Any] = asyncio.Future()
-    mcp_task.set_result(None)
-    mcp_task.cancel = MagicMock()  # type: ignore
-
-    await stop_mcp_server(mcp_task, callbacks)  # type: ignore
-
-    mcp_task.cancel.assert_called_once()
-    callbacks.on_status_message.assert_called_with("Shutting down external MCP server...", level=StatusLevel.INFO)
-
-
-@pytest.mark.asyncio
-async def test_stop_mcp_server_cancelled() -> None:
-    callbacks = MagicMock(spec=ProgressCallbacks)
-    mcp_task: asyncio.Future[Any] = asyncio.Future()
-    mcp_task.set_exception(asyncio.CancelledError())
-    mcp_task.cancel = MagicMock()  # type: ignore
-
-    await stop_mcp_server(mcp_task, callbacks)  # type: ignore
-    assert mcp_task.done()
+    assert "--mcp-url" not in config.args
 
 
 @pytest.mark.asyncio
@@ -112,32 +86,6 @@ async def test_session_context_manager(session_args: dict[str, Any]) -> None:
         # Verify exit calls
         mock_mcp_cm.__aexit__.assert_called_once()
         session_args["callbacks"].on_status_message.assert_any_call("Session closed.", level=StatusLevel.INFO)
-
-
-@pytest.mark.asyncio
-async def test_session_mcp_server_port(session_args: dict[str, Any]) -> None:
-    session_args["mcp_server_port"] = 8000
-    session = Session(**session_args)
-
-    with (
-        patch("coding_assistant.session.sandbox"),
-        patch("coding_assistant.session.get_mcp_servers_from_config") as mock_get_mcp,
-        patch("coding_assistant.session.get_mcp_wrapped_tools", new_callable=AsyncMock),
-        patch("coding_assistant.session.start_mcp_server", new_callable=AsyncMock) as mock_start_server,
-        patch("coding_assistant.session.get_instructions"),
-    ):
-        mock_mcp_cm = AsyncMock()
-        mock_mcp_cm.__aenter__.return_value = ["mock_server"]
-        mock_get_mcp.return_value = mock_mcp_cm
-
-        # Return a future that is already done to avoid issues in stop_mcp_server
-        mock_task: asyncio.Future[Any] = asyncio.Future()
-        mock_task.set_result(None)
-        mock_task.cancel = MagicMock()  # type: ignore
-        mock_start_server.return_value = mock_task
-
-        async with session:
-            mock_start_server.assert_called_once()
 
 
 @pytest.mark.asyncio
