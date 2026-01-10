@@ -14,6 +14,7 @@ import httpx
 from httpx_sse import aconnect_sse, SSEError
 
 from coding_assistant.llm.adapters import get_tools
+from coding_assistant.framework.callbacks import StatusLevel
 from coding_assistant.llm.types import (
     Completion,
     Usage,
@@ -233,6 +234,10 @@ async def _try_completion_with_retry(
             if attempt == max_retries - 1:
                 raise
             logger.warning(f"Retry {attempt + 1}/{max_retries} due to {e} for model {model}")
+            callbacks.on_status_message(
+                f"Retrying LLM request (attempt {attempt + 1}/{max_retries}) due to {e}",
+                level=StatusLevel.WARNING,
+            )
             await asyncio.sleep(0.5 + attempt)
     raise RuntimeError("Unreachable")
 
