@@ -75,7 +75,12 @@ async def test_session_context_manager(session_args: dict[str, Any]) -> None:
         mock_get_instructions.return_value = "test instructions"
 
         async with session:
-            assert session.tools == [mock_tool]
+            assert len(session.tools) == 2
+            assert session.tools[0] == mock_tool
+            # The second tool should be CallToolWithFileOutputTool
+            from coding_assistant.tools.tools import CallToolWithFileOutputTool
+
+            assert isinstance(session.tools[1], CallToolWithFileOutputTool)
             assert session.instructions == "test instructions"
             assert session.mcp_servers == ["mock_server"]
             mock_sandbox.assert_called_once()
