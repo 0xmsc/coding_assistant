@@ -23,6 +23,12 @@ When working with large files or long logs:
 - Redirect the reading tool (e.g., `cat`, `tavily_search`) to a temporary file.
 - Use `rg` or `grep` to extract only the relevant lines from that file.
 
+### 4. Workspace Management for Pipelines
+When building multi-stage pipelines that generate multiple files:
+- Use `shell_execute` with `mktemp -d` to create a dedicated scratch directory.
+- Direct all intermediate `redirect_tool_call` outputs into that directory to keep the workspace clean.
+- Example: `redirect_tool_call(..., output_file="/tmp/tmp.X/step1.json")`
+
 ### 3. The Large Data Export
 When the user requests a result that is too large for markdown (e.g., a 5MB JSON dump):
 - Use `redirect_tool_call` with a specific `output_file` name.
