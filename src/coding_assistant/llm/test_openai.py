@@ -4,7 +4,6 @@ import pytest
 from unittest.mock import MagicMock
 
 import httpx
-from coding_assistant.framework.callbacks import NullProgressCallbacks
 from coding_assistant.llm import openai as openai_model
 from coding_assistant.llm.types import (
     Completion,
@@ -13,6 +12,7 @@ from coding_assistant.llm.types import (
     ToolCall,
     FunctionCall,
     UserMessage,
+    NullProgressCallbacks,
 )
 from coding_assistant.llm.openai import (
     _merge_chunks,

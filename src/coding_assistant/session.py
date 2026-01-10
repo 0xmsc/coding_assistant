@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from coding_assistant.config import Config, MCPServerConfig
-from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks, StatusLevel
+from coding_assistant.framework.callbacks import ToolCallbacks
+from coding_assistant.llm.types import ProgressCallbacks, StatusLevel
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.llm.types import BaseMessage
 from coding_assistant.framework.types import Tool

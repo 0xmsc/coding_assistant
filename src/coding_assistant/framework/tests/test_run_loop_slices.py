@@ -3,7 +3,8 @@ import json
 
 import pytest
 
-from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.callbacks import NullToolCallbacks
+from coding_assistant.llm.types import NullProgressCallbacks
 from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,

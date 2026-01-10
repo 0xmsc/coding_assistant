@@ -1,6 +1,7 @@
 import pytest
 
-from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.callbacks import NullToolCallbacks
+from coding_assistant.llm.types import NullProgressCallbacks
 from coding_assistant.config import Config
 from coding_assistant.tools.tools import AgentTool
 from coding_assistant.ui import NullUI

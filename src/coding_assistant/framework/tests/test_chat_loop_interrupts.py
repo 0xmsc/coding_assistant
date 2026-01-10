@@ -6,7 +6,8 @@ import signal
 import pytest
 from unittest.mock import patch
 
-from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.callbacks import NullToolCallbacks
+from coding_assistant.llm.types import NullProgressCallbacks
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.interrupts import InterruptController
 from coding_assistant.llm.types import UserMessage, BaseMessage

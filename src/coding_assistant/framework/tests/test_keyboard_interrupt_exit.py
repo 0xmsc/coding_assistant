@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.callbacks import NullToolCallbacks
+from coding_assistant.llm.types import NullProgressCallbacks
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.types import Tool
 from coding_assistant.llm.types import BaseMessage, UserMessage
