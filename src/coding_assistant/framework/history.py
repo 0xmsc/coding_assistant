@@ -5,6 +5,7 @@ from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolMessag
 
 def append_tool_message(
     history: list[BaseMessage],
+    *,
     callbacks: ProgressCallbacks,
     context_name: str,
     message: ToolMessage,
@@ -16,6 +17,7 @@ def append_tool_message(
 
 def append_user_message(
     history: list[BaseMessage],
+    *,
     callbacks: ProgressCallbacks,
     context_name: str,
     message: UserMessage,
@@ -27,6 +29,7 @@ def append_user_message(
 
 def append_assistant_message(
     history: list[BaseMessage],
+    *,
     callbacks: ProgressCallbacks,
     context_name: str,
     message: AssistantMessage,
