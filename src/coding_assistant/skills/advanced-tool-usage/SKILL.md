@@ -35,9 +35,11 @@ When the user requests a result that is too large for markdown (e.g., a 5MB JSON
 - Inform the user of the file location instead of printing the content.
 
 ## When to use `redirect_tool_call`
-- The expected output is > 50 lines.
-- The output is raw data (JSON, CSV, long logs) that needs further processing.
-- You are chaining multiple tools together.
+- The expected output is > 50 lines and the tool does NOT support its own redirection (e.g., searches, API calls).
+- The output is raw data (JSON, CSV) that needs further processing by another tool.
+- You are chaining an MCP tool into a local processing tool.
+
+**Note**: For `shell_execute` or `python_execute`, always use internal file writing (`>` or `file.write()`) instead of `redirect_tool_call` for maximum efficiency.
 
 ## References
 - [Detailed Orchestration Patterns](references/patterns.md)
