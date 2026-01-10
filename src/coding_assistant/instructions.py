@@ -18,6 +18,7 @@ def _load_default_instructions() -> str:
 
 
 def get_instructions(
+    *,
     working_directory: Path,
     user_instructions: list[str],
     mcp_servers: list[MCPServer] | None = None,
