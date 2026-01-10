@@ -35,11 +35,11 @@ async def execute_tool_call(function_name: str, function_args: dict[str, Any], t
 
 async def handle_tool_call(
     tool_call: ToolCall,
-    tools: Sequence[Tool],
     history: list[BaseMessage],
+    *,
+    tools: Sequence[Tool],
     progress_callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
-    *,
     ui: UI,
     context_name: str,
 ) -> ToolResult:
@@ -76,7 +76,7 @@ async def handle_tool_call(
             )
             function_call_result = callback_result
         else:
-            function_call_result = await execute_tool_call(function_name, function_args, tools)
+            function_call_result = await execute_tool_call(function_name, function_args, tools=tools)
     except Exception as e:
         function_call_result = TextResult(content=f"Error executing tool: {e}")
 
@@ -119,10 +119,10 @@ async def handle_tool_calls(
         task = loop.create_task(
             handle_tool_call(
                 tool_call,
-                tools,
                 history,
-                progress_callbacks,
-                tool_callbacks,
+                tools=tools,
+                progress_callbacks=progress_callbacks,
+                tool_callbacks=tool_callbacks,
                 ui=ui,
                 context_name=context_name,
             ),
@@ -181,9 +181,9 @@ async def handle_tool_calls(
 async def do_single_step(
     history: list[BaseMessage],
     model: str,
+    *,
     tools: Sequence[Tool],
     progress_callbacks: ProgressCallbacks,
-    *,
     completer: Completer,
     context_name: str,
 ) -> tuple[AssistantMessage, Usage | None]:
