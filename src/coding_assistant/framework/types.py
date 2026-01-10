@@ -1,12 +1,11 @@
-from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Protocol
+from typing import Awaitable, Protocol
 
 from coding_assistant.llm.types import (
     BaseMessage,
     Completion,
-    Tool as LLMTool,
+    Tool as Tool,
     ProgressCallbacks as LLMProgressCallbacks,
 )
 from coding_assistant.framework.parameters import Parameter
@@ -16,20 +15,6 @@ from coding_assistant.framework.results import (
     TextResult as TextResult,
     ToolResult as ToolResult,
 )
-
-
-class Tool(LLMTool, ABC):
-    @abstractmethod
-    def name(self) -> str: ...
-
-    @abstractmethod
-    def description(self) -> str: ...
-
-    @abstractmethod
-    def parameters(self) -> dict[str, Any]: ...
-
-    @abstractmethod
-    async def execute(self, parameters: dict[str, Any]) -> ToolResult: ...
 
 
 @dataclass(frozen=True)
@@ -64,6 +49,6 @@ class Completer(Protocol):
         messages: list[BaseMessage],
         *,
         model: str,
-        tools: Sequence[LLMTool],
+        tools: Sequence[Tool],
         callbacks: LLMProgressCallbacks,
     ) -> Awaitable[Completion]: ...

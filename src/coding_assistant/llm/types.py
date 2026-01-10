@@ -1,21 +1,29 @@
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Literal, Optional, Protocol
+from typing import Any, Literal, Optional
 
 
 from dacite import from_dict
 
 
-class ToolResult(Protocol):
+class ToolResult(ABC):
+    @abstractmethod
     def to_dict(self) -> dict[str, Any]: ...
 
 
-class Tool(Protocol):
+class Tool(ABC):
+    @abstractmethod
     def name(self) -> str: ...
+
+    @abstractmethod
     def description(self) -> str: ...
+
+    @abstractmethod
     def parameters(self) -> dict[str, Any]: ...
-    async def execute(self, parameters: Any) -> ToolResult: ...
+
+    @abstractmethod
+    async def execute(self, parameters: dict[str, Any]) -> ToolResult: ...
 
 
 @dataclass(frozen=True)
