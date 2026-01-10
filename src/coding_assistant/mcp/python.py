@@ -14,10 +14,7 @@ def create_python_server(manager: TaskManager) -> FastMCP:
 
     @python_server.tool()
     async def execute(
-        code: Annotated[
-            str,
-            "The Python code to execute. If you need to produce large amounts of data, write it to a file directly within the script instead of printing it.",
-        ],
+        code: Annotated[str, "The Python code to execute."],
         timeout: Annotated[int, "The timeout for execution in seconds."] = 30,
         truncate_at: Annotated[int, "Maximum number of characters to return in stdout/stderr combined."] = 50_000,
         background: Annotated[bool, "If True, run the code in the background and return a task ID."] = False,
