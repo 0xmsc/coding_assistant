@@ -18,7 +18,7 @@ async def test_get_mcp_servers_from_config_stdio() -> None:
 
         mock_get_server.return_value.__aenter__.return_value = mock_server
 
-        async with get_mcp_servers_from_config(config, working_dir) as servers:
+        async with get_mcp_servers_from_config(config, working_directory=working_dir) as servers:
             assert len(servers) == 1
             assert servers[0].name == "test-stdio"
             mock_get_server.assert_called_once()
@@ -39,7 +39,7 @@ async def test_get_mcp_servers_from_config_sse() -> None:
         mock_server.name = "test-sse"
         mock_get_server.return_value.__aenter__.return_value = mock_server
 
-        async with get_mcp_servers_from_config(config, working_dir) as servers:
+        async with get_mcp_servers_from_config(config, working_directory=working_dir) as servers:
             assert len(servers) == 1
             assert servers[0].name == "test-sse"
             mock_get_server.assert_called_once()
