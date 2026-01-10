@@ -13,25 +13,25 @@ def manager() -> Any:
 
 @pytest_asyncio.fixture
 async def shell_execute(manager: Any) -> Any:
-    server = create_shell_server(manager)
+    server = create_shell_server(manager=manager)
     return await server.get_tool("execute")
 
 
 @pytest_asyncio.fixture
 async def tasks_list_tasks(manager: Any) -> Any:
-    server = create_task_server(manager)
+    server = create_task_server(manager=manager)
     return await server.get_tool("list_tasks")
 
 
 @pytest_asyncio.fixture
 async def tasks_get_output(manager: Any) -> Any:
-    server = create_task_server(manager)
+    server = create_task_server(manager=manager)
     return await server.get_tool("get_output")
 
 
 @pytest_asyncio.fixture
 async def tasks_kill_task(manager: Any) -> Any:
-    server = create_task_server(manager)
+    server = create_task_server(manager=manager)
     return await server.get_tool("kill_task")
 
 
@@ -72,9 +72,9 @@ async def test_truncation_note_with_id(shell_execute: Any, tasks_get_output: Any
 @pytest.mark.asyncio
 async def test_auto_cleanup(manager: Any) -> None:
     manager._max_finished_tasks = 1
-    shell_server = create_shell_server(manager)
+    shell_server = create_shell_server(manager=manager)
     shell_execute_tool = await shell_server.get_tool("execute")
-    task_server = create_task_server(manager)
+    task_server = create_task_server(manager=manager)
     tasks_list_tasks_tool = await task_server.get_tool("list_tasks")
 
     await cast(Any, shell_execute_tool).fn(command="sleep 0.1")
@@ -92,9 +92,9 @@ async def test_auto_cleanup(manager: Any) -> None:
 @pytest.mark.asyncio
 async def test_auto_cleanup_keeps_running(manager: Any) -> None:
     manager._max_finished_tasks = 1
-    shell_server = create_shell_server(manager)
+    shell_server = create_shell_server(manager=manager)
     shell_execute_tool = await shell_server.get_tool("execute")
-    task_server = create_task_server(manager)
+    task_server = create_task_server(manager=manager)
     tasks_list_tasks_tool = await task_server.get_tool("list_tasks")
 
     await cast(Any, shell_execute_tool).fn(command="sleep 2", background=True)
@@ -114,7 +114,7 @@ async def test_auto_cleanup_keeps_running(manager: Any) -> None:
 @pytest.mark.asyncio
 async def test_cleanup_exactly_max_finished(manager: Any) -> None:
     manager._max_finished_tasks = 5
-    shell_server = create_shell_server(manager)
+    shell_server = create_shell_server(manager=manager)
     shell_execute_tool = await shell_server.get_tool("execute")
 
     for i in range(10):
@@ -144,7 +144,7 @@ async def test_kill_task(shell_execute: Any, tasks_kill_task: Any, tasks_get_out
 
 @pytest_asyncio.fixture
 async def tasks_get_status(manager: Any) -> Any:
-    server = create_task_server(manager)
+    server = create_task_server(manager=manager)
     return await server.get_tool("get_status")
 
 

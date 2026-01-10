@@ -62,15 +62,15 @@ async def _main() -> None:
     manager = TaskManager()
 
     skills_dir = [Path(d) for d in args.skills_directories]
-    skills_server, skills_instr = create_skills_server(skills_dir)
+    skills_server, skills_instr = create_skills_server(skills_directories=skills_dir)
     instructions = f"{INSTRUCTIONS}\n\n{skills_instr}"
 
     mcp = FastMCP("Coding Assistant MCP", instructions=instructions)
     await mcp.import_server(create_todo_server(), prefix="todo")
-    await mcp.import_server(create_shell_server(manager), prefix="shell")
-    await mcp.import_server(create_python_server(manager), prefix="python")
+    await mcp.import_server(create_shell_server(manager=manager), prefix="shell")
+    await mcp.import_server(create_python_server(manager=manager), prefix="python")
     await mcp.import_server(filesystem_server, prefix="filesystem")
-    await mcp.import_server(create_task_server(manager), prefix="tasks")
+    await mcp.import_server(create_task_server(manager=manager), prefix="tasks")
     await mcp.import_server(skills_server, prefix="skills")
     await mcp.run_async(show_banner=False)
 

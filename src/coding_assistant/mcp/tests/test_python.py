@@ -12,7 +12,7 @@ def manager() -> Any:
 
 @pytest_asyncio.fixture
 async def execute(manager: Any) -> Any:
-    server = create_python_server(manager)
+    server = create_python_server(manager=manager)
     return await server.get_tool("execute")
 
 
