@@ -56,6 +56,7 @@ def _create_chat_start_message(instructions: str | None) -> str:
 
 def handle_tool_result_chat(
     result: ToolResult,
+    *,
     history: list[BaseMessage],
     callbacks: ProgressCallbacks,
     context_name: str,
@@ -67,9 +68,9 @@ def handle_tool_result_chat(
         )
         append_user_message(
             history,
-            callbacks,
-            context_name,
-            compact_result_msg,
+            callbacks=callbacks,
+            context_name=context_name,
+            message=compact_result_msg,
             force=False,
         )
         return "Conversation compacted and history reset."
@@ -94,11 +95,11 @@ class ChatCommand:
 
 
 async def run_chat_loop(
+    *,
     history: list[BaseMessage],
     model: str,
     tools: list[Tool],
     instructions: str | None,
-    *,
     callbacks: ProgressCallbacks,
     tool_callbacks: ToolCallbacks,
     completer: Completer,
@@ -127,9 +128,9 @@ async def run_chat_loop(
         )
         append_user_message(
             history,
-            callbacks,
-            context_name,
-            compact_msg,
+            callbacks=callbacks,
+            context_name=context_name,
+            message=compact_msg,
             force=True,
         )
 
@@ -151,7 +152,7 @@ async def run_chat_loop(
             data_url = await get_image(arg.strip())
             image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
             user_msg = UserMessage(content=image_content)
-            append_user_message(history, callbacks, context_name, user_msg)
+            append_user_message(history, callbacks=callbacks, context_name=context_name, message=user_msg)
             callbacks.on_status_message(f"Image added from {arg}.", level=StatusLevel.SUCCESS)
             return ChatCommandResult.PROCEED_WITH_PROMPT
         except Exception as e:
@@ -175,7 +176,7 @@ async def run_chat_loop(
 
     start_message = _create_chat_start_message(instructions)
     start_user_msg = UserMessage(content=start_message)
-    append_user_message(history, callbacks, context_name, start_user_msg, force=True)
+    append_user_message(history, callbacks=callbacks, context_name=context_name, message=start_user_msg, force=True)
 
     usage = Usage(0, 0.0)
 
@@ -202,7 +203,7 @@ async def run_chat_loop(
                     pass
             else:
                 user_msg = UserMessage(content=answer)
-                append_user_message(history, callbacks, context_name, user_msg)
+                append_user_message(history, callbacks=callbacks, context_name=context_name, message=user_msg)
 
         loop = asyncio.get_running_loop()
         with InterruptController(loop) as interrupt_controller:
@@ -221,7 +222,7 @@ async def run_chat_loop(
                 interrupt_controller.register_task("do_single_step", do_single_step_task)
 
                 message, step_usage = await do_single_step_task
-                append_assistant_message(history, callbacks, context_name, message)
+                append_assistant_message(history, callbacks=callbacks, context_name=context_name, message=message)
 
                 if step_usage:
                     usage = Usage(
@@ -240,7 +241,7 @@ async def run_chat_loop(
                         context_name=context_name,
                         task_created_callback=interrupt_controller.register_task,
                         handle_tool_result=lambda result: handle_tool_result_chat(
-                            result, history, callbacks, context_name
+                            result, history=history, callbacks=callbacks, context_name=context_name
                         ),
                     )
                 else:

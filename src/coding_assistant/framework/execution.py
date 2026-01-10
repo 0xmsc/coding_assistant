@@ -170,10 +170,10 @@ async def handle_tool_calls(
             )
             append_tool_message(
                 history,
-                progress_callbacks,
-                context_name,
-                tool_message,
-                function_args,
+                callbacks=progress_callbacks,
+                context_name=context_name,
+                message=tool_message,
+                arguments=function_args,
             )
 
     if any_cancelled:

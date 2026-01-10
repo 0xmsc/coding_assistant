@@ -59,13 +59,14 @@ def _create_start_message(desc: AgentDescription) -> str:
     return message
 
 
-def _handle_finish_task_result(result: FinishTaskResult, state: AgentState) -> str:
+def _handle_finish_task_result(result: FinishTaskResult, *, state: AgentState) -> str:
     state.output = AgentOutput(result=result.result, summary=result.summary)
     return "Agent output set."
 
 
 def _handle_compact_conversation_result(
     result: CompactConversationResult,
+    *,
     desc: AgentDescription,
     state: AgentState,
     progress_callbacks: ProgressCallbacks,
@@ -77,9 +78,9 @@ def _handle_compact_conversation_result(
     )
     append_user_message(
         state.history,
-        progress_callbacks,
-        desc.name,
-        user_msg,
+        callbacks=progress_callbacks,
+        context_name=desc.name,
+        message=user_msg,
         force=True,
     )
 
@@ -88,14 +89,17 @@ def _handle_compact_conversation_result(
 
 def handle_tool_result_agent(
     result: ToolResult,
+    *,
     desc: AgentDescription,
     state: AgentState,
     progress_callbacks: ProgressCallbacks,
 ) -> str:
     if isinstance(result, FinishTaskResult):
-        return _handle_finish_task_result(result, state)
+        return _handle_finish_task_result(result, state=state)
     if isinstance(result, CompactConversationResult):
-        return _handle_compact_conversation_result(result, desc, state, progress_callbacks)
+        return _handle_compact_conversation_result(
+            result, desc=desc, state=state, progress_callbacks=progress_callbacks
+        )
     if isinstance(result, TextResult):
         return result.content
     return f"Tool produced result of type {type(result).__name__}"
@@ -124,7 +128,7 @@ async def run_agent_loop(
 
     start_message = _create_start_message(desc)
     user_msg = UserMessage(content=start_message)
-    append_user_message(state.history, progress_callbacks, desc.name, user_msg)
+    append_user_message(state.history, callbacks=progress_callbacks, context_name=desc.name, message=user_msg)
 
     while state.output is None:
         message, usage = await do_single_step(
@@ -136,7 +140,7 @@ async def run_agent_loop(
             context_name=desc.name,
         )
 
-        append_assistant_message(state.history, progress_callbacks, desc.name, message)
+        append_assistant_message(state.history, callbacks=progress_callbacks, context_name=desc.name, message=message)
 
         if getattr(message, "tool_calls", []):
             await handle_tool_calls(
@@ -147,7 +151,9 @@ async def run_agent_loop(
                 tool_callbacks=tool_callbacks,
                 ui=ui,
                 context_name=desc.name,
-                handle_tool_result=lambda result: handle_tool_result_agent(result, desc, state, progress_callbacks),
+                handle_tool_result=lambda result: handle_tool_result_agent(
+                    result, desc=desc, state=state, progress_callbacks=progress_callbacks
+                ),
             )
         else:
             user_msg2 = UserMessage(
@@ -155,9 +161,9 @@ async def run_agent_loop(
             )
             append_user_message(
                 state.history,
-                progress_callbacks,
-                desc.name,
-                user_msg2,
+                callbacks=progress_callbacks,
+                context_name=desc.name,
+                message=user_msg2,
             )
         if usage is not None and usage.tokens > compact_conversation_at_tokens:
             user_msg3 = UserMessage(
@@ -165,9 +171,9 @@ async def run_agent_loop(
             )
             append_user_message(
                 state.history,
-                progress_callbacks,
-                desc.name,
-                user_msg3,
+                callbacks=progress_callbacks,
+                context_name=desc.name,
+                message=user_msg3,
             )
 
     assert state.output is not None
