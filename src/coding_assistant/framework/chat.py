@@ -6,10 +6,11 @@ import logging
 
 
 from coding_assistant.framework.builtin_tools import CompactConversationTool
-from coding_assistant.framework.callbacks import ToolCallbacks
+from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
+    NullProgressCallbacks,
     ProgressCallbacks,
     StatusLevel,
     Tool,
@@ -100,8 +101,8 @@ async def run_chat_loop(
     model: str,
     tools: list[Tool],
     instructions: str | None,
-    callbacks: ProgressCallbacks,
-    tool_callbacks: ToolCallbacks,
+    callbacks: ProgressCallbacks = NullProgressCallbacks(),
+    tool_callbacks: ToolCallbacks = NullToolCallbacks(),
     completer: Completer,
     ui: UI,
     context_name: str,

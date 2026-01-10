@@ -5,8 +5,8 @@ from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
     FinishTaskTool,
 )
-from coding_assistant.framework.callbacks import ToolCallbacks
-from coding_assistant.llm.types import ProgressCallbacks
+from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
+from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
 from coding_assistant.framework.history import (
     append_assistant_message,
@@ -108,8 +108,8 @@ def handle_tool_result_agent(
 async def run_agent_loop(
     ctx: AgentContext,
     *,
-    progress_callbacks: ProgressCallbacks,
-    tool_callbacks: ToolCallbacks,
+    progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
+    tool_callbacks: ToolCallbacks = NullToolCallbacks(),
     completer: Completer,
     ui: UI,
     compact_conversation_at_tokens: int = 200_000,

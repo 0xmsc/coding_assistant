@@ -3,25 +3,11 @@ import json
 
 import pytest
 
-from coding_assistant.framework.callbacks import NullToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks
-from coding_assistant.framework.history import (
-    append_assistant_message,
-)
-from coding_assistant.framework.execution import (
-    do_single_step,
-    handle_tool_calls,
-)
-from coding_assistant.framework.agent import (
-    _handle_compact_conversation_result,
-    _handle_finish_task_result,
-)
-from coding_assistant.llm.types import (
-    AssistantMessage,
-    ToolResult,
-    UserMessage,
-    message_to_dict,
-)
+from coding_assistant.framework.history import append_assistant_message
+from coding_assistant.framework.execution import do_single_step, handle_tool_calls
+from coding_assistant.framework.agent import _handle_compact_conversation_result, _handle_finish_task_result
+from coding_assistant.llm.types import AssistantMessage, ToolResult, UserMessage, message_to_dict
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FakeMessage,
@@ -30,11 +16,7 @@ from coding_assistant.framework.tests.helpers import (
     make_test_agent,
     make_ui_mock,
 )
-from coding_assistant.framework.results import (
-    CompactConversationResult,
-    FinishTaskResult,
-    TextResult,
-)
+from coding_assistant.framework.results import CompactConversationResult, FinishTaskResult, TextResult
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 
@@ -61,10 +43,7 @@ async def test_compact_conversation_resets_history() -> None:
     summary_text = "This is the summary of prior conversation."
     tool_call = ToolCall(
         id="shorten-1",
-        function=FunctionCall(
-            name="compact_conversation",
-            arguments=json.dumps({"summary": summary_text}),
-        ),
+        function=FunctionCall(name="compact_conversation", arguments=json.dumps({"summary": summary_text})),
     )
 
     msg = FakeMessage(tool_calls=[tool_call])
@@ -79,7 +58,6 @@ async def test_compact_conversation_resets_history() -> None:
         history=state.history,
         tools=desc.tools,
         progress_callbacks=callbacks,
-        tool_callbacks=NullToolCallbacks(),
         ui=make_ui_mock(),
         context_name=desc.name,
         handle_tool_result=handle_tool_result,
@@ -104,13 +82,7 @@ async def test_compact_conversation_resets_history() -> None:
         "content": "Conversation compacted and history reset.",
     }
 
-    finish_call = ToolCall(
-        "finish-1",
-        FunctionCall(
-            "finish_task",
-            json.dumps({"result": "done", "summary": "sum"}),
-        ),
-    )
+    finish_call = ToolCall("finish-1", FunctionCall("finish_task", json.dumps({"result": "done", "summary": "sum"})))
 
     completer = FakeCompleter([FakeMessage(tool_calls=[finish_call])])
 
@@ -137,7 +109,6 @@ async def test_compact_conversation_resets_history() -> None:
         history=state.history,
         tools=desc.tools,
         progress_callbacks=callbacks,
-        tool_callbacks=NullToolCallbacks(),
         ui=make_ui_mock(),
         context_name=desc.name,
         handle_tool_result=handle_tool_result_2,

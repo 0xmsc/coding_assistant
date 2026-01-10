@@ -11,17 +11,10 @@ from coding_assistant.llm.types import (
     Usage,
     UserMessage,
 )
-from coding_assistant.framework.tests.helpers import (
-    FakeCompleter,
-    FakeMessage,
-    FunctionCall,
-    ToolCall,
-    make_ui_mock,
-)
+from coding_assistant.framework.tests.helpers import FakeCompleter, FakeMessage, FunctionCall, ToolCall, make_ui_mock
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
 from coding_assistant.framework.results import TextResult
-from coding_assistant.framework.callbacks import NullToolCallbacks
 
 
 class FakeEchoTool(Tool):
@@ -59,8 +52,6 @@ async def test_chat_step_prompts_user_on_no_tool_calls_once() -> None:
             tools=tools,
             instructions=instructions,
             context_name="test",
-            callbacks=NullProgressCallbacks(),
-            tool_callbacks=NullToolCallbacks(),
             completer=completer,
             ui=ui,
         )
@@ -89,8 +80,6 @@ async def test_chat_step_executes_tools_without_prompt() -> None:
             tools=tools,
             instructions=instructions,
             context_name="test",
-            callbacks=NullProgressCallbacks(),
-            tool_callbacks=NullToolCallbacks(),
             completer=completer,
             ui=ui,
         )
@@ -115,8 +104,6 @@ async def test_chat_mode_does_not_require_finish_task_tool() -> None:
             tools=tools,
             instructions=instructions,
             context_name="test",
-            callbacks=NullProgressCallbacks(),
-            tool_callbacks=NullToolCallbacks(),
             completer=completer,
             ui=ui,
         )
@@ -141,8 +128,6 @@ async def test_chat_exit_command_stops_loop_without_appending_command() -> None:
         tools=tools,
         instructions=instructions,
         context_name="test",
-        callbacks=NullProgressCallbacks(),
-        tool_callbacks=NullToolCallbacks(),
         completer=completer,
         ui=ui,
     )
@@ -178,8 +163,6 @@ async def test_chat_loop_prompts_after_compact_command() -> None:
         tools=tools,
         instructions=instructions,
         context_name="test",
-        callbacks=NullProgressCallbacks(),
-        tool_callbacks=NullToolCallbacks(),
         completer=completer,
         ui=ui,
     )
@@ -230,7 +213,6 @@ async def test_chat_compact_conversation_not_forced_in_callbacks() -> None:
             instructions=instructions,
             context_name="test",
             callbacks=callbacks,
-            tool_callbacks=NullToolCallbacks(),
             completer=completer,
             ui=ui,
         )
@@ -259,8 +241,6 @@ async def test_chat_mode_displays_usage_right_aligned() -> None:
         tools=tools,
         instructions=instructions,
         context_name="test",
-        callbacks=NullProgressCallbacks(),
-        tool_callbacks=NullToolCallbacks(),
         completer=completer,
         ui=ui,
     )

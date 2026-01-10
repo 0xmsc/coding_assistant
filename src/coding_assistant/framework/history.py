@@ -1,12 +1,18 @@
 from typing import Any
-from coding_assistant.llm.types import ProgressCallbacks
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolMessage, UserMessage
+from coding_assistant.llm.types import (
+    AssistantMessage,
+    BaseMessage,
+    ToolMessage,
+    UserMessage,
+    NullProgressCallbacks,
+    ProgressCallbacks,
+)
 
 
 def append_tool_message(
     history: list[BaseMessage],
     *,
-    callbacks: ProgressCallbacks,
+    callbacks: ProgressCallbacks = NullProgressCallbacks(),
     context_name: str,
     message: ToolMessage,
     arguments: dict[str, Any],
@@ -18,7 +24,7 @@ def append_tool_message(
 def append_user_message(
     history: list[BaseMessage],
     *,
-    callbacks: ProgressCallbacks,
+    callbacks: ProgressCallbacks = NullProgressCallbacks(),
     context_name: str,
     message: UserMessage,
     force: bool = False,
@@ -30,7 +36,7 @@ def append_user_message(
 def append_assistant_message(
     history: list[BaseMessage],
     *,
-    callbacks: ProgressCallbacks,
+    callbacks: ProgressCallbacks = NullProgressCallbacks(),
     context_name: str,
     message: AssistantMessage,
     force: bool = False,
