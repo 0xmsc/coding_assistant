@@ -52,7 +52,7 @@ async def test_compact_conversation_resets_history() -> None:
         def __init__(self) -> None:
             self.user_messages: Any = []
 
-        def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> Any:
+        def on_user_message(self, context_name: str, message: UserMessage, *, force: bool = False) -> Any:
             content = message.content if isinstance(message.content, str) else str(message.content)
             self.user_messages.append((content, force))
 
