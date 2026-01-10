@@ -121,6 +121,8 @@ class Session:
         )
 
         self.callbacks.on_status_message("Session initialized.", level=StatusLevel.SUCCESS)
+        self.callbacks.on_status_message(f"Using model {self.config.model}.", level=StatusLevel.SUCCESS)
+
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
