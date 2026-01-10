@@ -73,6 +73,22 @@ async def test_redirect_to_specific_file() -> None:
 
 
 @pytest.mark.asyncio
+async def test_redirect_to_nested_file() -> None:
+    mock = MockTextTool()
+    redirect = RedirectToolCallTool([mock])
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        output_file = Path(tmp_dir) / "subdir" / "nested" / "output.txt"
+        result = await redirect.execute({"tool_name": "mock_text", "tool_args": {}, "output_file": str(output_file)})
+
+        assert f"Output redirected to {output_file}" in result.content
+        assert output_file.exists()
+        assert output_file.read_text() == "pure text output"
+        assert output_file.parent.exists()
+        assert output_file.parent.parent.exists()
+
+
+@pytest.mark.asyncio
 async def test_redirect_structured_result_error() -> None:
     mock = MockStructuredTool()
     redirect = RedirectToolCallTool([mock])
