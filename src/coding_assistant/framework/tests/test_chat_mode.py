@@ -13,7 +13,8 @@ from coding_assistant.framework.tests.helpers import (
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
 from coding_assistant.framework.types import Tool, TextResult
-from coding_assistant.framework.callbacks import NullProgressCallbacks, NullToolCallbacks
+from coding_assistant.framework.callbacks import NullToolCallbacks
+from coding_assistant.llm.types import NullProgressCallbacks
 
 
 class FakeEchoTool(Tool):

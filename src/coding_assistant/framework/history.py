@@ -1,5 +1,5 @@
 from typing import Any
-from coding_assistant.framework.callbacks import ProgressCallbacks
+from coding_assistant.llm.types import ProgressCallbacks
 from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolMessage, UserMessage
 
 

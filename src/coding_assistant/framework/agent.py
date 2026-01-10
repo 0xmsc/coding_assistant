@@ -5,7 +5,8 @@ from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
     FinishTaskTool,
 )
-from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
+from coding_assistant.framework.callbacks import ToolCallbacks
+from coding_assistant.llm.types import ProgressCallbacks
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
 from coding_assistant.framework.history import (
     append_assistant_message,
