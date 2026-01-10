@@ -63,7 +63,7 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold() -> None:
 
     assert msg.content == fake_message.content
 
-    append_assistant_message(state.history, NullProgressCallbacks(), desc.name, msg)
+    append_assistant_message(state.history, callbacks=NullProgressCallbacks(), context_name=desc.name, message=msg)
 
     # Simulate loop behavior: execute tools and then append shorten prompt due to tokens
     await handle_tool_calls(

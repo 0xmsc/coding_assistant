@@ -375,7 +375,7 @@ async def test_before_tool_execution_can_return_finish_task_result() -> None:
 
     def handle_tool_result(result: ToolResult) -> str:
         if isinstance(result, FinishTaskResult):
-            return _handle_finish_task_result(result, state)
+            return _handle_finish_task_result(result, state=state)
         if isinstance(result, TextResult):
             return result.content
         return f"Tool produced result of type {type(result).__name__}"

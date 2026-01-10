@@ -71,7 +71,7 @@ async def test_compact_conversation_resets_history() -> None:
 
     def handle_tool_result(result: ToolResult) -> str:
         if isinstance(result, CompactConversationResult):
-            return _handle_compact_conversation_result(result, desc, state, callbacks)
+            return _handle_compact_conversation_result(result, desc=desc, state=state, progress_callbacks=callbacks)
         return str(result)
 
     await handle_tool_calls(
@@ -123,11 +123,11 @@ async def test_compact_conversation_resets_history() -> None:
         context_name=desc.name,
     )
 
-    append_assistant_message(state.history, callbacks, desc.name, msg)
+    append_assistant_message(state.history, callbacks=callbacks, context_name=desc.name, message=msg)
 
     def handle_tool_result_2(result: ToolResult) -> str:
         if isinstance(result, FinishTaskResult):
-            return _handle_finish_task_result(result, state)
+            return _handle_finish_task_result(result, state=state)
         if isinstance(result, TextResult):
             return result.content
         return str(result)
