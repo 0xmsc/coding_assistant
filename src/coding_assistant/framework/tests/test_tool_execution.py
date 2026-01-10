@@ -69,12 +69,12 @@ async def test_execute_tool_call_regular_tool_and_not_found() -> None:
 
     tool = DummyTool("echo", "ok")
 
-    res = await execute_tool_call("echo", {}, tools=[tool])
+    res = await execute_tool_call(function_name="echo", function_args={}, tools=[tool])
     assert isinstance(res, TextResult)
     assert res.content == "ok"
 
     with pytest.raises(ValueError, match="Tool missing not found"):
-        await execute_tool_call("missing", {}, tools=[tool])
+        await execute_tool_call(function_name="missing", function_args={}, tools=[tool])
 
 
 @pytest.mark.asyncio
@@ -92,9 +92,9 @@ async def test_tool_confirmation_denied_and_allowed() -> None:
     msg1 = AssistantMessage(tool_calls=[call1])
     await handle_tool_calls(
         msg1,
-        tools,
-        history,
-        NullProgressCallbacks(),
+        history=history,
+        tools=tools,
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=ConfirmationToolCallbacks(
             tool_confirmation_patterns=[r"^execute_shell_command"], shell_confirmation_patterns=[]
         ),
@@ -113,9 +113,9 @@ async def test_tool_confirmation_denied_and_allowed() -> None:
     msg2 = AssistantMessage(tool_calls=[call2])
     await handle_tool_calls(
         msg2,
-        tools,
-        history,
-        NullProgressCallbacks(),
+        history=history,
+        tools=tools,
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=ConfirmationToolCallbacks(
             tool_confirmation_patterns=[r"^execute_shell_command"], shell_confirmation_patterns=[]
         ),
@@ -156,10 +156,10 @@ async def test_unknown_result_type_raises() -> None:
     msg = AssistantMessage(tool_calls=[tool_call])
     await handle_tool_calls(
         msg,
-        tools,
-        history,
-        NullProgressCallbacks(),
-        NullToolCallbacks(),
+        history=history,
+        tools=tools,
+        progress_callbacks=NullProgressCallbacks(),
+        tool_callbacks=NullToolCallbacks(),
         ui=make_ui_mock(),
         context_name="test",
     )
@@ -199,9 +199,9 @@ async def test_tool_call_malformed_arguments_records_error() -> None:
 
     await handle_tool_calls(
         msg,
-        tools,
-        history,
-        NullProgressCallbacks(),
+        history=history,
+        tools=tools,
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         ui=make_ui_mock(),
         context_name="test",
@@ -242,9 +242,9 @@ async def test_tool_execution_value_error_records_error() -> None:
 
     await handle_tool_calls(
         msg,
-        tools,
-        history,
-        NullProgressCallbacks(),
+        history=history,
+        tools=tools,
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         ui=make_ui_mock(),
         context_name="test",
@@ -293,9 +293,9 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
 
     await handle_tool_calls(
         msg1,
-        tools,
-        history,
-        NullProgressCallbacks(),
+        history=history,
+        tools=tools,
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=ConfirmationToolCallbacks(
             shell_confirmation_patterns=[r"rm -rf"], tool_confirmation_patterns=[]
         ),
@@ -314,9 +314,9 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
     msg2 = AssistantMessage(tool_calls=[call2])
     await handle_tool_calls(
         msg2,
-        tools,
-        history,
-        NullProgressCallbacks(),
+        history=history,
+        tools=tools,
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=ConfirmationToolCallbacks(
             shell_confirmation_patterns=[r"rm -rf"], tool_confirmation_patterns=[]
         ),
@@ -382,9 +382,9 @@ async def test_before_tool_execution_can_return_finish_task_result() -> None:
 
     await handle_tool_calls(
         msg,
-        tools,
-        state.history,
-        NullProgressCallbacks(),
+        history=state.history,
+        tools=tools,
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=FabricatingCallbacks(),
         ui=make_ui_mock(),
         context_name="test",
@@ -427,9 +427,9 @@ async def test_multiple_tool_calls_are_parallel() -> None:
     msg1 = AssistantMessage(tool_calls=[msg.tool_calls[0]])
     await handle_tool_calls(
         msg1,
-        tools,
-        history,
-        NullProgressCallbacks(),
+        history=history,
+        tools=tools,
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         ui=make_ui_mock(),
         context_name="test",
@@ -437,9 +437,9 @@ async def test_multiple_tool_calls_are_parallel() -> None:
     msg2 = AssistantMessage(tool_calls=[msg.tool_calls[1]])
     await handle_tool_calls(
         msg2,
-        tools,
-        history,
-        NullProgressCallbacks(),
+        history=history,
+        tools=tools,
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         ui=make_ui_mock(),
         context_name="test",
@@ -451,9 +451,9 @@ async def test_multiple_tool_calls_are_parallel() -> None:
     start = time.monotonic()
     await handle_tool_calls(
         msg,
-        tools,
-        history,
-        NullProgressCallbacks(),
+        history=history,
+        tools=tools,
+        progress_callbacks=NullProgressCallbacks(),
         tool_callbacks=NullToolCallbacks(),
         ui=make_ui_mock(),
         context_name="test",
@@ -532,7 +532,13 @@ async def test_tool_calls_process_as_they_arrive() -> None:
 
     await asyncio.gather(
         handle_tool_calls(
-            msg, tools, history, NullProgressCallbacks(), NullToolCallbacks(), ui=make_ui_mock(), context_name="test"
+            msg,
+            history=history,
+            tools=tools,
+            progress_callbacks=NullProgressCallbacks(),
+            tool_callbacks=NullToolCallbacks(),
+            ui=make_ui_mock(),
+            context_name="test",
         ),
         checker(),
     )
