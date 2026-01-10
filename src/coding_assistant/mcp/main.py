@@ -20,6 +20,7 @@ INSTRUCTIONS = """
 - Use MCP shell tool `shell_execute` to execute shell commands.
 - `shell_execute` can run multi-line scripts.
 - Example commands: `eza`, `git`, `fd`, `rg`, `gh`, `pwd`.
+- Create a temporary directory (via `mktemp -d`) if you want to write temporary files.
 - Be sure that the command you are running is safe. If you are unsure, ask the user.
 - Interactive commands (e.g., `git rebase -i`) are not supported and will block.
 
