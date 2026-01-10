@@ -25,8 +25,8 @@ When analyzing production logs or large test outputs, prefer standard shell redi
 
 ## Advantages of Redirection vs redirect_tool_call
 
-- **Standard Redirection**: Fastest for shell commands and command-line tools. Use whenever you are already inside `shell_execute`.
-- **redirect_tool_call**: Use for MCP tools (like `tavily_search`), `python_execute` results, or any other non-shell tool output.
+- **Direct File Writing**: Preferred for `shell_execute` (using `>`) and `python_execute` (using `open().write()`). This is the most efficient way to handle large outputs as it never touches the tool-calling interface's memory or stdout buffering.
+- **redirect_tool_call**: Primarily intended for **MCP tools** (like `tavily_search`, `read_url`, etc.) that return structured or text data but lack their own file-output parameters.
 
 ## Infinite Recursion Warning
 The `redirect_tool_call` tool is protected against calling itself, but be careful not to create circular dependencies in your pipelines where two tools depend on each other's file outputs indefinitely.
