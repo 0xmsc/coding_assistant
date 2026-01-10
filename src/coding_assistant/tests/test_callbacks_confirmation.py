@@ -5,7 +5,7 @@ from coding_assistant.callbacks import (
     confirm_shell_if_needed,
     ConfirmationToolCallbacks,
 )
-from coding_assistant.framework.types import TextResult
+from coding_assistant.framework.results import TextResult
 from coding_assistant.framework.tests.helpers import make_ui_mock
 
 
