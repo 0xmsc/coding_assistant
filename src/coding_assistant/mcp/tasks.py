@@ -52,7 +52,7 @@ class TaskManager:
             del self._tasks[task_id]
 
 
-def create_task_server(manager: TaskManager) -> FastMCP:
+def create_task_server(*, manager: TaskManager) -> FastMCP:
     task_server = FastMCP("TaskManager")
 
     @task_server.tool()
