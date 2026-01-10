@@ -102,16 +102,15 @@ class RedirectToolCallTool(Tool):
 
         target_tool = next((t for t in self._tools if t.name() == tool_name), None)
         if not target_tool:
-            return TextResult(content=f"Error: Tool '{tool_name}' not found.")
+            return TextResult(content=f"Error: Tool '{tool_name}' not found or cannot be redirected.")
 
         try:
             result = await target_tool.execute(tool_args)
-            content: str
-            if isinstance(result, TextResult):
-                content = result.content
-            else:
-                # Fallback for structured results (FinishTaskResult, CompactConversationResult, etc.)
-                content = json.dumps(result.to_dict(), indent=2)
+
+            if not isinstance(result, TextResult):
+                return TextResult(content=f"Error: Tool '{tool_name}' did not return a TextResult.")
+
+            content = result.content
 
             if output_file:
                 path = Path(output_file)
