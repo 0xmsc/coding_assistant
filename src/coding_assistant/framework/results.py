@@ -1,12 +1,6 @@
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
-from coding_assistant.llm.types import ToolResult as LLMToolResult
-
-
-class ToolResult(LLMToolResult, ABC):
-    @abstractmethod
-    def to_dict(self) -> dict[str, Any]: ...
+from coding_assistant.llm.types import ToolResult as ToolResult
 
 
 @dataclass
