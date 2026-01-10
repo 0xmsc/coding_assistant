@@ -1,4 +1,6 @@
+from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
+from enum import Enum
 from typing import Any, Literal, Optional, Protocol
 
 
@@ -64,17 +66,87 @@ class ToolMessage(BaseMessage):
     role: Literal["tool"] = "tool"
 
 
-class ProgressCallbacks(Protocol):
-    def on_status_message(self, message: str, level: Any = None) -> None: ...
-    def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None: ...
-    def on_assistant_message(self, context_name: str, message: AssistantMessage, force: bool = False) -> None: ...
-    def on_tool_start(self, context_name: str, tool_call: ToolCall, arguments: dict[str, Any]) -> None: ...
+class StatusLevel(Enum):
+    INFO = "info"
+    SUCCESS = "success"
+    WARNING = "warning"
+    ERROR = "error"
+
+
+class ProgressCallbacks(ABC):
+    """Abstract interface for agent callbacks."""
+
+    @abstractmethod
+    def on_status_message(self, message: str, level: StatusLevel = StatusLevel.INFO) -> None:
+        """Handle status messages from the system."""
+        pass
+
+    @abstractmethod
+    def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
+        """Handle messages with role: user."""
+        pass
+
+    @abstractmethod
+    def on_assistant_message(self, context_name: str, message: AssistantMessage, force: bool = False) -> None:
+        """Handle messages with role: assistant."""
+        pass
+
+    @abstractmethod
+    def on_tool_start(self, context_name: str, tool_call: ToolCall, arguments: dict[str, Any]) -> None:
+        """Handle tool start events."""
+        pass
+
+    @abstractmethod
     def on_tool_message(
         self, context_name: str, message: ToolMessage, tool_name: str, arguments: dict[str, Any]
-    ) -> None: ...
-    def on_content_chunk(self, chunk: str) -> None: ...
-    def on_reasoning_chunk(self, chunk: str) -> None: ...
-    def on_chunks_end(self) -> None: ...
+    ) -> None:
+        """Handle messages with role: tool."""
+        pass
+
+    @abstractmethod
+    def on_content_chunk(self, chunk: str) -> None:
+        """Handle LLM content chunks."""
+        pass
+
+    @abstractmethod
+    def on_reasoning_chunk(self, chunk: str) -> None:
+        """Handle LLM reasoning chunks."""
+        pass
+
+    @abstractmethod
+    def on_chunks_end(self) -> None:
+        """Handle end of LLM chunks."""
+        pass
+
+
+class NullProgressCallbacks(ProgressCallbacks):
+    """Null object implementation that does nothing."""
+
+    def on_status_message(self, message: str, level: StatusLevel = StatusLevel.INFO) -> None:
+        pass
+
+    def on_user_message(self, context_name: str, message: UserMessage, force: bool = False) -> None:
+        pass
+
+    def on_assistant_message(self, context_name: str, message: AssistantMessage, force: bool = False) -> None:
+        pass
+
+    def on_tool_start(self, context_name: str, tool_call: ToolCall, arguments: dict[str, Any]) -> None:
+        pass
+
+    def on_tool_message(
+        self, context_name: str, message: ToolMessage, tool_name: str, arguments: dict[str, Any]
+    ) -> None:
+        pass
+
+    def on_content_chunk(self, chunk: str) -> None:
+        pass
+
+    def on_reasoning_chunk(self, chunk: str) -> None:
+        pass
+
+    def on_chunks_end(self) -> None:
+        pass
 
 
 @dataclass(frozen=True)

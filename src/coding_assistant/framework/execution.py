@@ -5,7 +5,8 @@ from collections.abc import Callable, Sequence
 from json import JSONDecodeError
 from typing import Any
 
-from coding_assistant.framework.callbacks import ProgressCallbacks, ToolCallbacks
+from coding_assistant.framework.callbacks import ToolCallbacks
+from coding_assistant.llm.types import ProgressCallbacks
 from coding_assistant.framework.history import append_tool_message
 from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolCall, ToolMessage, Usage
 from coding_assistant.framework.types import Tool, Completer

@@ -3,9 +3,9 @@ import asyncio
 import time
 import pytest
 
+
 from coding_assistant.framework.callbacks import (
     ToolCallbacks,
-    NullProgressCallbacks,
     NullToolCallbacks,
 )
 from coding_assistant.framework.execution import handle_tool_calls, execute_tool_call
@@ -16,6 +16,7 @@ from coding_assistant.llm.types import (
     FunctionCall,
     ToolCall,
     ToolMessage,
+    NullProgressCallbacks,
 )
 from coding_assistant.framework.tests.helpers import (
     make_ui_mock,

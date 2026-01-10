@@ -14,12 +14,12 @@ import httpx
 from httpx_sse import aconnect_sse, SSEError
 
 from coding_assistant.llm.adapters import get_tools
-from coding_assistant.framework.callbacks import StatusLevel
 from coding_assistant.llm.types import (
     Completion,
     Usage,
     BaseMessage,
     ProgressCallbacks,
+    StatusLevel,
     Tool,
     ToolCall,
     FunctionCall,
