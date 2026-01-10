@@ -220,7 +220,7 @@ The following skills are available:
 
 - **review-code** - Provides a structured workflow for planning and executing code reviews like a senior engineer. Use when asked to review code, PRs, or plan a code review task.
 
-- **create-skill** - Guide for creating new Agent Skills. Use this skill when you need to create a new skill to extend the agent's capabilities with specialized knowledge, workflows, or tool integrations.
+- **edit-skill** - Guide for creating and editing Agent Skills. Use this skill when you need to create or modify a skill to extend the agent's capabilities with specialized knowledge, workflows, or tool integrations.
 
 ### How Skills Work
 
