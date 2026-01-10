@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from coding_assistant.config import Config, MCPServerConfig
-from coding_assistant.framework.callbacks import ToolCallbacks
-from coding_assistant.llm.types import ProgressCallbacks, StatusLevel
+from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
+from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.history import save_orchestrator_history
@@ -21,10 +21,11 @@ logger = logging.getLogger(__name__)
 class Session:
     def __init__(
         self,
+        *,
         config: Config,
         ui: UI,
-        callbacks: ProgressCallbacks,
-        tool_callbacks: ToolCallbacks,
+        callbacks: ProgressCallbacks = NullProgressCallbacks(),
+        tool_callbacks: ToolCallbacks = NullToolCallbacks(),
         working_directory: Path,
         coding_assistant_root: Path,
         mcp_server_configs: list[MCPServerConfig],
@@ -105,7 +106,7 @@ class Session:
         all_configs = [*self.mcp_server_configs, default_config]
 
         # MCP Servers setup
-        self._mcp_servers_cm = get_mcp_servers_from_config(all_configs, self.working_directory)
+        self._mcp_servers_cm = get_mcp_servers_from_config(all_configs, working_directory=self.working_directory)
         assert self._mcp_servers_cm is not None
         self._mcp_servers = await self._mcp_servers_cm.__aenter__()
 
@@ -113,7 +114,7 @@ class Session:
         self.tools = await get_mcp_wrapped_tools(self._mcp_servers)
 
         # Meta tools
-        self.tools.append(RedirectToolCallTool(self.tools))
+        self.tools.append(RedirectToolCallTool(tools=self.tools))
 
         # Instructions setup
         self.instructions = get_instructions(

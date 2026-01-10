@@ -119,7 +119,7 @@ async def _get_mcp_server(
 
 @asynccontextmanager
 async def get_mcp_servers_from_config(
-    config_servers: list[MCPServerConfig], working_directory: Path
+    config_servers: list[MCPServerConfig], *, working_directory: Path
 ) -> AsyncGenerator[list[MCPServer], None]:
     """Create MCP servers from configuration objects."""
     if not working_directory.exists():
