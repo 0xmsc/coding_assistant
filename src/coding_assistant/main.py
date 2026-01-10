@@ -20,7 +20,7 @@ from coding_assistant.history import (
 )
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
 from coding_assistant.tools.mcp import print_mcp_tools
-from coding_assistant.tools.mcp_server import get_free_port
+
 from coding_assistant.session import Session
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 
@@ -146,18 +146,7 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="Enable/disable asking the user for input in agent mode.",
     )
-    parser.add_argument(
-        "--mcp-server",
-        action=BooleanOptionalAction,
-        default=True,
-        help="Start an MCP server in the background exposing all available tools.",
-    )
-    parser.add_argument(
-        "--mcp-server-port",
-        type=int,
-        default=0,
-        help="Port for the background MCP server (using streamable-http transport).",
-    )
+
     parser.add_argument(
         "--print-reasoning",
         action=BooleanOptionalAction,
@@ -207,9 +196,6 @@ async def _main(args: argparse.Namespace) -> None:
 
     mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
 
-    if args.mcp_server and args.mcp_server_port == 0:
-        args.mcp_server_port = get_free_port()
-
     ui = PromptToolkitUI() if (args.task is None or config.enable_ask_user) else DefaultAnswerUI()
     progress_callbacks = DenseProgressCallbacks(print_reasoning=args.print_reasoning)
     tool_callbacks = ConfirmationToolCallbacks(
@@ -225,7 +211,7 @@ async def _main(args: argparse.Namespace) -> None:
         working_directory=working_directory,
         coding_assistant_root=coding_assistant_root,
         mcp_server_configs=mcp_server_configs,
-        mcp_server_port=args.mcp_server_port if args.mcp_server else 0,
+        mcp_server_port=0,
         skills_directories=args.skills_directories,
         mcp_env=args.mcp_env,
         sandbox_enabled=args.sandbox,
