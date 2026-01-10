@@ -49,7 +49,7 @@ class AskClientSchema(BaseModel):
 
 
 class AskClientTool(Tool):
-    def __init__(self, ui: UI):
+    def __init__(self, *, ui: UI):
         super().__init__()
         self._ui = ui
 
@@ -78,7 +78,7 @@ class RedirectToolCallSchema(BaseModel):
 
 
 class RedirectToolCallTool(Tool):
-    def __init__(self, tools: list[Tool]):
+    def __init__(self, *, tools: list[Tool]):
         super().__init__()
         self._tools = tools
 
@@ -132,6 +132,7 @@ class RedirectToolCallTool(Tool):
 class AgentTool(Tool):
     def __init__(
         self,
+        *,
         model: str,
         expert_model: str,
         compact_conversation_at_tokens: int,
