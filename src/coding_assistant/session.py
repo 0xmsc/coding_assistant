@@ -156,9 +156,6 @@ class Session:
             *self.tools,
         ]
 
-        # TODO: Consider if Meta-tools should have access to AskClientTool.
-        # Currently they only see tools available in the base session.
-
         tool = AgentTool(
             model=self.config.model,
             expert_model=self.config.expert_model,
