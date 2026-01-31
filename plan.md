@@ -1,90 +1,66 @@
-# Implementation Plan: Stdio/JSON Interface for Headless Agent
+# Implementation Plan: API Interface for Headless Agent
 
-This plan outlines the steps to implement a JSON-based communication interface over Stdio, allowing the agent to run in headless environments (like Docker) or be integrated into other software without its CLI frontend.
+This plan outlines the steps to implement a JSON-based API and WebSocket interface, allowing the agent to run in headless environments (like Docker) and be integrated into web applications or other software.
 
 ## 1. Goal
-Decouple the agent from the `prompt_toolkit` and `rich` UI implementations by providing a line-delimited JSON protocol over Stdin/Stdout.
+Provide a long-running Agent Service accessible via HTTP and WebSockets. This replaces the terminal-bound UI with a structured JSON protocol, enabling multi-session support and remote integration.
 
-## 2. Protocol Design
+## 2. Architecture: Direct-to-Bridge
+Instead of running the agent as a separate subprocess and piping JSON over Stdio, the `FastAPI` server will manage `Session` objects in-process. 
 
-Every message is a single JSON line. To support multiplexing in a web environment, every message **may** include a `session_id`.
+### Key Components
+- **`Bridge` Classes**: Implement specialized versions of `UI` and `ProgressCallbacks` that translate internal agent calls into WebSocket messages.
+- **`SessionManager`**: Manages the lifecycle of multiple `Session` objects, mapping them to unique `session_id`s and temporary working directories.
+- **`FastAPI` Server**: Provides REST endpoints for session management and a WebSocket endpoint for real-time interaction.
 
-### Message Structure (Envelope)
-`{"session_id": "optional-uuid", "type": "...", ...}`
+## 3. Protocol Design (JSON)
 
-### Agent -> Client (Events)
+Every message is a JSON object.
+
+### Agent -> Client (Events & Requests)
 - **Status**: `{"type": "status", "level": "info|success|warning|error", "message": "string"}`
 - **Content Chunk**: `{"type": "chunk", "content": "string"}` (for streaming LLM output)
 - **Tool Start**: `{"type": "tool_start", "id": "call_id", "name": "string", "arguments": {}}`
 - **Tool Result**: `{"type": "tool_message", "id": "call_id", "name": "string", "content": "string"}`
+- **User Request**: Requires a response. Includes a `request_id`.
+    - `{"type": "ask", "request_id": "uuid", "prompt": "string", "default": "string"}`
+    - `{"type": "confirm", "request_id": "uuid", "prompt": "string"}`
 
-### Agent -> Client (Requests)
-Requests require a response from the client. They include a `request_id` to correlate the response.
-- **Ask User**: `{"type": "ask", "request_id": "uuid", "prompt": "string", "default": "string"}`
-- **Confirm**: `{"type": "confirm", "request_id": "uuid", "prompt": "string"}`
+### Client -> Agent (Responses & Commands)
+- **Task Start**: `{"type": "start", "task": "string"}`
+- **User Answer**: `{"type": "answer", "request_id": "uuid", "text": "string"}`
+- **User Confirmation**: `{"type": "confirmation", "request_id": "uuid", "value": true|false}`
+- **Interrupt**: `{"type": "interrupt"}` (Stops current execution)
 
-### Client -> Agent (Responses)
-- **Answer**: `{"type": "answer", "request_id": "uuid", "text": "string"}`
-- **Confirmation**: `{"type": "confirmation", "request_id": "uuid", "value": true|false}`
-- **Interrupt**: `{"type": "interrupt"}` (Stops current execution/generation)
+## 4. Implementation Steps
 
-## 3. Architecture Changes
+### Phase 1: Foundation
+1.  **Dependencies**: Add `fastapi`, `uvicorn`, and `pydantic` to `pyproject.toml`.
+2.  **Schema**: Create `src/coding_assistant/api/models.py` to define the JSON message shapes using Pydantic.
+3.  **The Bridge**: Create `src/coding_assistant/api/bridge.py`:
+    - `WebSocketUI`: Implements `UI`. `ask()` and `confirm()` send a message and await a response from an internal `asyncio.Queue`.
+    - `WebSocketCallbacks`: Implements `ProgressCallbacks`. Translates calls like `on_status_message` into WebSocket JSON.
 
-### A. New UI Class: `JsonUI`
-- **Location**: `src/coding_assistant/ui.py`
-- **Logic**:
-    - Implement `ask`, `confirm`, and `prompt`.
-    - Interface with the `SessionStore` to send/receive JSON via the correct transport.
+### Phase 2: Service Layer
+1.  **`SessionManager`**: 
+    - Registry of `session_id -> Session`.
+    - Handles creation of scoped working directories.
+    - Manages `asyncio.Task` for the agent loop per session.
+2.  **FastAPI Core**:
+    - `POST /sessions`: Initialize a session.
+    - `GET /sessions`: List active sessions.
+    - `WS /ws/{session_id}`: The real-time bridge.
 
-### B. New Component: `SessionStore` & `SessionManager`
-To support multiple sessions in a single long-running process:
-1.  **`SessionStore`**: Maintains a registry of active `Session` objects.
-2.  **`SessionManager`**: 
-    - Handles incoming WebSocket connections.
-    - Generates a unique `session_id` and a scoped `working_directory` for each new connection.
-    - Maps incoming network packets to the correct `JsonUI` and `JsonProgressCallbacks` instances.
-
-### C. New Transport Layer: `APIServer` (WebSocket + HTTP)
-- **Location**: `src/coding_assistant/api/`
-- **Logic**:
-    - Uses `FastAPI` + `Uvicorn` to provide both Real-time (WebSocket) and REST (HTTP) endpoints.
-    - **REST Endpoints**:
-        - `POST /sessions`: Creates a new session. Can optionally accept initial instructions or model overrides. Returns a `session_id`.
-        - `GET /sessions`: Returns a list of all active `session_id`s and their metadata.
-        - `GET /sessions/{session_id}/history`: Returns the complete message history for a specific session.
-    - **WebSocket Endpoint**: `/ws/{session_id}` - For real-time chat and tool interaction.
-    - On WebSocket connection: Connects to the existing session or starts a persistent agent loop if the session was just created.
-
-### D. Entry Point Update
-- **Location**: `src/coding_assistant/main.py`
-- **Changes**:
-    - Add `--api --port <port>` flag.
-    - When provided, it starts the `WebSocketServer` instead of a single CLI session.
-    - Uses `sys.stderr` for all internal logging to keep the process controllable.
-
-## 4. Web Application Integration (The "Two-Docker" Goal)
-
-This architecture specifically fulfills the requirement for a long-running Agent container:
-1.  **Deployment**: One Docker container runs the `coding-assistant --api`.
-2.  **Lifecycle**: The container stays alive. Your Backend container connects/disconnects at will.
-3.  **Concurrency**: Each new WebSocket connection triggers a new `Session` instance inside the Agent container.
-4.  **Cleanup**: When a WebSocket closes, the `SessionManager` cleans up the associated `Session` and temporary files.
-
-## 5. Dockerization
-Create a `Dockerfile` that:
-1. Uses `python:3.12-slim` or `astral-sh/uv`.
-2. Installs `git` and other necessary system tools.
-3. Sets `PYTHONUNBUFFERED=1` to ensure JSON lines are emitted immediately.
-4. Defaults to `ENTRYPOINT ["uv", "run", "python", "-m", "coding_assistant.main", "--stdio", "--model", "...", "--task", "..."]`.
+### Phase 3: CLI & Integration
+1.  **Entry Point**: Update `src/coding_assistant/main.py` with an `--api` flag and `--port` / `--host` options.
+2.  **Logging**: Ensure all logs go to `stderr` in API mode to avoid interference.
+3.  **Cleanup**: Implement logic to terminate sessions and clean up filesystem artifacts on WebSocket disconnect or session timeout.
 
 ## 5. Verification & Testing
 
-### A. Integration Testing (Headless/LLM-Mocked)
-Since we cannot use a real LLM for integration tests, the test suite must use a **Mock Completer**:
-- **Mock Completer**: A Python function that implements the `Completer` protocol but returns pre-defined `AssistantMessages` based on the conversation history.
-- **Protocol Test (`src/coding_assistant/tests/test_stdio_protocol.py`)**:
-    - Use `pytest` to run the agent with a special test entry point or config that injects the Mock Completer.
-    - **Happy Path**: Verify that status updates and tool starts are emitted as JSON lines on `stdout`.
-    - **Interaction Path**: Mock an LLM response that triggers a tool requiring user confirmation. Verify that the agent emits a `confirm` request and pauses. Write a `confirmation` JSON to `stdin` and verify the agent continues.
-    - **Cleanup**: Verify the agent exits cleanly after the task is finished.
-    - **Log Isolation**: Verify that `stderr` contains standard logs and `stdout` contains strictly JSON lines.
+1.  **Unit Tests**: Test the `WebSocketUI` queue logic independently of the network.
+2.  **Integration Tests**:
+    - Build a small "mock client" script using `websockets` library.
+    - Run the agent in `--api` mode.
+    - Verify the mock client can start a task, receive status updates, and answer a confirmation request.
+3.  **Concurrency Test**: Verify that two separate WebSocket clients can run tasks in two separate sessions without cross-talk.
