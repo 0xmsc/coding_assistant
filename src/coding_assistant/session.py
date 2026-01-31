@@ -1,21 +1,23 @@
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
-from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, Completion, NullProgressCallbacks, ProgressCallbacks, StatusLevel, Tool
 from coding_assistant.framework.chat import run_chat_loop
-from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.history import save_orchestrator_history
 from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
-from coding_assistant.sandbox import sandbox
+from coding_assistant.sandbox import sandbox as default_sandbox
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools
 from coding_assistant.tools.tools import AgentTool, AskClientTool, RedirectToolCallTool
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
+
+Completer = Callable[[list[BaseMessage], str, list[Tool], ProgressCallbacks], Any]
+Sandbox = Callable[[list[Path], list[Path], bool], Any]
 
 
 class Session:
@@ -35,6 +37,8 @@ class Session:
         readable_sandbox_directories: Optional[list[Path]] = None,
         writable_sandbox_directories: Optional[list[Path]] = None,
         user_instructions: Optional[list[str]] = None,
+        completer: Completer = openai_complete,
+        sandbox: Sandbox = default_sandbox,
     ):
         self.config = config
         self.ui = ui
@@ -48,6 +52,8 @@ class Session:
         self.readable_sandbox_directories = readable_sandbox_directories or []
         self.writable_sandbox_directories = writable_sandbox_directories or []
         self.user_instructions = user_instructions or []
+        self.completer = completer
+        self.sandbox = sandbox
 
         # Build initial list of server configs
         self.mcp_server_configs = list(mcp_server_configs)
@@ -94,7 +100,7 @@ class Session:
                 self.coding_assistant_root,
             ]
             writable = [*self.writable_sandbox_directories, self.working_directory]
-            sandbox(readable_paths=readable, writable_paths=writable, include_defaults=True)
+            self.sandbox(readable_paths=readable, writable_paths=writable, include_defaults=True)
             self.callbacks.on_status_message("Sandboxing enabled.", level=StatusLevel.INFO)
 
         # Build default server config
@@ -144,7 +150,7 @@ class Session:
                 instructions=self.instructions,
                 callbacks=self.callbacks,
                 tool_callbacks=self.tool_callbacks,
-                completer=openai_complete,
+                completer=self.completer,
                 ui=self.ui,
                 context_name="Orchestrator",
             )
@@ -168,7 +174,7 @@ class Session:
             ui=self.ui,
             tool_callbacks=self.tool_callbacks,
             name="launch_orchestrator_agent",
-            completer=openai_complete,
+            completer=self.completer,
         )
 
         params = {

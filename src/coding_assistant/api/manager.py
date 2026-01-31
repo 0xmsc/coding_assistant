@@ -19,10 +19,18 @@ class ActiveSession:
 
 
 class SessionManager:
-    def __init__(self, config: Config, coding_assistant_root: Path):
+    def __init__(
+        self,
+        config: Config,
+        coding_assistant_root: Path,
+        completer: Optional[Any] = None,
+        sandbox: Optional[Any] = None,
+    ):
         self.config = config
         self.coding_assistant_root = coding_assistant_root
         self.active_sessions: Dict[str, ActiveSession] = {}
+        self.completer = completer
+        self.sandbox = sandbox
 
     def create_session(self, session_id: str, websocket: Any, working_directory: Path) -> ActiveSession:
         response_queue: asyncio.Queue[Any] = asyncio.Queue()
@@ -30,14 +38,21 @@ class SessionManager:
         callbacks = WebSocketProgressCallbacks(websocket)
 
         # Note: We can expand this to include custom instructions, etc.
-        session = Session(
-            config=self.config,
-            ui=ui,
-            callbacks=callbacks,
-            working_directory=working_directory,
-            coding_assistant_root=self.coding_assistant_root,
-            mcp_server_configs=[],
-        )
+        session_kwargs: Dict[str, Any] = {
+            "config": self.config,
+            "ui": ui,
+            "callbacks": callbacks,
+            "working_directory": working_directory,
+            "coding_assistant_root": self.coding_assistant_root,
+            "mcp_server_configs": [],
+        }
+
+        if self.completer:
+            session_kwargs["completer"] = self.completer
+        if self.sandbox:
+            session_kwargs["sandbox"] = self.sandbox
+
+        session = Session(**session_kwargs)
 
         active = ActiveSession(session, ui, response_queue)
         self.active_sessions[session_id] = active
