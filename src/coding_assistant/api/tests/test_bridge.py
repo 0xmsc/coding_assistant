@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 import pytest
 from unittest.mock import AsyncMock
 from coding_assistant.api.bridge import WebSocketUI
@@ -6,10 +7,10 @@ from coding_assistant.api.models import AnswerResponse, ConfirmationResponse
 
 
 @pytest.mark.asyncio
-async def test_websocket_ui_ask():
+async def test_websocket_ui_ask() -> None:
     # Setup
     mock_ws = AsyncMock()
-    response_queue = asyncio.Queue()
+    response_queue: asyncio.Queue[Any] = asyncio.Queue()
     ui = WebSocketUI(mock_ws, response_queue)
 
     # Simulate a response appearing in the queue
@@ -35,10 +36,10 @@ async def test_websocket_ui_ask():
 
 
 @pytest.mark.asyncio
-async def test_websocket_ui_confirm():
+async def test_websocket_ui_confirm() -> None:
     # Setup
     mock_ws = AsyncMock()
-    response_queue = asyncio.Queue()
+    response_queue: asyncio.Queue[Any] = asyncio.Queue()
     ui = WebSocketUI(mock_ws, response_queue)
 
     with pytest.MonkeyPatch.context() as mp:

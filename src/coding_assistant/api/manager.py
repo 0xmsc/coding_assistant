@@ -12,11 +12,11 @@ logger = logging.getLogger(__name__)
 
 
 class ActiveSession:
-    def __init__(self, session: Session, ui: WebSocketUI, response_queue: asyncio.Queue):
+    def __init__(self, session: Session, ui: WebSocketUI, response_queue: "asyncio.Queue[Any]"):
         self.session = session
         self.ui = ui
         self.response_queue = response_queue
-        self.task: Optional[asyncio.Task] = None
+        self.task: Optional[asyncio.Task[Any]] = None
 
 
 class SessionManager:
@@ -26,7 +26,7 @@ class SessionManager:
         self.active_sessions: Dict[str, ActiveSession] = {}
 
     def create_session(self, session_id: str, websocket: Any, working_directory: Path) -> ActiveSession:
-        response_queue = asyncio.Queue()
+        response_queue: asyncio.Queue[Any] = asyncio.Queue()
         ui = WebSocketUI(websocket, response_queue)
         callbacks = WebSocketProgressCallbacks(websocket)
 
@@ -44,7 +44,7 @@ class SessionManager:
         self.active_sessions[session_id] = active
         return active
 
-    async def cleanup_session(self, session_id: str):
+    async def cleanup_session(self, session_id: str) -> None:
         if session_id in self.active_sessions:
             active = self.active_sessions[session_id]
             if active.task:
@@ -60,7 +60,7 @@ class SessionManager:
 
             del self.active_sessions[session_id]
 
-    async def run_server(self, host: str, port: int):
+    async def run_server(self, host: str, port: int) -> None:
         from coding_assistant.api.server import create_app
 
         app = create_app(self)
