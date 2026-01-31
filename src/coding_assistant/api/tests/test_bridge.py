@@ -1,0 +1,59 @@
+import asyncio
+import json
+import pytest
+from typing import Any
+from unittest.mock import AsyncMock
+from coding_assistant.api.bridge import WebSocketUI
+from coding_assistant.api.models import AnswerResponse, ConfirmationResponse
+
+
+@pytest.mark.asyncio
+async def test_websocket_ui_ask() -> None:
+    mock_ws = AsyncMock()
+    response_queue: asyncio.Queue[Any] = asyncio.Queue()
+    ui = WebSocketUI(mock_ws, response_queue)
+
+    ask_task = asyncio.create_task(ui.ask("What is your name?"))
+
+    for _ in range(10):
+        if mock_ws.send_text.called:
+            break
+        await asyncio.sleep(0.01)
+
+    assert mock_ws.send_text.called
+    sent_json = json.loads(mock_ws.send_text.call_args[0][0])
+    request_id = sent_json["payload"]["request_id"]
+
+    resp = AnswerResponse(request_id=request_id, text="Hello World")
+    await response_queue.put(resp)
+
+    result = await ask_task
+
+    assert result == "Hello World"
+    assert "What is your name?" in mock_ws.send_text.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_websocket_ui_confirm() -> None:
+    mock_ws = AsyncMock()
+    response_queue: asyncio.Queue[Any] = asyncio.Queue()
+    ui = WebSocketUI(mock_ws, response_queue)
+
+    confirm_task = asyncio.create_task(ui.confirm("Are you sure?"))
+
+    for _ in range(10):
+        if mock_ws.send_text.called:
+            break
+        await asyncio.sleep(0.01)
+
+    assert mock_ws.send_text.called
+    sent_json = json.loads(mock_ws.send_text.call_args[0][0])
+    request_id = sent_json["payload"]["request_id"]
+
+    resp = ConfirmationResponse(request_id=request_id, value=True)
+    await response_queue.put(resp)
+
+    result = await confirm_task
+
+    assert result is True
+    assert "Are you sure?" in mock_ws.send_text.call_args[0][0]
