@@ -1,13 +1,14 @@
 import logging
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional, Protocol
 
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, Completion, NullProgressCallbacks, ProgressCallbacks, StatusLevel, Tool
+from coding_assistant.llm.types import BaseMessage, NullProgressCallbacks, ProgressCallbacks, StatusLevel, Tool
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.history import save_orchestrator_history
 from coding_assistant.instructions import get_instructions
+from coding_assistant.framework.types import Completer
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.sandbox import sandbox as default_sandbox
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools
@@ -16,8 +17,11 @@ from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
 
-Completer = Callable[[list[BaseMessage], str, list[Tool], ProgressCallbacks], Any]
-Sandbox = Callable[[list[Path], list[Path], bool], Any]
+
+class Sandbox(Protocol):
+    def __call__(
+        self, readable_paths: list[Path], writable_paths: list[Path], include_defaults: bool = False
+    ) -> None: ...
 
 
 class Session:

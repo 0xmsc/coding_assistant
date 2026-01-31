@@ -27,15 +27,19 @@ class MockSession(Session):
     async def run_agent(self, task: str, history: Any = None) -> Any:
         self.callbacks.on_status_message(f"Starting task: {task}")
         # Use our injected completer
-        result = await self.completer([], "mock", [], self.callbacks)
-        self.callbacks.on_status_message(f"Final Result: {result.content}")
-        return result
+
+        completion = await self.completer([], model="mock", tools=[], callbacks=self.callbacks)
+        self.callbacks.on_status_message(f"Final Result: {completion.message.content}")
+        return completion.message
 
 
 @pytest.fixture
 def mock_completer() -> Any:
-    async def _mock_completer(*args: Any, **kwargs: Any) -> AssistantMessage:
-        return AssistantMessage(content="This is an E2E mock response.")
+    async def _mock_completer(messages: Any, *, model: str, tools: Any, callbacks: Any) -> Any:
+        from coding_assistant.llm.types import Completion
+
+        return Completion(message=AssistantMessage(content="This is an E2E mock response."))
+
     return _mock_completer
 
 
@@ -51,7 +55,8 @@ def api_manager(mock_completer: Any, mock_sandbox: Any) -> SessionManager:
         config=config,
         coding_assistant_root=Path("/tmp"),
         completer=mock_completer,
-        sandbox=mock_sandbox
+        sandbox=mock_sandbox,
+        session_factory=MockSession,
     )
 
 
@@ -62,26 +67,7 @@ def client(api_manager: SessionManager) -> TestClient:
 
 
 @pytest.mark.asyncio
-async def test_api_e2e_logic(client: TestClient, api_manager: SessionManager, mock_completer: Any) -> None:
-    # Use a wrap of create_session to inject our MockSession
-    original_create = api_manager.create_session
-
-    def mocked_create_session(*args: Any, **kwargs: Any) -> Any:
-        active = original_create(*args, **kwargs)
-        # Manually swap the session but keep our injected dependencies
-        active.session = MockSession(
-            config=api_manager.config,
-            ui=active.ui,
-            callbacks=active.session.callbacks,
-            working_directory=kwargs.get("working_directory", Path("/tmp")),
-            coding_assistant_root=api_manager.coding_assistant_root,
-            mcp_server_configs=[],
-            completer=mock_completer,
-        )
-        return active
-
-    api_manager.create_session = mocked_create_session  # type: ignore
-
+async def test_api_e2e_logic(client: TestClient, api_manager: SessionManager) -> None:
     with client.websocket_connect("/ws/test-e2e") as websocket:
         # Start
         websocket.send_json({"payload": {"type": "start", "task": "E2E Task"}})

@@ -25,12 +25,14 @@ class SessionManager:
         coding_assistant_root: Path,
         completer: Optional[Any] = None,
         sandbox: Optional[Any] = None,
+        session_factory: Any = Session,
     ):
         self.config = config
         self.coding_assistant_root = coding_assistant_root
         self.active_sessions: Dict[str, ActiveSession] = {}
         self.completer = completer
         self.sandbox = sandbox
+        self.session_factory = session_factory
 
     def create_session(self, session_id: str, websocket: Any, working_directory: Path) -> ActiveSession:
         response_queue: asyncio.Queue[Any] = asyncio.Queue()
@@ -52,7 +54,7 @@ class SessionManager:
         if self.sandbox:
             session_kwargs["sandbox"] = self.sandbox
 
-        session = Session(**session_kwargs)
+        session = self.session_factory(**session_kwargs)
 
         active = ActiveSession(session, ui, response_queue)
         self.active_sessions[session_id] = active
