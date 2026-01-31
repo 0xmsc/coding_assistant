@@ -2,7 +2,7 @@ import asyncio
 import pytest
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
@@ -26,16 +26,33 @@ class MockSession(Session):
 
     async def run_agent(self, task: str, history: Any = None) -> Any:
         self.callbacks.on_status_message(f"Starting task: {task}")
-        # Use a mock response directy for the test
-        msg = AssistantMessage(content="This is an E2E mock response.")
-        self.callbacks.on_status_message(f"Final Result: {msg.content}")
-        return msg
+        # Use our injected completer
+        result = await self.completer([], "mock", [], self.callbacks)
+        self.callbacks.on_status_message(f"Final Result: {result.content}")
+        return result
 
 
 @pytest.fixture
-def api_manager() -> SessionManager:
+def mock_completer() -> Any:
+    async def _mock_completer(*args: Any, **kwargs: Any) -> AssistantMessage:
+        return AssistantMessage(content="This is an E2E mock response.")
+    return _mock_completer
+
+
+@pytest.fixture
+def mock_sandbox() -> Any:
+    return AsyncMock()
+
+
+@pytest.fixture
+def api_manager(mock_completer: Any, mock_sandbox: Any) -> SessionManager:
     config = Config(model="gpt-4o", expert_model="gpt-4o", compact_conversation_at_tokens=200000)
-    return SessionManager(config=config, coding_assistant_root=Path("/tmp"))
+    return SessionManager(
+        config=config,
+        coding_assistant_root=Path("/tmp"),
+        completer=mock_completer,
+        sandbox=mock_sandbox
+    )
 
 
 @pytest.fixture
@@ -44,18 +61,14 @@ def client(api_manager: SessionManager) -> TestClient:
     return TestClient(app)
 
 
-async def mock_completer(*args: Any, **kwargs: Any) -> AssistantMessage:
-    return AssistantMessage(content="This is an E2E mock response.")
-
-
 @pytest.mark.asyncio
-async def test_api_e2e_logic(client: TestClient, api_manager: SessionManager) -> None:
-    # Use a mock session creator in the manager
+async def test_api_e2e_logic(client: TestClient, api_manager: SessionManager, mock_completer: Any) -> None:
+    # Use a wrap of create_session to inject our MockSession
     original_create = api_manager.create_session
 
     def mocked_create_session(*args: Any, **kwargs: Any) -> Any:
         active = original_create(*args, **kwargs)
-        # Replace the real session with our lightweight mock
+        # Manually swap the session but keep our injected dependencies
         active.session = MockSession(
             config=api_manager.config,
             ui=active.ui,
@@ -63,25 +76,26 @@ async def test_api_e2e_logic(client: TestClient, api_manager: SessionManager) ->
             working_directory=kwargs.get("working_directory", Path("/tmp")),
             coding_assistant_root=api_manager.coding_assistant_root,
             mcp_server_configs=[],
+            completer=mock_completer,
         )
         return active
 
-    with patch.object(api_manager, "create_session", side_effect=mocked_create_session):
-        with patch("coding_assistant.llm.openai.complete", new=mock_completer):
-            with client.websocket_connect("/ws/test-e2e") as websocket:
-                # Start
-                websocket.send_json({"payload": {"type": "start", "task": "E2E Task"}})
+    api_manager.create_session = mocked_create_session  # type: ignore
 
-                # Check for our mock response in messages
-                found = False
-                for _ in range(20):
-                    try:
-                        data = websocket.receive_json()
-                        msg = str(data.get("payload", {}).get("message", ""))
-                        if "This is an E2E mock response" in msg:
-                            found = True
-                            break
-                    except Exception:
-                        await asyncio.sleep(0.01)
+    with client.websocket_connect("/ws/test-e2e") as websocket:
+        # Start
+        websocket.send_json({"payload": {"type": "start", "task": "E2E Task"}})
 
-                assert found, "Did not receive mock response over WebSocket"
+        # Check for our mock response in messages
+        found = False
+        for _ in range(20):
+            try:
+                data = websocket.receive_json()
+                msg = str(data.get("payload", {}).get("message", ""))
+                if "This is an E2E mock response" in msg:
+                    found = True
+                    break
+            except Exception:
+                await asyncio.sleep(0.01)
+
+        assert found, "Did not receive mock response over WebSocket"
