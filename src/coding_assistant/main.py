@@ -21,6 +21,8 @@ from coding_assistant.history import (
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
 from coding_assistant.tools.mcp import print_mcp_tools
 
+import uvicorn
+from coding_assistant.api.server import create_app
 from coding_assistant.api.manager import SessionManager
 from coding_assistant.session import Session
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
@@ -209,7 +211,10 @@ async def _main(args: argparse.Namespace) -> None:
 
     if args.api:
         manager = SessionManager(config=config, coding_assistant_root=coding_assistant_root)
-        await manager.run_server(host=args.host, port=args.port)
+        app = create_app(manager)
+        uv_config = uvicorn.Config(app, host=args.host, port=args.port, log_level="info", access_log=False)
+        server = uvicorn.Server(uv_config)
+        await server.serve()
         return
 
     if args.resume_file:
