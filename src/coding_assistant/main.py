@@ -28,8 +28,8 @@ logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
 
 
-def setup_logging() -> None:
-    """Setup logging to file only."""
+def setup_logging(api_mode: bool = False) -> None:
+    """Setup logging to file only. Redirect all logs to stderr in API mode."""
     log_file = get_log_file()
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.INFO)
@@ -44,6 +44,13 @@ def setup_logging() -> None:
         root_logger.removeHandler(handler)
 
     root_logger.addHandler(file_handler)
+
+    if api_mode:
+        # In API mode, we also log to stderr so the process is observable without file access
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        root_logger.addHandler(stream_handler)
+
     root_logger.setLevel(logging.INFO)
 
     # Set 'coding_assistant' logger to INFO
@@ -160,6 +167,25 @@ def parse_args() -> argparse.Namespace:
         help="Paths to directories containing Agent Skills (with SKILL.md files).",
     )
 
+    # API Mode
+    parser.add_argument(
+        "--api",
+        action="store_true",
+        help="Start the coding assistant as a headless API server.",
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="0.0.0.0",
+        help="The host to bind the API server to.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="The port to bind the API server to.",
+    )
+
     return parser.parse_args()
 
 
@@ -179,6 +205,12 @@ async def _main(args: argparse.Namespace) -> None:
     config = create_config_from_args(args)
     working_directory = Path(os.getcwd())
     coding_assistant_root = Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
+
+    if args.api:
+        from coding_assistant.api.manager import SessionManager
+        manager = SessionManager(config=config, coding_assistant_root=coding_assistant_root)
+        await manager.run_server(host=args.host, port=args.port)
+        return
 
     if args.resume_file:
         if not args.resume_file.exists():
@@ -242,7 +274,7 @@ async def _main(args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
-    setup_logging()
+    setup_logging(api_mode=args.api)
 
     if args.trace:
         enable_tracing(get_default_trace_dir())

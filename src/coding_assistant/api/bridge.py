@@ -14,7 +14,7 @@ from coding_assistant.api.models import (
     ToolResult,
 )
 from coding_assistant.ui import UI
-from coding_assistant.llm.types import ProgressCallbacks, StatusLevel
+from coding_assistant.llm.types import AssistantMessage, ProgressCallbacks, StatusLevel, ToolCall, ToolMessage, UserMessage
 
 
 class WebSocketUI(UI):
@@ -33,8 +33,6 @@ class WebSocketUI(UI):
             response = await self.response_queue.get()
             if response.request_id == request.request_id:
                 return response
-            # If it's for a different request (unlikely in single-task flow), 
-            # we might need to handle it or re-queue it. For now, assume sequential.
 
     async def ask(self, prompt_text: str, default: Optional[str] = None) -> str:
         request_id = str(uuid.uuid4())
@@ -49,8 +47,6 @@ class WebSocketUI(UI):
         return response.value
 
     async def prompt(self, words: list[str] | None = None) -> str:
-        # For headless, 'prompt' usually doesn't make sense as a separate action 
-        # from 'start', but we implement it as 'ask' for compatibility.
         return await self.ask("General prompt requested")
 
 
@@ -63,22 +59,29 @@ class WebSocketProgressCallbacks(ProgressCallbacks):
         await self.websocket.send_text(envelope.model_dump_json())
 
     def on_status_message(self, message: str, level: StatusLevel = StatusLevel.INFO) -> None:
-        # ProgressCallbacks are currently synchronous in the framework (not awaited)
-        # We need to bridge this to async. 
-        # Option 1: Use asyncio.create_task 
-        # Option 2: Update the framework to support async callbacks (cleaner but more changes)
-        # For now, we utilize the event loop to send.
         payload = StatusMessage(level=level.value, message=message)
         asyncio.create_task(self._send(payload))
 
-    def on_content_chunk(self, content: str) -> None:
-        payload = ContentChunk(content=content)
+    def on_content_chunk(self, chunk: str) -> None:
+        payload = ContentChunk(content=chunk)
         asyncio.create_task(self._send(payload))
 
-    def on_tool_start(self, call_id: str, name: str, arguments: dict[str, Any]) -> None:
-        payload = ToolStart(id=call_id, name=name, arguments=arguments)
+    def on_tool_start(self, context_name: str, tool_call: ToolCall, arguments: dict[str, Any]) -> None:
+        payload = ToolStart(id=tool_call.id, name=tool_call.function.name, arguments=arguments)
         asyncio.create_task(self._send(payload))
 
-    def on_tool_result(self, call_id: str, name: str, content: str) -> None:
-        payload = ToolResult(id=call_id, name=name, content=content)
+    def on_tool_message(self, context_name: str, message: ToolMessage, tool_name: str, arguments: dict[str, Any]) -> None:
+        payload = ToolResult(id=message.tool_call_id, name=tool_name, content=message.content)
         asyncio.create_task(self._send(payload))
+
+    def on_user_message(self, context_name: str, message: UserMessage, *, force: bool = False) -> None:
+        pass
+
+    def on_assistant_message(self, context_name: str, message: AssistantMessage, *, force: bool = False) -> None:
+        pass
+
+    def on_reasoning_chunk(self, chunk: str) -> None:
+        pass
+
+    def on_chunks_end(self) -> None:
+        pass

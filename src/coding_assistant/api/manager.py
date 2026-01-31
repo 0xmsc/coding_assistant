@@ -63,5 +63,20 @@ class SessionManager:
             
             del self.active_sessions[session_id]
 
+    async def run_server(self, host: str, port: int):
+        import uvicorn
+        from coding_assistant.api.server import create_app
+        
+        app = create_app(self)
+        config = uvicorn.Config(
+            app, 
+            host=host, 
+            port=port, 
+            log_level="info", 
+            access_log=False
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
+
     def get_session(self, session_id: str) -> Optional[ActiveSession]:
         return self.active_sessions.get(session_id)
