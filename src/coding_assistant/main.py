@@ -21,6 +21,7 @@ from coding_assistant.history import (
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
 from coding_assistant.tools.mcp import print_mcp_tools
 
+from coding_assistant.api.manager import SessionManager
 from coding_assistant.session import Session
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 
@@ -207,7 +208,6 @@ async def _main(args: argparse.Namespace) -> None:
     coding_assistant_root = Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
 
     if args.api:
-        from coding_assistant.api.manager import SessionManager
         manager = SessionManager(config=config, coding_assistant_root=coding_assistant_root)
         await manager.run_server(host=args.host, port=args.port)
         return
