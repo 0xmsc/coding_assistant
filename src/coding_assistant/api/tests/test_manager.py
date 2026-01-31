@@ -6,7 +6,7 @@ from coding_assistant.config import Config
 
 
 @pytest.mark.asyncio
-async def test_session_manager_lifecycle():
+async def test_session_manager_lifecycle() -> None:
     config = Config(model="gpt-4o", expert_model="gpt-4o", compact_conversation_at_tokens=200000)
     manager = SessionManager(config=config, coding_assistant_root=Path("/tmp"))
 

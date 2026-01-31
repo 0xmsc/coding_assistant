@@ -25,7 +25,7 @@ from coding_assistant.llm.types import (
 
 
 class WebSocketUI(UI):
-    def __init__(self, websocket: WebSocket, response_queue: asyncio.Queue):
+    def __init__(self, websocket: WebSocket, response_queue: "asyncio.Queue[Any]"):
         self.websocket = websocket
         self.response_queue = response_queue
 
@@ -45,13 +45,13 @@ class WebSocketUI(UI):
         request_id = str(uuid.uuid4())
         request = AskRequest(request_id=request_id, prompt=prompt_text, default=default)
         response = await self._send_and_wait(request)
-        return response.text
+        return str(response.text)
 
     async def confirm(self, prompt_text: str) -> bool:
         request_id = str(uuid.uuid4())
         request = ConfirmRequest(request_id=request_id, prompt=prompt_text)
         response = await self._send_and_wait(request)
-        return response.value
+        return bool(response.value)
 
     async def prompt(self, words: list[str] | None = None) -> str:
         return await self.ask("General prompt requested")
@@ -61,7 +61,7 @@ class WebSocketProgressCallbacks(ProgressCallbacks):
     def __init__(self, websocket: WebSocket):
         self.websocket = websocket
 
-    async def _send(self, payload: Any):
+    async def _send(self, payload: Any) -> None:
         envelope = Envelope(payload=payload)
         await self.websocket.send_text(envelope.model_dump_json())
 

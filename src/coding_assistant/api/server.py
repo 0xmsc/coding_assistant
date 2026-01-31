@@ -21,12 +21,12 @@ def create_app(session_manager: SessionManager) -> FastAPI:
     app = FastAPI(title="Coding Assistant API")
 
     @app.post("/sessions")
-    async def create_session(data: SessionCreate):
-        # In a real scenario, we'd validate the path exists or create a temp one
+    async def create_session(data: SessionCreate) -> dict[str, str]:
+        # In a real scenario,...
         return {"session_id": data.session_id, "status": "created"}
 
     @app.websocket("/ws/{session_id}")
-    async def websocket_endpoint(websocket: WebSocket, session_id: str):
+    async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
         await websocket.accept()
 
         # In a real flow, the UI/Working Dir might come from the initial POST
@@ -47,7 +47,7 @@ def create_app(session_manager: SessionManager) -> FastAPI:
                         continue
 
                     # Start the agent loop in the background
-                    async def run_agent():
+                    async def run_agent() -> None:
                         async with active.session:
                             await active.session.run_agent(task=payload.task)
 
