@@ -23,13 +23,11 @@ class SessionManager:
         self,
         config: Config,
         coding_assistant_root: Path,
-        completer: Optional[Any] = None,
         session_factory: Any = Session,
     ):
         self.config = config
         self.coding_assistant_root = coding_assistant_root
         self.active_sessions: Dict[str, ActiveSession] = {}
-        self.completer = completer
         self.session_factory = session_factory
 
     def create_session(self, session_id: str, websocket: Any, working_directory: Path) -> ActiveSession:
@@ -37,19 +35,14 @@ class SessionManager:
         ui = WebSocketUI(websocket, response_queue)
         callbacks = WebSocketProgressCallbacks(websocket)
 
-        session_kwargs: Dict[str, Any] = {
-            "config": self.config,
-            "ui": ui,
-            "callbacks": callbacks,
-            "working_directory": working_directory,
-            "coding_assistant_root": self.coding_assistant_root,
-            "mcp_server_configs": [],
-        }
-
-        if self.completer:
-            session_kwargs["completer"] = self.completer
-
-        session = self.session_factory(**session_kwargs)
+        session = self.session_factory(
+            config=self.config,
+            ui=ui,
+            callbacks=callbacks,
+            working_directory=working_directory,
+            coding_assistant_root=self.coding_assistant_root,
+            mcp_server_configs=[],
+        )
 
         active = ActiveSession(session, ui, response_queue)
         self.active_sessions[session_id] = active
