@@ -61,7 +61,6 @@ class InterruptCommand(BaseModel):
     type: Literal["interrupt"] = "interrupt"
 
 
-# Union types for easy parsing
 AgentMessage = Union[
     StatusMessage,
     ContentChunk,

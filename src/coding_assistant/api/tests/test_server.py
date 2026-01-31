@@ -22,9 +22,5 @@ def test_create_session_endpoint(client: TestClient) -> None:
 
 
 def test_websocket_flow(client: TestClient) -> None:
-    # Testing WebSockets with TestClient requires the 'websockets' or 'httpx' backend
     with client.websocket_connect("/ws/ws-test") as websocket:
-        # Check if we can send a start command
         websocket.send_json({"payload": {"type": "start", "task": "echo hello"}})
-        # Note: In a real test we'd mock the Session.run_agent to verify it's called
-        # But this confirms the protocol parsing and connection works

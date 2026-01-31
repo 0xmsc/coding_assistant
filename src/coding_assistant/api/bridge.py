@@ -30,12 +30,9 @@ class WebSocketUI(UI):
         self.response_queue = response_queue
 
     async def _send_and_wait(self, request: AskRequest | ConfirmRequest) -> Any:
-        # Send the request over the websocket
         envelope = Envelope(payload=request)
         await self.websocket.send_text(envelope.model_dump_json())
 
-        # Wait for the client to send a response with the same request_id
-        # The SessionManager or Server logic will feed this queue
         while True:
             response = await self.response_queue.get()
             if response.request_id == request.request_id:

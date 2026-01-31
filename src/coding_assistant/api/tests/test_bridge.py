@@ -9,12 +9,10 @@ from coding_assistant.api.models import AnswerResponse, ConfirmationResponse
 
 @pytest.mark.asyncio
 async def test_websocket_ui_ask() -> None:
-    # Setup
     mock_ws = AsyncMock()
     response_queue: asyncio.Queue[Any] = asyncio.Queue()
     ui = WebSocketUI(mock_ws, response_queue)
 
-    # Start the ask call in the background
     ask_task = asyncio.create_task(ui.ask("What is your name?"))
 
     for _ in range(10):
@@ -37,12 +35,10 @@ async def test_websocket_ui_ask() -> None:
 
 @pytest.mark.asyncio
 async def test_websocket_ui_confirm() -> None:
-    # Setup
     mock_ws = AsyncMock()
     response_queue: asyncio.Queue[Any] = asyncio.Queue()
     ui = WebSocketUI(mock_ws, response_queue)
 
-    # Start the confirm call in the background
     confirm_task = asyncio.create_task(ui.confirm("Are you sure?"))
 
     for _ in range(10):

@@ -68,10 +68,8 @@ def client(api_manager: SessionManager) -> TestClient:
 @pytest.mark.asyncio
 async def test_api_e2e_logic(client: TestClient, api_manager: SessionManager) -> None:
     with client.websocket_connect("/ws/test-e2e") as websocket:
-        # Start
         websocket.send_json({"payload": {"type": "start", "task": "E2E Task"}})
 
-        # Check for our mock response in messages
         found = False
         for _ in range(20):
             try:
