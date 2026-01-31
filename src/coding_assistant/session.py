@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Any, Optional, Protocol
+from typing import Any, Optional
 
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
@@ -15,12 +15,6 @@ from coding_assistant.tools.tools import AgentTool, AskClientTool, RedirectToolC
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
-
-
-class Sandbox(Protocol):
-    def __call__(
-        self, readable_paths: list[Path], writable_paths: list[Path], include_defaults: bool = False
-    ) -> None: ...
 
 
 class Session:
