@@ -37,7 +37,6 @@ class SessionManager:
         ui = WebSocketUI(websocket, response_queue)
         callbacks = WebSocketProgressCallbacks(websocket)
 
-        # Note: We can expand this to include custom instructions, etc.
         session_kwargs: Dict[str, Any] = {
             "config": self.config,
             "ui": ui,
@@ -61,12 +60,6 @@ class SessionManager:
             active = self.active_sessions[session_id]
             if active.task:
                 active.task.cancel()
-
-            try:
-                # Basic cleanup if needed
-                pass
-            except Exception as e:
-                logger.error(f"Error during session cleanup: {e}")
 
             del self.active_sessions[session_id]
 

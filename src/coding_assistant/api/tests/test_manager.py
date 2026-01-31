@@ -14,12 +14,10 @@ async def test_session_manager_lifecycle() -> None:
     session_id = "test-session"
     working_dir = Path("/tmp/work")
 
-    # Create
     active = manager.create_session(session_id, mock_ws, working_dir)
     assert session_id in manager.active_sessions
     assert manager.get_session(session_id) == active
 
-    # Cleanup logic (mocking task)
     active.task = MagicMock()
 
     await manager.cleanup_session(session_id)

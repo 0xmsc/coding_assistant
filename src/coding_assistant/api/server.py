@@ -22,14 +22,12 @@ def create_app(session_manager: SessionManager) -> FastAPI:
 
     @app.post("/sessions")
     async def create_session(data: SessionCreate) -> dict[str, str]:
-        # In a real scenario,...
         return {"session_id": data.session_id, "status": "created"}
 
     @app.websocket("/ws/{session_id}")
     async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
         await websocket.accept()
 
-        # In a real flow, the UI/Working Dir might come from the initial POST
         active = session_manager.create_session(
             session_id=session_id, websocket=websocket, working_directory=Path(os.getcwd())
         )
@@ -45,7 +43,6 @@ def create_app(session_manager: SessionManager) -> FastAPI:
                         logger.warning(f"Task already running for session {session_id}")
                         continue
 
-                    # Start the agent loop in the background
                     async def run_agent() -> None:
                         async with active.session:
                             await active.session.run_agent(task=payload.task)
@@ -59,11 +56,8 @@ def create_app(session_manager: SessionManager) -> FastAPI:
                     if active.task:
                         active.task.cancel()
                         logger.info(f"Task interrupted for session {session_id}")
-
         except WebSocketDisconnect:
             logger.info(f"WebSocket disconnected for session {session_id}")
-        except Exception as e:
-            logger.error(f"Error in websocket loop: {e}")
         finally:
             await session_manager.cleanup_session(session_id)
 
