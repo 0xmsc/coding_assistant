@@ -10,7 +10,6 @@ from coding_assistant.history import save_orchestrator_history
 from coding_assistant.instructions import get_instructions
 from coding_assistant.framework.types import Completer
 from coding_assistant.llm.openai import complete as openai_complete
-from coding_assistant.sandbox import sandbox as default_sandbox
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools
 from coding_assistant.tools.tools import AgentTool, AskClientTool, RedirectToolCallTool
 from coding_assistant.ui import UI
@@ -37,12 +36,8 @@ class Session:
         mcp_server_configs: list[MCPServerConfig],
         skills_directories: Optional[list[str]] = None,
         mcp_env: Optional[list[str]] = None,
-        sandbox_enabled: bool = True,
-        readable_sandbox_directories: Optional[list[Path]] = None,
-        writable_sandbox_directories: Optional[list[Path]] = None,
         user_instructions: Optional[list[str]] = None,
         completer: Completer = openai_complete,
-        sandbox: Sandbox = default_sandbox,
     ):
         self.config = config
         self.ui = ui
@@ -52,12 +47,8 @@ class Session:
         self.coding_assistant_root = coding_assistant_root
         self.skills_directories = skills_directories or []
         self.mcp_env_list = mcp_env or []
-        self.sandbox_enabled = sandbox_enabled
-        self.readable_sandbox_directories = readable_sandbox_directories or []
-        self.writable_sandbox_directories = writable_sandbox_directories or []
         self.user_instructions = user_instructions or []
         self.completer = completer
-        self.sandbox = sandbox
 
         # Build initial list of server configs
         self.mcp_server_configs = list(mcp_server_configs)
@@ -95,17 +86,6 @@ class Session:
 
     async def __aenter__(self) -> "Session":
         self.callbacks.on_status_message("Initializing session...", level=StatusLevel.INFO)
-
-        # Sandbox setup
-        if self.sandbox_enabled:
-            readable = [
-                *self.readable_sandbox_directories,
-                *[Path(d).resolve() for d in self.skills_directories],
-                self.coding_assistant_root,
-            ]
-            writable = [*self.writable_sandbox_directories, self.working_directory]
-            self.sandbox(readable_paths=readable, writable_paths=writable, include_defaults=True)
-            self.callbacks.on_status_message("Sandboxing enabled.", level=StatusLevel.INFO)
 
         # Build default server config
         default_config = self.get_default_mcp_server_config(

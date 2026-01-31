@@ -59,8 +59,6 @@ def test_get_default_mcp_server_config() -> None:
 
 @pytest.mark.asyncio
 async def test_session_context_manager(session_args: dict[str, Any]) -> None:
-    mock_sandbox = MagicMock()
-    session_args["sandbox"] = mock_sandbox
     session = Session(**session_args)
 
     with (
@@ -83,7 +81,6 @@ async def test_session_context_manager(session_args: dict[str, Any]) -> None:
             assert isinstance(session.tools[1], RedirectToolCallTool)
             assert session.instructions == "test instructions"
             assert session.mcp_servers == ["mock_server"]
-            mock_sandbox.assert_called_once()
             mock_get_mcp.assert_called_once()
 
         # Verify exit calls
