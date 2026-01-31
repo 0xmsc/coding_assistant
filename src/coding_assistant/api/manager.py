@@ -5,11 +5,11 @@ from typing import Any, Dict, Optional
 import uvicorn
 
 from coding_assistant.api.bridge import WebSocketProgressCallbacks, WebSocketUI
-from coding_assistant.api.models import AnswerResponse, ConfirmationResponse
 from coding_assistant.config import Config
 from coding_assistant.session import Session
 
 logger = logging.getLogger(__name__)
+
 
 class ActiveSession:
     def __init__(self, session: Session, ui: WebSocketUI, response_queue: asyncio.Queue):
@@ -18,22 +18,18 @@ class ActiveSession:
         self.response_queue = response_queue
         self.task: Optional[asyncio.Task] = None
 
+
 class SessionManager:
     def __init__(self, config: Config, coding_assistant_root: Path):
         self.config = config
         self.coding_assistant_root = coding_assistant_root
         self.active_sessions: Dict[str, ActiveSession] = {}
 
-    def create_session(
-        self, 
-        session_id: str, 
-        websocket: Any, 
-        working_directory: Path
-    ) -> ActiveSession:
+    def create_session(self, session_id: str, websocket: Any, working_directory: Path) -> ActiveSession:
         response_queue = asyncio.Queue()
         ui = WebSocketUI(websocket, response_queue)
         callbacks = WebSocketProgressCallbacks(websocket)
-        
+
         # Note: We can expand this to include custom instructions, etc.
         session = Session(
             config=self.config,
@@ -41,9 +37,9 @@ class SessionManager:
             callbacks=callbacks,
             working_directory=working_directory,
             coding_assistant_root=self.coding_assistant_root,
-            mcp_server_configs=[], # Standard configs added by Session.__aenter__
+            mcp_server_configs=[],  # Standard configs added by Session.__aenter__
         )
-        
+
         active = ActiveSession(session, ui, response_queue)
         self.active_sessions[session_id] = active
         return active
@@ -53,7 +49,7 @@ class SessionManager:
             active = self.active_sessions[session_id]
             if active.task:
                 active.task.cancel()
-            
+
             # Clean up the session context (MCP servers, etc.)
             # This requires session.__aenter__ to have been called
             try:
@@ -61,20 +57,14 @@ class SessionManager:
                 pass
             except Exception as e:
                 logger.error(f"Error during session cleanup: {e}")
-            
+
             del self.active_sessions[session_id]
 
     async def run_server(self, host: str, port: int):
         from coding_assistant.api.server import create_app
-        
+
         app = create_app(self)
-        config = uvicorn.Config(
-            app, 
-            host=host, 
-            port=port, 
-            log_level="info", 
-            access_log=False
-        )
+        config = uvicorn.Config(app, host=host, port=port, log_level="info", access_log=False)
         server = uvicorn.Server(config)
         await server.serve()
 

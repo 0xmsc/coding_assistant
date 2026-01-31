@@ -1,5 +1,5 @@
 from typing import Any, Literal, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class StatusMessage(BaseModel):
