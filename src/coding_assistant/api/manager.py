@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from coding_assistant.api.bridge import WebSocketProgressCallbacks, WebSocketUI
 from coding_assistant.api.models import AnswerResponse, ConfirmationResponse
@@ -26,7 +26,7 @@ class SessionManager:
     def create_session(
         self, 
         session_id: str, 
-        websocket: Any, # Avoid circular dependency or complexity with type hints here
+        websocket: Any, 
         working_directory: Path
     ) -> ActiveSession:
         response_queue = asyncio.Queue()

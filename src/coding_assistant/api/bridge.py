@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import WebSocket
 
