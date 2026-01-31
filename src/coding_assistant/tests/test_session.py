@@ -59,10 +59,11 @@ def test_get_default_mcp_server_config() -> None:
 
 @pytest.mark.asyncio
 async def test_session_context_manager(session_args: dict[str, Any]) -> None:
+    mock_sandbox = MagicMock()
+    session_args["sandbox"] = mock_sandbox
     session = Session(**session_args)
 
     with (
-        patch("coding_assistant.session.sandbox") as mock_sandbox,
         patch("coding_assistant.session.get_mcp_servers_from_config") as mock_get_mcp,
         patch("coding_assistant.session.get_mcp_wrapped_tools", new_callable=AsyncMock) as mock_get_tools,
         patch("coding_assistant.session.get_instructions") as mock_get_instructions,
