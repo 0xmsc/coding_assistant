@@ -4,6 +4,8 @@ from typing import Any, Dict
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
+from pathlib import Path
+import os
 
 from coding_assistant.api.manager import SessionManager
 from coding_assistant.api.models import (
@@ -34,9 +36,6 @@ def create_app(session_manager: SessionManager) -> FastAPI:
         
         # In a real flow, the UI/Working Dir might come from the initial POST
         # For this milestone, we use the current dir as a placeholder
-        from pathlib import Path
-        import os
-        
         active = session_manager.create_session(
             session_id=session_id,
             websocket=websocket,

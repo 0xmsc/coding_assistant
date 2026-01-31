@@ -2,6 +2,7 @@ import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
+import uvicorn
 
 from coding_assistant.api.bridge import WebSocketProgressCallbacks, WebSocketUI
 from coding_assistant.api.models import AnswerResponse, ConfirmationResponse
@@ -64,7 +65,6 @@ class SessionManager:
             del self.active_sessions[session_id]
 
     async def run_server(self, host: str, port: int):
-        import uvicorn
         from coding_assistant.api.server import create_app
         
         app = create_app(self)
