@@ -30,7 +30,6 @@ def create_app(session_manager: SessionManager) -> FastAPI:
         await websocket.accept()
 
         # In a real flow, the UI/Working Dir might come from the initial POST
-        # For this milestone, we use the current dir as a placeholder
         active = session_manager.create_session(
             session_id=session_id, websocket=websocket, working_directory=Path(os.getcwd())
         )

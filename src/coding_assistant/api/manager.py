@@ -37,7 +37,7 @@ class SessionManager:
             callbacks=callbacks,
             working_directory=working_directory,
             coding_assistant_root=self.coding_assistant_root,
-            mcp_server_configs=[],  # Standard configs added by Session.__aenter__
+            mcp_server_configs=[],
         )
 
         active = ActiveSession(session, ui, response_queue)
@@ -50,8 +50,6 @@ class SessionManager:
             if active.task:
                 active.task.cancel()
 
-            # Clean up the session context (MCP servers, etc.)
-            # This requires session.__aenter__ to have been called
             try:
                 # Basic cleanup if needed
                 pass
