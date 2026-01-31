@@ -14,7 +14,14 @@ from coding_assistant.api.models import (
     ToolResult,
 )
 from coding_assistant.ui import UI
-from coding_assistant.llm.types import AssistantMessage, ProgressCallbacks, StatusLevel, ToolCall, ToolMessage, UserMessage
+from coding_assistant.llm.types import (
+    AssistantMessage,
+    ProgressCallbacks,
+    StatusLevel,
+    ToolCall,
+    ToolMessage,
+    UserMessage,
+)
 
 
 class WebSocketUI(UI):
@@ -70,7 +77,9 @@ class WebSocketProgressCallbacks(ProgressCallbacks):
         payload = ToolStart(id=tool_call.id, name=tool_call.function.name, arguments=arguments)
         asyncio.create_task(self._send(payload))
 
-    def on_tool_message(self, context_name: str, message: ToolMessage, tool_name: str, arguments: dict[str, Any]) -> None:
+    def on_tool_message(
+        self, context_name: str, message: ToolMessage, tool_name: str, arguments: dict[str, Any]
+    ) -> None:
         payload = ToolResult(id=message.tool_call_id, name=tool_name, content=message.content)
         asyncio.create_task(self._send(payload))
 
