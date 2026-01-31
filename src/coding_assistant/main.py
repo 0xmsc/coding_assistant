@@ -23,6 +23,7 @@ from coding_assistant.tools.mcp import print_mcp_tools
 
 import uvicorn
 from coding_assistant.api.server import create_app
+from coding_assistant.sandbox import sandbox
 from coding_assistant.api.manager import SessionManager
 from coding_assistant.session import Session
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
@@ -209,6 +210,16 @@ async def _main(args: argparse.Namespace) -> None:
     working_directory = Path(os.getcwd())
     coding_assistant_root = Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
 
+    if args.sandbox:
+        readable = [Path(p).resolve() for p in args.readable_sandbox_directories]
+        readable.extend([Path(d).resolve() for d in args.skills_directories])
+        readable.append(coding_assistant_root)
+
+        writable = [Path(p).resolve() for p in args.writable_sandbox_directories]
+        writable.append(working_directory)
+
+        sandbox(readable_paths=readable, writable_paths=writable, include_defaults=True)
+
     if args.api:
         manager = SessionManager(config=config, coding_assistant_root=coding_assistant_root)
         app = create_app(manager)
@@ -250,9 +261,6 @@ async def _main(args: argparse.Namespace) -> None:
         mcp_server_configs=mcp_server_configs,
         skills_directories=args.skills_directories,
         mcp_env=args.mcp_env,
-        sandbox_enabled=args.sandbox,
-        readable_sandbox_directories=[Path(d).resolve() for d in args.readable_sandbox_directories],
-        writable_sandbox_directories=[Path(d).resolve() for d in args.writable_sandbox_directories],
         user_instructions=args.instructions,
     )
 

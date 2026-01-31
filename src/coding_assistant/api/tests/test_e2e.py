@@ -49,13 +49,12 @@ def mock_sandbox() -> Any:
 
 
 @pytest.fixture
-def api_manager(mock_completer: Any, mock_sandbox: Any) -> SessionManager:
+def api_manager(mock_completer: Any) -> SessionManager:
     config = Config(model="gpt-4o", expert_model="gpt-4o", compact_conversation_at_tokens=200000)
     return SessionManager(
         config=config,
         coding_assistant_root=Path("/tmp"),
         completer=mock_completer,
-        sandbox=mock_sandbox,
         session_factory=MockSession,
     )
 

@@ -24,14 +24,12 @@ class SessionManager:
         config: Config,
         coding_assistant_root: Path,
         completer: Optional[Any] = None,
-        sandbox: Optional[Any] = None,
         session_factory: Any = Session,
     ):
         self.config = config
         self.coding_assistant_root = coding_assistant_root
         self.active_sessions: Dict[str, ActiveSession] = {}
         self.completer = completer
-        self.sandbox = sandbox
         self.session_factory = session_factory
 
     def create_session(self, session_id: str, websocket: Any, working_directory: Path) -> ActiveSession:
@@ -51,8 +49,6 @@ class SessionManager:
 
         if self.completer:
             session_kwargs["completer"] = self.completer
-        if self.sandbox:
-            session_kwargs["sandbox"] = self.sandbox
 
         session = self.session_factory(**session_kwargs)
 
