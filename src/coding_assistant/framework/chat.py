@@ -29,6 +29,7 @@ from coding_assistant.framework.types import Completer
 from coding_assistant.framework.results import CompactConversationResult, TextResult
 from coding_assistant.ui import UI
 from coding_assistant.framework.image import get_image
+from coding_assistant.actors.system import ActorSystem
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ async def run_chat_loop(
     completer: Completer,
     ui: UI,
     context_name: str,
+    actor_system: ActorSystem | None = None,
 ) -> None:
     tools = list(tools)
     if not any(tool.name() == "compact_conversation" for tool in tools):
@@ -244,6 +246,7 @@ async def run_chat_loop(
                         handle_tool_result=lambda result: handle_tool_result_chat(
                             result, history=history, callbacks=callbacks, context_name=context_name
                         ),
+                        actor_system=actor_system,
                     )
                 else:
                     need_user_input = True

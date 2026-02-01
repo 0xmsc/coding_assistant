@@ -168,6 +168,7 @@ class Session:
                 completer=openai_complete,
                 ui=self.ui,
                 context_name="Orchestrator",
+                actor_system=self.actor_system,
             )
         finally:
             save_orchestrator_history(self.working_directory, chat_history)
