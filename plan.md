@@ -139,7 +139,7 @@ To ensure stability and maintainability, the transition to the Actor-based archi
     - **Regression Tests**: Run `src/coding_assistant/framework/tests/test_tool_execution.py` and `test_mcp_wrapped_tool.py`.
     - **Actor-Specific Test**: Verify that sending a `ExecuteTool` message results in a `ToolResult` message with the same `correlation_id`.
 
-### Step 4: UI Gateway (Decoupling the User Interface)
+### Step 4: UI Gateway (Done)
 **Objective**: Make the UI reactive rather than imperative.
 - **Action**: Implement `UIGatewayActor`. Move from direct UI calls to sending `DisplayMessage` envelopes.
 - **Testing Strategy**:
