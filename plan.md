@@ -153,7 +153,7 @@ To ensure stability and maintainability, the transition to the Actor-based archi
 - **Action**: Create `src/coding_assistant/actors/orchestrator.py` implementing the logic from `run_agent_loop` as an event-driven `OrchestratorActor`.
 - **Testing**: Unit tests to verify state transitions (e.g., `THINKING` -> `WAITING_FOR_TOOLS` -> `THINKING`).
 
-#### Step 5b: State Serialization & Dependency Injection
+#### Step 5b: State Serialization & Dependency Injection (Done)
 - **Action**: Refactor the Orchestrator to support unique addressing (multi-agent) and internal history management.
 - **Testing**: Verify that multiple Orchestrator instances can run in the same `ActorSystem` without message leakage.
 
