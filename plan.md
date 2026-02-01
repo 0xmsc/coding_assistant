@@ -157,7 +157,7 @@ To ensure stability and maintainability, the transition to the Actor-based archi
 - **Action**: Refactor the Orchestrator to support unique addressing (multi-agent) and internal history management.
 - **Testing**: Verify that multiple Orchestrator instances can run in the same `ActorSystem` without message leakage.
 
-#### Step 5c: The "Big Switch"
+#### Step 5c: The "Big Switch" (Done)
 - **Action**: Update `Session` and `main.py` to use the Actor system as the primary execution engine. Deprecate legacy procedural loops.
 - **Testing**: Full regression suite (`just test`) to ensure behavioral parity.
 
