@@ -116,7 +116,7 @@ By moving to this model, `coding-assistant` becomes more than a CLI—it becomes
 
 To ensure stability and maintainability, the transition to the Actor-based architecture is broken down into incremental steps.
 
-### Step 1: Communication Protocol (Non-Breaking)
+### Step 1: Communication Protocol (Done)
 **Objective**: Define the "Language" of the actors without changing any existing logic.
 - **Action**: Create `src/coding_assistant/messaging/` containing `envelopes.py` and `messages.py`.
 - **Logic**: Use existing types from `src/coding_assistant/framework/types.py` as payloads for the new `Envelope` system.
