@@ -30,3 +30,16 @@ class CompactConversationResult(ToolResult):
 
     def to_dict(self) -> dict[str, Any]:
         return {"summary": self.summary}
+
+
+def result_from_dict(data: dict[str, Any]) -> ToolResult:
+    """Reconstruct a ToolResult from its dictionary representation."""
+    if "result" in data and "summary" in data:
+        return FinishTaskResult(result=data["result"], summary=data["summary"])
+    if "summary" in data:
+        return CompactConversationResult(summary=data["summary"])
+    if "content" in data:
+        return TextResult(content=data["content"])
+
+    # Fallback to TextResult with the raw data if we can't determine the type
+    return TextResult(content=str(data))

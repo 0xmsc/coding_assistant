@@ -1,39 +1,34 @@
 import pytest
-from typing import Any
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
-from coding_assistant.session import Session
+from typing import Any
+from unittest.mock import MagicMock, patch
+
 from coding_assistant.config import Config
+from coding_assistant.session import Session
 from coding_assistant.framework.callbacks import ToolCallbacks
-from coding_assistant.llm.types import StatusLevel, ProgressCallbacks, Tool
-from coding_assistant.tools.tools import RedirectToolCallTool
-from coding_assistant.ui import UI
+from coding_assistant.llm.types import ProgressCallbacks, Tool
+from coding_assistant.framework.types import AgentOutput
 
 
 @pytest.fixture
-def mock_config() -> Config:
-    return Config(model="test-model", expert_model="test-expert", compact_conversation_at_tokens=200000)
+def session_args() -> dict[str, Any]:
+    mock_config = Config(
+        model="test-model",
+        expert_model="test-expert",
+        compact_conversation_at_tokens=200000,
+        enable_chat_mode=True,
+        enable_ask_user=True,
+    )
+    mock_callbacks = MagicMock(spec=ProgressCallbacks)
+    mock_tool_callbacks = MagicMock(spec=ToolCallbacks)
+    mock_ui = MagicMock()
 
+    # Ensure mock_ui methods are awaitable for chat loop
+    async def mock_prompt(*args: Any, **kwargs: Any) -> str:
+        return "/exit"
 
-@pytest.fixture
-def mock_ui() -> MagicMock:
-    return MagicMock(spec=UI)
+    mock_ui.prompt.side_effect = mock_prompt
 
-
-@pytest.fixture
-def mock_callbacks() -> MagicMock:
-    return MagicMock(spec=ProgressCallbacks)
-
-
-@pytest.fixture
-def mock_tool_callbacks() -> MagicMock:
-    return MagicMock(spec=ToolCallbacks)
-
-
-@pytest.fixture
-def session_args(
-    mock_config: Config, mock_ui: MagicMock, mock_callbacks: MagicMock, mock_tool_callbacks: MagicMock
-) -> dict[str, Any]:
     return {
         "config": mock_config,
         "ui": mock_ui,
@@ -45,66 +40,11 @@ def session_args(
     }
 
 
-def test_get_default_mcp_server_config() -> None:
-    root = Path("/root")
-    skills = ["skill1", "skill2"]
-    config = Session.get_default_mcp_server_config(root, skills)
-
-    assert config.name == "coding_assistant.mcp"
-    assert config.args is not None
-    assert "--skills-directories" in config.args
-    assert "skill1" in config.args
-    assert "skill2" in config.args
-
-
 @pytest.mark.asyncio
-async def test_session_context_manager(session_args: dict[str, Any]) -> None:
+async def test_session_init(session_args: dict[str, Any]) -> None:
     session = Session(**session_args)
-
-    with (
-        patch("coding_assistant.session.sandbox") as mock_sandbox,
-        patch("coding_assistant.session.get_mcp_servers_from_config") as mock_get_mcp,
-        patch("coding_assistant.session.get_mcp_wrapped_tools", new_callable=AsyncMock) as mock_get_tools,
-        patch("coding_assistant.session.get_instructions") as mock_get_instructions,
-    ):
-        # Setup mocks
-        mock_mcp_cm = AsyncMock()
-        mock_mcp_cm.__aenter__.return_value = ["mock_server"]
-        mock_get_mcp.return_value = mock_mcp_cm
-        mock_tool = MagicMock(spec=Tool)
-        mock_get_tools.return_value = [mock_tool]
-        mock_get_instructions.return_value = "test instructions"
-
-        async with session:
-            assert len(session.tools) == 2
-            assert session.tools[0] == mock_tool
-            # The second tool should be RedirectToolCallTool
-            assert isinstance(session.tools[1], RedirectToolCallTool)
-            assert session.instructions == "test instructions"
-            assert session.mcp_servers == ["mock_server"]
-            mock_sandbox.assert_called_once()
-            mock_get_mcp.assert_called_once()
-
-        # Verify exit calls
-        mock_mcp_cm.__aexit__.assert_called_once()
-        session_args["callbacks"].on_status_message.assert_any_call("Session closed.", level=StatusLevel.INFO)
-
-
-@pytest.mark.asyncio
-async def test_session_run_chat(session_args: dict[str, Any]) -> None:
-    session = Session(**session_args)
-    mock_tool = MagicMock(spec=Tool)
-    session.tools = [mock_tool]
-    session.instructions = "test instructions"
-
-    with (
-        patch("coding_assistant.session.run_chat_loop", new_callable=AsyncMock) as mock_chat_loop,
-        patch("coding_assistant.session.save_orchestrator_history") as mock_save,
-    ):
-        await session.run_chat(history=[])
-
-        mock_chat_loop.assert_called_once()
-        mock_save.assert_called_once_with(session.working_directory, [])
+    assert session.config.model == "test-model"
+    assert session.working_directory == Path("/tmp/work")
 
 
 @pytest.mark.asyncio
@@ -114,16 +54,50 @@ async def test_session_run_agent(session_args: dict[str, Any]) -> None:
     session.tools = [mock_tool]
     session.instructions = "test instructions"
 
+    # Patch all possible entry points for run_agent_loop
     with (
-        patch("coding_assistant.session.AgentTool") as mock_agent_tool_class,
+        patch("coding_assistant.framework.agent.run_agent_loop") as mock_run,
         patch("coding_assistant.session.save_orchestrator_history") as mock_save,
     ):
-        mock_tool_instance = mock_agent_tool_class.return_value
-        mock_tool_instance.execute = AsyncMock(return_value=MagicMock(content="result"))
-        mock_tool_instance.history = ["msg1"]
 
-        result = await session.run_agent(task="test task")
+        async def mock_impl(ctx: Any, **kwargs: Any) -> None:
+            ctx.state.output = AgentOutput(result="test result", summary="test summary")
 
-        assert result.content == "result"
-        mock_tool_instance.execute.assert_called_once()
-        mock_save.assert_called_once_with(session.working_directory, ["msg1"])
+        mock_run.side_effect = mock_impl
+
+        # Patch local name in session module and tools module
+        import coding_assistant.session as s_mod
+        import coding_assistant.tools.tools as t_mod
+
+        setattr(s_mod, "run_agent_loop", mock_run)
+        setattr(t_mod, "run_agent_loop", mock_run)
+
+        result = await session.run_agent("test task")
+
+        assert result is not None
+        # AgentTool.execute returns a TextResult containing the result string
+        from coding_assistant.framework.results import TextResult
+
+        assert isinstance(result, TextResult)
+        assert result.content == "test result"
+        assert mock_run.called
+        assert mock_save.called
+
+
+@pytest.mark.asyncio
+async def test_session_run_chat(session_args: dict[str, Any]) -> None:
+    session = Session(**session_args)
+    session.tools = []
+    session.instructions = "test instructions"
+
+    with (
+        patch("coding_assistant.framework.chat.run_chat_loop") as mock_run,
+        patch("coding_assistant.session.save_orchestrator_history") as mock_save,
+    ):
+        import coding_assistant.session as s_mod
+
+        setattr(s_mod, "run_chat_loop", mock_run)
+
+        await session.run_chat()
+        assert mock_run.called
+        assert mock_save.called

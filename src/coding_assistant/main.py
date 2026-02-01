@@ -31,6 +31,8 @@ logger.setLevel(logging.INFO)
 def setup_logging() -> None:
     """Setup logging to file only."""
     log_file = get_log_file()
+    rich_print(f"[dim]Session log: {log_file}[/dim]")
+
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -48,6 +50,7 @@ def setup_logging() -> None:
 
     # Set 'coding_assistant' logger to INFO
     logger.setLevel(logging.INFO)
+    logger.info(f"Logging initialized at {log_file}")
 
 
 def parse_args() -> argparse.Namespace:

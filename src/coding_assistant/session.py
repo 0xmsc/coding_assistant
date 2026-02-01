@@ -1,4 +1,5 @@
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -6,14 +7,19 @@ from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
 from coding_assistant.framework.chat import run_chat_loop
+from coding_assistant.framework.agent import run_agent_loop
+from coding_assistant.framework.types import AgentContext, AgentDescription, AgentState
 from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.history import save_orchestrator_history
 from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools
-from coding_assistant.tools.tools import AgentTool, AskClientTool, RedirectToolCallTool
+from coding_assistant.tools.tools import AskClientTool, RedirectToolCallTool
 from coding_assistant.ui import UI
+from coding_assistant.actors.system import ActorSystem
+from coding_assistant.actors.tool_worker import ToolWorkerActor
+from coding_assistant.actors.ui_gateway import UIGatewayActor
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +41,7 @@ class Session:
         readable_sandbox_directories: Optional[list[Path]] = None,
         writable_sandbox_directories: Optional[list[Path]] = None,
         user_instructions: Optional[list[str]] = None,
+        actor_system: Optional[ActorSystem] = None,
     ):
         self.config = config
         self.ui = ui
@@ -48,6 +55,8 @@ class Session:
         self.readable_sandbox_directories = readable_sandbox_directories or []
         self.writable_sandbox_directories = writable_sandbox_directories or []
         self.user_instructions = user_instructions or []
+
+        self.actor_system = actor_system or ActorSystem()
 
         # Build initial list of server configs
         self.mcp_server_configs = list(mcp_server_configs)
@@ -65,8 +74,6 @@ class Session:
     def get_default_mcp_server_config(
         root_directory: Path, skills_directories: list[str], env: list[str] | None = None
     ) -> MCPServerConfig:
-        import sys
-
         args = [
             "-m",
             "coding_assistant.mcp",
@@ -123,12 +130,26 @@ class Session:
             mcp_servers=self._mcp_servers,
         )
 
+        # Actor infrastructure startup
+        # Register a shared ToolWorker for global tools
+        # (Individual agents can spawn their own later)
+        global_tool_worker = ToolWorkerActor("global_tool_worker", self.actor_system, self.tools)
+        self.actor_system.register(global_tool_worker)
+        await global_tool_worker.start()
+
+        # Register UI Gateway
+        ui_gateway = UIGatewayActor("ui_gateway", self.actor_system, self.ui)
+        self.actor_system.register(ui_gateway)
+        await ui_gateway.start()
+
         self.callbacks.on_status_message("Session initialized.", level=StatusLevel.SUCCESS)
         self.callbacks.on_status_message(f"Using model {self.config.model}.", level=StatusLevel.SUCCESS)
 
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        await self.actor_system.shutdown()
+
         if self._mcp_servers_cm:
             await self._mcp_servers_cm.__aexit__(exc_type, exc_val, exc_tb)
 
@@ -147,39 +168,42 @@ class Session:
                 completer=openai_complete,
                 ui=self.ui,
                 context_name="Orchestrator",
+                actor_system=self.actor_system,
             )
         finally:
             save_orchestrator_history(self.working_directory, chat_history)
 
     async def run_agent(self, task: str, history: Optional[list[BaseMessage]] = None) -> Any:
+        # META TOOLS: include Actor-integrated AskClient
+        # Note: AskClientTool is legacy, in future everything is messages
         agent_mode_tools = [
             AskClientTool(ui=self.ui),
             *self.tools,
         ]
 
-        tool = AgentTool(
-            model=self.config.model,
-            expert_model=self.config.expert_model,
-            compact_conversation_at_tokens=self.config.compact_conversation_at_tokens,
-            enable_ask_user=self.config.enable_ask_user,
-            tools=agent_mode_tools,
-            history=history,
-            progress_callbacks=self.callbacks,
-            ui=self.ui,
-            tool_callbacks=self.tool_callbacks,
+        desc = AgentDescription(
             name="launch_orchestrator_agent",
-            completer=openai_complete,
+            model=self.config.model,
+            parameters=[],  # Handled inside Task call
+            tools=agent_mode_tools,
         )
+        state = AgentState(history=history or [])
+        ctx = AgentContext(desc=desc, state=state)
 
-        params = {
-            "task": task,
-            "instructions": self.instructions,
-            "expert_knowledge": True,
-        }
-
+        # Trigger actor mode
         try:
-            result = await tool.execute(params)
-            self.callbacks.on_status_message(f"Task completed: {result.content}", level=StatusLevel.SUCCESS)
+            await run_agent_loop(
+                ctx,
+                completer=openai_complete,
+                ui=self.ui,
+                actor_system=self.actor_system,
+                compact_conversation_at_tokens=self.config.compact_conversation_at_tokens,
+            )
+
+            # Extract output set by the OrchestratorActor
+            result = ctx.state.output
+            if result:
+                self.callbacks.on_status_message(f"Task completed: {result.result}", level=StatusLevel.SUCCESS)
             return result
         finally:
-            save_orchestrator_history(self.working_directory, tool.history)
+            save_orchestrator_history(self.working_directory, ctx.state.history)
