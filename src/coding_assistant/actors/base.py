@@ -45,6 +45,10 @@ class BaseActor(abc.ABC):
         while self._running:
             try:
                 envelope = await self.mailbox.get()
+                logger.debug(
+                    f"Actor {self.address} processing {type(envelope.payload).__name__} "
+                    f"from {envelope.sender} [trace: {envelope.trace_id}, cid: {envelope.correlation_id}]"
+                )
                 await self.receive(envelope)
                 self.mailbox.task_done()
             except asyncio.CancelledError:

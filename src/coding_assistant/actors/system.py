@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from typing import Dict
 
 from coding_assistant.actors.base import BaseActor
 from coding_assistant.messaging.envelopes import Envelope
@@ -16,8 +15,8 @@ class ActorSystem:
     """
 
     def __init__(self) -> None:
-        self._actors: Dict[str, BaseActor] = {}
-        self._futures: Dict[str, asyncio.Future[Envelope[ActorMessage]]] = {}
+        self._actors: dict[str, BaseActor] = {}
+        self._futures: dict[str, asyncio.Future[Envelope[ActorMessage]]] = {}
 
     def register(self, actor: BaseActor) -> None:
         """Register a new actor with the system."""
@@ -34,22 +33,26 @@ class ActorSystem:
 
     async def send(self, envelope: Envelope[ActorMessage]) -> None:
         """Dispatch an envelope to the recipient actor."""
-        recipient = envelope.recipient
+        target = envelope.recipient
+        logger.debug(
+            f"System routing {type(envelope.payload).__name__} from {envelope.sender} to {target} "
+            f"[trace: {envelope.trace_id}, cid: {envelope.correlation_id}]"
+        )
 
-        if recipient in self._actors:
-            await self._actors[recipient].tell(envelope)
+        if target in self._actors:
+            await self._actors[target].tell(envelope)
 
         # Reverting to explicit dispatch and letting receivers update futures?
         # No, let's just make the system registry smarter.
 
-        if recipient not in self._actors:
+        if target not in self._actors:
             # If it's not an actor, check if it's a response to an 'ask'
             if envelope.correlation_id in self._futures:
                 future = self._futures.pop(envelope.correlation_id)
                 if not future.done():
                     future.set_result(envelope)
                 return
-            logger.warning(f"Message sent to unknown recipient: {recipient}")
+            logger.warning(f"Message sent to unknown recipient: {target}")
 
     async def ask(self, envelope: Envelope[ActorMessage], timeout: float = 30.0) -> Envelope[ActorMessage]:
         """
