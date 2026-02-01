@@ -70,6 +70,7 @@ async def run_chat_loop(
     ctx = AgentContext(desc=desc, state=state)
 
     import uuid
+
     run_id = str(uuid.uuid4())[:8]
 
     # Dispatch tools
@@ -106,9 +107,7 @@ async def run_chat_loop(
 
     # Start Chat Mode
     await actor_system.send(
-        Envelope(
-            sender="system", recipient=agent_addr, payload=StartTask(prompt="Enter chat mode")
-        )
+        Envelope(sender="system", recipient=agent_addr, payload=StartTask(prompt="Enter chat mode"))
     )
 
     # Wait for session close (e.g. /exit)

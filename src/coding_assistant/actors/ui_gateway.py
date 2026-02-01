@@ -4,7 +4,7 @@ from typing import Optional
 from coding_assistant.actors.base import BaseActor
 from coding_assistant.actors.system import ActorSystem
 from coding_assistant.messaging.envelopes import Envelope
-from coding_assistant.messaging.messages import ActorMessage, DisplayMessage
+from coding_assistant.messaging.messages import ActorMessage, DisplayMessage, Error
 from coding_assistant.messaging.ui_messages import UserInputRequested, UserInputReceived
 from coding_assistant.ui import UI
 
@@ -48,22 +48,22 @@ class UIGatewayActor(BaseActor):
                 elif payload.input_type == "prompt":
                     result_content = await self.ui.prompt()
 
-                reply: Envelope[ActorMessage] = Envelope(
+                ok_reply: Envelope[ActorMessage] = Envelope(
                     sender=self.address,
                     recipient=envelope.sender,
                     correlation_id=envelope.correlation_id,
                     trace_id=envelope.trace_id,
                     payload=UserInputReceived(content=result_content, confirmed=confirmed),
                 )
-                await self.system.send(reply)
+                await self.system.send(ok_reply)
 
             except Exception as e:
                 logger.exception(f"Error getting user input: {e}")
-                reply: Envelope[ActorMessage] = Envelope(
+                err_reply: Envelope[ActorMessage] = Envelope(
                     sender=self.address,
                     recipient=envelope.sender,
                     correlation_id=envelope.correlation_id,
                     trace_id=envelope.trace_id,
                     payload=Error(message=f"UI Error: {e}"),
                 )
-                await self.system.send(reply)
+                await self.system.send(err_reply)

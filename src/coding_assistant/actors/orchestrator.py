@@ -14,8 +14,6 @@ from coding_assistant.messaging.messages import (
     ExecuteTool,
     ToolResult,
     Error,
-    TaskCompleted,
-    DisplayMessage,
 )
 from coding_assistant.messaging.ui_messages import UserInputRequested, UserInputReceived
 from coding_assistant.llm.types import (
@@ -34,7 +32,7 @@ from coding_assistant.framework.history import (
     append_user_message,
     clear_history,
 )
-from coding_assistant.framework.types import AgentContext, Completer, AgentOutput
+from coding_assistant.framework.types import AgentContext, Completer
 from coding_assistant.framework.results import (
     FinishTaskResult,
     result_from_dict,
@@ -124,14 +122,14 @@ class OrchestratorActor(BaseActor):
         elif isinstance(payload, Error):
             await self._handle_error(envelope, payload)
 
-    async def _handle_error(self, envelope: Envelope, payload: Error) -> None:
+    async def _handle_error(self, envelope: Envelope[ActorMessage], payload: Error) -> None:
         logger.error(f"Orchestrator {self.address} received error: {payload.message}")
-        
+
         if envelope.correlation_id in self._pending_tool_calls:
             # Error happened during tool execution.
             # Append error to history and CONTINUE (legacy behavior)
             tool_call = self._pending_tool_calls.pop(envelope.correlation_id)
-            
+
             append_tool_message(
                 self.context.state.history,
                 callbacks=self.callbacks,
@@ -141,9 +139,9 @@ class OrchestratorActor(BaseActor):
                     name=tool_call.function.name,
                     content=f"Error executing tool: {payload.message}",
                 ),
-                arguments={}
+                arguments={},
             )
-            
+
             if not self._pending_tool_calls:
                 self._set_state(OrchestratorState.THINKING)
                 await self._trigger_llm_step(envelope.trace_id)
@@ -161,9 +159,11 @@ class OrchestratorActor(BaseActor):
         if not self.context.state.history:
             if self.is_chat_mode:
                 from coding_assistant.framework.chat import _create_chat_start_message
+
                 start_msg = _create_chat_start_message(self.instructions)
             else:
                 from coding_assistant.framework.agent import _create_start_message
+
                 start_msg = _create_start_message(desc=self.context.desc)
 
             append_user_message(
@@ -286,8 +286,9 @@ class OrchestratorActor(BaseActor):
 
         if isinstance(res_obj, FinishTaskResult):
             from coding_assistant.framework.agent import _handle_finish_task_result
+
             _handle_finish_task_result(res_obj, state=self.context.state)
-            
+
             try:
                 args = json.loads(tool_call.function.arguments)
             except Exception:
@@ -296,8 +297,10 @@ class OrchestratorActor(BaseActor):
                 self.context.state.history,
                 callbacks=self.callbacks,
                 context_name=self.context.desc.name,
-                message=ToolMessage(tool_call_id=tool_call.id, name=tool_call.function.name, content="Agent output set."),
-                arguments=args
+                message=ToolMessage(
+                    tool_call_id=tool_call.id, name=tool_call.function.name, content="Agent output set."
+                ),
+                arguments=args,
             )
 
             self._set_state(OrchestratorState.COMPLETED)
@@ -305,7 +308,14 @@ class OrchestratorActor(BaseActor):
 
         if isinstance(res_obj, CompactConversationResult):
             from coding_assistant.framework.agent import _handle_compact_conversation_result
-            _handle_compact_conversation_result(res_obj, desc=self.context.desc, state=self.context.state, progress_callbacks=self.callbacks, force=not self.is_chat_mode)
+
+            _handle_compact_conversation_result(
+                res_obj,
+                desc=self.context.desc,
+                state=self.context.state,
+                progress_callbacks=self.callbacks,
+                force=not self.is_chat_mode,
+            )
         else:
             try:
                 args = json.loads(tool_call.function.arguments)
@@ -356,8 +366,14 @@ class OrchestratorActor(BaseActor):
             if text == "/clear":
                 clear_history(self.context.state.history)
                 from coding_assistant.framework.chat import _create_chat_start_message
+
                 start_msg = _create_chat_start_message(self.instructions)
-                append_user_message(self.context.state.history, callbacks=self.callbacks, context_name=self.context.desc.name, message=UserMessage(content=start_msg))
+                append_user_message(
+                    self.context.state.history,
+                    callbacks=self.callbacks,
+                    context_name=self.context.desc.name,
+                    message=UserMessage(content=start_msg),
+                )
                 await self._request_user_input(envelope.trace_id)
                 return
             if text == "/compact":

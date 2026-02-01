@@ -117,6 +117,7 @@ async def run_agent_loop(
         tools.append(CompactConversationTool())
 
     import uuid
+
     run_id = str(uuid.uuid4())[:8]
 
     # Spawn Tool Worker for this agent
@@ -150,7 +151,6 @@ async def run_agent_loop(
     await orchestrator.start()
 
     # Start Task
-    from coding_assistant.messaging.messages import StartTask
 
     await actor_system.send(
         Envelope(

@@ -22,7 +22,7 @@ from coding_assistant.llm.types import (
 from coding_assistant.actors.system import ActorSystem
 from coding_assistant.framework.types import Completer
 from coding_assistant.messaging.envelopes import Envelope
-from coding_assistant.messaging.messages import ExecuteTool, ToolResult as ToolResultMessage, Error
+from coding_assistant.messaging.messages import ActorMessage, ExecuteTool, ToolResult as ToolResultMessage, Error
 from coding_assistant.framework.history import append_tool_message
 from coding_assistant.framework.results import TextResult, result_from_dict
 
@@ -30,9 +30,7 @@ from coding_assistant.framework.results import TextResult, result_from_dict
 logger = logging.getLogger(__name__)
 
 
-async def execute_tool_call(
-    *, function_name: str, function_args: dict[str, Any], tools: Sequence[Tool]
-) -> ToolResult:
+async def execute_tool_call(*, function_name: str, function_args: dict[str, Any], tools: Sequence[Tool]) -> ToolResult:
     """Execute a tool call by finding the matching tool and calling its execute method."""
     for tool in tools:
         if tool.name() == function_name:
@@ -85,30 +83,35 @@ async def handle_tool_calls(
 
     # Use existing actor system or create transient one for the call
     system = actor_system or ActorSystem()
-    
+
     # We must register a worker if it doesn't exist
     worker_addr = f"transient_worker_{context_name}"
     worker = ToolWorkerActor(worker_addr, system, tools)
     try:
         system.register(worker)
     except ValueError:
-        pass # Already registered
-    
+        pass  # Already registered
+
     await worker.start()
 
     for tool_call in message.tool_calls:
         tool_name = tool_call.function.name
         args_str = tool_call.function.arguments
-        
+        res_val: ToolResult
+
         # 1. Handle JSON parsing errors locally (legacy behavior)
         try:
             function_args = json.loads(args_str)
         except Exception as e:
             res_val = TextResult(content=f"Error: Tool call arguments `{args_str}` are not valid JSON: {e}")
             summary = handle_tool_result(res_val) if handle_tool_result else res_val.content
-            append_tool_message(history, callbacks=progress_callbacks, context_name=context_name, 
-                                message=ToolMessage(tool_call_id=tool_call.id, name=tool_name, content=summary),
-                                arguments={})
+            append_tool_message(
+                history,
+                callbacks=progress_callbacks,
+                context_name=context_name,
+                message=ToolMessage(tool_call_id=tool_call.id, name=tool_name, content=summary),
+                arguments={},
+            )
             continue
 
         # 2. Progress callback
@@ -118,17 +121,19 @@ async def handle_tool_calls(
         deny_result = await tool_callbacks.before_tool_execution(
             context_name, tool_call.id, tool_name, function_args, ui=ui
         )
+
+        res_val
         if deny_result:
             res_val = deny_result
         else:
             # 4. Actual execution via Actor
-            env = Envelope(
+            env: Envelope[ActorMessage] = Envelope(
                 sender="legacy_bridge",
                 recipient=worker_addr,
                 correlation_id=tool_call.id,
-                payload=ExecuteTool(tool_name=tool_name, arguments=function_args)
+                payload=ExecuteTool(tool_name=tool_name, arguments=function_args),
             )
-            
+
             response = await system.ask(env)
             if isinstance(response.payload, ToolResultMessage):
                 res_val = result_from_dict(response.payload.result)
@@ -136,22 +141,14 @@ async def handle_tool_calls(
                 res_val = TextResult(content=f"Error executing tool: {response.payload.message}")
             else:
                 res_val = TextResult(content=f"Error: Unexpected response type {type(response.payload)}")
-            
+
         # 5. Summary and History
         if handle_tool_result:
-            summary = handle_tool_result(res_val)
+            final_summary = handle_tool_result(res_val)
         else:
-            summary = res_val.content if isinstance(res_val, TextResult) else str(res_val)
-            
-        tool_msg = ToolMessage(
-            tool_call_id=tool_call.id,
-            name=tool_name,
-            content=summary
-        )
+            final_summary = res_val.content if isinstance(res_val, TextResult) else str(res_val)
+
+        tool_msg = ToolMessage(tool_call_id=tool_call.id, name=tool_name, content=final_summary)
         append_tool_message(
-            history,
-            callbacks=progress_callbacks,
-            context_name=context_name,
-            message=tool_msg,
-            arguments=function_args
+            history, callbacks=progress_callbacks, context_name=context_name, message=tool_msg, arguments=function_args
         )

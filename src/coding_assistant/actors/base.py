@@ -59,10 +59,10 @@ class BaseActor(abc.ABC):
         finally:
             self._running = False
             # Ensure any waiters are released if the loop exits
-            if hasattr(self, 'state_event'):
-                getattr(self, 'state_event').set()
-            if hasattr(self, 'done_event'):
-                getattr(self, 'done_event').set()
+            if hasattr(self, "state_event"):
+                getattr(self, "state_event").set()
+            if hasattr(self, "done_event"):
+                getattr(self, "done_event").set()
 
     @abc.abstractmethod
     async def receive(self, envelope: Envelope[ActorMessage]) -> None:
