@@ -1,4 +1,5 @@
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -7,6 +8,7 @@ from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallback
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.agent import run_agent_loop
+from coding_assistant.framework.types import AgentContext, AgentDescription, AgentState
 from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.history import save_orchestrator_history
 from coding_assistant.instructions import get_instructions
@@ -72,8 +74,6 @@ class Session:
     def get_default_mcp_server_config(
         root_directory: Path, skills_directories: list[str], env: list[str] | None = None
     ) -> MCPServerConfig:
-        import sys
-
         args = [
             "-m",
             "coding_assistant.mcp",
@@ -179,9 +179,6 @@ class Session:
             AskClientTool(ui=self.ui),
             *self.tools,
         ]
-
-        # Use Actor-Integrated Agent Loop
-        from coding_assistant.framework.types import AgentContext, AgentDescription, AgentState
 
         desc = AgentDescription(
             name="launch_orchestrator_agent",

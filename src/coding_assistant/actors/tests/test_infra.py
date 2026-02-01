@@ -8,7 +8,7 @@ from coding_assistant.messaging.messages import DisplayMessage, StartTask, Actor
 
 
 class EchoActor(BaseActor):
-    def __init__(self, address: str, system: "ActorSystem"):
+    def __init__(self, address: str, system: ActorSystem):
         super().__init__(address)
         self.system = system
 
