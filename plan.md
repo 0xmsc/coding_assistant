@@ -161,8 +161,21 @@ To ensure stability and maintainability, the transition to the Actor-based archi
 - **Action**: Update `Session` and `main.py` to use the Actor system as the primary execution engine. Deprecate legacy procedural loops.
 - **Testing**: Full regression suite (`just test`) to ensure behavioral parity.
 
-## 8. Clarifying Questions (Refined)
+## 9. Phase 6: The Great Gutting (Actor-Only Architecture)
 
-1. **Model Location**: Consolidation of Pydantic models vs. importing. (Proposed: Import for compatibility initially).
-2. **State Store**: Backend for `StateStore`. (Proposed: In-memory for MVP, SQLite later).
-3. **Supervision**: Error policy for ToolActors. (Proposed: Commit to supervision/restart rather than fallback).
+**Objective**: Remove all legacy procedural loops and make the Actor System the exclusive execution engine. This will significantly simplify the codebase by removing redundant "shadow" logic.
+
+### Step 6a: Unified Orchestrator (Agent + Chat)
+- **Goal**: Merge Chat mode capabilities into `OrchestratorActor`.
+- **Features**: Support for Chat commands (`/clear`, `/exit`, `/image`), automatic history summaries, and token usage tracking.
+- **Verification**: State machine tests for both autonomous task completion and interactive chat sessions.
+
+### Step 6b: Gut Legacy Loop Logic
+- **Goal**: Delete `run_agent_loop` from `agent.py` and `run_chat_loop` from `chat.py`. 
+- **Action**: Transform these files into lightweight entry points that simply spawn the `OrchestratorActor` and wait for maturity.
+- **Action**: Clean up `execution.py` to remove legacy `handle_tool_calls` logic.
+
+### Step 6c: Remove Compatibility Bridges
+- **Goal**: Delete `ActorUIBridge` and `ActorToolWorker` wrappers that were used to "fake" procedural interfaces.
+- **Goal**: Update `Session` to act purely as an Actor host.
+- **Verification**: `just test` must remain green across the entire legacy suite.
