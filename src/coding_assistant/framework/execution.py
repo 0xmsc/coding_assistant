@@ -18,9 +18,12 @@ from coding_assistant.llm.types import (
     Usage,
 )
 from coding_assistant.framework.types import Completer
-from coding_assistant.framework.results import TextResult
+from coding_assistant.framework.results import TextResult, result_from_dict
 from coding_assistant.trace import trace_json
 from coding_assistant.ui import UI
+from coding_assistant.actors.system import ActorSystem
+from coding_assistant.messaging.envelopes import Envelope
+from coding_assistant.messaging.messages import ActorMessage, ExecuteTool, ToolResult as ToolResultMessage
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,7 @@ async def handle_tool_call(
     tool_callbacks: ToolCallbacks = NullToolCallbacks(),
     ui: UI,
     context_name: str,
+    actor_system: ActorSystem | None = None,
 ) -> ToolResult:
     """Execute a single tool call and return ToolResult."""
     function_name = tool_call.function.name
@@ -75,6 +79,19 @@ async def handle_tool_call(
                 f"[{tool_call.id}] [{context_name}] Tool '{function_name}' execution was prevented via callback."
             )
             function_call_result = callback_result
+        elif actor_system:
+            # Shift execution to the Actor System
+            logger.debug(f"[{tool_call.id}] Routing tool execution to Actor System.")
+            envelope: Envelope[ActorMessage] = Envelope(
+                sender="orchestrator",  # Temporary until Step 5
+                recipient="tool_worker",
+                payload=ExecuteTool(tool_name=function_name, arguments=function_args),
+            )
+            response = await actor_system.ask(envelope)
+            if isinstance(response.payload, ToolResultMessage):
+                function_call_result = result_from_dict(response.payload.result)
+            else:
+                raise RuntimeError(f"Unexpected response from ToolWorker: {type(response.payload)}")
         else:
             function_call_result = await execute_tool_call(
                 function_name=function_name, function_args=function_args, tools=tools
@@ -106,6 +123,7 @@ async def handle_tool_calls(
     context_name: str,
     task_created_callback: Callable[[str, asyncio.Task[Any]], None] | None = None,
     handle_tool_result: Callable[[ToolResult], str] | None = None,
+    actor_system: ActorSystem | None = None,
 ) -> None:
     tool_calls = message.tool_calls
 
@@ -124,6 +142,7 @@ async def handle_tool_calls(
                 tool_callbacks=tool_callbacks,
                 ui=ui,
                 context_name=context_name,
+                actor_system=actor_system,
             ),
             name=f"{tool_call.function.name} ({tool_call.id})",
         )

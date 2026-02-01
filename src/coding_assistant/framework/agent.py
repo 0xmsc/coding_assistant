@@ -28,6 +28,8 @@ from coding_assistant.framework.results import (
 )
 from coding_assistant.llm.types import UserMessage, ToolResult
 from coding_assistant.ui import UI
+from coding_assistant.actors.system import ActorSystem
+from coding_assistant.actors.tool_worker import ToolWorkerActor
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +115,7 @@ async def run_agent_loop(
     completer: Completer,
     ui: UI,
     compact_conversation_at_tokens: int = 200_000,
+    actor_system: ActorSystem | None = None,
 ) -> None:
     desc = ctx.desc
     state = ctx.state
@@ -125,6 +128,12 @@ async def run_agent_loop(
         tools.append(FinishTaskTool())
     if not any(tool.name() == "compact_conversation" for tool in tools):
         tools.append(CompactConversationTool())
+
+    # If actor_system is provided, register a ToolWorkerActor for this loop
+    if actor_system:
+        tool_worker = ToolWorkerActor("tool_worker", actor_system, tools)
+        actor_system.register(tool_worker)
+        await tool_worker.start()
 
     start_message = _create_start_message(desc=desc)
     user_msg = UserMessage(content=start_message)
@@ -154,6 +163,7 @@ async def run_agent_loop(
                 handle_tool_result=lambda result: handle_tool_result_agent(
                     result, desc=desc, state=state, progress_callbacks=progress_callbacks
                 ),
+                actor_system=actor_system,
             )
         else:
             user_msg2 = UserMessage(
@@ -177,3 +187,6 @@ async def run_agent_loop(
             )
 
     assert state.output is not None
+
+    if actor_system:
+        await actor_system.shutdown()  # This will stop the tool_worker
