@@ -132,7 +132,7 @@ To ensure stability and maintainability, the transition to the Actor-based archi
     - **Infrastructure Tests**: Test the `ActorSystem` dispatch logic—ensure messages sent to an address reach the correct mailbox.
     - **Integration Test**: Run a mock `AgentLoop` session and verify the `ObserverActor` captured the expected sequence of events (e.g., `START` -> `LLM_PROMPT` -> `TOOL_CALL`).
 
-### Step 3: Tool-Worker Isolation
+### Step 3: Tool-Worker Isolation (Done)
 **Objective**: Offload tool execution to a dedicated actor.
 - **Action**: Create `ToolWorkerActor`. Refactor `handle_tool_calls` in `execution.py` to wrap requests into an `Envelope` and use `ask()` to get results from the actor.
 - **Testing Strategy**:
