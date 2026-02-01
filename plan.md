@@ -124,7 +124,7 @@ To ensure stability and maintainability, the transition to the Actor-based archi
     - **Unit Tests**: Create `src/coding_assistant/messaging/tests/test_protocol.py`.
     - **Verify**: Pydantic validation of Envelopes, JSON serialization/deserialization for future persistability, and generation of unique `correlation_id`/`trace_id`.
 
-### Step 2: Infrastructure & "Shadow" Logging
+### Step 2: Infrastructure & "Shadow" Logging (Done)
 **Objective**: Introduce the `ActorSystem` and `BaseActor` as a passive utility.
 - **Action**: Implement the `ActorSystem` (dispatcher) and an `ObserverActor`.
 - **Integration**: Hook the `ObserverActor` into the existing `AgentLoop` (via callbacks) to log events without affecting execution.
