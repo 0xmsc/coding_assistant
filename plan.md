@@ -112,8 +112,39 @@ By moving to this model, `coding-assistant` becomes more than a CLI—it becomes
 - **Resilient Long-Running Tasks**: A task can run for hours; if the server restarts, the actor reloads its state from the `correlation_id` and continues.
 - **Native Monitoring**: Dashboarding and safety audits become "plug-ins" (Observers) that don't need to be integrated into the core engine.
 
-## 6. Immediate Next Steps (Clarifying Questions)
+## 7. Phased Implementation Strategy
 
-1. **Serialization**: Should we enforce that ALL messages must be JSON-serializable? (Required for future-proofing multi-process actors).
-2. **Concurrency**: How many parallel tasks (Orchestrators) should a single `ActorSystem` manage before spinning up new processes?
-3. **Supervision**: What is the "Restart Policy" if a `ToolActor` crashes? (e.g., Restart the tool, or fail the entire task?)
+To ensure stability and maintainability, the transition to the Actor-based architecture is broken down into incremental steps.
+
+### Step 1: Communication Protocol (Non-Breaking)
+**Objective**: Define the "Language" of the actors without changing any existing logic.
+- **Action**: Create `src/coding_assistant/messaging/` containing `envelopes.py` and `messages.py`.
+- **Logic**: Use existing types from `src/coding_assistant/framework/types.py` as payloads for the new `Envelope` system.
+- **Verification**: Unit tests for serialization and tracing metadata.
+
+### Step 2: Infrastructure & "Shadow" Logging
+**Objective**: Introduce the `ActorSystem` and `BaseActor` as a passive utility.
+- **Action**: Implement the `ActorSystem` (dispatcher) and an `ObserverActor`.
+- **Integration**: Hook the `ObserverActor` into the existing `AgentLoop` (via callbacks) to log events without affecting execution.
+- **Verification**: Ensure "Actor Trace" logs are generated alongside existing output.
+
+### Step 3: Tool-Worker Isolation
+**Objective**: Offload tool execution to a dedicated actor.
+- **Action**: Create `ToolWorkerActor`. Refactor `handle_tool_calls` in `execution.py` to wrap requests into an `Envelope` and use `ask()` to get results from the actor.
+- **Verification**: Maintain full functionality while decoupling tool execution logic.
+
+### Step 4: UI Gateway (Decoupling the User Interface)
+**Objective**: Make the UI reactive rather than imperative.
+- **Action**: Implement `UIGatewayActor`. Move from direct UI calls to sending `DisplayMessage` envelopes.
+- **Benefit**: Enables "Headless" operation and prepares for the FSM shift.
+
+### Step 5: The Orchestrator (Final FSM Shift)
+**Objective**: Replace the linear `while` loop with a formal State Machine.
+- **Action**: Rewrite `AgentLoop` logic into `OrchestratorActor`.
+- **Verification**: `just test` and `just lint` must be green.
+
+## 8. Clarifying Questions (Refined)
+
+1. **Model Location**: Consolidation of Pydantic models vs. importing. (Proposed: Import for compatibility initially).
+2. **State Store**: Backend for `StateStore`. (Proposed: In-memory for MVP, SQLite later).
+3. **Supervision**: Error policy for ToolActors. (Proposed: Commit to supervision/restart rather than fallback).
