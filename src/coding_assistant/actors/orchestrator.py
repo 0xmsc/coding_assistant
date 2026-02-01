@@ -1,7 +1,7 @@
 import logging
 import json
 from enum import Enum, auto
-from typing import Sequence
+from typing import Sequence, Optional
 
 from coding_assistant.actors.base import BaseActor
 from coding_assistant.actors.system import ActorSystem
@@ -13,6 +13,7 @@ from coding_assistant.messaging.messages import (
     ExecuteTool,
     ToolResult,
     Error,
+    TaskCompleted,
 )
 from coding_assistant.llm.types import (
     Tool,
@@ -21,8 +22,11 @@ from coding_assistant.llm.types import (
     NullProgressCallbacks,
 )
 from coding_assistant.framework.history import append_assistant_message, append_tool_message
-from coding_assistant.framework.types import AgentContext, Completer
-from coding_assistant.framework.results import result_from_dict
+from coding_assistant.framework.types import AgentContext, Completer, AgentOutput
+from coding_assistant.framework.results import (
+    FinishTaskResult,
+    result_from_dict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +52,15 @@ class OrchestratorActor(BaseActor):
         context: AgentContext,
         completer: Completer,
         tools: Sequence[Tool],
-        tool_worker_address: str = "tool_worker",
+        tool_worker_address: Optional[str] = None,
     ):
         super().__init__(address)
         self.system = system
         self.context = context
         self.completer = completer
         self.tools = tools
-        self.tool_worker_address = tool_worker_address
+        # If no tool worker address is provided, we assume a private one
+        self.tool_worker_address = tool_worker_address or f"{address}/tool_worker"
 
         self.state = OrchestratorState.IDLE
         self._pending_tool_calls: dict[str, ToolCall] = {}
@@ -85,13 +90,7 @@ class OrchestratorActor(BaseActor):
         await self._trigger_llm_step(envelope.trace_id)
 
     async def _trigger_llm_step(self, trace_id: str) -> None:
-        """
-        In Step 5a, we still bridge to the Completer function directly.
-        In later steps, this could be its own LLMActor.
-        """
         try:
-            # Note: We use the existing prompt logic.
-            # In a full Actor system, we'd send an LLMRequest message to an LLMActor.
             completion = await self.completer(
                 self.context.state.history,
                 model=self.context.desc.model,
@@ -152,8 +151,7 @@ class OrchestratorActor(BaseActor):
                     )
                 )
         else:
-            # No tool calls... currently handled by run_agent_loop as an error
-            # or retry. For now, just mark IDLE.
+            # Handling no tool calls as a stall or completion
             self.state = OrchestratorState.IDLE
 
     async def _handle_tool_result(self, envelope: Envelope[ActorMessage], payload: ToolResult) -> None:
@@ -163,11 +161,22 @@ class OrchestratorActor(BaseActor):
 
         tool_call = self._pending_tool_calls.pop(envelope.correlation_id)
 
-        # Convert dictionary result back to ToolResult object for history
+        # Convert dictionary result back to ToolResult object
         res_obj = result_from_dict(payload.result)
 
-        # Note: In real logic, handle_tool_result_agent is called here to check for FinishTask
-        # For 5a, we'll keep it simple and just append to history.
+        # Check for task completion
+        if isinstance(res_obj, FinishTaskResult):
+            self.context.state.output = AgentOutput(result=res_obj.result, summary=res_obj.summary)
+            self.state = OrchestratorState.COMPLETED
+            await self.system.send(
+                Envelope(
+                    sender=self.address,
+                    recipient=self.address,  # Could be sender of StartTask
+                    trace_id=envelope.trace_id,
+                    payload=TaskCompleted(result=res_obj.result),
+                )
+            )
+            return
 
         try:
             args = json.loads(tool_call.function.arguments)
@@ -189,7 +198,5 @@ class OrchestratorActor(BaseActor):
 
         # Check if we are finished with ALL tool calls for this step
         if not self._pending_tool_calls:
-            # Check if any tool result was a FinishTaskResult
-            # (In Step 5b we would do this properly, 5a is just FSM structure)
             self.state = OrchestratorState.THINKING
             await self._trigger_llm_step(envelope.trace_id)
