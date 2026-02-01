@@ -149,7 +149,7 @@ To ensure stability and maintainability, the transition to the Actor-based archi
 ### Step 5: The Orchestrator (Final FSM Shift)
 **Objective**: Replace the linear `while` loop with a formal State Machine.
 
-#### Step 5a: FSM Definition & Orchestrator Actor
+#### Step 5a: FSM Definition & Orchestrator Actor (Done)
 - **Action**: Create `src/coding_assistant/actors/orchestrator.py` implementing the logic from `run_agent_loop` as an event-driven `OrchestratorActor`.
 - **Testing**: Unit tests to verify state transitions (e.g., `THINKING` -> `WAITING_FOR_TOOLS` -> `THINKING`).
 
