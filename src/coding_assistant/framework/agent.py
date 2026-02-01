@@ -1,40 +1,34 @@
 import logging
-
+import asyncio
+from typing import Any
 
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
     FinishTaskTool,
 )
-from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
-from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
-from coding_assistant.framework.execution import do_single_step, handle_tool_calls
-from coding_assistant.framework.history import (
-    append_assistant_message,
-    append_user_message,
-    clear_history,
+from coding_assistant.llm.types import (
+    NullProgressCallbacks,
+    ProgressCallbacks,
 )
-from coding_assistant.framework.parameters import format_parameters
+from coding_assistant.framework.callbacks import (
+    NullToolCallbacks,
+    ToolCallbacks,
+)
 from coding_assistant.framework.types import (
     AgentContext,
-    AgentDescription,
     AgentOutput,
-    AgentState,
-    Completer,
 )
-from coding_assistant.framework.results import (
-    CompactConversationResult,
-    FinishTaskResult,
-    TextResult,
-)
-from coding_assistant.llm.types import UserMessage, ToolResult
 from coding_assistant.ui import UI
 from coding_assistant.actors.system import ActorSystem
+from coding_assistant.actors.orchestrator import OrchestratorActor, OrchestratorState
 from coding_assistant.actors.tool_worker import ToolWorkerActor
 from coding_assistant.actors.ui_gateway import UIGatewayActor
-from coding_assistant.actors.ui_bridge import ActorUIBridge
+from coding_assistant.messaging.envelopes import Envelope
+from coding_assistant.messaging.messages import StartTask
 
 logger = logging.getLogger(__name__)
 
+# Start Template remains for the Actor to use
 START_MESSAGE_TEMPLATE = """
 ## General
 
@@ -53,28 +47,32 @@ Your client has provided the following parameters for your task:
 """.strip()
 
 
-def _create_start_message(*, desc: AgentDescription) -> str:
+def _create_start_message(*, desc: Any) -> str:
+    from coding_assistant.framework.parameters import format_parameters
+
     parameters_str = format_parameters(desc.parameters)
-    message = START_MESSAGE_TEMPLATE.format(
+    return START_MESSAGE_TEMPLATE.format(
         name=desc.name,
         parameters=parameters_str,
     )
 
-    return message
 
-
-def _handle_finish_task_result(result: FinishTaskResult, *, state: AgentState) -> str:
+def _handle_finish_task_result(result: Any, *, state: Any) -> str:
     state.output = AgentOutput(result=result.result, summary=result.summary)
     return "Agent output set."
 
 
 def _handle_compact_conversation_result(
-    result: CompactConversationResult,
+    result: Any,
     *,
-    desc: AgentDescription,
-    state: AgentState,
-    progress_callbacks: ProgressCallbacks,
+    desc: Any,
+    state: Any,
+    progress_callbacks: Any,
+    force: bool = True,
 ) -> str:
+    from coding_assistant.framework.history import clear_history, append_user_message
+    from coding_assistant.llm.types import UserMessage
+
     clear_history(state.history)
 
     user_msg = UserMessage(
@@ -85,28 +83,10 @@ def _handle_compact_conversation_result(
         callbacks=progress_callbacks,
         context_name=desc.name,
         message=user_msg,
-        force=True,
+        force=force,
     )
 
     return "Conversation compacted and history reset."
-
-
-def handle_tool_result_agent(
-    result: ToolResult,
-    *,
-    desc: AgentDescription,
-    state: AgentState,
-    progress_callbacks: ProgressCallbacks,
-) -> str:
-    if isinstance(result, FinishTaskResult):
-        return _handle_finish_task_result(result, state=state)
-    if isinstance(result, CompactConversationResult):
-        return _handle_compact_conversation_result(
-            result, desc=desc, state=state, progress_callbacks=progress_callbacks
-        )
-    if isinstance(result, TextResult):
-        return result.content
-    return f"Tool produced result of type {type(result).__name__}"
 
 
 async def run_agent_loop(
@@ -114,89 +94,88 @@ async def run_agent_loop(
     *,
     progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
     tool_callbacks: ToolCallbacks = NullToolCallbacks(),
-    completer: Completer,
+    completer: Any,
     ui: UI,
-    compact_conversation_at_tokens: int = 200_000,
     actor_system: ActorSystem | None = None,
+    compact_conversation_at_tokens: int = 200_000,
 ) -> None:
-    desc = ctx.desc
-    state = ctx.state
-
-    if state.output is not None:
+    """
+    Unified Actor-based Agent entry point.
+    """
+    if ctx.state.output is not None:
         raise RuntimeError("Agent already has a result or summary.")
 
-    tools = list(desc.tools)
+    should_shutdown = False
+    if actor_system is None:
+        actor_system = ActorSystem()
+        should_shutdown = True
+
+    tools = list(ctx.desc.tools)
     if not any(tool.name() == "finish_task" for tool in tools):
         tools.append(FinishTaskTool())
     if not any(tool.name() == "compact_conversation" for tool in tools):
         tools.append(CompactConversationTool())
 
-    # If actor_system is provided, register actors for this loop
-    if actor_system:
-        tool_worker = ToolWorkerActor("tool_worker", actor_system, tools)
-        actor_system.register(tool_worker)
-        await tool_worker.start()
+    import uuid
+    run_id = str(uuid.uuid4())[:8]
 
-        # Phase 4: Wrap the UI in an Actor Gateway
-        ui_gateway = UIGatewayActor("ui_gateway", actor_system, ui)
-        actor_system.register(ui_gateway)
-        await ui_gateway.start()
+    # Spawn Tool Worker for this agent
+    worker_addr = f"worker/{ctx.desc.name}/{run_id}"
+    tool_worker = ToolWorkerActor(worker_addr, actor_system, tools)
+    actor_system.register(tool_worker)
+    await tool_worker.start()
 
-        # Replace the UI with a bridge that sends messages
-        ui = ActorUIBridge(actor_system)
+    # Spawn UI Gateway
+    ui_addr = f"ui/{ctx.desc.name}/{run_id}"
+    ui_gateway = UIGatewayActor(ui_addr, actor_system, ui)
+    actor_system.register(ui_gateway)
+    await ui_gateway.start()
 
-    start_message = _create_start_message(desc=desc)
-    user_msg = UserMessage(content=start_message)
-    append_user_message(state.history, callbacks=progress_callbacks, context_name=desc.name, message=user_msg)
+    # Spawn Orchestrator
+    agent_addr = f"agent/{ctx.desc.name}/{run_id}"
+    orchestrator = OrchestratorActor(
+        address=agent_addr,
+        system=actor_system,
+        context=ctx,
+        completer=completer,
+        tools=tools,
+        tool_worker_address=worker_addr,
+        ui_gateway_address=ui_addr,
+        is_chat_mode=False,
+        compact_conversation_at_tokens=compact_conversation_at_tokens,
+        progress_callbacks=progress_callbacks,
+        tool_callbacks=tool_callbacks,
+    )
+    actor_system.register(orchestrator)
+    await orchestrator.start()
 
-    while state.output is None:
-        message, usage = await do_single_step(
-            history=state.history,
-            model=desc.model,
-            tools=tools,
-            progress_callbacks=progress_callbacks,
-            completer=completer,
-            context_name=desc.name,
+    # Start Task
+    from coding_assistant.messaging.messages import StartTask
+
+    await actor_system.send(
+        Envelope(
+            sender="system",
+            recipient=agent_addr,
+            payload=StartTask(prompt="Start autonomous task"),
         )
+    )
 
-        append_assistant_message(state.history, callbacks=progress_callbacks, context_name=desc.name, message=message)
-
-        if getattr(message, "tool_calls", []):
-            await handle_tool_calls(
-                message,
-                history=state.history,
-                tools=tools,
-                progress_callbacks=progress_callbacks,
-                tool_callbacks=tool_callbacks,
-                ui=ui,
-                context_name=desc.name,
-                handle_tool_result=lambda result: handle_tool_result_agent(
-                    result, desc=desc, state=state, progress_callbacks=progress_callbacks
-                ),
-                actor_system=actor_system,
-            )
+    # Wait for completion
+    try:
+        while orchestrator.state not in (OrchestratorState.COMPLETED, OrchestratorState.FAILED):
+            try:
+                await asyncio.wait_for(orchestrator.state_event.wait(), timeout=10.0)
+                if orchestrator.last_exception:
+                    raise orchestrator.last_exception
+            except asyncio.TimeoutError:
+                if orchestrator.state in (OrchestratorState.COMPLETED, OrchestratorState.FAILED):
+                    break
+                logger.warning(f"Agent {ctx.desc.name} wait timeout. State: {orchestrator.state}")
+                break
+    finally:
+        if should_shutdown:
+            await actor_system.shutdown()
         else:
-            user_msg2 = UserMessage(
-                content="I detected a step from you without any tool calls. This is not allowed. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work."
-            )
-            append_user_message(
-                state.history,
-                callbacks=progress_callbacks,
-                context_name=desc.name,
-                message=user_msg2,
-            )
-        if usage is not None and usage.tokens > compact_conversation_at_tokens:
-            user_msg3 = UserMessage(
-                content="Your conversation history has grown too large. Compact it immediately by using the `compact_conversation` tool."
-            )
-            append_user_message(
-                state.history,
-                callbacks=progress_callbacks,
-                context_name=desc.name,
-                message=user_msg3,
-            )
-
-    assert state.output is not None
-
-    if actor_system:
-        await actor_system.shutdown()  # This will stop the tool_worker
+            await orchestrator.stop()
+            await tool_worker.stop()
+            await ui_gateway.stop()

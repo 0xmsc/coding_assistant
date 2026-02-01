@@ -42,19 +42,27 @@ class BaseActor(abc.ABC):
 
     async def _run_loop(self) -> None:
         """Internal loop to process messages from the mailbox."""
-        while self._running:
-            try:
-                envelope = await self.mailbox.get()
-                logger.info(
-                    f"Actor {self.address} processing {type(envelope.payload).__name__} "
-                    f"from {envelope.sender} [trace: {envelope.trace_id}, cid: {envelope.correlation_id}]"
-                )
-                await self.receive(envelope)
-                self.mailbox.task_done()
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.exception(f"Error in actor {self.address} while processing message: {e}")
+        try:
+            while self._running:
+                try:
+                    envelope = await self.mailbox.get()
+                    logger.info(
+                        f"Actor {self.address} processing {type(envelope.payload).__name__} "
+                        f"from {envelope.sender} [trace: {envelope.trace_id}, cid: {envelope.correlation_id}]"
+                    )
+                    await self.receive(envelope)
+                    self.mailbox.task_done()
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.exception(f"Error in actor {self.address} while processing message: {e}")
+        finally:
+            self._running = False
+            # Ensure any waiters are released if the loop exits
+            if hasattr(self, 'state_event'):
+                getattr(self, 'state_event').set()
+            if hasattr(self, 'done_event'):
+                getattr(self, 'done_event').set()
 
     @abc.abstractmethod
     async def receive(self, envelope: Envelope[ActorMessage]) -> None:

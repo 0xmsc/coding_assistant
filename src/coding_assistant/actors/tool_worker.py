@@ -8,6 +8,7 @@ from coding_assistant.messaging.messages import (
     ActorMessage,
     ExecuteTool,
     ToolResult as ToolResultMessage,
+    Error,
 )
 from coding_assistant.llm.types import Tool
 
@@ -41,7 +42,7 @@ class ToolWorkerActor(BaseActor):
                         break
 
                 if not target_tool:
-                    raise ValueError(f"Tool {tool_name} not found.")
+                    raise ValueError(f"Tool {tool_name} not found in agent tools.")
 
                 # Execute it
                 result = await target_tool.execute(args)
@@ -64,6 +65,6 @@ class ToolWorkerActor(BaseActor):
                     recipient=envelope.sender,
                     correlation_id=envelope.correlation_id,
                     trace_id=envelope.trace_id,
-                    payload=ToolResultMessage(result={"content": f"Error executing tool: {e}"}, is_error=True),
+                    payload=Error(message=str(e)),
                 )
                 await self.system.send(err_reply)

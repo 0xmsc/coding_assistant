@@ -1,35 +1,23 @@
-import asyncio
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from enum import Enum
 import logging
-
-
-from coding_assistant.framework.builtin_tools import CompactConversationTool
-from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
+import asyncio
+from typing import Any
 from coding_assistant.llm.types import (
-    AssistantMessage,
     BaseMessage,
-    NullProgressCallbacks,
     ProgressCallbacks,
-    StatusLevel,
+    NullProgressCallbacks,
     Tool,
-    ToolResult,
-    Usage,
-    UserMessage,
 )
-from coding_assistant.framework.execution import do_single_step, handle_tool_calls
-from coding_assistant.framework.history import (
-    append_assistant_message,
-    append_user_message,
-    clear_history,
+from coding_assistant.framework.callbacks import (
+    NullToolCallbacks,
+    ToolCallbacks,
 )
-from coding_assistant.framework.interrupts import InterruptController
-from coding_assistant.framework.types import Completer
-from coding_assistant.framework.results import CompactConversationResult, TextResult
 from coding_assistant.ui import UI
-from coding_assistant.framework.image import get_image
 from coding_assistant.actors.system import ActorSystem
+from coding_assistant.actors.orchestrator import OrchestratorActor, OrchestratorState
+from coding_assistant.actors.tool_worker import ToolWorkerActor
+from coding_assistant.messaging.envelopes import Envelope
+from coding_assistant.messaging.messages import StartTask
+from coding_assistant.framework.types import AgentContext, AgentDescription, AgentState
 
 logger = logging.getLogger(__name__)
 
@@ -50,50 +38,9 @@ def _create_chat_start_message(instructions: str | None) -> str:
     instructions_section = ""
     if instructions:
         instructions_section = f"## Instructions\n\n{instructions}"
-    message = CHAT_START_MESSAGE_TEMPLATE.format(
+    return CHAT_START_MESSAGE_TEMPLATE.format(
         instructions_section=instructions_section,
     )
-    return message
-
-
-def handle_tool_result_chat(
-    result: ToolResult,
-    *,
-    history: list[BaseMessage],
-    callbacks: ProgressCallbacks,
-    context_name: str,
-) -> str:
-    if isinstance(result, CompactConversationResult):
-        clear_history(history)
-        compact_result_msg = UserMessage(
-            content=f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work."
-        )
-        append_user_message(
-            history,
-            callbacks=callbacks,
-            context_name=context_name,
-            message=compact_result_msg,
-            force=False,
-        )
-        return "Conversation compacted and history reset."
-
-    if isinstance(result, TextResult):
-        return result.content
-
-    raise RuntimeError(f"Tool produced unexpected result of type {type(result).__name__}")
-
-
-class ChatCommandResult(Enum):
-    PROCEED_WITH_MODEL = 1
-    PROCEED_WITH_PROMPT = 2
-    EXIT = 3
-
-
-@dataclass
-class ChatCommand:
-    name: str
-    help: str
-    execute: Callable[[str | None], Awaitable[ChatCommandResult]]
 
 
 async def run_chat_loop(
@@ -104,151 +51,84 @@ async def run_chat_loop(
     instructions: str | None,
     callbacks: ProgressCallbacks = NullProgressCallbacks(),
     tool_callbacks: ToolCallbacks = NullToolCallbacks(),
-    completer: Completer,
+    completer: Any,
     ui: UI,
     context_name: str,
     actor_system: ActorSystem | None = None,
 ) -> None:
-    tools = list(tools)
-    if not any(tool.name() == "compact_conversation" for tool in tools):
-        tools.append(CompactConversationTool())
+    """
+    Unified Actor-based Chat entry point.
+    """
+    should_shutdown = False
+    if actor_system is None:
+        actor_system = ActorSystem()
+        should_shutdown = True
 
-    if history:
-        for message in history:
-            if isinstance(message, AssistantMessage):
-                callbacks.on_assistant_message(context_name, message, force=True)
-            elif isinstance(message, UserMessage):
-                callbacks.on_user_message(context_name, message, force=True)
+    # Setup dummy context for chat
+    desc = AgentDescription(name=context_name, model=model, parameters=[], tools=tools)
+    state = AgentState(history=history)
+    ctx = AgentContext(desc=desc, state=state)
 
-    need_user_input = True
+    import uuid
+    run_id = str(uuid.uuid4())[:8]
 
-    async def _exit_cmd(arg: str | None = None) -> ChatCommandResult:
-        return ChatCommandResult.EXIT
+    # Dispatch tools
+    worker_addr = f"worker/{context_name}/{run_id}"
+    tool_worker = ToolWorkerActor(worker_addr, actor_system, tools)
+    actor_system.register(tool_worker)
+    await tool_worker.start()
 
-    async def _compact_cmd(arg: str | None = None) -> ChatCommandResult:
-        compact_msg = UserMessage(
-            content="Immediately compact our conversation so far by using the `compact_conversation` tool."
+    # Register physical UI in the gateway
+    from coding_assistant.actors.ui_gateway import UIGatewayActor
+
+    ui_addr = f"ui/{context_name}/{run_id}"
+    ui_gateway = UIGatewayActor(ui_addr, actor_system, ui)
+    actor_system.register(ui_gateway)
+    await ui_gateway.start()
+
+    # Create unified orchestrator in chat mode
+    agent_addr = f"agent/{context_name}/{run_id}"
+    orchestrator = OrchestratorActor(
+        address=agent_addr,
+        system=actor_system,
+        context=ctx,
+        completer=completer,
+        tools=tools,
+        tool_worker_address=worker_addr,
+        ui_gateway_address=ui_addr,
+        is_chat_mode=True,
+        instructions=instructions,
+        progress_callbacks=callbacks,
+        tool_callbacks=tool_callbacks,
+    )
+    actor_system.register(orchestrator)
+    await orchestrator.start()
+
+    # Start Chat Mode
+    await actor_system.send(
+        Envelope(
+            sender="system", recipient=agent_addr, payload=StartTask(prompt="Enter chat mode")
         )
-        append_user_message(
-            history,
-            callbacks=callbacks,
-            context_name=context_name,
-            message=compact_msg,
-            force=True,
-        )
+    )
 
-        nonlocal need_user_input
-        need_user_input = True
-
-        return ChatCommandResult.PROCEED_WITH_MODEL
-
-    async def _clear_cmd(arg: str | None = None) -> ChatCommandResult:
-        clear_history(history)
-        callbacks.on_status_message("History cleared.", level=StatusLevel.SUCCESS)
-        return ChatCommandResult.PROCEED_WITH_PROMPT
-
-    async def _image_cmd(arg: str | None = None) -> ChatCommandResult:
-        if arg is None:
-            callbacks.on_status_message("/image requires a path or URL argument.", level=StatusLevel.ERROR)
-            return ChatCommandResult.PROCEED_WITH_PROMPT
-        try:
-            data_url = await get_image(arg.strip())
-            image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
-            user_msg = UserMessage(content=image_content)
-            append_user_message(history, callbacks=callbacks, context_name=context_name, message=user_msg)
-            callbacks.on_status_message(f"Image added from {arg}.", level=StatusLevel.SUCCESS)
-            return ChatCommandResult.PROCEED_WITH_PROMPT
-        except Exception as e:
-            callbacks.on_status_message(f"Error loading image: {e}", level=StatusLevel.ERROR)
-            return ChatCommandResult.PROCEED_WITH_PROMPT
-
-    async def _help_cmd(arg: str | None = None) -> ChatCommandResult:
-        help_text = "Available commands:\n" + "\n".join(f"  {cmd.name} - {cmd.help}" for cmd in commands)
-        callbacks.on_status_message(help_text, level=StatusLevel.INFO)
-        return ChatCommandResult.PROCEED_WITH_PROMPT
-
-    commands = [
-        ChatCommand("/exit", "Exit the chat", _exit_cmd),
-        ChatCommand("/compact", "Compact the conversation history", _compact_cmd),
-        ChatCommand("/clear", "Clear the conversation history", _clear_cmd),
-        ChatCommand("/image", "Add an image (path or URL) to history", _image_cmd),
-        ChatCommand("/help", "Show this help", _help_cmd),
-    ]
-    command_map = {cmd.name: cmd for cmd in commands}
-    command_names = list(command_map.keys())
-
-    start_message = _create_chat_start_message(instructions)
-    start_user_msg = UserMessage(content=start_message)
-    append_user_message(history, callbacks=callbacks, context_name=context_name, message=start_user_msg, force=True)
-
-    usage = Usage(0, 0.0)
-
-    while True:
-        if need_user_input:
-            need_user_input = False
-
-            callbacks.on_status_message(f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", level=StatusLevel.INFO)
-            answer = await ui.prompt(words=command_names)
-            answer_strip = answer.strip()
-
-            # Split answer into command and argument
-            parts = answer_strip.split(maxsplit=1)
-            cmd = parts[0]
-            arg = parts[1] if len(parts) > 1 else None
-            if tool := command_map.get(cmd):
-                result = await tool.execute(arg)
-                if result == ChatCommandResult.EXIT:
-                    break
-                elif result == ChatCommandResult.PROCEED_WITH_PROMPT:
-                    need_user_input = True
-                    continue
-                elif result == ChatCommandResult.PROCEED_WITH_MODEL:
-                    pass
-            else:
-                user_msg = UserMessage(content=answer)
-                append_user_message(history, callbacks=callbacks, context_name=context_name, message=user_msg)
-
-        loop = asyncio.get_running_loop()
-        with InterruptController(loop) as interrupt_controller:
+    # Wait for session close (e.g. /exit)
+    try:
+        while orchestrator.state not in (OrchestratorState.COMPLETED, OrchestratorState.FAILED):
             try:
-                do_single_step_task = loop.create_task(
-                    do_single_step(
-                        history=history,
-                        model=model,
-                        tools=tools,
-                        progress_callbacks=callbacks,
-                        completer=completer,
-                        context_name=context_name,
-                    ),
-                    name="do_single_step",
-                )
-                interrupt_controller.register_task("do_single_step", do_single_step_task)
-
-                message, step_usage = await do_single_step_task
-                append_assistant_message(history, callbacks=callbacks, context_name=context_name, message=message)
-
-                if step_usage:
-                    usage = Usage(
-                        tokens=step_usage.tokens,
-                        cost=usage.cost + step_usage.cost,
-                    )
-
-                if getattr(message, "tool_calls", []):
-                    await handle_tool_calls(
-                        message,
-                        history=history,
-                        tools=tools,
-                        progress_callbacks=callbacks,
-                        tool_callbacks=tool_callbacks,
-                        ui=ui,
-                        context_name=context_name,
-                        task_created_callback=interrupt_controller.register_task,
-                        handle_tool_result=lambda result: handle_tool_result_chat(
-                            result, history=history, callbacks=callbacks, context_name=context_name
-                        ),
-                        actor_system=actor_system,
-                    )
-                else:
-                    need_user_input = True
-            except asyncio.CancelledError:
-                need_user_input = True
+                await asyncio.wait_for(orchestrator.state_event.wait(), timeout=10.0)
+                if orchestrator.last_exception:
+                    raise orchestrator.last_exception
+            except asyncio.TimeoutError:
+                if orchestrator.state in (OrchestratorState.COMPLETED, OrchestratorState.FAILED):
+                    break
+                if orchestrator.state == OrchestratorState.WAITING_FOR_USER:
+                    break
+                logger.warning(f"Chat {context_name} wait timeout. State: {orchestrator.state}")
+                break
+    finally:
+        if should_shutdown:
+            await actor_system.shutdown()
+        else:
+            await orchestrator.stop()
+            await tool_worker.stop()
+            await ui_gateway.stop()

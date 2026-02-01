@@ -59,4 +59,11 @@ class UIGatewayActor(BaseActor):
 
             except Exception as e:
                 logger.exception(f"Error getting user input: {e}")
-                # We should probably send an Error message back if UI fails
+                reply: Envelope[ActorMessage] = Envelope(
+                    sender=self.address,
+                    recipient=envelope.sender,
+                    correlation_id=envelope.correlation_id,
+                    trace_id=envelope.trace_id,
+                    payload=Error(message=f"UI Error: {e}"),
+                )
+                await self.system.send(reply)

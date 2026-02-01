@@ -2,7 +2,6 @@ import pytest
 
 from coding_assistant.actors.system import ActorSystem
 from coding_assistant.actors.ui_gateway import UIGatewayActor
-from coding_assistant.actors.ui_bridge import ActorUIBridge
 from coding_assistant.ui import UI
 
 
@@ -27,19 +26,28 @@ async def test_ui_gateway_roundtrip() -> None:
     system.register(gateway)
     await gateway.start()
 
-    # Bridge (Legacy UI interface) -> Postman (System)
-    bridge = ActorUIBridge(system, recipient="ui")
+    from coding_assistant.messaging.envelopes import Envelope
+    from coding_assistant.messaging.ui_messages import UserInputRequested, UserInputReceived
+    from coding_assistant.messaging.messages import ActorMessage
 
     # Test ask
-    result = await bridge.ask("What is your name?")
-    assert result == "Answer to What is your name?"
+    envelope: Envelope[ActorMessage] = Envelope(
+        sender="orchestrator",
+        recipient="ui",
+        payload=UserInputRequested(prompt="What is your name?", input_type="ask"),
+    )
+    response = await system.ask(envelope)
+    assert isinstance(response.payload, UserInputReceived)
+    assert response.payload.content == "Answer to What is your name?"
 
     # Test confirm
-    result_confirm = await bridge.confirm("Are you sure?")
-    assert result_confirm is True
-
-    # Test prompt
-    result_prompt = await bridge.prompt()
-    assert result_prompt == "Generic prompt response"
+    envelope2: Envelope[ActorMessage] = Envelope(
+        sender="orchestrator",
+        recipient="ui",
+        payload=UserInputRequested(prompt="Are you sure?", input_type="confirm"),
+    )
+    response2 = await system.ask(envelope2)
+    assert isinstance(response2.payload, UserInputReceived)
+    assert response2.payload.confirmed is True
 
     await system.shutdown()
