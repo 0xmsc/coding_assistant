@@ -30,6 +30,8 @@ from coding_assistant.llm.types import UserMessage, ToolResult
 from coding_assistant.ui import UI
 from coding_assistant.actors.system import ActorSystem
 from coding_assistant.actors.tool_worker import ToolWorkerActor
+from coding_assistant.actors.ui_gateway import UIGatewayActor
+from coding_assistant.actors.ui_bridge import ActorUIBridge
 
 logger = logging.getLogger(__name__)
 
@@ -129,11 +131,19 @@ async def run_agent_loop(
     if not any(tool.name() == "compact_conversation" for tool in tools):
         tools.append(CompactConversationTool())
 
-    # If actor_system is provided, register a ToolWorkerActor for this loop
+    # If actor_system is provided, register actors for this loop
     if actor_system:
         tool_worker = ToolWorkerActor("tool_worker", actor_system, tools)
         actor_system.register(tool_worker)
         await tool_worker.start()
+
+        # Phase 4: Wrap the UI in an Actor Gateway
+        ui_gateway = UIGatewayActor("ui_gateway", actor_system, ui)
+        actor_system.register(ui_gateway)
+        await ui_gateway.start()
+
+        # Replace the UI with a bridge that sends messages
+        ui = ActorUIBridge(actor_system)
 
     start_message = _create_start_message(desc=desc)
     user_msg = UserMessage(content=start_message)

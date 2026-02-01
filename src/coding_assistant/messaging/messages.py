@@ -1,6 +1,7 @@
 from typing import Union, Literal, Any, Optional
 from pydantic import BaseModel, ConfigDict
 from coding_assistant.llm.types import BaseMessage, Tool, Completion
+from coding_assistant.messaging.ui_messages import UserInputRequested, UserInputReceived
 
 
 class Message(BaseModel):
@@ -65,4 +66,6 @@ ActorMessage = Union[
     DisplayMessage,
     TaskCompleted,
     Error,
+    UserInputRequested,
+    UserInputReceived,
 ]
