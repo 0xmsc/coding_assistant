@@ -34,7 +34,7 @@ class ActorSystem:
     async def send(self, envelope: Envelope[ActorMessage]) -> None:
         """Dispatch an envelope to the recipient actor."""
         target = envelope.recipient
-        logger.debug(
+        logger.info(
             f"System routing {type(envelope.payload).__name__} from {envelope.sender} to {target} "
             f"[trace: {envelope.trace_id}, cid: {envelope.correlation_id}]"
         )
