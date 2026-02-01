@@ -148,10 +148,18 @@ To ensure stability and maintainability, the transition to the Actor-based archi
 
 ### Step 5: The Orchestrator (Final FSM Shift)
 **Objective**: Replace the linear `while` loop with a formal State Machine.
-- **Action**: Rewrite `AgentLoop` logic into `OrchestratorActor`.
-- **Testing Strategy**:
-    - **The "Great Alignment"**: Run the full suite of existing integration tests (e.g., `test_agent_loop.py`). The behavior should be indistinguishable from the previous linear implementation.
-    - **FSM Trace Test**: Verify that the Orchestrator transitions through the correct states (`IDLE` -> `THINKING` -> `BUSY` -> `IDLE`) for a standard completion.
+
+#### Step 5a: FSM Definition & Orchestrator Actor
+- **Action**: Create `src/coding_assistant/actors/orchestrator.py` implementing the logic from `run_agent_loop` as an event-driven `OrchestratorActor`.
+- **Testing**: Unit tests to verify state transitions (e.g., `THINKING` -> `WAITING_FOR_TOOLS` -> `THINKING`).
+
+#### Step 5b: State Serialization & Dependency Injection
+- **Action**: Refactor the Orchestrator to support unique addressing (multi-agent) and internal history management.
+- **Testing**: Verify that multiple Orchestrator instances can run in the same `ActorSystem` without message leakage.
+
+#### Step 5c: The "Big Switch"
+- **Action**: Update `Session` and `main.py` to use the Actor system as the primary execution engine. Deprecate legacy procedural loops.
+- **Testing**: Full regression suite (`just test`) to ensure behavioral parity.
 
 ## 8. Clarifying Questions (Refined)
 
