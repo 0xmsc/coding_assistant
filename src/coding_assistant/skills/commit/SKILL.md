@@ -1,18 +1,21 @@
 ---
 name: commit
-description: Helps write conventional commit messages, create atomic commits, and follow git best practices. Use when the agent needs to help with git commits, commit message writing, or git workflow guidance.
+description: Helps write clear commit messages and follow git best practices. Use when the agent needs to help with git commits or commit message writing.
 ---
 
 # Commit Skill
 
 ## Workflow
-1. **Analyze Results**: Review `git status` and `git diff --staged`.
-2. **Draft Message**: Follow [Conventional Commits](references/conventional-commits.md).
-   - `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`.
-   - Max 50 chars for subject.
-   - Explain "why" in body if needed (wrap at 72).
-3. **Atomic Commits**: Ensure one logical change per commit.
-4. **Templates**: Use `assets/commit-template.txt` for consistency.
+1. **Analyze Changes**: Review `git status` and `git diff --staged`.
+2. **Draft Message**: Write a short, clear summary (max 50 chars).
+3. **Atomic Commits**: One logical change per commit.
+
+## Template
+```
+<short summary of what changed>
+
+[optional: why this change was needed]
+```
 
 ## Safe Git Commands
 - `git add <files>`
