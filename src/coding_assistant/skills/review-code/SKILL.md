@@ -1,17 +1,19 @@
 ---
 name: review-code
-description: Provides a structured workflow for planning and executing code reviews like a senior engineer. Use when asked to review code, PRs, or plan a code review task.
+description: Provides a workflow for code reviews. Use when asked to review code or PRs.
 ---
 
 # Code Review Skill
 
 ## Workflow
-1. **Understand**: Read context (ticket, PR description) and identifiy scope.
-2. **Execute**: Use the checklist in [references/checklist.md](references/checklist.md).
-   - Core areas: Quality, Security, Performance, Maintainability.
-3. **Tools**: Run project-specific linting and testing commands (e.g., `just lint`, `npm test`, `pytest`); use static analysis if available.
-4. **Document**: Provide constructive feedback with rationale and suggestions.
-5. **Follow Up**: Track and verify fixes.
+1. **Context**: Read PR description and identify scope.
+2. **Review**: Focus on what matters (see priorities below).
+3. **Verify**: Run linting and tests.
+4. **Feedback**: Be constructive, explain rationale.
 
-## References
-- `checklist.md`: Detailed review criteria.
+## Priorities
+1. **PR Description**: Must be filled with clear context and purpose.
+2. **Simplicity**: The simplest solution that works. No over-engineering.
+3. **Clean Code**: Readable, well-named, no duplication.
+4. **Security**: No hardcoded secrets, validate inputs, handle errors.
+5. **Tests**: Appropriate coverage for the change.
