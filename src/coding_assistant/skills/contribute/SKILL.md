@@ -13,6 +13,7 @@ description: Helps with commits and pull requests. Use when committing changes o
 ## Pull Requests
 - Keep PRs focused and reviewable.
 - Link related issues if applicable.
+- Prefer bullet point lists over full paragraphs.
 
 ### PR Template
 ```
