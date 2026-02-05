@@ -7,7 +7,7 @@ description: General principles for exploring, developing, editing, and refactor
 
 ## Core Principles
 - **Clean Code**: Follow readable, maintainable patterns.
-- **Fail Early**: Never catch unexpected exceptions silently; let them bubble up.
+- **Fail Early**: Assert or throw on unexpected conditions. Do not be defensive - if something unexpected happens (e.g., invalid JSON that should be valid), crash immediately rather than silently handling it.
 - **Simplicity**: Prefer the simplest working solution.
 
 ## Planning
