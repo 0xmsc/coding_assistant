@@ -28,6 +28,7 @@ For non-trivial changes:
 
 ## Language-Specific References
 When working with specific languages, consult the following references:
+- **C++**: Refer to `references/cpp.md`.
 - **Python**: Refer to `references/python.md`.
 
 ## File Operations
