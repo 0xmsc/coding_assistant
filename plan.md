@@ -66,12 +66,13 @@
   - [x] Define AgentLoop actor message and wiring.
   - [x] Move agent loop execution into actor handler.
   - [x] Ensure agent loop tests run through the actor path.
-- [ ] **System-level actor orchestration**:
-  - [ ] Create long-lived system actors in Session (AgentActor, ToolCallActor, UserActor).
-  - [ ] Move per-call actor creation (chat loop, single step, UI) into these long-lived actors.
-  - [ ] Rewire message passing so actors coordinate without direct function orchestration.
-  - [ ] Remove short-lived actor scaffolding after system actors take ownership.
+- [x] **System-level actor orchestration**:
+  - [x] Create long-lived system actors in Session (AgentActor, ToolCallActor, UserActor).
+  - [x] Move per-call actor creation (chat loop, single step, UI) into these long-lived actors.
+  - [x] Rewire message passing so actors coordinate without direct function orchestration.
+  - [x] Remove short-lived actor scaffolding after system actors take ownership.
 - [ ] **Add tests and metrics**: actor unit tests (message handling), integration tests for chat/agent flows, and tracing for actor message latency.
+  - [x] Update existing tests to exercise actor interfaces (system actors, ToolCallActor, AgentActor).
   - [ ] **ChatLoop actor cutover** (separate task)
     - [x] Replace run_chat_loop with a ChatLoop actor (no direct loop logic outside actors).
     - [ ] Add integration tests for actor-based chat flows.

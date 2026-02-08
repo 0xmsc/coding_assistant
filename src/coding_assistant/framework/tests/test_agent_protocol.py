@@ -2,10 +2,16 @@ from typing import Any
 import pytest
 from unittest.mock import Mock
 
-from coding_assistant.llm.types import ProgressCallbacks
-from coding_assistant.framework.execution import do_single_step, handle_tool_calls
+from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
 from coding_assistant.framework.agent import run_agent_loop
-from coding_assistant.framework.tests.helpers import FakeCompleter, make_test_agent, make_ui_mock
+from coding_assistant.framework.tests.helpers import (
+    FakeCompleter,
+    agent_actor_scope,
+    make_test_agent,
+    make_ui_mock,
+    system_actor_scope_for_tests,
+    tool_call_actor_scope,
+)
 from coding_assistant.llm.types import (
     AssistantMessage,
     FunctionCall,
@@ -46,16 +52,23 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold() -> None:
         tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[UserMessage(content="start")]
     )
 
-    msg, usage = await do_single_step(
-        history=state.history, model=desc.model, tools=desc.tools, completer=completer, context_name=desc.name
-    )
+    async with agent_actor_scope(context_name=desc.name) as agent_actor:
+        msg, usage = await agent_actor.do_single_step(
+            history=state.history,
+            model=desc.model,
+            tools=desc.tools,
+            completer=completer,
+            context_name=desc.name,
+            progress_callbacks=NullProgressCallbacks(),
+        )
 
     assert msg.content == fake_message.content
 
     append_assistant_message(state.history, context_name=desc.name, message=msg)
 
     # Simulate loop behavior: execute tools and then append shorten prompt due to tokens
-    await handle_tool_calls(msg, history=state.history, tools=desc.tools, ui=make_ui_mock(), context_name=desc.name)
+    async with tool_call_actor_scope(tools=desc.tools, ui=make_ui_mock(), context_name=desc.name) as actor:
+        await actor.handle_tool_calls(msg, history=state.history)
     if usage is not None and usage.tokens > 1000:
         state.history.append(
             UserMessage(
@@ -98,14 +111,15 @@ async def test_reasoning_is_forwarded_and_not_stored() -> None:
 
     callbacks = Mock(spec=ProgressCallbacks)
 
-    _, _ = await do_single_step(
-        history=state.history,
-        model=desc.model,
-        tools=desc.tools,
-        progress_callbacks=callbacks,
-        completer=completer,
-        context_name=desc.name,
-    )
+    async with agent_actor_scope(context_name=desc.name) as agent_actor:
+        _, _ = await agent_actor.do_single_step(
+            history=state.history,
+            model=desc.model,
+            tools=desc.tools,
+            progress_callbacks=callbacks,
+            completer=completer,
+            context_name=desc.name,
+        )
 
     # Assert reasoning is not stored in history anywhere
     for entry in state.history:
@@ -139,7 +153,20 @@ async def test_auto_inject_builtin_tools() -> None:
         ]
     )
 
-    await run_agent_loop(ctx, completer=completer, ui=make_ui_mock(), compact_conversation_at_tokens=1000)
+    ui = make_ui_mock()
+    tools_with_meta = list(ctx.desc.tools)
+    if not any(tool.name() == "finish_task" for tool in tools_with_meta):
+        tools_with_meta.append(FinishTaskTool())
+    if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
+        tools_with_meta.append(CompactConversation())
+    async with system_actor_scope_for_tests(tools=tools_with_meta, ui=ui, context_name=ctx.desc.name) as actors:
+        await run_agent_loop(
+            ctx,
+            completer=completer,
+            ui=actors.user_actor,
+            compact_conversation_at_tokens=1000,
+            system_actors=actors,
+        )
 
     assert state.output is not None
     assert state.output.result == "ok"
@@ -149,10 +176,12 @@ async def test_auto_inject_builtin_tools() -> None:
 async def test_requires_non_empty_history() -> None:
     desc, state = make_test_agent(tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[])
     with pytest.raises(RuntimeError, match="History is required in order to run a step."):
-        await do_single_step(
-            history=state.history,
-            model=desc.model,
-            tools=desc.tools,
-            completer=FakeCompleter([AssistantMessage(content="hi")]),
-            context_name=desc.name,
-        )
+        async with agent_actor_scope(context_name=desc.name) as agent_actor:
+            await agent_actor.do_single_step(
+                history=state.history,
+                model=desc.model,
+                tools=desc.tools,
+                completer=FakeCompleter([AssistantMessage(content="hi")]),
+                context_name=desc.name,
+                progress_callbacks=NullProgressCallbacks(),
+            )

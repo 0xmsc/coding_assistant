@@ -1,7 +1,11 @@
-from typing import Any, Iterable, Sequence
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
 
+from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
+from coding_assistant.framework.execution import AgentActor, ToolCallActor
 from coding_assistant.framework.parameters import Parameter
+from coding_assistant.framework.system_actors import SystemActors, system_actor_scope
 from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -12,6 +16,7 @@ from coding_assistant.llm.types import (
     ToolCall as ToolCall,
     Usage,
 )
+from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
 from coding_assistant.ui import UI
 
 
@@ -130,3 +135,55 @@ def make_test_context(
         history=history,
     )
     return AgentContext(desc=desc, state=state)
+
+
+@asynccontextmanager
+async def agent_actor_scope(*, context_name: str = "test") -> AsyncIterator[AgentActor]:
+    actor = AgentActor(context_name=context_name)
+    actor.start()
+    try:
+        yield actor
+    finally:
+        await actor.stop()
+
+
+@asynccontextmanager
+async def tool_call_actor_scope(
+    *,
+    tools: Sequence[Tool],
+    ui: UI,
+    context_name: str = "test",
+    progress_callbacks: ProgressCallbacks | None = None,
+    tool_callbacks: ToolCallbacks | None = None,
+) -> AsyncIterator[ToolCallActor]:
+    actor = ToolCallActor(
+        tools=tools,
+        ui=ui,
+        context_name=context_name,
+        progress_callbacks=progress_callbacks or NullProgressCallbacks(),
+        tool_callbacks=tool_callbacks or NullToolCallbacks(),
+    )
+    actor.start()
+    try:
+        yield actor
+    finally:
+        await actor.stop()
+
+
+@asynccontextmanager
+async def system_actor_scope_for_tests(
+    *,
+    tools: Sequence[Tool],
+    ui: UI,
+    context_name: str = "test",
+    progress_callbacks: ProgressCallbacks | None = None,
+    tool_callbacks: ToolCallbacks | None = None,
+) -> AsyncIterator[SystemActors]:
+    async with system_actor_scope(
+        tools=tools,
+        ui=ui,
+        progress_callbacks=progress_callbacks or NullProgressCallbacks(),
+        tool_callbacks=tool_callbacks or NullToolCallbacks(),
+        context_name=context_name,
+    ) as actors:
+        yield actors

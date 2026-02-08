@@ -11,7 +11,14 @@ from coding_assistant.llm.types import (
     Usage,
     UserMessage,
 )
-from coding_assistant.framework.tests.helpers import FakeCompleter, FakeMessage, FunctionCall, ToolCall, make_ui_mock
+from coding_assistant.framework.tests.helpers import (
+    FakeCompleter,
+    FakeMessage,
+    FunctionCall,
+    ToolCall,
+    make_ui_mock,
+    system_actor_scope_for_tests,
+)
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
 from coding_assistant.framework.results import TextResult
@@ -35,6 +42,39 @@ class FakeEchoTool(Tool):
         return TextResult(content=f"echo: {parameters['text']}")
 
 
+async def _run_chat_with_actors(
+    *,
+    history: list[BaseMessage],
+    model: str,
+    tools: list[Tool],
+    instructions: str | None,
+    completer: FakeCompleter,
+    ui: Any,
+    context_name: str,
+    callbacks: NullProgressCallbacks | None = None,
+) -> None:
+    tools_with_meta = list(tools)
+    if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
+        tools_with_meta.append(CompactConversation())
+    async with system_actor_scope_for_tests(
+        tools=tools_with_meta,
+        ui=ui,
+        context_name=context_name,
+        progress_callbacks=callbacks,
+    ) as actors:
+        await run_chat_loop(
+            history=history,
+            model=model,
+            tools=tools_with_meta,
+            instructions=instructions,
+            context_name=context_name,
+            completer=completer,
+            callbacks=callbacks or NullProgressCallbacks(),
+            ui=actors.user_actor,
+            system_actors=actors,
+        )
+
+
 @pytest.mark.asyncio
 async def test_chat_step_prompts_user_on_no_tool_calls_once() -> None:
     completer = FakeCompleter([FakeMessage(content="Hello")])
@@ -46,7 +86,7 @@ async def test_chat_step_prompts_user_on_no_tool_calls_once() -> None:
     ui = make_ui_mock(ask_sequence=[("> ", "User reply"), ("> ", "User reply 2")])
 
     with pytest.raises(AssertionError, match="FakeCompleter script exhausted"):
-        await run_chat_loop(
+        await _run_chat_with_actors(
             history=history,
             model=model,
             tools=tools,
@@ -74,7 +114,7 @@ async def test_chat_step_executes_tools_without_prompt() -> None:
     ui = make_ui_mock(ask_sequence=[("> ", "Hi")])
 
     with pytest.raises(AssertionError, match="FakeCompleter script exhausted"):
-        await run_chat_loop(
+        await _run_chat_with_actors(
             history=history,
             model=model,
             tools=tools,
@@ -98,7 +138,7 @@ async def test_chat_mode_does_not_require_finish_task_tool() -> None:
     ui = make_ui_mock(ask_sequence=[("> ", "Ack"), ("> ", "Ack 2")])
 
     with pytest.raises(AssertionError, match="FakeCompleter script exhausted"):
-        await run_chat_loop(
+        await _run_chat_with_actors(
             history=history,
             model=model,
             tools=tools,
@@ -122,7 +162,7 @@ async def test_chat_exit_command_stops_loop_without_appending_command() -> None:
 
     ui = make_ui_mock(ask_sequence=[("> ", "/exit")])
 
-    await run_chat_loop(
+    await _run_chat_with_actors(
         history=history,
         model=model,
         tools=tools,
@@ -157,7 +197,7 @@ async def test_chat_loop_prompts_after_compact_command() -> None:
 
     ui = make_ui_mock(ask_sequence=[("> ", "/compact"), ("> ", "/exit")])
 
-    await run_chat_loop(
+    await _run_chat_with_actors(
         history=history,
         model=model,
         tools=tools,
@@ -206,7 +246,7 @@ async def test_chat_compact_conversation_not_forced_in_callbacks() -> None:
     ui = make_ui_mock(ask_sequence=[("> ", "Please compact"), ("> ", "/exit")])
 
     with pytest.raises(AssertionError, match="Completer script exhausted"):
-        await run_chat_loop(
+        await _run_chat_with_actors(
             history=history,
             model=model,
             tools=tools,
@@ -235,7 +275,7 @@ async def test_chat_mode_displays_usage_right_aligned() -> None:
     ui = make_ui_mock(ask_sequence=[("> ", "user response"), ("> ", "/exit")])
 
     # The loop should exit when /exit is entered after processing both messages
-    await run_chat_loop(
+    await _run_chat_with_actors(
         history=history,
         model=model,
         tools=tools,
