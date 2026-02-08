@@ -11,7 +11,7 @@ from coding_assistant.history import save_orchestrator_history
 from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.sandbox import sandbox
-from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools
+from coding_assistant.tools.mcp_manager import MCPServerManager
 from coding_assistant.tools.tools import AgentTool, AskClientTool, RedirectToolCallTool
 from coding_assistant.ui import UI
 
@@ -54,7 +54,7 @@ class Session:
 
         self.tools: list[Tool] = []
         self.instructions: str = ""
-        self._mcp_servers_cm: Optional[Any] = None
+        self._mcp_manager: Optional[MCPServerManager] = None
         self._mcp_servers: Optional[list[Any]] = None
 
     @property
@@ -106,12 +106,13 @@ class Session:
         all_configs = [*self.mcp_server_configs, default_config]
 
         # MCP Servers setup
-        self._mcp_servers_cm = get_mcp_servers_from_config(all_configs, working_directory=self.working_directory)
-        assert self._mcp_servers_cm is not None
-        self._mcp_servers = await self._mcp_servers_cm.__aenter__()
-
-        assert self._mcp_servers is not None
-        self.tools = await get_mcp_wrapped_tools(self._mcp_servers)
+        self._mcp_manager = MCPServerManager(context_name="session")
+        self._mcp_manager.start()
+        bundle = await self._mcp_manager.initialize(
+            config_servers=all_configs, working_directory=self.working_directory
+        )
+        self._mcp_servers = bundle.servers
+        self.tools = bundle.tools
 
         # Meta tools
         self.tools.append(RedirectToolCallTool(tools=self.tools))
@@ -129,8 +130,8 @@ class Session:
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if self._mcp_servers_cm:
-            await self._mcp_servers_cm.__aexit__(exc_type, exc_val, exc_tb)
+        if self._mcp_manager:
+            await self._mcp_manager.shutdown(exc_type=exc_type, exc_val=exc_val, exc_tb=exc_tb)
 
         self.callbacks.on_status_message("Session closed.", level=StatusLevel.INFO)
 
