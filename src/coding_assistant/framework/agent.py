@@ -1,68 +1,19 @@
-import logging
-
-
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
     FinishTaskTool,
 )
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
-from coding_assistant.framework.execution import do_single_step, handle_tool_calls
-from coding_assistant.framework.history import (
-    append_assistant_message,
-    append_user_message,
-    clear_history,
-)
-from coding_assistant.framework.parameters import format_parameters
-from coding_assistant.framework.types import (
-    AgentContext,
-    AgentDescription,
-    AgentOutput,
-    AgentState,
-    Completer,
-)
-from coding_assistant.framework.results import (
-    CompactConversationResult,
-    FinishTaskResult,
-    TextResult,
-)
-from coding_assistant.llm.types import Tool, UserMessage, ToolResult
+from coding_assistant.framework.execution import AgentActor
+from coding_assistant.framework.types import AgentContext, AgentDescription, AgentState, Completer
+from coding_assistant.framework.results import CompactConversationResult, FinishTaskResult
+from coding_assistant.llm.types import ToolResult
 from coding_assistant.ui import UI
 from coding_assistant.framework.system_actors import SystemActors, system_actor_scope
 
-logger = logging.getLogger(__name__)
-
-START_MESSAGE_TEMPLATE = """
-## General
-
-- You are an agent named `{name}`.
-- You are given a set of parameters by your client, among which are your task and your description.
-  - It is of the utmost importance that you try your best to fulfill the task as specified.
-  - The task shall be done in a way which fits your description.
-- You must use at least one tool call in every step.
-  - Use the `finish_task` tool when you have fully finished your task, no questions should still be open.
-
-## Parameters
-
-Your client has provided the following parameters for your task:
-
-{parameters}
-""".strip()
-
-
-def _create_start_message(*, desc: AgentDescription) -> str:
-    parameters_str = format_parameters(desc.parameters)
-    message = START_MESSAGE_TEMPLATE.format(
-        name=desc.name,
-        parameters=parameters_str,
-    )
-
-    return message
-
 
 def _handle_finish_task_result(result: FinishTaskResult, *, state: AgentState) -> str:
-    state.output = AgentOutput(result=result.result, summary=result.summary)
-    return "Agent output set."
+    return AgentActor.handle_finish_task_result(result, state=state)
 
 
 def _handle_compact_conversation_result(
@@ -72,20 +23,9 @@ def _handle_compact_conversation_result(
     state: AgentState,
     progress_callbacks: ProgressCallbacks,
 ) -> str:
-    clear_history(state.history)
-
-    user_msg = UserMessage(
-        content=f"A summary of your conversation with the client until now:\n\n{result.summary}\n\nPlease continue your work."
+    return AgentActor.handle_compact_conversation_result(
+        result, desc=desc, state=state, progress_callbacks=progress_callbacks
     )
-    append_user_message(
-        state.history,
-        callbacks=progress_callbacks,
-        context_name=desc.name,
-        message=user_msg,
-        force=True,
-    )
-
-    return "Conversation compacted and history reset."
 
 
 def handle_tool_result_agent(
@@ -95,84 +35,7 @@ def handle_tool_result_agent(
     state: AgentState,
     progress_callbacks: ProgressCallbacks,
 ) -> str:
-    if isinstance(result, FinishTaskResult):
-        return _handle_finish_task_result(result, state=state)
-    if isinstance(result, CompactConversationResult):
-        return _handle_compact_conversation_result(
-            result, desc=desc, state=state, progress_callbacks=progress_callbacks
-        )
-    if isinstance(result, TextResult):
-        return result.content
-    return f"Tool produced result of type {type(result).__name__}"
-
-
-async def _run_agent_loop_impl(
-    ctx: AgentContext,
-    *,
-    tools: list[Tool],
-    progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
-    completer: Completer,
-    compact_conversation_at_tokens: int = 200_000,
-    system_actors: SystemActors,
-) -> None:
-    desc = ctx.desc
-    state = ctx.state
-
-    if state.output is not None:
-        raise RuntimeError("Agent already has a result or summary.")
-
-    start_message = _create_start_message(desc=desc)
-    user_msg = UserMessage(content=start_message)
-    append_user_message(state.history, callbacks=progress_callbacks, context_name=desc.name, message=user_msg)
-
-    while state.output is None:
-        message, usage = await do_single_step(
-            history=state.history,
-            model=desc.model,
-            tools=tools,
-            progress_callbacks=progress_callbacks,
-            completer=completer,
-            context_name=desc.name,
-            agent_actor=system_actors.agent_actor,
-        )
-
-        append_assistant_message(state.history, callbacks=progress_callbacks, context_name=desc.name, message=message)
-
-        if getattr(message, "tool_calls", []):
-            await handle_tool_calls(
-                message,
-                history=state.history,
-                tools=tools,
-                progress_callbacks=progress_callbacks,
-                ui=system_actors.user_actor,
-                context_name=desc.name,
-                handle_tool_result=lambda result: handle_tool_result_agent(
-                    result, desc=desc, state=state, progress_callbacks=progress_callbacks
-                ),
-                tool_call_actor=system_actors.tool_call_actor,
-            )
-        else:
-            user_msg2 = UserMessage(
-                content="I detected a step from you without any tool calls. This is not allowed. If you are done with your task, please call the `finish_task` tool to signal that you are done. Otherwise, continue your work."
-            )
-            append_user_message(
-                state.history,
-                callbacks=progress_callbacks,
-                context_name=desc.name,
-                message=user_msg2,
-            )
-        if usage is not None and usage.tokens > compact_conversation_at_tokens:
-            user_msg3 = UserMessage(
-                content="Your conversation history has grown too large. Compact it immediately by using the `compact_conversation` tool."
-            )
-            append_user_message(
-                state.history,
-                callbacks=progress_callbacks,
-                context_name=desc.name,
-                message=user_msg3,
-            )
-
-    assert state.output is not None
+    return AgentActor.handle_tool_result_agent(result, desc=desc, state=state, progress_callbacks=progress_callbacks)
 
 
 async def run_agent_loop(
@@ -199,21 +62,19 @@ async def run_agent_loop(
             tool_callbacks=tool_callbacks,
             context_name=ctx.desc.name,
         ) as actors:
-            await _run_agent_loop_impl(
+            await actors.run_agent_loop(
                 ctx,
                 tools=tools_with_meta,
                 progress_callbacks=progress_callbacks,
                 completer=completer,
                 compact_conversation_at_tokens=compact_conversation_at_tokens,
-                system_actors=actors,
             )
         return
 
-    await _run_agent_loop_impl(
+    await system_actors.run_agent_loop(
         ctx,
         tools=tools_with_meta,
         progress_callbacks=progress_callbacks,
         completer=completer,
         compact_conversation_at_tokens=compact_conversation_at_tokens,
-        system_actors=system_actors,
     )
