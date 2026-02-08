@@ -6,7 +6,7 @@ from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
-from coding_assistant.framework.chat import run_chat_loop
+from coding_assistant.framework.chat import ChatLoopActor, run_chat_loop
 from coding_assistant.framework.execution import AgentActor, ToolCallActor
 from coding_assistant.framework.system_actors import SystemActors
 from coding_assistant.llm.types import BaseMessage, Tool
@@ -132,14 +132,22 @@ class Session:
         tool_call_tools = list(self.tools)
         if not any(tool.name() == "compact_conversation" for tool in tool_call_tools):
             tool_call_tools.append(CompactConversationTool())
+        tool_call_actor = ToolCallActor(
+            tools=tool_call_tools,
+            ui=user_actor,
+            context_name="Orchestrator",
+            progress_callbacks=self.callbacks,
+            tool_callbacks=self.tool_callbacks,
+        )
+        agent_actor = AgentActor(context_name="Orchestrator")
         self._system_actors = SystemActors(
-            agent_actor=AgentActor(context_name="Orchestrator"),
-            tool_call_actor=ToolCallActor(
-                tools=tool_call_tools,
-                ui=user_actor,
+            agent_actor=agent_actor,
+            tool_call_actor=tool_call_actor,
+            chat_actor=ChatLoopActor(
+                user_actor=user_actor,
+                tool_call_actor=tool_call_actor,
+                agent_actor=agent_actor,
                 context_name="Orchestrator",
-                progress_callbacks=self.callbacks,
-                tool_callbacks=self.tool_callbacks,
             ),
             user_actor=user_actor,
         )
@@ -164,19 +172,28 @@ class Session:
         chat_history = history or []
         async with history_manager_scope(context_name="session") as history_manager:
             try:
-                ui = self._system_actors.user_actor if self._system_actors else self.ui
-                await run_chat_loop(
-                    history=chat_history,
-                    model=self.config.model,
-                    tools=self.tools,
-                    instructions=self.instructions,
-                    callbacks=self.callbacks,
-                    tool_callbacks=self.tool_callbacks,
-                    completer=openai_complete,
-                    ui=ui,
-                    context_name="Orchestrator",
-                    system_actors=self._system_actors,
-                )
+                if self._system_actors:
+                    await self._system_actors.run_chat_loop(
+                        history=chat_history,
+                        model=self.config.model,
+                        tools=self.tools,
+                        instructions=self.instructions,
+                        callbacks=self.callbacks,
+                        completer=openai_complete,
+                        context_name="Orchestrator",
+                    )
+                else:
+                    await run_chat_loop(
+                        history=chat_history,
+                        model=self.config.model,
+                        tools=self.tools,
+                        instructions=self.instructions,
+                        callbacks=self.callbacks,
+                        tool_callbacks=self.tool_callbacks,
+                        completer=openai_complete,
+                        ui=self.ui,
+                        context_name="Orchestrator",
+                    )
             finally:
                 await history_manager.save_orchestrator_history(
                     working_directory=self.working_directory, history=chat_history
@@ -201,6 +218,7 @@ class Session:
             tool_callbacks=self.tool_callbacks,
             name="launch_orchestrator_agent",
             completer=openai_complete,
+            system_actors=self._system_actors,
         )
 
         params = {
