@@ -66,7 +66,7 @@
     - [x] Replace run_chat_loop with a ChatLoop actor (no direct loop logic outside actors).
     - [ ] Add integration tests for actor-based chat flows.
   - [ ] **do_single_step actor cutover** (separate task)
-    - [ ] Move do_single_step/completer invocation behind an actor boundary.
+    - [x] Move do_single_step/completer invocation behind an actor boundary.
     - [ ] Add integration tests for actor-based agent flows.
   - [ ] Add tracing/metrics for actor message latency and lifecycle events.
   - [ ] Remove any remaining legacy scaffolding found during audit.
