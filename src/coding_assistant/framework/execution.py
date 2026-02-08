@@ -1,9 +1,11 @@
 import asyncio
 import json
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from json import JSONDecodeError
 from typing import Any
 
+from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.framework.history import append_tool_message
 from coding_assistant.framework.tool_executor import ToolExecutor
@@ -98,6 +100,85 @@ async def handle_tool_calls(
 
 
 async def do_single_step(
+    *,
+    history: list[BaseMessage],
+    model: str,
+    tools: Sequence[Tool],
+    progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
+    completer: Completer,
+    context_name: str,
+) -> tuple[AssistantMessage, Usage | None]:
+    actor = _SingleStepActor(
+        history=history,
+        model=model,
+        tools=tools,
+        progress_callbacks=progress_callbacks,
+        completer=completer,
+        context_name=context_name,
+    )
+    try:
+        return await actor.run()
+    finally:
+        await actor.stop()
+
+
+@dataclass(slots=True)
+class _DoSingleStep:
+    pass
+
+
+class _SingleStepActor:
+    def __init__(
+        self,
+        *,
+        history: list[BaseMessage],
+        model: str,
+        tools: Sequence[Tool],
+        progress_callbacks: ProgressCallbacks,
+        completer: Completer,
+        context_name: str,
+    ) -> None:
+        self._history = history
+        self._model = model
+        self._tools = tools
+        self._progress_callbacks = progress_callbacks
+        self._completer = completer
+        self._context_name = context_name
+        self._actor: Actor[_DoSingleStep, tuple[AssistantMessage, Usage | None]] = Actor(
+            name=f"{context_name}.single-step", handler=self._handle_message
+        )
+        self._started = False
+
+    def start(self) -> None:
+        if self._started:
+            return
+        self._actor.start()
+        self._started = True
+
+    async def run(self) -> tuple[AssistantMessage, Usage | None]:
+        self.start()
+        return await self._actor.ask(_DoSingleStep())
+
+    async def stop(self) -> None:
+        if not self._started:
+            return
+        await self._actor.stop()
+        self._started = False
+
+    async def _handle_message(self, message: _DoSingleStep) -> tuple[AssistantMessage, Usage | None]:
+        if not isinstance(message, _DoSingleStep):
+            raise RuntimeError(f"Unknown single-step message: {message!r}")
+        return await _do_single_step_impl(
+            history=self._history,
+            model=self._model,
+            tools=self._tools,
+            progress_callbacks=self._progress_callbacks,
+            completer=self._completer,
+            context_name=self._context_name,
+        )
+
+
+async def _do_single_step_impl(
     *,
     history: list[BaseMessage],
     model: str,
