@@ -46,10 +46,14 @@
   - [x] Implement ActorUI wrapper and scope helper.
   - [x] Route chat loop/tool handling through ActorUI.
   - [x] Add ActorUI serialization tests and update UI mocks if needed.
-- [ ] **Cut over History persistence**:
+- [x] **Cut over History persistence**:
   - Implement History actor for save/compact operations.
   - Remove direct history writes from chat/agent loops.
   - Port history tests to the actor path and delete legacy-path tests.
+  - [x] Define HistoryManager messages and scope helper.
+  - [x] Implement HistoryManager actor to save orchestrator history.
+  - [x] Update Session to use HistoryManager for chat/agent history saves.
+  - [x] Add HistoryManager tests and update Session tests to mock the manager.
 - [ ] **Cut over Agent loop**:
   - Implement Agent actor that owns run_agent_loop state and transitions.
   - Replace the existing run_agent_loop orchestration with actor message flow.

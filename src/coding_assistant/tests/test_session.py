@@ -1,6 +1,8 @@
 import pytest
 from typing import Any
 from pathlib import Path
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 from coding_assistant.session import Session
 from coding_assistant.config import Config
@@ -99,12 +101,23 @@ async def test_session_run_chat(session_args: dict[str, Any]) -> None:
 
     with (
         patch("coding_assistant.session.run_chat_loop", new_callable=AsyncMock) as mock_chat_loop,
-        patch("coding_assistant.session.save_orchestrator_history") as mock_save,
+        patch("coding_assistant.session.history_manager_scope") as mock_history_scope,
     ):
+        mock_history_manager = MagicMock()
+        mock_history_manager.save_orchestrator_history = AsyncMock()
+
+        @asynccontextmanager
+        async def history_scope(*, context_name: str) -> AsyncIterator[MagicMock]:
+            yield mock_history_manager
+
+        mock_history_scope.side_effect = history_scope
+
         await session.run_chat(history=[])
 
         mock_chat_loop.assert_called_once()
-        mock_save.assert_called_once_with(session.working_directory, [])
+        mock_history_manager.save_orchestrator_history.assert_called_once_with(
+            working_directory=session.working_directory, history=[]
+        )
 
 
 @pytest.mark.asyncio
@@ -116,8 +129,17 @@ async def test_session_run_agent(session_args: dict[str, Any]) -> None:
 
     with (
         patch("coding_assistant.session.AgentTool") as mock_agent_tool_class,
-        patch("coding_assistant.session.save_orchestrator_history") as mock_save,
+        patch("coding_assistant.session.history_manager_scope") as mock_history_scope,
     ):
+        mock_history_manager = MagicMock()
+        mock_history_manager.save_orchestrator_history = AsyncMock()
+
+        @asynccontextmanager
+        async def history_scope(*, context_name: str) -> AsyncIterator[MagicMock]:
+            yield mock_history_manager
+
+        mock_history_scope.side_effect = history_scope
+
         mock_tool_instance = mock_agent_tool_class.return_value
         mock_tool_instance.execute = AsyncMock(return_value=MagicMock(content="result"))
         mock_tool_instance.history = ["msg1"]
@@ -126,4 +148,6 @@ async def test_session_run_agent(session_args: dict[str, Any]) -> None:
 
         assert result.content == "result"
         mock_tool_instance.execute.assert_called_once()
-        mock_save.assert_called_once_with(session.working_directory, ["msg1"])
+        mock_history_manager.save_orchestrator_history.assert_called_once_with(
+            working_directory=session.working_directory, history=["msg1"]
+        )
