@@ -71,5 +71,11 @@ class Actor(Generic[MessageT, ResponseT]):
                 else:
                     logger.exception("Actor %s handler error", self._name)
                 continue
+            except BaseException as exc:
+                if envelope.reply_future is not None and not envelope.reply_future.done():
+                    envelope.reply_future.set_exception(exc)
+                if isinstance(exc, asyncio.CancelledError):
+                    raise
+                break
             if envelope.reply_future is not None and not envelope.reply_future.done():
                 envelope.reply_future.set_result(result)
