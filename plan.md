@@ -39,10 +39,13 @@
   - [x] Update Session to use MCPServerManager and remove direct MCP lifecycle handling.
   - [x] Add MCPServerManager tests; update Session tests to mock the manager.
   - [x] Remove/adjust any legacy MCP lifecycle tests or mocks.
-- [ ] **Cut over UI interactions**:
+- [x] **Cut over UI interactions**:
   - Implement UI actor to serialize prompts/asks.
   - Replace direct UI calls with actor messages and delete the old call sites.
   - Port UI prompt/ask tests to the actor path and delete legacy-path tests.
+  - [x] Implement ActorUI wrapper and scope helper.
+  - [x] Route chat loop/tool handling through ActorUI.
+  - [x] Add ActorUI serialization tests and update UI mocks if needed.
 - [ ] **Cut over History persistence**:
   - Implement History actor for save/compact operations.
   - Remove direct history writes from chat/agent loops.
