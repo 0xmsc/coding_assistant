@@ -1,12 +1,10 @@
 import logging
-from dataclasses import dataclass
 
 
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
     FinishTaskTool,
 )
-from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
@@ -28,8 +26,9 @@ from coding_assistant.framework.results import (
     FinishTaskResult,
     TextResult,
 )
-from coding_assistant.llm.types import UserMessage, ToolResult
+from coding_assistant.llm.types import Tool, UserMessage, ToolResult
 from coding_assistant.ui import UI
+from coding_assistant.framework.system_actors import SystemActors, system_actor_scope
 
 logger = logging.getLogger(__name__)
 
@@ -107,82 +106,20 @@ def handle_tool_result_agent(
     return f"Tool produced result of type {type(result).__name__}"
 
 
-@dataclass(slots=True)
-class _RunAgentLoop:
-    pass
-
-
-class _AgentLoopActor:
-    def __init__(
-        self,
-        *,
-        ctx: AgentContext,
-        progress_callbacks: ProgressCallbacks,
-        tool_callbacks: ToolCallbacks,
-        completer: Completer,
-        ui: UI,
-        compact_conversation_at_tokens: int,
-    ) -> None:
-        self._ctx = ctx
-        self._progress_callbacks = progress_callbacks
-        self._tool_callbacks = tool_callbacks
-        self._completer = completer
-        self._ui = ui
-        self._compact_conversation_at_tokens = compact_conversation_at_tokens
-        self._actor: Actor[_RunAgentLoop, None] = Actor(
-            name=f"{ctx.desc.name}.agent-loop", handler=self._handle_message
-        )
-        self._started = False
-
-    def start(self) -> None:
-        if self._started:
-            return
-        self._actor.start()
-        self._started = True
-
-    async def run(self) -> None:
-        self.start()
-        await self._actor.ask(_RunAgentLoop())
-
-    async def stop(self) -> None:
-        if not self._started:
-            return
-        await self._actor.stop()
-        self._started = False
-
-    async def _handle_message(self, message: _RunAgentLoop) -> None:
-        if not isinstance(message, _RunAgentLoop):
-            raise RuntimeError(f"Unknown agent loop message: {message!r}")
-        await _run_agent_loop_impl(
-            self._ctx,
-            progress_callbacks=self._progress_callbacks,
-            tool_callbacks=self._tool_callbacks,
-            completer=self._completer,
-            ui=self._ui,
-            compact_conversation_at_tokens=self._compact_conversation_at_tokens,
-        )
-
-
 async def _run_agent_loop_impl(
     ctx: AgentContext,
     *,
+    tools: list[Tool],
     progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
-    tool_callbacks: ToolCallbacks = NullToolCallbacks(),
     completer: Completer,
-    ui: UI,
     compact_conversation_at_tokens: int = 200_000,
+    system_actors: SystemActors,
 ) -> None:
     desc = ctx.desc
     state = ctx.state
 
     if state.output is not None:
         raise RuntimeError("Agent already has a result or summary.")
-
-    tools = list(desc.tools)
-    if not any(tool.name() == "finish_task" for tool in tools):
-        tools.append(FinishTaskTool())
-    if not any(tool.name() == "compact_conversation" for tool in tools):
-        tools.append(CompactConversationTool())
 
     start_message = _create_start_message(desc=desc)
     user_msg = UserMessage(content=start_message)
@@ -196,6 +133,7 @@ async def _run_agent_loop_impl(
             progress_callbacks=progress_callbacks,
             completer=completer,
             context_name=desc.name,
+            agent_actor=system_actors.agent_actor,
         )
 
         append_assistant_message(state.history, callbacks=progress_callbacks, context_name=desc.name, message=message)
@@ -206,12 +144,12 @@ async def _run_agent_loop_impl(
                 history=state.history,
                 tools=tools,
                 progress_callbacks=progress_callbacks,
-                tool_callbacks=tool_callbacks,
-                ui=ui,
+                ui=system_actors.user_actor,
                 context_name=desc.name,
                 handle_tool_result=lambda result: handle_tool_result_agent(
                     result, desc=desc, state=state, progress_callbacks=progress_callbacks
                 ),
+                tool_call_actor=system_actors.tool_call_actor,
             )
         else:
             user_msg2 = UserMessage(
@@ -245,16 +183,37 @@ async def run_agent_loop(
     completer: Completer,
     ui: UI,
     compact_conversation_at_tokens: int = 200_000,
+    system_actors: SystemActors | None = None,
 ) -> None:
-    actor = _AgentLoopActor(
-        ctx=ctx,
+    tools_with_meta = list(ctx.desc.tools)
+    if not any(tool.name() == "finish_task" for tool in tools_with_meta):
+        tools_with_meta.append(FinishTaskTool())
+    if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
+        tools_with_meta.append(CompactConversationTool())
+
+    if system_actors is None:
+        async with system_actor_scope(
+            tools=tools_with_meta,
+            ui=ui,
+            progress_callbacks=progress_callbacks,
+            tool_callbacks=tool_callbacks,
+            context_name=ctx.desc.name,
+        ) as actors:
+            await _run_agent_loop_impl(
+                ctx,
+                tools=tools_with_meta,
+                progress_callbacks=progress_callbacks,
+                completer=completer,
+                compact_conversation_at_tokens=compact_conversation_at_tokens,
+                system_actors=actors,
+            )
+        return
+
+    await _run_agent_loop_impl(
+        ctx,
+        tools=tools_with_meta,
         progress_callbacks=progress_callbacks,
-        tool_callbacks=tool_callbacks,
         completer=completer,
-        ui=ui,
         compact_conversation_at_tokens=compact_conversation_at_tokens,
+        system_actors=system_actors,
     )
-    try:
-        await actor.run()
-    finally:
-        await actor.stop()
