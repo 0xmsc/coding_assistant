@@ -1,10 +1,12 @@
 import logging
+from dataclasses import dataclass
 
 
 from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
     FinishTaskTool,
 )
+from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
 from coding_assistant.framework.execution import do_single_step, handle_tool_calls
@@ -105,7 +107,63 @@ def handle_tool_result_agent(
     return f"Tool produced result of type {type(result).__name__}"
 
 
-async def run_agent_loop(
+@dataclass(slots=True)
+class _RunAgentLoop:
+    pass
+
+
+class _AgentLoopActor:
+    def __init__(
+        self,
+        *,
+        ctx: AgentContext,
+        progress_callbacks: ProgressCallbacks,
+        tool_callbacks: ToolCallbacks,
+        completer: Completer,
+        ui: UI,
+        compact_conversation_at_tokens: int,
+    ) -> None:
+        self._ctx = ctx
+        self._progress_callbacks = progress_callbacks
+        self._tool_callbacks = tool_callbacks
+        self._completer = completer
+        self._ui = ui
+        self._compact_conversation_at_tokens = compact_conversation_at_tokens
+        self._actor: Actor[_RunAgentLoop, None] = Actor(
+            name=f"{ctx.desc.name}.agent-loop", handler=self._handle_message
+        )
+        self._started = False
+
+    def start(self) -> None:
+        if self._started:
+            return
+        self._actor.start()
+        self._started = True
+
+    async def run(self) -> None:
+        self.start()
+        await self._actor.ask(_RunAgentLoop())
+
+    async def stop(self) -> None:
+        if not self._started:
+            return
+        await self._actor.stop()
+        self._started = False
+
+    async def _handle_message(self, message: _RunAgentLoop) -> None:
+        if not isinstance(message, _RunAgentLoop):
+            raise RuntimeError(f"Unknown agent loop message: {message!r}")
+        await _run_agent_loop_impl(
+            self._ctx,
+            progress_callbacks=self._progress_callbacks,
+            tool_callbacks=self._tool_callbacks,
+            completer=self._completer,
+            ui=self._ui,
+            compact_conversation_at_tokens=self._compact_conversation_at_tokens,
+        )
+
+
+async def _run_agent_loop_impl(
     ctx: AgentContext,
     *,
     progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
@@ -177,3 +235,26 @@ async def run_agent_loop(
             )
 
     assert state.output is not None
+
+
+async def run_agent_loop(
+    ctx: AgentContext,
+    *,
+    progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
+    tool_callbacks: ToolCallbacks = NullToolCallbacks(),
+    completer: Completer,
+    ui: UI,
+    compact_conversation_at_tokens: int = 200_000,
+) -> None:
+    actor = _AgentLoopActor(
+        ctx=ctx,
+        progress_callbacks=progress_callbacks,
+        tool_callbacks=tool_callbacks,
+        completer=completer,
+        ui=ui,
+        compact_conversation_at_tokens=compact_conversation_at_tokens,
+    )
+    try:
+        await actor.run()
+    finally:
+        await actor.stop()

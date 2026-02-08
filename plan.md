@@ -54,10 +54,13 @@
   - [x] Implement HistoryManager actor to save orchestrator history.
   - [x] Update Session to use HistoryManager for chat/agent history saves.
   - [x] Add HistoryManager tests and update Session tests to mock the manager.
-- [ ] **Cut over Agent loop**:
+- [x] **Cut over Agent loop**:
   - Implement Agent actor that owns run_agent_loop state and transitions.
   - Replace the existing run_agent_loop orchestration with actor message flow.
   - Port agent loop tests to the actor path and delete legacy-path tests.
+  - [x] Define AgentLoop actor message and wiring.
+  - [x] Move agent loop execution into actor handler.
+  - [x] Ensure agent loop tests run through the actor path.
 - [ ] **Add tests and metrics**: actor unit tests (message handling), integration tests for chat/agent flows, and tracing for actor message latency.
 
 ## When not to proceed
