@@ -62,6 +62,14 @@
   - [x] Move agent loop execution into actor handler.
   - [x] Ensure agent loop tests run through the actor path.
 - [ ] **Add tests and metrics**: actor unit tests (message handling), integration tests for chat/agent flows, and tracing for actor message latency.
+  - [ ] **ChatLoop actor cutover** (separate task)
+    - [x] Replace run_chat_loop with a ChatLoop actor (no direct loop logic outside actors).
+    - [ ] Add integration tests for actor-based chat flows.
+  - [ ] **do_single_step actor cutover** (separate task)
+    - [ ] Move do_single_step/completer invocation behind an actor boundary.
+    - [ ] Add integration tests for actor-based agent flows.
+  - [ ] Add tracing/metrics for actor message latency and lifecycle events.
+  - [ ] Remove any remaining legacy scaffolding found during audit.
 
 ## When not to proceed
 - If you cannot accept a step-by-step cutover that removes each legacy path as you go, or if feature delivery is the priority, delay this migration; the actor pattern adds overhead and risk during transition.
