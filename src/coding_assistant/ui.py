@@ -160,6 +160,11 @@ class ActorUI(UI):
         raise RuntimeError(f"Unknown UI message: {message!r}")
 
 
+class UserActor(ActorUI):
+    def __init__(self, ui: UI, *, context_name: str = "user") -> None:
+        super().__init__(ui, context_name=context_name)
+
+
 @asynccontextmanager
 async def ui_actor_scope(ui: UI, *, context_name: str) -> AsyncIterator[UI]:
     if isinstance(ui, ActorUI):

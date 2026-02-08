@@ -3,9 +3,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 from coding_assistant.config import Config, MCPServerConfig
+from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
 from coding_assistant.framework.chat import run_chat_loop
+from coding_assistant.framework.execution import AgentActor, ToolCallActor
+from coding_assistant.framework.system_actors import SystemActors
 from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.history_manager import history_manager_scope
 from coding_assistant.instructions import get_instructions
@@ -13,7 +16,7 @@ from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools.mcp_manager import MCPServerManager
 from coding_assistant.tools.tools import AgentTool, AskClientTool, RedirectToolCallTool
-from coding_assistant.ui import UI
+from coding_assistant.ui import UI, UserActor
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +59,7 @@ class Session:
         self.instructions: str = ""
         self._mcp_manager: Optional[MCPServerManager] = None
         self._mcp_servers: Optional[list[Any]] = None
+        self._system_actors: SystemActors | None = None
 
     @property
     def mcp_servers(self) -> Optional[list[Any]]:
@@ -124,12 +128,33 @@ class Session:
             mcp_servers=self._mcp_servers,
         )
 
+        user_actor = UserActor(self.ui, context_name="Orchestrator")
+        tool_call_tools = list(self.tools)
+        if not any(tool.name() == "compact_conversation" for tool in tool_call_tools):
+            tool_call_tools.append(CompactConversationTool())
+        self._system_actors = SystemActors(
+            agent_actor=AgentActor(context_name="Orchestrator"),
+            tool_call_actor=ToolCallActor(
+                tools=tool_call_tools,
+                ui=user_actor,
+                context_name="Orchestrator",
+                progress_callbacks=self.callbacks,
+                tool_callbacks=self.tool_callbacks,
+            ),
+            user_actor=user_actor,
+        )
+        self._system_actors.start()
+
         self.callbacks.on_status_message("Session initialized.", level=StatusLevel.SUCCESS)
         self.callbacks.on_status_message(f"Using model {self.config.model}.", level=StatusLevel.SUCCESS)
 
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        if self._system_actors:
+            await self._system_actors.stop()
+            self._system_actors = None
+
         if self._mcp_manager:
             await self._mcp_manager.shutdown(exc_type=exc_type, exc_val=exc_val, exc_tb=exc_tb)
 
@@ -139,6 +164,7 @@ class Session:
         chat_history = history or []
         async with history_manager_scope(context_name="session") as history_manager:
             try:
+                ui = self._system_actors.user_actor if self._system_actors else self.ui
                 await run_chat_loop(
                     history=chat_history,
                     model=self.config.model,
@@ -147,8 +173,9 @@ class Session:
                     callbacks=self.callbacks,
                     tool_callbacks=self.tool_callbacks,
                     completer=openai_complete,
-                    ui=self.ui,
+                    ui=ui,
                     context_name="Orchestrator",
+                    system_actors=self._system_actors,
                 )
             finally:
                 await history_manager.save_orchestrator_history(
@@ -156,8 +183,9 @@ class Session:
                 )
 
     async def run_agent(self, task: str, history: Optional[list[BaseMessage]] = None) -> Any:
+        ui = self._system_actors.user_actor if self._system_actors else self.ui
         agent_mode_tools = [
-            AskClientTool(ui=self.ui),
+            AskClientTool(ui=ui),
             *self.tools,
         ]
 
@@ -169,7 +197,7 @@ class Session:
             tools=agent_mode_tools,
             history=history,
             progress_callbacks=self.callbacks,
-            ui=self.ui,
+            ui=ui,
             tool_callbacks=self.tool_callbacks,
             name="launch_orchestrator_agent",
             completer=openai_complete,
