@@ -16,6 +16,11 @@
 - Each cutover must also port and update all relevant tests, removing legacy-path coverage at the same time.
 - Execute the work in the proposed chunks; before each chunk, expand it into detailed sub-todos as needed, then implement, write tests, and commit.
 
+## Target actor system (end state)
+- Create long-lived system actors at startup (e.g., AgentActor, ToolCallActor, UserActor) and let them communicate via messages.
+- Avoid per-call actor creation inside loops; actor instances should own state and run for the session lifetime.
+- Ensure the execution flow is driven by actor messages (no direct orchestration logic outside actors).
+
 ## Proposed incremental transformation (no hybrid runtime, tests ported per step)
 - Each checklist item is a chunk; add sub-todos beneath it before starting that chunk.
 - [x] **Introduce a lightweight actor runtime**: asyncio task + mailbox (Queue), typed messages, start/stop lifecycle, and a minimal supervision strategy.
@@ -61,6 +66,11 @@
   - [x] Define AgentLoop actor message and wiring.
   - [x] Move agent loop execution into actor handler.
   - [x] Ensure agent loop tests run through the actor path.
+- [ ] **System-level actor orchestration**:
+  - [ ] Create long-lived system actors in Session (AgentActor, ToolCallActor, UserActor).
+  - [ ] Move per-call actor creation (chat loop, single step, UI) into these long-lived actors.
+  - [ ] Rewire message passing so actors coordinate without direct function orchestration.
+  - [ ] Remove short-lived actor scaffolding after system actors take ownership.
 - [ ] **Add tests and metrics**: actor unit tests (message handling), integration tests for chat/agent flows, and tracing for actor message latency.
   - [ ] **ChatLoop actor cutover** (separate task)
     - [x] Replace run_chat_loop with a ChatLoop actor (no direct loop logic outside actors).
