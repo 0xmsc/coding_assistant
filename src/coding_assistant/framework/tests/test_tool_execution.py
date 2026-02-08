@@ -5,7 +5,7 @@ import pytest
 
 
 from coding_assistant.framework.callbacks import ToolCallbacks
-from coding_assistant.framework.execution import handle_tool_calls, execute_tool_call
+from coding_assistant.framework.execution import handle_tool_calls
 from coding_assistant.framework.agent import _handle_finish_task_result
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -41,7 +41,7 @@ class FakeConfirmTool(Tool):
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_call_regular_tool_and_not_found() -> None:
+async def test_tool_execution_success_and_missing_tool() -> None:
     class DummyTool(Tool):
         def __init__(self, name: str, result: str):
             self._name = name
@@ -60,13 +60,20 @@ async def test_execute_tool_call_regular_tool_and_not_found() -> None:
             return TextResult(content=self._result)
 
     tool = DummyTool("echo", "ok")
+    history: list[BaseMessage] = []
+    tools: list[Tool] = [tool]
 
-    res = await execute_tool_call(function_name="echo", function_args={}, tools=[tool])
-    assert isinstance(res, TextResult)
-    assert res.content == "ok"
+    msg_ok = AssistantMessage(tool_calls=[ToolCall(id="1", function=FunctionCall(name="echo", arguments="{}"))])
+    await handle_tool_calls(msg_ok, history=history, tools=tools, ui=make_ui_mock(), context_name="test")
+    assert history[-1] == ToolMessage(tool_call_id="1", name="echo", content="ok")
 
-    with pytest.raises(ValueError, match="Tool missing not found"):
-        await execute_tool_call(function_name="missing", function_args={}, tools=[tool])
+    msg_missing = AssistantMessage(tool_calls=[ToolCall(id="2", function=FunctionCall(name="missing", arguments="{}"))])
+    await handle_tool_calls(msg_missing, history=history, tools=tools, ui=make_ui_mock(), context_name="test")
+    assert history[-1] == ToolMessage(
+        tool_call_id="2",
+        name="missing",
+        content="Error executing tool: Tool missing not found in agent tools.",
+    )
 
 
 @pytest.mark.asyncio
