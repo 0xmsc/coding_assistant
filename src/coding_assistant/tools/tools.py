@@ -1,7 +1,7 @@
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Sequence, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,9 @@ from coding_assistant.framework.types import (
 from coding_assistant.framework.results import TextResult
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.ui import DefaultAnswerUI, UI
+
+if TYPE_CHECKING:
+    from coding_assistant.framework.system_actors import SystemActors
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +147,7 @@ class AgentTool(Tool):
         name: str = "launch_agent",
         history: Sequence[BaseMessage] | None = None,
         completer: Completer | None = None,
+        system_actors: "SystemActors | None" = None,
     ) -> None:
         super().__init__()
         self._model = model
@@ -157,6 +161,7 @@ class AgentTool(Tool):
         self._name = name
         self._history = history
         self._completer = completer or openai_complete
+        self._system_actors = system_actors
         self.history: list[BaseMessage] = []
         self.summary: str = ""
 
@@ -215,6 +220,7 @@ class AgentTool(Tool):
                 compact_conversation_at_tokens=self._compact_conversation_at_tokens,
                 completer=self._completer,
                 ui=self._ui,
+                system_actors=self._system_actors,
             )
             assert state.output is not None, "Agent did not produce output"
             self.summary = state.output.summary

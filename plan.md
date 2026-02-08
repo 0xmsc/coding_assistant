@@ -73,14 +73,21 @@
   - [x] Remove short-lived actor scaffolding after system actors take ownership.
 - [ ] **Add tests and metrics**: actor unit tests (message handling), integration tests for chat/agent flows, and tracing for actor message latency.
   - [x] Update existing tests to exercise actor interfaces (system actors, ToolCallActor, AgentActor).
-  - [ ] **ChatLoop actor cutover** (separate task)
+  - [x] **ChatLoop actor cutover** (separate task)
     - [x] Replace run_chat_loop with a ChatLoop actor (no direct loop logic outside actors).
     - [ ] Add integration tests for actor-based chat flows.
-  - [ ] **do_single_step actor cutover** (separate task)
+  - [x] **do_single_step actor cutover** (separate task)
     - [x] Move do_single_step/completer invocation behind an actor boundary.
     - [ ] Add integration tests for actor-based agent flows.
   - [ ] Add tracing/metrics for actor message latency and lifecycle events.
   - [ ] Remove any remaining legacy scaffolding found during audit.
+
+## Next steps (actor-driven core)
+- [x] Move agent loop logic from `framework/agent.py` into `AgentActor` so the loop is fully message-driven and state-owned by the actor.
+- [x] Move tool call execution + tool-result history append into `ToolCallActor`, removing direct orchestration from `framework/execution.py`.
+- [x] Make `SystemActors` the primary orchestration surface (expose run_chat/run_agent via actor messages).
+- [x] Slim `Session` to wiring/config + actor lifecycle only, delegating run calls to `SystemActors`/actors.
+- [x] Update tests to drive agent/tool behavior via actor messages; keep `Session` tests focused on wiring and integration.
 
 ## When not to proceed
 - If you cannot accept a step-by-step cutover that removes each legacy path as you go, or if feature delivery is the priority, delay this migration; the actor pattern adds overhead and risk during transition.
