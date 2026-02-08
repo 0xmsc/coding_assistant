@@ -5,6 +5,7 @@ from enum import Enum
 import logging
 
 
+from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import (
@@ -95,7 +96,70 @@ class ChatCommand:
     execute: Callable[[str | None], Awaitable[ChatCommandResult]]
 
 
-async def run_chat_loop(
+@dataclass(slots=True)
+class _RunChatLoop:
+    pass
+
+
+class _ChatLoopActor:
+    def __init__(
+        self,
+        *,
+        history: list[BaseMessage],
+        model: str,
+        tools: list[Tool],
+        instructions: str | None,
+        callbacks: ProgressCallbacks,
+        tool_callbacks: ToolCallbacks,
+        completer: Completer,
+        ui: UI,
+        context_name: str,
+    ) -> None:
+        self._history = history
+        self._model = model
+        self._tools = tools
+        self._instructions = instructions
+        self._callbacks = callbacks
+        self._tool_callbacks = tool_callbacks
+        self._completer = completer
+        self._ui = ui
+        self._context_name = context_name
+        self._actor: Actor[_RunChatLoop, None] = Actor(name=f"{context_name}.chat-loop", handler=self._handle_message)
+        self._started = False
+
+    def start(self) -> None:
+        if self._started:
+            return
+        self._actor.start()
+        self._started = True
+
+    async def run(self) -> None:
+        self.start()
+        await self._actor.ask(_RunChatLoop())
+
+    async def stop(self) -> None:
+        if not self._started:
+            return
+        await self._actor.stop()
+        self._started = False
+
+    async def _handle_message(self, message: _RunChatLoop) -> None:
+        if not isinstance(message, _RunChatLoop):
+            raise RuntimeError(f"Unknown chat loop message: {message!r}")
+        await _run_chat_loop_impl(
+            history=self._history,
+            model=self._model,
+            tools=self._tools,
+            instructions=self._instructions,
+            callbacks=self._callbacks,
+            tool_callbacks=self._tool_callbacks,
+            completer=self._completer,
+            ui=self._ui,
+            context_name=self._context_name,
+        )
+
+
+async def _run_chat_loop_impl(
     *,
     history: list[BaseMessage],
     model: str,
@@ -250,3 +314,32 @@ async def run_chat_loop(
                         need_user_input = True
                 except asyncio.CancelledError:
                     need_user_input = True
+
+
+async def run_chat_loop(
+    *,
+    history: list[BaseMessage],
+    model: str,
+    tools: list[Tool],
+    instructions: str | None,
+    callbacks: ProgressCallbacks = NullProgressCallbacks(),
+    tool_callbacks: ToolCallbacks = NullToolCallbacks(),
+    completer: Completer,
+    ui: UI,
+    context_name: str,
+) -> None:
+    actor = _ChatLoopActor(
+        history=history,
+        model=model,
+        tools=tools,
+        instructions=instructions,
+        callbacks=callbacks,
+        tool_callbacks=tool_callbacks,
+        completer=completer,
+        ui=ui,
+        context_name=context_name,
+    )
+    try:
+        await actor.run()
+    finally:
+        await actor.stop()
