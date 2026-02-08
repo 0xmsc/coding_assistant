@@ -14,9 +14,13 @@
 - Migrate to an actor-based architecture in strict cutovers: each step replaces the old code path entirely (no hybrid runtime).
 - Target components with concurrency and lifecycle complexity first (tool execution, MCP server management, UI interactions), then move the agent loop into an actor.
 - Each cutover must also port and update all relevant tests, removing legacy-path coverage at the same time.
+- Execute the work in the proposed chunks; before each chunk, expand it into detailed sub-todos as needed, then implement, write tests, and commit.
 
 ## Proposed incremental transformation (no hybrid runtime, tests ported per step)
-- [ ] **Introduce a lightweight actor runtime**: asyncio task + mailbox (Queue), typed messages, start/stop lifecycle, and a minimal supervision strategy.
+- Each checklist item is a chunk; add sub-todos beneath it before starting that chunk.
+- [x] **Introduce a lightweight actor runtime**: asyncio task + mailbox (Queue), typed messages, start/stop lifecycle, and a minimal supervision strategy.
+  - [x] Add actor runtime module with start/stop/send/ask and exception handling.
+  - [x] Add unit tests for send/ask/stop behavior.
 - [ ] **Cut over Tool Execution**:
   - Implement ToolExecutor actor and route all tool calls through it.
   - Remove the old direct tool execution path immediately after the cutover.
