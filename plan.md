@@ -16,37 +16,28 @@
 - Each cutover must also port and update all relevant tests, removing legacy-path coverage at the same time.
 
 ## Proposed incremental transformation (no hybrid runtime, tests ported per step)
-1. **Introduce a lightweight actor runtime**: asyncio task + mailbox (Queue), typed messages, start/stop lifecycle, and a minimal supervision strategy.
-2. **Cut over Tool Execution**:
-   - Implement ToolExecutor actor and route all tool calls through it.
-   - Remove the old direct tool execution path immediately after the cutover.
-   - Port tool execution tests to the actor path and delete legacy-path tests.
-3. **Cut over MCP Server Management**:
-   - Implement MCPServerManager actor for startup/shutdown and tool registry updates.
-   - Remove direct server lifecycle management from Session once the actor is live.
-   - Port MCP lifecycle tests to the actor path and delete legacy-path tests.
-4. **Cut over UI interactions**:
-   - Implement UI actor to serialize prompts/asks.
-   - Replace direct UI calls with actor messages and delete the old call sites.
-   - Port UI prompt/ask tests to the actor path and delete legacy-path tests.
-5. **Cut over History persistence**:
-   - Implement History actor for save/compact operations.
-   - Remove direct history writes from chat/agent loops.
-   - Port history tests to the actor path and delete legacy-path tests.
-6. **Cut over Agent loop**:
-    - Implement Agent actor that owns run_agent_loop state and transitions.
-    - Replace the existing run_agent_loop orchestration with actor message flow.
-    - Port agent loop tests to the actor path and delete legacy-path tests.
-7. **Add tests and metrics**: actor unit tests (message handling), integration tests for chat/agent flows, and tracing for actor message latency.
-
-## Progress checklist
-- [ ] Introduce actor runtime and remove legacy equivalents.
-- [ ] Cut over tool execution (ToolExecutor actor) and port tests.
-- [ ] Cut over MCP server management (MCPServerManager actor) and port tests.
-- [ ] Cut over UI interactions (UI actor) and port tests.
-- [ ] Cut over history persistence (History actor) and port tests.
-- [ ] Cut over agent loop (Agent actor) and port tests.
-- [ ] Add actor-focused tests/metrics and clean up remaining legacy scaffolding.
+- [ ] **Introduce a lightweight actor runtime**: asyncio task + mailbox (Queue), typed messages, start/stop lifecycle, and a minimal supervision strategy.
+- [ ] **Cut over Tool Execution**:
+  - Implement ToolExecutor actor and route all tool calls through it.
+  - Remove the old direct tool execution path immediately after the cutover.
+  - Port tool execution tests to the actor path and delete legacy-path tests.
+- [ ] **Cut over MCP Server Management**:
+  - Implement MCPServerManager actor for startup/shutdown and tool registry updates.
+  - Remove direct server lifecycle management from Session once the actor is live.
+  - Port MCP lifecycle tests to the actor path and delete legacy-path tests.
+- [ ] **Cut over UI interactions**:
+  - Implement UI actor to serialize prompts/asks.
+  - Replace direct UI calls with actor messages and delete the old call sites.
+  - Port UI prompt/ask tests to the actor path and delete legacy-path tests.
+- [ ] **Cut over History persistence**:
+  - Implement History actor for save/compact operations.
+  - Remove direct history writes from chat/agent loops.
+  - Port history tests to the actor path and delete legacy-path tests.
+- [ ] **Cut over Agent loop**:
+  - Implement Agent actor that owns run_agent_loop state and transitions.
+  - Replace the existing run_agent_loop orchestration with actor message flow.
+  - Port agent loop tests to the actor path and delete legacy-path tests.
+- [ ] **Add tests and metrics**: actor unit tests (message handling), integration tests for chat/agent flows, and tracing for actor message latency.
 
 ## When not to proceed
 - If you cannot accept a step-by-step cutover that removes each legacy path as you go, or if feature delivery is the priority, delay this migration; the actor pattern adds overhead and risk during transition.
