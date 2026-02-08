@@ -7,7 +7,7 @@ from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallback
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.llm.types import BaseMessage, Tool
-from coding_assistant.history import save_orchestrator_history
+from coding_assistant.history_manager import history_manager_scope
 from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.sandbox import sandbox
@@ -137,20 +137,23 @@ class Session:
 
     async def run_chat(self, history: Optional[list[BaseMessage]] = None) -> None:
         chat_history = history or []
-        try:
-            await run_chat_loop(
-                history=chat_history,
-                model=self.config.model,
-                tools=self.tools,
-                instructions=self.instructions,
-                callbacks=self.callbacks,
-                tool_callbacks=self.tool_callbacks,
-                completer=openai_complete,
-                ui=self.ui,
-                context_name="Orchestrator",
-            )
-        finally:
-            save_orchestrator_history(self.working_directory, chat_history)
+        async with history_manager_scope(context_name="session") as history_manager:
+            try:
+                await run_chat_loop(
+                    history=chat_history,
+                    model=self.config.model,
+                    tools=self.tools,
+                    instructions=self.instructions,
+                    callbacks=self.callbacks,
+                    tool_callbacks=self.tool_callbacks,
+                    completer=openai_complete,
+                    ui=self.ui,
+                    context_name="Orchestrator",
+                )
+            finally:
+                await history_manager.save_orchestrator_history(
+                    working_directory=self.working_directory, history=chat_history
+                )
 
     async def run_agent(self, task: str, history: Optional[list[BaseMessage]] = None) -> Any:
         agent_mode_tools = [
@@ -178,9 +181,12 @@ class Session:
             "expert_knowledge": True,
         }
 
-        try:
-            result = await tool.execute(params)
-            self.callbacks.on_status_message(f"Task completed: {result.content}", level=StatusLevel.SUCCESS)
-            return result
-        finally:
-            save_orchestrator_history(self.working_directory, tool.history)
+        async with history_manager_scope(context_name="session") as history_manager:
+            try:
+                result = await tool.execute(params)
+                self.callbacks.on_status_message(f"Task completed: {result.content}", level=StatusLevel.SUCCESS)
+                return result
+            finally:
+                await history_manager.save_orchestrator_history(
+                    working_directory=self.working_directory, history=tool.history
+                )
