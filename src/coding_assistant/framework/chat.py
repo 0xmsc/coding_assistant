@@ -27,7 +27,7 @@ from coding_assistant.framework.history import (
 from coding_assistant.framework.interrupts import InterruptController
 from coding_assistant.framework.types import Completer
 from coding_assistant.framework.results import CompactConversationResult, TextResult
-from coding_assistant.ui import UI
+from coding_assistant.ui import UI, ui_actor_scope
 from coding_assistant.framework.image import get_image
 
 logger = logging.getLogger(__name__)
@@ -181,71 +181,72 @@ async def run_chat_loop(
 
     usage = Usage(0, 0.0)
 
-    while True:
-        if need_user_input:
-            need_user_input = False
+    async with ui_actor_scope(ui, context_name=context_name) as actor_ui:
+        while True:
+            if need_user_input:
+                need_user_input = False
 
-            callbacks.on_status_message(f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", level=StatusLevel.INFO)
-            answer = await ui.prompt(words=command_names)
-            answer_strip = answer.strip()
+                callbacks.on_status_message(f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", level=StatusLevel.INFO)
+                answer = await actor_ui.prompt(words=command_names)
+                answer_strip = answer.strip()
 
-            # Split answer into command and argument
-            parts = answer_strip.split(maxsplit=1)
-            cmd = parts[0]
-            arg = parts[1] if len(parts) > 1 else None
-            if tool := command_map.get(cmd):
-                result = await tool.execute(arg)
-                if result == ChatCommandResult.EXIT:
-                    break
-                elif result == ChatCommandResult.PROCEED_WITH_PROMPT:
-                    need_user_input = True
-                    continue
-                elif result == ChatCommandResult.PROCEED_WITH_MODEL:
-                    pass
-            else:
-                user_msg = UserMessage(content=answer)
-                append_user_message(history, callbacks=callbacks, context_name=context_name, message=user_msg)
-
-        loop = asyncio.get_running_loop()
-        with InterruptController(loop) as interrupt_controller:
-            try:
-                do_single_step_task = loop.create_task(
-                    do_single_step(
-                        history=history,
-                        model=model,
-                        tools=tools,
-                        progress_callbacks=callbacks,
-                        completer=completer,
-                        context_name=context_name,
-                    ),
-                    name="do_single_step",
-                )
-                interrupt_controller.register_task("do_single_step", do_single_step_task)
-
-                message, step_usage = await do_single_step_task
-                append_assistant_message(history, callbacks=callbacks, context_name=context_name, message=message)
-
-                if step_usage:
-                    usage = Usage(
-                        tokens=step_usage.tokens,
-                        cost=usage.cost + step_usage.cost,
-                    )
-
-                if getattr(message, "tool_calls", []):
-                    await handle_tool_calls(
-                        message,
-                        history=history,
-                        tools=tools,
-                        progress_callbacks=callbacks,
-                        tool_callbacks=tool_callbacks,
-                        ui=ui,
-                        context_name=context_name,
-                        task_created_callback=interrupt_controller.register_task,
-                        handle_tool_result=lambda result: handle_tool_result_chat(
-                            result, history=history, callbacks=callbacks, context_name=context_name
-                        ),
-                    )
+                # Split answer into command and argument
+                parts = answer_strip.split(maxsplit=1)
+                cmd = parts[0]
+                arg = parts[1] if len(parts) > 1 else None
+                if tool := command_map.get(cmd):
+                    result = await tool.execute(arg)
+                    if result == ChatCommandResult.EXIT:
+                        break
+                    elif result == ChatCommandResult.PROCEED_WITH_PROMPT:
+                        need_user_input = True
+                        continue
+                    elif result == ChatCommandResult.PROCEED_WITH_MODEL:
+                        pass
                 else:
+                    user_msg = UserMessage(content=answer)
+                    append_user_message(history, callbacks=callbacks, context_name=context_name, message=user_msg)
+
+            loop = asyncio.get_running_loop()
+            with InterruptController(loop) as interrupt_controller:
+                try:
+                    do_single_step_task = loop.create_task(
+                        do_single_step(
+                            history=history,
+                            model=model,
+                            tools=tools,
+                            progress_callbacks=callbacks,
+                            completer=completer,
+                            context_name=context_name,
+                        ),
+                        name="do_single_step",
+                    )
+                    interrupt_controller.register_task("do_single_step", do_single_step_task)
+
+                    message, step_usage = await do_single_step_task
+                    append_assistant_message(history, callbacks=callbacks, context_name=context_name, message=message)
+
+                    if step_usage:
+                        usage = Usage(
+                            tokens=step_usage.tokens,
+                            cost=usage.cost + step_usage.cost,
+                        )
+
+                    if getattr(message, "tool_calls", []):
+                        await handle_tool_calls(
+                            message,
+                            history=history,
+                            tools=tools,
+                            progress_callbacks=callbacks,
+                            tool_callbacks=tool_callbacks,
+                            ui=actor_ui,
+                            context_name=context_name,
+                            task_created_callback=interrupt_controller.register_task,
+                            handle_tool_result=lambda result: handle_tool_result_chat(
+                                result, history=history, callbacks=callbacks, context_name=context_name
+                            ),
+                        )
+                    else:
+                        need_user_input = True
+                except asyncio.CancelledError:
                     need_user_input = True
-            except asyncio.CancelledError:
-                need_user_input = True
