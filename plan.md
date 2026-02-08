@@ -21,10 +21,15 @@
 - [x] **Introduce a lightweight actor runtime**: asyncio task + mailbox (Queue), typed messages, start/stop lifecycle, and a minimal supervision strategy.
   - [x] Add actor runtime module with start/stop/send/ask and exception handling.
   - [x] Add unit tests for send/ask/stop behavior.
-- [ ] **Cut over Tool Execution**:
+- [x] **Cut over Tool Execution**:
   - Implement ToolExecutor actor and route all tool calls through it.
   - Remove the old direct tool execution path immediately after the cutover.
   - Port tool execution tests to the actor path and delete legacy-path tests.
+  - [x] Define ToolExecutor message types (execute call, batch calls).
+  - [x] Implement ToolExecutor actor wiring in framework execution.
+  - [x] Replace handle_tool_calls with actor messaging and remove direct path.
+  - [x] Update tool execution tests to use the actor path; remove legacy tests.
+  - [x] Add any missing unit tests for ToolExecutor error propagation/cancellation.
 - [ ] **Cut over MCP Server Management**:
   - Implement MCPServerManager actor for startup/shutdown and tool registry updates.
   - Remove direct server lifecycle management from Session once the actor is live.
