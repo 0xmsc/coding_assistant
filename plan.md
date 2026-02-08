@@ -30,10 +30,15 @@
   - [x] Replace handle_tool_calls with actor messaging and remove direct path.
   - [x] Update tool execution tests to use the actor path; remove legacy tests.
   - [x] Add any missing unit tests for ToolExecutor error propagation/cancellation.
-- [ ] **Cut over MCP Server Management**:
+- [x] **Cut over MCP Server Management**:
   - Implement MCPServerManager actor for startup/shutdown and tool registry updates.
   - Remove direct server lifecycle management from Session once the actor is live.
   - Port MCP lifecycle tests to the actor path and delete legacy-path tests.
+  - [x] Define MCPServerManager messages and result bundle shape.
+  - [x] Implement MCPServerManager actor (start/initialize/shutdown) using existing MCP helpers.
+  - [x] Update Session to use MCPServerManager and remove direct MCP lifecycle handling.
+  - [x] Add MCPServerManager tests; update Session tests to mock the manager.
+  - [x] Remove/adjust any legacy MCP lifecycle tests or mocks.
 - [ ] **Cut over UI interactions**:
   - Implement UI actor to serialize prompts/asks.
   - Replace direct UI calls with actor messages and delete the old call sites.

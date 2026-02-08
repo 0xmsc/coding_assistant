@@ -6,6 +6,8 @@ from coding_assistant.session import Session
 from coding_assistant.config import Config
 from coding_assistant.framework.callbacks import ToolCallbacks
 from coding_assistant.llm.types import StatusLevel, ProgressCallbacks, Tool
+from coding_assistant.tools.mcp import MCPServer
+from coding_assistant.tools.mcp_manager import MCPServerBundle
 from coding_assistant.tools.tools import RedirectToolCallTool
 from coding_assistant.ui import UI
 
@@ -63,16 +65,14 @@ async def test_session_context_manager(session_args: dict[str, Any]) -> None:
 
     with (
         patch("coding_assistant.session.sandbox") as mock_sandbox,
-        patch("coding_assistant.session.get_mcp_servers_from_config") as mock_get_mcp,
-        patch("coding_assistant.session.get_mcp_wrapped_tools", new_callable=AsyncMock) as mock_get_tools,
+        patch("coding_assistant.session.MCPServerManager") as mock_manager_class,
         patch("coding_assistant.session.get_instructions") as mock_get_instructions,
     ):
-        # Setup mocks
-        mock_mcp_cm = AsyncMock()
-        mock_mcp_cm.__aenter__.return_value = ["mock_server"]
-        mock_get_mcp.return_value = mock_mcp_cm
+        mock_manager = mock_manager_class.return_value
         mock_tool = MagicMock(spec=Tool)
-        mock_get_tools.return_value = [mock_tool]
+        mock_server = MagicMock(spec=MCPServer)
+        mock_manager.initialize = AsyncMock(return_value=MCPServerBundle(servers=[mock_server], tools=[mock_tool]))
+        mock_manager.shutdown = AsyncMock()
         mock_get_instructions.return_value = "test instructions"
 
         async with session:
@@ -81,12 +81,12 @@ async def test_session_context_manager(session_args: dict[str, Any]) -> None:
             # The second tool should be RedirectToolCallTool
             assert isinstance(session.tools[1], RedirectToolCallTool)
             assert session.instructions == "test instructions"
-            assert session.mcp_servers == ["mock_server"]
+            assert session.mcp_servers == [mock_server]
             mock_sandbox.assert_called_once()
-            mock_get_mcp.assert_called_once()
+            mock_manager.start.assert_called_once()
 
         # Verify exit calls
-        mock_mcp_cm.__aexit__.assert_called_once()
+        mock_manager.shutdown.assert_called_once()
         session_args["callbacks"].on_status_message.assert_any_call("Session closed.", level=StatusLevel.INFO)
 
 
