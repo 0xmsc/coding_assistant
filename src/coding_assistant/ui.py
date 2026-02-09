@@ -3,7 +3,7 @@ import re
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import AsyncIterator, Any, cast
+from typing import AsyncIterator
 
 from typing import Iterable
 
@@ -16,7 +16,7 @@ from rich import print
 from rich.console import Console
 from rich.rule import Rule
 
-from coding_assistant.framework.actor_runtime import Actor
+from coding_assistant.framework.actor_runtime import Actor, ResponseChannel
 from coding_assistant.paths import get_app_cache_dir
 
 logger = logging.getLogger(__name__)
@@ -105,16 +105,19 @@ class NullUI(UI):
 class _Ask:
     prompt_text: str
     default: str | None
+    response_channel: ResponseChannel[str]
 
 
 @dataclass(slots=True)
 class _Confirm:
     prompt_text: str
+    response_channel: ResponseChannel[bool]
 
 
 @dataclass(slots=True)
 class _Prompt:
     words: list[str] | None
+    response_channel: ResponseChannel[str]
 
 
 _UIMessage = _Ask | _Confirm | _Prompt
@@ -123,7 +126,7 @@ _UIMessage = _Ask | _Confirm | _Prompt
 class ActorUI(UI):
     def __init__(self, ui: UI, *, context_name: str = "ui") -> None:
         self._ui = ui
-        self._actor: Actor[_UIMessage, Any] = Actor(name=f"{context_name}.ui", handler=self._handle_message)
+        self._actor: Actor[_UIMessage] = Actor(name=f"{context_name}.ui", handler=self._handle_message)
         self._started = False
 
     def start(self) -> None:
@@ -140,23 +143,35 @@ class ActorUI(UI):
 
     async def ask(self, prompt_text: str, default: str | None = None) -> str:
         self.start()
-        return cast(str, await self._actor.ask(_Ask(prompt_text=prompt_text, default=default)))
+        response_channel: ResponseChannel[str] = ResponseChannel()
+        await self._actor.send(_Ask(prompt_text=prompt_text, default=default, response_channel=response_channel))
+        return await response_channel.wait()
 
     async def confirm(self, prompt_text: str) -> bool:
         self.start()
-        return cast(bool, await self._actor.ask(_Confirm(prompt_text=prompt_text)))
+        response_channel: ResponseChannel[bool] = ResponseChannel()
+        await self._actor.send(_Confirm(prompt_text=prompt_text, response_channel=response_channel))
+        return await response_channel.wait()
 
     async def prompt(self, words: list[str] | None = None) -> str:
         self.start()
-        return cast(str, await self._actor.ask(_Prompt(words=words)))
+        response_channel: ResponseChannel[str] = ResponseChannel()
+        await self._actor.send(_Prompt(words=words, response_channel=response_channel))
+        return await response_channel.wait()
 
-    async def _handle_message(self, message: _UIMessage) -> Any:
+    async def _handle_message(self, message: _UIMessage) -> None:
         if isinstance(message, _Ask):
-            return await self._ui.ask(message.prompt_text, default=message.default)
+            ask_response = await self._ui.ask(message.prompt_text, default=message.default)
+            message.response_channel.send(ask_response)
+            return None
         if isinstance(message, _Confirm):
-            return await self._ui.confirm(message.prompt_text)
+            confirm_response = await self._ui.confirm(message.prompt_text)
+            message.response_channel.send(confirm_response)
+            return None
         if isinstance(message, _Prompt):
-            return await self._ui.prompt(message.words)
+            prompt_response = await self._ui.prompt(message.words)
+            message.response_channel.send(prompt_response)
+            return None
         raise RuntimeError(f"Unknown UI message: {message!r}")
 
 

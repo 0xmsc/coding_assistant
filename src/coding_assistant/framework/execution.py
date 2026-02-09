@@ -3,9 +3,9 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from json import JSONDecodeError
-from typing import Any, cast
+from typing import Any
 
-from coding_assistant.framework.actor_runtime import Actor
+from coding_assistant.framework.actor_runtime import Actor, ResponseChannel
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.framework.history import (
     append_assistant_message,
@@ -34,6 +34,7 @@ class _HandleToolCalls:
     history: list[BaseMessage]
     task_created_callback: Callable[[str, asyncio.Task[Any]], None] | None
     handle_tool_result: Callable[[ToolResult], str] | None
+    response_channel: ResponseChannel[None]
 
 
 class ToolCallActor:
@@ -57,9 +58,7 @@ class ToolCallActor:
             ui=ui,
             context_name=context_name,
         )
-        self._actor: Actor[_HandleToolCalls, None] = Actor(
-            name=f"{context_name}.tool-calls", handler=self._handle_message
-        )
+        self._actor: Actor[_HandleToolCalls] = Actor(name=f"{context_name}.tool-calls", handler=self._handle_message)
         self._started = False
 
     def start(self) -> None:
@@ -85,14 +84,17 @@ class ToolCallActor:
         handle_tool_result: Callable[[ToolResult], str] | None = None,
     ) -> None:
         self.start()
-        await self._actor.ask(
+        response_channel: ResponseChannel[None] = ResponseChannel()
+        await self._actor.send(
             _HandleToolCalls(
                 message=message,
                 history=history,
                 task_created_callback=task_created_callback,
                 handle_tool_result=handle_tool_result,
+                response_channel=response_channel,
             )
         )
+        await response_channel.wait()
 
     async def _handle_message(self, message: _HandleToolCalls) -> None:
         if not isinstance(message, _HandleToolCalls):
@@ -103,6 +105,7 @@ class ToolCallActor:
             task_created_callback=message.task_created_callback,
             handle_tool_result=message.handle_tool_result,
         )
+        message.response_channel.send(None)
 
     async def _handle_tool_calls(
         self,
@@ -212,6 +215,7 @@ class _DoSingleStep:
     progress_callbacks: ProgressCallbacks
     completer: Completer
     context_name: str
+    response_channel: ResponseChannel[tuple[AssistantMessage, Usage | None]]
 
 
 @dataclass(slots=True)
@@ -222,6 +226,7 @@ class _RunAgentLoop:
     completer: Completer
     compact_conversation_at_tokens: int
     tool_call_actor: ToolCallActor
+    response_channel: ResponseChannel[None]
 
 
 _AgentMessage = _DoSingleStep | _RunAgentLoop
@@ -257,7 +262,7 @@ def _create_start_message(*, desc: AgentDescription) -> str:
 
 class AgentActor:
     def __init__(self, *, context_name: str = "agent") -> None:
-        self._actor: Actor[_AgentMessage, Any] = Actor(name=f"{context_name}.agent-loop", handler=self._handle_message)
+        self._actor: Actor[_AgentMessage] = Actor(name=f"{context_name}.agent-loop", handler=self._handle_message)
         self._started = False
 
     def start(self) -> None:
@@ -283,7 +288,8 @@ class AgentActor:
         context_name: str,
     ) -> tuple[AssistantMessage, Usage | None]:
         self.start()
-        result = await self._actor.ask(
+        response_channel: ResponseChannel[tuple[AssistantMessage, Usage | None]] = ResponseChannel()
+        await self._actor.send(
             _DoSingleStep(
                 history=history,
                 model=model,
@@ -291,9 +297,10 @@ class AgentActor:
                 progress_callbacks=progress_callbacks,
                 completer=completer,
                 context_name=context_name,
+                response_channel=response_channel,
             )
         )
-        return cast(tuple[AssistantMessage, Usage | None], result)
+        return await response_channel.wait()
 
     async def run_agent_loop(
         self,
@@ -306,7 +313,8 @@ class AgentActor:
         tool_call_actor: ToolCallActor,
     ) -> None:
         self.start()
-        await self._actor.ask(
+        response_channel: ResponseChannel[None] = ResponseChannel()
+        await self._actor.send(
             _RunAgentLoop(
                 ctx=ctx,
                 tools=tools,
@@ -314,12 +322,14 @@ class AgentActor:
                 completer=completer,
                 compact_conversation_at_tokens=compact_conversation_at_tokens,
                 tool_call_actor=tool_call_actor,
+                response_channel=response_channel,
             )
         )
+        await response_channel.wait()
 
-    async def _handle_message(self, message: _AgentMessage) -> Any:
+    async def _handle_message(self, message: _AgentMessage) -> None:
         if isinstance(message, _DoSingleStep):
-            return await _do_single_step_impl(
+            result = await _do_single_step_impl(
                 history=message.history,
                 model=message.model,
                 tools=message.tools,
@@ -327,8 +337,11 @@ class AgentActor:
                 completer=message.completer,
                 context_name=message.context_name,
             )
+            message.response_channel.send(result)
+            return None
         if isinstance(message, _RunAgentLoop):
             await self._run_agent_loop_impl(message)
+            message.response_channel.send(None)
             return None
         raise RuntimeError(f"Unknown agent message: {message!r}")
 

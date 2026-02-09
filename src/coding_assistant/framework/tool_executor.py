@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from json import JSONDecodeError
 from typing import Any, Sequence
 
-from coding_assistant.framework.actor_runtime import Actor
+from coding_assistant.framework.actor_runtime import Actor, ResponseChannel
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
 from coding_assistant.llm.types import Tool, ToolCall, ToolResult
@@ -19,13 +19,19 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
+class _ToolCallRequest:
+    tool_call: ToolCall
+    response_channel: ResponseChannel[asyncio.Task[ToolResult]]
+
+
+@dataclass(slots=True)
 class ToolExecutor:
     tools: Sequence[Tool]
     ui: UI
     context_name: str = "tool-executor"
     progress_callbacks: ProgressCallbacks = NullProgressCallbacks()
     tool_callbacks: ToolCallbacks = NullToolCallbacks()
-    _actor: Actor[ToolCall, asyncio.Task[ToolResult]] = field(init=False)
+    _actor: Actor["_ToolCallRequest"] = field(init=False)
 
     def __post_init__(self) -> None:
         self._actor = Actor(name=f"{self.context_name}.tool-executor", handler=self._spawn_task)
@@ -37,12 +43,17 @@ class ToolExecutor:
         await self._actor.stop()
 
     async def submit(self, tool_call: ToolCall) -> asyncio.Task[ToolResult]:
-        return await self._actor.ask(tool_call)
+        response_channel: ResponseChannel[asyncio.Task[ToolResult]] = ResponseChannel()
+        await self._actor.send(_ToolCallRequest(tool_call=tool_call, response_channel=response_channel))
+        return await response_channel.wait()
 
-    async def _spawn_task(self, tool_call: ToolCall) -> asyncio.Task[ToolResult]:
-        return asyncio.create_task(
-            self._execute_tool_call(tool_call), name=f"{tool_call.function.name} ({tool_call.id})"
+    async def _spawn_task(self, message: "_ToolCallRequest") -> None:
+        task = asyncio.create_task(
+            self._execute_tool_call(message.tool_call),
+            name=f"{message.tool_call.function.name} ({message.tool_call.id})",
         )
+        message.response_channel.send(task)
+        return None
 
     async def _execute_tool_call(self, tool_call: ToolCall) -> ToolResult:
         function_name = tool_call.function.name
