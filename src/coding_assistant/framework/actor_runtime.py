@@ -2,13 +2,39 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
-from typing import Awaitable, Callable, Generic, TypeVar
+from dataclasses import dataclass, field
+from time import monotonic
+from typing import Any, Awaitable, Callable, Generic, TypeVar
+
+from coding_assistant.trace import trace_enabled, trace_json
 
 logger = logging.getLogger(__name__)
 
 MessageT = TypeVar("MessageT")
 ResponseT = TypeVar("ResponseT")
+
+
+@dataclass(slots=True)
+class ResponseChannel(Generic[ResponseT]):
+    queue: asyncio.Queue[ResponseT | BaseException] = field(default_factory=asyncio.Queue)
+
+    async def wait(self) -> ResponseT:
+        item = await self.queue.get()
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    def send(self, message: ResponseT) -> None:
+        self.queue.put_nowait(message)
+
+    def send_error(self, exc: BaseException) -> None:
+        self.queue.put_nowait(exc)
+
+
+def _maybe_send_error(message: MessageT, exc: BaseException) -> None:
+    response_channel = getattr(message, "response_channel", None)
+    if isinstance(response_channel, ResponseChannel):
+        response_channel.send_error(exc)
 
 
 class ActorStoppedError(RuntimeError):
@@ -20,39 +46,43 @@ class _Stop:
 
 
 @dataclass(slots=True)
-class _Envelope(Generic[MessageT, ResponseT]):
+class _Envelope(Generic[MessageT]):
     message: MessageT | _Stop
-    reply_future: asyncio.Future[ResponseT] | None
+    enqueued_at: float
 
 
-class Actor(Generic[MessageT, ResponseT]):
-    def __init__(self, *, name: str, handler: Callable[[MessageT], Awaitable[ResponseT]]) -> None:
+def _trace_actor_event(event: str, *, actor_name: str, data: dict[str, Any] | None = None) -> None:
+    if not trace_enabled():
+        return
+    payload = {"event": event, "actor": actor_name}
+    if data:
+        payload.update(data)
+    trace_json("actor_event.json5", payload)
+
+
+class Actor(Generic[MessageT]):
+    def __init__(self, *, name: str, handler: Callable[[MessageT], Awaitable[None]]) -> None:
         self._name = name
         self._handler = handler
-        self._queue: asyncio.Queue[_Envelope[MessageT, ResponseT]] = asyncio.Queue()
+        self._queue: asyncio.Queue[_Envelope[MessageT]] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
         if self._task is not None and not self._task.done():
             return
+        _trace_actor_event("actor.start", actor_name=self._name)
         self._task = asyncio.create_task(self._run(), name=f"actor:{self._name}")
 
     async def stop(self) -> None:
         if self._task is None or self._task.done():
             return
-        await self._queue.put(_Envelope(message=_Stop(), reply_future=None))
+        await self._queue.put(_Envelope(message=_Stop(), enqueued_at=monotonic()))
         await self._task
+        _trace_actor_event("actor.stop", actor_name=self._name)
 
     async def send(self, message: MessageT) -> None:
         self._ensure_running()
-        await self._queue.put(_Envelope(message=message, reply_future=None))
-
-    async def ask(self, message: MessageT) -> ResponseT:
-        self._ensure_running()
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[ResponseT] = loop.create_future()
-        await self._queue.put(_Envelope(message=message, reply_future=future))
-        return await future
+        await self._queue.put(_Envelope(message=message, enqueued_at=monotonic()))
 
     def _ensure_running(self) -> None:
         if self._task is None or self._task.done():
@@ -63,19 +93,51 @@ class Actor(Generic[MessageT, ResponseT]):
             envelope = await self._queue.get()
             if isinstance(envelope.message, _Stop):
                 break
+            queue_wait_ms = (monotonic() - envelope.enqueued_at) * 1000
+            handler_start = monotonic()
             try:
-                result = await self._handler(envelope.message)
+                await self._handler(envelope.message)
+                handler_ms = (monotonic() - handler_start) * 1000
+                _trace_actor_event(
+                    "actor.message",
+                    actor_name=self._name,
+                    data={
+                        "message_type": type(envelope.message).__name__,
+                        "queue_wait_ms": queue_wait_ms,
+                        "handler_ms": handler_ms,
+                        "status": "ok",
+                    },
+                )
             except Exception as exc:
-                if envelope.reply_future is not None and not envelope.reply_future.done():
-                    envelope.reply_future.set_exception(exc)
-                else:
-                    logger.exception("Actor %s handler error", self._name)
+                handler_ms = (monotonic() - handler_start) * 1000
+                _trace_actor_event(
+                    "actor.message",
+                    actor_name=self._name,
+                    data={
+                        "message_type": type(envelope.message).__name__,
+                        "queue_wait_ms": queue_wait_ms,
+                        "handler_ms": handler_ms,
+                        "status": "error",
+                        "error": repr(exc),
+                    },
+                )
+                _maybe_send_error(envelope.message, exc)
+                logger.exception("Actor %s handler error", self._name)
                 continue
             except BaseException as exc:
-                if envelope.reply_future is not None and not envelope.reply_future.done():
-                    envelope.reply_future.set_exception(exc)
+                handler_ms = (monotonic() - handler_start) * 1000
+                _trace_actor_event(
+                    "actor.message",
+                    actor_name=self._name,
+                    data={
+                        "message_type": type(envelope.message).__name__,
+                        "queue_wait_ms": queue_wait_ms,
+                        "handler_ms": handler_ms,
+                        "status": "fatal",
+                        "error": repr(exc),
+                    },
+                )
+                _maybe_send_error(envelope.message, exc)
                 if isinstance(exc, asyncio.CancelledError):
                     raise
                 break
-            if envelope.reply_future is not None and not envelope.reply_future.done():
-                envelope.reply_future.set_result(result)

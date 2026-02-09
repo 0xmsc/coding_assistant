@@ -7,7 +7,7 @@ from enum import Enum
 import logging
 from typing import TYPE_CHECKING
 
-from coding_assistant.framework.actor_runtime import Actor
+from coding_assistant.framework.actor_runtime import Actor, ResponseChannel
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import (
@@ -110,6 +110,7 @@ class _RunChatLoop:
     callbacks: ProgressCallbacks
     completer: Completer
     context_name: str
+    response_channel: ResponseChannel[None]
 
 
 class ChatLoopActor:
@@ -124,7 +125,7 @@ class ChatLoopActor:
         self._user_actor = user_actor
         self._tool_call_actor = tool_call_actor
         self._agent_actor = agent_actor
-        self._actor: Actor[_RunChatLoop, None] = Actor(name=f"{context_name}.chat-loop", handler=self._handle_message)
+        self._actor: Actor[_RunChatLoop] = Actor(name=f"{context_name}.chat-loop", handler=self._handle_message)
         self._started = False
 
     def start(self) -> None:
@@ -151,7 +152,8 @@ class ChatLoopActor:
         context_name: str,
     ) -> None:
         self.start()
-        await self._actor.ask(
+        response_channel: ResponseChannel[None] = ResponseChannel()
+        await self._actor.send(
             _RunChatLoop(
                 history=history,
                 model=model,
@@ -160,13 +162,16 @@ class ChatLoopActor:
                 callbacks=callbacks,
                 completer=completer,
                 context_name=context_name,
+                response_channel=response_channel,
             )
         )
+        await response_channel.wait()
 
     async def _handle_message(self, message: _RunChatLoop) -> None:
         if not isinstance(message, _RunChatLoop):
             raise RuntimeError(f"Unknown chat loop message: {message!r}")
         await self._run_chat_loop_impl(message)
+        message.response_channel.send(None)
 
     async def _run_chat_loop_impl(self, message: _RunChatLoop) -> None:
         tools = list(message.tools)
