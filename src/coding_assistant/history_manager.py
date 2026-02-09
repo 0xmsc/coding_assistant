@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator, Sequence
 
-from coding_assistant.framework.actor_runtime import Actor
+from coding_assistant.framework.actor_runtime import Actor, ResponseChannel
 from coding_assistant.history import save_orchestrator_history
 from coding_assistant.llm.types import BaseMessage
 
@@ -14,6 +14,7 @@ from coding_assistant.llm.types import BaseMessage
 class _SaveOrchestratorHistory:
     working_directory: Path
     history: Sequence[BaseMessage]
+    response_channel: ResponseChannel[None]
 
 
 _Message = _SaveOrchestratorHistory
@@ -21,7 +22,7 @@ _Message = _SaveOrchestratorHistory
 
 class HistoryManager:
     def __init__(self, *, context_name: str = "history") -> None:
-        self._actor: Actor[_Message, None] = Actor(name=f"{context_name}.history", handler=self._handle_message)
+        self._actor: Actor[_Message] = Actor(name=f"{context_name}.history", handler=self._handle_message)
         self._started = False
 
     def start(self) -> None:
@@ -38,11 +39,20 @@ class HistoryManager:
 
     async def save_orchestrator_history(self, *, working_directory: Path, history: Sequence[BaseMessage]) -> None:
         self.start()
-        await self._actor.ask(_SaveOrchestratorHistory(working_directory=working_directory, history=history))
+        response_channel: ResponseChannel[None] = ResponseChannel()
+        await self._actor.send(
+            _SaveOrchestratorHistory(
+                working_directory=working_directory,
+                history=history,
+                response_channel=response_channel,
+            )
+        )
+        await response_channel.wait()
 
     async def _handle_message(self, message: _Message) -> None:
         if isinstance(message, _SaveOrchestratorHistory):
             save_orchestrator_history(message.working_directory, message.history)
+            message.response_channel.send(None)
             return None
         raise RuntimeError(f"Unknown history manager message: {message!r}")
 
