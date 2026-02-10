@@ -93,5 +93,27 @@
 - [x] Remove `SystemActors` and wire actors directly in Session/tools/tests.
 - [x] Make `AgentActor` own history and expose history snapshots via `get_history` / `get_agent_history`.
 
+## Remaining work (strict actor-only cutover)
+- [x] **Remove legacy wrapper orchestration from `framework/agent.py` and `framework/chat.py`**:
+  - Eliminate compatibility logic that conditionally creates/starts/stops actors in wrapper functions.
+  - Keep wrappers as thin delegators (or remove them) so orchestration lives only in actor handlers.
+  - Ensure no control-flow loops remain outside actors.
+- [x] **Remove short-lived actor fallback in `do_single_step`**:
+  - Delete the branch that constructs a temporary `AgentActor` when none is provided.
+  - Require actor-backed execution path (explicit actor dependency or Session-owned actor).
+  - Update call sites/tests to pass actor context explicitly.
+- [ ] **Enforce long-lived actor reuse for nested agent launches**:
+  - Ensure `AgentTool`/sub-agent flows always run through pre-existing actor instances.
+  - Prevent per-call actor creation in nested contexts.
+  - Add guardrails (runtime assertions or explicit wiring checks) that fail fast on non-actor paths.
+- [ ] **Finalize strict actor architecture tests**:
+  - Add/adjust tests proving chat/agent execution cannot run without actor-backed dependencies.
+  - Remove or rewrite tests that validate wrapper-created actor behavior.
+  - Keep `Session` integration tests focused on lifecycle/wiring and actor ownership.
+- [ ] **Update docs to match actual strict actor state**:
+  - Document actor ownership boundaries and required wiring in `README.md`.
+  - Add a short architecture note describing forbidden non-actor orchestration paths.
+  - Mark this migration complete only when all fallback/wrapper orchestration code paths are removed.
+
 ## When not to proceed
 - If you cannot accept a step-by-step cutover that removes each legacy path as you go, or if feature delivery is the priority, delay this migration; the actor pattern adds overhead and risk during transition.

@@ -190,22 +190,8 @@ async def do_single_step(
     progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
     completer: Completer,
     context_name: str,
-    agent_actor: "AgentActor | None" = None,
+    agent_actor: "AgentActor",
 ) -> tuple[AssistantMessage, Usage | None]:
-    if agent_actor is None:
-        actor = AgentActor(context_name=context_name)
-        actor.start()
-        try:
-            return await actor.do_single_step(
-                history=history,
-                model=model,
-                tools=tools,
-                progress_callbacks=progress_callbacks,
-                completer=completer,
-                context_name=context_name,
-            )
-        finally:
-            await actor.stop()
     return await agent_actor.do_single_step(
         history=history,
         model=model,
