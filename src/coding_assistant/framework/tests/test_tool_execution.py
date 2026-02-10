@@ -5,7 +5,6 @@ import pytest
 
 
 from coding_assistant.framework.callbacks import ToolCallbacks
-from coding_assistant.framework.execution import handle_tool_calls, execute_tool_call
 from coding_assistant.framework.agent import _handle_finish_task_result
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -16,7 +15,7 @@ from coding_assistant.llm.types import (
     ToolMessage,
     ToolResult,
 )
-from coding_assistant.framework.tests.helpers import make_ui_mock
+from coding_assistant.framework.tests.helpers import make_ui_mock, tool_call_actor_scope
 from coding_assistant.framework.types import AgentState
 from coding_assistant.framework.results import FinishTaskResult, TextResult
 from coding_assistant.callbacks import ConfirmationToolCallbacks
@@ -41,7 +40,7 @@ class FakeConfirmTool(Tool):
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_call_regular_tool_and_not_found() -> None:
+async def test_tool_execution_success_and_missing_tool() -> None:
     class DummyTool(Tool):
         def __init__(self, name: str, result: str):
             self._name = name
@@ -60,13 +59,23 @@ async def test_execute_tool_call_regular_tool_and_not_found() -> None:
             return TextResult(content=self._result)
 
     tool = DummyTool("echo", "ok")
+    history: list[BaseMessage] = []
+    tools: list[Tool] = [tool]
+    ui = make_ui_mock()
 
-    res = await execute_tool_call(function_name="echo", function_args={}, tools=[tool])
-    assert isinstance(res, TextResult)
-    assert res.content == "ok"
+    msg_ok = AssistantMessage(tool_calls=[ToolCall(id="1", function=FunctionCall(name="echo", arguments="{}"))])
+    msg_missing = AssistantMessage(tool_calls=[ToolCall(id="2", function=FunctionCall(name="missing", arguments="{}"))])
 
-    with pytest.raises(ValueError, match="Tool missing not found"):
-        await execute_tool_call(function_name="missing", function_args={}, tools=[tool])
+    async with tool_call_actor_scope(tools=tools, ui=ui, context_name="test") as actor:
+        await actor.handle_tool_calls(msg_ok, history=history)
+        assert history[-1] == ToolMessage(tool_call_id="1", name="echo", content="ok")
+
+        await actor.handle_tool_calls(msg_missing, history=history)
+        assert history[-1] == ToolMessage(
+            tool_call_id="2",
+            name="missing",
+            content="Error executing tool: Tool missing not found in agent tools.",
+        )
 
 
 @pytest.mark.asyncio
@@ -79,38 +88,32 @@ async def test_tool_confirmation_denied_and_allowed() -> None:
     expected_prompt = "Execute tool `execute_shell_command` with arguments `{'cmd': 'echo 123'}`?"
 
     ui = make_ui_mock(confirm_sequence=[(expected_prompt, False), (expected_prompt, True)])
+    tool_callbacks = ConfirmationToolCallbacks(
+        tool_confirmation_patterns=[r"^execute_shell_command"], shell_confirmation_patterns=[]
+    )
 
     call1 = ToolCall(id="1", function=FunctionCall(name="execute_shell_command", arguments=args_json))
     msg1 = AssistantMessage(tool_calls=[call1])
-    await handle_tool_calls(
-        msg1,
-        history=history,
-        tools=tools,
-        tool_callbacks=ConfirmationToolCallbacks(
-            tool_confirmation_patterns=[r"^execute_shell_command"], shell_confirmation_patterns=[]
-        ),
-        ui=ui,
-        context_name="test",
-    )
-
-    assert tool.calls == []  # should not run
-    assert history[-1] == ToolMessage(tool_call_id="1", name="execute_shell_command", content="Tool execution denied.")
-
     call2 = ToolCall(id="2", function=FunctionCall(name="execute_shell_command", arguments=args_json))
     msg2 = AssistantMessage(tool_calls=[call2])
-    await handle_tool_calls(
-        msg2,
-        history=history,
+
+    async with tool_call_actor_scope(
         tools=tools,
-        tool_callbacks=ConfirmationToolCallbacks(
-            tool_confirmation_patterns=[r"^execute_shell_command"], shell_confirmation_patterns=[]
-        ),
         ui=ui,
         context_name="test",
-    )
+        tool_callbacks=tool_callbacks,
+    ) as actor:
+        await actor.handle_tool_calls(msg1, history=history)
 
-    assert tool.calls == [{"cmd": "echo 123"}]
-    assert history[-1] == ToolMessage(tool_call_id="2", name="execute_shell_command", content="ran: echo 123")
+        assert tool.calls == []  # should not run
+        assert history[-1] == ToolMessage(
+            tool_call_id="1", name="execute_shell_command", content="Tool execution denied."
+        )
+
+        await actor.handle_tool_calls(msg2, history=history)
+
+        assert tool.calls == [{"cmd": "echo 123"}]
+        assert history[-1] == ToolMessage(tool_call_id="2", name="execute_shell_command", content="ran: echo 123")
 
 
 @pytest.mark.asyncio
@@ -136,8 +139,9 @@ async def test_unknown_result_type_raises() -> None:
     tools: list[Tool] = [WeirdTool()]
     tool_call = ToolCall(id="1", function=FunctionCall(name="weird", arguments="{}"))
     msg = AssistantMessage(tool_calls=[tool_call])
-    await handle_tool_calls(msg, history=history, tools=tools, ui=make_ui_mock(), context_name="test")
-    assert "WeirdResult" in (history[-1].content or "")
+    async with tool_call_actor_scope(tools=tools, ui=make_ui_mock(), context_name="test") as actor:
+        await actor.handle_tool_calls(msg, history=history)
+        assert "WeirdResult" in (history[-1].content or "")
 
 
 class ParallelSlowTool(Tool):
@@ -171,7 +175,8 @@ async def test_tool_call_malformed_arguments_records_error() -> None:
     call = ToolCall(id="bad1", function=FunctionCall(name="bad_tool", arguments=bad_args))
     msg = AssistantMessage(tool_calls=[call])
 
-    await handle_tool_calls(msg, history=history, tools=tools, ui=make_ui_mock(), context_name="test")
+    async with tool_call_actor_scope(tools=tools, ui=make_ui_mock(), context_name="test") as actor:
+        await actor.handle_tool_calls(msg, history=history)
 
     assert history, "Expected an error tool message appended to history"
     tool_msg = cast(ToolMessage, history[-1])
@@ -206,7 +211,8 @@ async def test_tool_execution_value_error_records_error() -> None:
     call = ToolCall(id="e1", function=FunctionCall(name="err_tool", arguments="{}"))
     msg = AssistantMessage(tool_calls=[call])
 
-    await handle_tool_calls(msg, history=history, tools=tools, ui=make_ui_mock(), context_name="test")
+    async with tool_call_actor_scope(tools=tools, ui=make_ui_mock(), context_name="test") as actor:
+        await actor.handle_tool_calls(msg, history=history)
 
     # Tool execute should have been invoked (setting executed True) then error captured
     assert tool.executed is True
@@ -244,41 +250,29 @@ async def test_shell_tool_confirmation_denied_and_allowed() -> None:
     args_json = '{"command": "rm -rf /tmp"}'
     expected_prompt = f"Execute shell command `{command}` for tool `shell_execute`?"
     ui = make_ui_mock(confirm_sequence=[(expected_prompt, False), (expected_prompt, True)])
+    tool_callbacks = ConfirmationToolCallbacks(shell_confirmation_patterns=[r"rm -rf"], tool_confirmation_patterns=[])
 
     # First denied
     call1 = ToolCall(id="s1", function=FunctionCall(name="shell_execute", arguments=args_json))
     msg1 = AssistantMessage(tool_calls=[call1])
-
-    await handle_tool_calls(
-        msg1,
-        history=history,
-        tools=tools,
-        tool_callbacks=ConfirmationToolCallbacks(
-            shell_confirmation_patterns=[r"rm -rf"], tool_confirmation_patterns=[]
-        ),
-        ui=ui,
-        context_name="test",
-    )
-    assert tool.calls == []
-    assert history[-1] == ToolMessage(
-        tool_call_id="s1", name="shell_execute", content="Shell command execution denied."
-    )
-
-    # Then allowed
     call2 = ToolCall(id="s2", function=FunctionCall(name="shell_execute", arguments=args_json))
     msg2 = AssistantMessage(tool_calls=[call2])
-    await handle_tool_calls(
-        msg2,
-        history=history,
+
+    async with tool_call_actor_scope(
         tools=tools,
-        tool_callbacks=ConfirmationToolCallbacks(
-            shell_confirmation_patterns=[r"rm -rf"], tool_confirmation_patterns=[]
-        ),
         ui=ui,
         context_name="test",
-    )
-    assert tool.calls == [{"command": command}]
-    assert history[-1] == ToolMessage(tool_call_id="s2", name="shell_execute", content=f"ran shell: {command}")
+        tool_callbacks=tool_callbacks,
+    ) as actor:
+        await actor.handle_tool_calls(msg1, history=history)
+        assert tool.calls == []
+        assert history[-1] == ToolMessage(
+            tool_call_id="s1", name="shell_execute", content="Shell command execution denied."
+        )
+
+        await actor.handle_tool_calls(msg2, history=history)
+        assert tool.calls == [{"command": command}]
+        assert history[-1] == ToolMessage(tool_call_id="s2", name="shell_execute", content=f"ran shell: {command}")
 
 
 @pytest.mark.asyncio
@@ -330,15 +324,13 @@ async def test_before_tool_execution_can_return_finish_task_result() -> None:
             return result.content
         return f"Tool produced result of type {type(result).__name__}"
 
-    await handle_tool_calls(
-        msg,
-        history=state.history,
+    async with tool_call_actor_scope(
         tools=tools,
-        tool_callbacks=FabricatingCallbacks(),
         ui=make_ui_mock(),
         context_name="test",
-        handle_tool_result=handle_tool_result,
-    )
+        tool_callbacks=FabricatingCallbacks(),
+    ) as actor:
+        await actor.handle_tool_calls(msg, history=state.history, handle_tool_result=handle_tool_result)
 
     # Underlying tool not executed
     assert finish_tool.executed is False
@@ -370,16 +362,17 @@ async def test_multiple_tool_calls_are_parallel() -> None:
 
     start = time.monotonic()
     msg1 = AssistantMessage(tool_calls=[msg.tool_calls[0]])
-    await handle_tool_calls(msg1, history=history, tools=tools, ui=make_ui_mock(), context_name="test")
     msg2 = AssistantMessage(tool_calls=[msg.tool_calls[1]])
-    await handle_tool_calls(msg2, history=history, tools=tools, ui=make_ui_mock(), context_name="test")
-    # Above would be sequential; now test real parallel variant using handle_tool_calls
-    history = []
-    # reset agent history
-    events.clear()
-    start = time.monotonic()
-    await handle_tool_calls(msg, history=history, tools=tools, ui=make_ui_mock(), context_name="test")
-    elapsed = time.monotonic() - start
+    async with tool_call_actor_scope(tools=tools, ui=make_ui_mock(), context_name="test") as actor:
+        await actor.handle_tool_calls(msg1, history=history)
+        await actor.handle_tool_calls(msg2, history=history)
+        # Above would be sequential; now test real parallel variant using handle_tool_calls
+        history = []
+        # reset agent history
+        events.clear()
+        start = time.monotonic()
+        await actor.handle_tool_calls(msg, history=history)
+        elapsed = time.monotonic() - start
 
     # Assert total runtime significantly less than sequential (~0.4s)
     assert elapsed < delay + 0.1, f"Expected parallel execution (<~{delay + 0.1:.2f}s) but took {elapsed:.2f}s"
@@ -451,9 +444,8 @@ async def test_tool_calls_process_as_they_arrive() -> None:
             await asyncio.sleep(0.05)
         raise RuntimeError("Fast tool result never appeared in history while slow tool was running")
 
-    await asyncio.gather(
-        handle_tool_calls(msg, history=history, tools=tools, ui=make_ui_mock(), context_name="test"), checker()
-    )
+    async with tool_call_actor_scope(tools=tools, ui=make_ui_mock(), context_name="test") as actor:
+        await asyncio.gather(actor.handle_tool_calls(msg, history=history), checker())
 
     assert "check_passed" in events
     ids = [getattr(m, "tool_call_id", None) for m in history if m.role == "tool"]

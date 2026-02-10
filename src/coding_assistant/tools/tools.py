@@ -1,7 +1,7 @@
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Sequence, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,9 @@ from coding_assistant.framework.types import (
 from coding_assistant.framework.results import TextResult
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.ui import DefaultAnswerUI, UI
+
+if TYPE_CHECKING:
+    from coding_assistant.framework.execution import AgentActor, ToolCallActor
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +147,9 @@ class AgentTool(Tool):
         name: str = "launch_agent",
         history: Sequence[BaseMessage] | None = None,
         completer: Completer | None = None,
+        agent_actor: "AgentActor",
+        tool_call_actor: "ToolCallActor",
+        user_actor: "UI",
     ) -> None:
         super().__init__()
         self._model = model
@@ -157,8 +163,15 @@ class AgentTool(Tool):
         self._name = name
         self._history = history
         self._completer = completer or openai_complete
+        self._agent_actor = agent_actor
+        self._tool_call_actor = tool_call_actor
+        self._user_actor = user_actor
         self.history: list[BaseMessage] = []
         self.summary: str = ""
+        if self._agent_actor is None or self._tool_call_actor is None or self._user_actor is None:
+            raise RuntimeError(
+                "AgentTool requires actor-backed dependencies: agent_actor, tool_call_actor, and user_actor."
+            )
 
     def name(self) -> str:
         return self._name
@@ -200,6 +213,9 @@ class AgentTool(Tool):
                     progress_callbacks=NullProgressCallbacks(),
                     tool_callbacks=self._tool_callbacks,
                     completer=self._completer,
+                    agent_actor=self._agent_actor,
+                    tool_call_actor=self._tool_call_actor,
+                    user_actor=self._user_actor,
                 ),
                 *self._tools,
             ],
@@ -215,6 +231,9 @@ class AgentTool(Tool):
                 compact_conversation_at_tokens=self._compact_conversation_at_tokens,
                 completer=self._completer,
                 ui=self._ui,
+                agent_actor=self._agent_actor,
+                tool_call_actor=self._tool_call_actor,
+                user_actor=self._user_actor,
             )
             assert state.output is not None, "Agent did not produce output"
             self.summary = state.output.summary

@@ -5,7 +5,6 @@ import pytest
 
 from coding_assistant.llm.types import NullProgressCallbacks
 from coding_assistant.framework.history import append_assistant_message
-from coding_assistant.framework.execution import do_single_step, handle_tool_calls
 from coding_assistant.framework.agent import _handle_compact_conversation_result, _handle_finish_task_result
 from coding_assistant.llm.types import AssistantMessage, ToolResult, UserMessage, message_to_dict
 from coding_assistant.framework.tests.helpers import (
@@ -13,8 +12,10 @@ from coding_assistant.framework.tests.helpers import (
     FakeMessage,
     FunctionCall,
     ToolCall,
+    agent_actor_scope,
     make_test_agent,
     make_ui_mock,
+    tool_call_actor_scope,
 )
 from coding_assistant.framework.results import CompactConversationResult, FinishTaskResult, TextResult
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
@@ -53,15 +54,13 @@ async def test_compact_conversation_resets_history() -> None:
             return _handle_compact_conversation_result(result, desc=desc, state=state, progress_callbacks=callbacks)
         return str(result)
 
-    await handle_tool_calls(
-        msg,
-        history=state.history,
+    async with tool_call_actor_scope(
         tools=desc.tools,
-        progress_callbacks=callbacks,
         ui=make_ui_mock(),
         context_name=desc.name,
-        handle_tool_result=handle_tool_result,
-    )
+        progress_callbacks=callbacks,
+    ) as actor:
+        await actor.handle_tool_calls(msg, history=state.history, handle_tool_result=handle_tool_result)
 
     assert any(force for content, force in callbacks.user_messages if summary_text in content)
 
@@ -86,14 +85,15 @@ async def test_compact_conversation_resets_history() -> None:
 
     completer = FakeCompleter([FakeMessage(tool_calls=[finish_call])])
 
-    msg, _ = await do_single_step(
-        history=state.history,
-        model=desc.model,
-        tools=desc.tools,
-        progress_callbacks=callbacks,
-        completer=completer,
-        context_name=desc.name,
-    )
+    async with agent_actor_scope(context_name=desc.name) as agent_actor:
+        msg, _ = await agent_actor.do_single_step(
+            history=state.history,
+            model=desc.model,
+            tools=desc.tools,
+            progress_callbacks=callbacks,
+            completer=completer,
+            context_name=desc.name,
+        )
 
     append_assistant_message(state.history, callbacks=callbacks, context_name=desc.name, message=msg)
 
@@ -104,15 +104,13 @@ async def test_compact_conversation_resets_history() -> None:
             return result.content
         return str(result)
 
-    await handle_tool_calls(
-        msg,
-        history=state.history,
+    async with tool_call_actor_scope(
         tools=desc.tools,
-        progress_callbacks=callbacks,
         ui=make_ui_mock(),
         context_name=desc.name,
-        handle_tool_result=handle_tool_result_2,
-    )
+        progress_callbacks=callbacks,
+    ) as actor:
+        await actor.handle_tool_calls(msg, history=state.history, handle_tool_result=handle_tool_result_2)
 
     assert message_to_dict(state.history[-2]) == {
         "role": "assistant",

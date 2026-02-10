@@ -11,9 +11,10 @@ from coding_assistant.framework.tests.helpers import (
     ToolCall,
     make_test_agent,
     make_ui_mock,
+    system_actor_scope_for_tests,
 )
 from coding_assistant.framework.types import AgentContext, AgentOutput
-from coding_assistant.llm.types import message_to_dict, Tool
+from coding_assistant.llm.types import NullProgressCallbacks, message_to_dict, Tool
 from coding_assistant.framework.results import TextResult
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
@@ -36,6 +37,39 @@ class FakeEchoTool(Tool):
         return TextResult(content=f"echo: {parameters['text']}")
 
 
+async def _run_agent_with_actors(
+    ctx: AgentContext,
+    *,
+    completer: FakeCompleter,
+    ui: Any,
+    compact_conversation_at_tokens: int = 200_000,
+    progress_callbacks: Any | None = None,
+) -> None:
+    callbacks = progress_callbacks or NullProgressCallbacks()
+    tools_with_meta = list(ctx.desc.tools)
+    if not any(tool.name() == "finish_task" for tool in tools_with_meta):
+        tools_with_meta.append(FinishTaskTool())
+    if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
+        tools_with_meta.append(CompactConversation())
+    async with system_actor_scope_for_tests(
+        tools=tools_with_meta,
+        ui=ui,
+        context_name=ctx.desc.name,
+        progress_callbacks=callbacks,
+    ) as actors:
+        await run_agent_loop(
+            ctx,
+            compact_conversation_at_tokens=compact_conversation_at_tokens,
+            completer=completer,
+            ui=actors.user_actor,
+            progress_callbacks=callbacks,
+            agent_actor=actors.agent_actor,
+            tool_call_actor=actors.tool_call_actor,
+            user_actor=actors.user_actor,
+        )
+        ctx.state.history = await actors.agent_actor.get_agent_history(id(ctx.state))
+
+
 @pytest.mark.asyncio
 async def test_tool_selection_then_finish() -> None:
     echo_call = ToolCall("1", FunctionCall("fake.echo", json.dumps({"text": "hi"})))
@@ -52,7 +86,7 @@ async def test_tool_selection_then_finish() -> None:
     agent = make_test_agent(tools=[fake_tool, FinishTaskTool(), CompactConversation()])
     desc, state = agent
 
-    await run_agent_loop(
+    await _run_agent_with_actors(
         AgentContext(desc=desc, state=state),
         compact_conversation_at_tokens=200_000,
         completer=completer,
@@ -122,7 +156,7 @@ async def test_unknown_tool_error_then_finish(monkeypatch: Any) -> None:
     agent = make_test_agent(tools=[FinishTaskTool(), CompactConversation()])
     desc, state = agent
 
-    await run_agent_loop(
+    await _run_agent_with_actors(
         AgentContext(desc=desc, state=state),
         compact_conversation_at_tokens=200_000,
         completer=completer,
@@ -187,7 +221,7 @@ async def test_assistant_message_without_tool_calls_prompts_correction(monkeypat
     agent = make_test_agent(tools=[FinishTaskTool(), CompactConversation()])
     desc, state = agent
 
-    await run_agent_loop(
+    await _run_agent_with_actors(
         AgentContext(desc=desc, state=state),
         compact_conversation_at_tokens=200_000,
         completer=completer,
@@ -233,7 +267,7 @@ async def test_errors_if_output_already_set() -> None:
     desc, state = make_test_agent(tools=[FinishTaskTool(), CompactConversation()])
     state.output = AgentOutput(result="r", summary="s")
     with pytest.raises(RuntimeError, match="Agent already has a result or summary."):
-        await run_agent_loop(
+        await _run_agent_with_actors(
             AgentContext(desc=desc, state=state),
             compact_conversation_at_tokens=200_000,
             completer=FakeCompleter([FakeMessage(content="irrelevant")]),
@@ -249,7 +283,7 @@ async def test_feedback_ok_does_not_reloop() -> None:
     agent = make_test_agent(tools=[FinishTaskTool(), CompactConversation()])
     desc, state = agent
 
-    await run_agent_loop(
+    await _run_agent_with_actors(
         AgentContext(desc=desc, state=state),
         compact_conversation_at_tokens=200_000,
         completer=completer,
@@ -276,7 +310,7 @@ async def test_multiple_tool_calls_processed_in_order() -> None:
     agent = make_test_agent(tools=[echo_tool, FinishTaskTool(), CompactConversation()])
     desc, state = agent
 
-    await run_agent_loop(
+    await _run_agent_with_actors(
         AgentContext(desc=desc, state=state),
         compact_conversation_at_tokens=200_000,
         completer=completer,
@@ -363,7 +397,7 @@ async def test_feedback_loop_then_finish() -> None:
     agent = make_test_agent(tools=[FinishTaskTool(), CompactConversation()])
     desc, state = agent
 
-    await run_agent_loop(
+    await _run_agent_with_actors(
         AgentContext(desc=desc, state=state),
         compact_conversation_at_tokens=200_000,
         completer=completer,

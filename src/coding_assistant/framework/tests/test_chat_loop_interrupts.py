@@ -9,8 +9,16 @@ from unittest.mock import patch
 from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.interrupts import InterruptController
 from coding_assistant.llm.types import UserMessage, BaseMessage, Tool
-from coding_assistant.framework.tests.helpers import FakeCompleter, FunctionCall, FakeMessage, ToolCall, make_ui_mock
+from coding_assistant.framework.tests.helpers import (
+    FakeCompleter,
+    FunctionCall,
+    FakeMessage,
+    ToolCall,
+    make_ui_mock,
+    system_actor_scope_for_tests,
+)
 from coding_assistant.framework.results import TextResult
+from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
 
 
 class InterruptibleTool(Tool):
@@ -47,6 +55,38 @@ class InterruptibleTool(Tool):
         except asyncio.CancelledError:
             self.cancelled = True
             raise
+
+
+async def _run_chat_with_actors(
+    *,
+    history: list[BaseMessage],
+    model: str,
+    tools: list[Tool],
+    instructions: str | None,
+    completer: Any,
+    ui: Any,
+    context_name: str,
+) -> None:
+    tools_with_meta = list(tools)
+    if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
+        tools_with_meta.append(CompactConversation())
+    async with system_actor_scope_for_tests(
+        tools=tools_with_meta,
+        ui=ui,
+        context_name=context_name,
+    ) as actors:
+        await run_chat_loop(
+            history=history,
+            model=model,
+            tools=tools_with_meta,
+            instructions=instructions,
+            completer=completer,
+            ui=actors.user_actor,
+            context_name=context_name,
+            agent_actor=actors.agent_actor,
+            tool_call_actor=actors.tool_call_actor,
+            user_actor=actors.user_actor,
+        )
 
 
 @pytest.mark.asyncio
@@ -88,7 +128,7 @@ async def test_interrupt_during_tool_execution_prompts_for_user_input() -> None:
         # Run chat loop and trigger interrupt when tool starts
         async def run_with_interrupt() -> Any:
             task = asyncio.create_task(
-                run_chat_loop(
+                _run_chat_with_actors(
                     history=cast(Any, history),
                     model=model,
                     tools=cast(Any, tools),
@@ -157,7 +197,7 @@ async def test_interrupt_during_do_single_step() -> None:
 
         async def run_with_interrupt() -> Any:
             task = asyncio.create_task(
-                run_chat_loop(
+                _run_chat_with_actors(
                     history=cast(Any, history),
                     model=model,
                     tools=cast(Any, tools),
@@ -227,7 +267,7 @@ async def test_multiple_tool_calls_with_interrupt() -> None:
 
         async def run_with_interrupt() -> Any:
             task = asyncio.create_task(
-                run_chat_loop(
+                _run_chat_with_actors(
                     history=cast(Any, history),
                     model=model,
                     tools=cast(Any, tools),
@@ -275,7 +315,7 @@ async def test_chat_loop_without_interrupts_works_normally() -> None:
         ]
     )
 
-    await run_chat_loop(
+    await _run_chat_with_actors(
         history=cast(Any, history),
         model=model,
         tools=cast(Any, tools),
@@ -332,7 +372,7 @@ async def test_interrupt_recovery_continues_conversation() -> None:
 
         async def run_with_interrupt() -> Any:
             task = asyncio.create_task(
-                run_chat_loop(
+                _run_chat_with_actors(
                     history=cast(Any, history),
                     model=model,
                     tools=cast(Any, tools),
@@ -402,7 +442,7 @@ async def test_interrupt_during_second_tool_call() -> None:
 
         async def run_with_interrupt() -> Any:
             task = asyncio.create_task(
-                run_chat_loop(
+                _run_chat_with_actors(
                     history=cast(Any, history),
                     model=model,
                     tools=cast(Any, tools),
@@ -457,7 +497,7 @@ async def test_sigint_interrupts_tool_execution() -> None:
 
     async def run_with_sigint() -> Any:
         task = asyncio.create_task(
-            run_chat_loop(
+            _run_chat_with_actors(
                 history=cast(Any, history),
                 model=model,
                 tools=cast(Any, tools),
@@ -520,7 +560,7 @@ async def test_interrupt_during_llm_call() -> None:
 
         async def run_with_interrupt() -> Any:
             task = asyncio.create_task(
-                run_chat_loop(
+                _run_chat_with_actors(
                     history=cast(Any, history),
                     model=model,
                     tools=cast(Any, tools),
