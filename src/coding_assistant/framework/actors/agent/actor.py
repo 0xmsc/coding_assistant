@@ -266,15 +266,6 @@ class AgentActor:
         )
         await fut
 
-    async def set_history(self, history: list[BaseMessage]) -> None:
-        self._chat_history = list(history)
-
-    async def get_history(self) -> list[BaseMessage]:
-        return list(self._chat_history)
-
-    async def get_agent_history(self, state_id: int) -> list[BaseMessage]:
-        return list(self._agent_histories.get(state_id, []))
-
     async def _handle_message(self, message: _AgentMessage) -> None:
         if isinstance(message, _DoSingleStep):
             self._track_task(

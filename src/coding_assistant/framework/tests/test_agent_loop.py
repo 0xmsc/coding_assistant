@@ -67,7 +67,6 @@ async def _run_agent_with_actors(
             tool_call_actor=actors.tool_call_actor,
             user_actor=actors.user_actor,
         )
-        ctx.state.history = await actors.agent_actor.get_agent_history(id(ctx.state))
 
 
 @pytest.mark.asyncio

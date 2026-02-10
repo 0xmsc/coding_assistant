@@ -1,11 +1,21 @@
+import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any, AsyncIterator, Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
+from uuid import uuid4
 
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
+from coding_assistant.framework.history import append_tool_message
+from coding_assistant.framework.actors.common.messages import (
+    HandleToolCallsRequest,
+    HandleToolCallsResponse,
+    ToolCallExecutionResult,
+)
 from coding_assistant.framework.execution import AgentActor, LLMActor, ToolCallActor
 from coding_assistant.framework.parameters import Parameter
+from coding_assistant.framework.results import TextResult
 from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -14,6 +24,8 @@ from coding_assistant.llm.types import (
     FunctionCall as FunctionCall,
     Tool,
     ToolCall as ToolCall,
+    ToolMessage,
+    ToolResult,
     Usage,
 )
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
@@ -135,6 +147,60 @@ def make_test_context(
         history=history,
     )
     return AgentContext(desc=desc, state=state)
+
+
+async def execute_tool_calls_via_messages(
+    actor: ToolCallActor,
+    *,
+    message: AssistantMessage,
+) -> HandleToolCallsResponse:
+    request_id = uuid4().hex
+    future: asyncio.Future[HandleToolCallsResponse] = asyncio.get_running_loop().create_future()
+
+    @dataclass(slots=True)
+    class _ReplySink:
+        async def send_message(self, response: HandleToolCallsResponse) -> None:
+            if response.request_id != request_id:
+                future.set_exception(RuntimeError(f"Mismatched tool response id: {response.request_id}"))
+                return
+            future.set_result(response)
+
+    await actor.send_message(
+        HandleToolCallsRequest(
+            request_id=request_id,
+            message=message,
+            reply_to=_ReplySink(),
+        )
+    )
+    return await future
+
+
+def append_tool_call_results_to_history(
+    *,
+    history: list[BaseMessage],
+    execution_results: list[ToolCallExecutionResult],
+    context_name: str,
+    progress_callbacks: ProgressCallbacks,
+    handle_tool_result: Callable[[ToolResult], str] | None = None,
+) -> None:
+    for item in execution_results:
+        if handle_tool_result is not None:
+            result_summary = handle_tool_result(item.result)
+        elif isinstance(item.result, TextResult):
+            result_summary = item.result.content
+        else:
+            result_summary = f"Tool produced result of type {type(item.result).__name__}"
+        append_tool_message(
+            history,
+            callbacks=progress_callbacks,
+            context_name=context_name,
+            message=ToolMessage(
+                tool_call_id=item.tool_call_id,
+                name=item.name,
+                content=result_summary,
+            ),
+            arguments=item.arguments,
+        )
 
 
 @asynccontextmanager
