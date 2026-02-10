@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from uuid import uuid4
 
 from coding_assistant.framework.actor_runtime import Actor
-from coding_assistant.framework.actors.common.messages import LLMCompleteStepRequest, LLMCompleteStepResponse
+from coding_assistant.framework.actors.common.messages import (
+    ConfigureLLMRuntimeRequest,
+    LLMCompleteStepRequest,
+    LLMCompleteStepResponse,
+)
 from coding_assistant.framework.types import Completer
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.llm.types import (
@@ -21,7 +25,9 @@ from coding_assistant.llm.types import (
 
 class LLMActor:
     def __init__(self, *, context_name: str = "llm") -> None:
-        self._actor: Actor[LLMCompleteStepRequest] = Actor(name=f"{context_name}.llm", handler=self._handle_message)
+        self._actor: Actor[LLMCompleteStepRequest | ConfigureLLMRuntimeRequest] = Actor(
+            name=f"{context_name}.llm", handler=self._handle_message
+        )
         self._completer: Completer = openai_complete
         self._progress_callbacks: ProgressCallbacks = NullProgressCallbacks()
         self._started = False
@@ -47,7 +53,7 @@ class LLMActor:
         progress_callbacks: ProgressCallbacks,
         completer: Completer,
     ) -> tuple[AssistantMessage, Usage | None]:
-        self.set_runtime(completer=completer, progress_callbacks=progress_callbacks)
+        await self.send_message(ConfigureLLMRuntimeRequest(completer=completer, progress_callbacks=progress_callbacks))
         request_id = uuid4().hex
         loop = asyncio.get_running_loop()
         future: asyncio.Future[tuple[AssistantMessage, Usage | None]] = loop.create_future()
@@ -77,15 +83,15 @@ class LLMActor:
         )
         return await future
 
-    def set_runtime(self, *, completer: Completer, progress_callbacks: ProgressCallbacks) -> None:
-        self._completer = completer
-        self._progress_callbacks = progress_callbacks
-
-    async def send_message(self, message: LLMCompleteStepRequest) -> None:
+    async def send_message(self, message: LLMCompleteStepRequest | ConfigureLLMRuntimeRequest) -> None:
         self.start()
         await self._actor.send(message)
 
-    async def _handle_message(self, message: LLMCompleteStepRequest) -> None:
+    async def _handle_message(self, message: LLMCompleteStepRequest | ConfigureLLMRuntimeRequest) -> None:
+        if isinstance(message, ConfigureLLMRuntimeRequest):
+            self._completer = message.completer
+            self._progress_callbacks = message.progress_callbacks
+            return None
         try:
             if not message.history:
                 raise RuntimeError("History is required in order to run a step.")
