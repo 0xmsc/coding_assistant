@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Sequence
+from dataclasses import dataclass
+from uuid import uuid4
+
+from coding_assistant.framework.actor_runtime import Actor
+from coding_assistant.framework.actors.common.messages import LLMCompleteStepRequest, LLMCompleteStepResponse
+from coding_assistant.framework.types import Completer
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, ProgressCallbacks, Tool, Usage
+
+
+class LLMActor:
+    def __init__(self, *, context_name: str = "llm") -> None:
+        self._actor: Actor[LLMCompleteStepRequest] = Actor(name=f"{context_name}.llm", handler=self._handle_message)
+        self._started = False
+
+    def start(self) -> None:
+        if self._started:
+            return
+        self._actor.start()
+        self._started = True
+
+    async def stop(self) -> None:
+        if not self._started:
+            return
+        await self._actor.stop()
+        self._started = False
+
+    async def complete_step(
+        self,
+        *,
+        history: list[BaseMessage],
+        model: str,
+        tools: Sequence[Tool],
+        progress_callbacks: ProgressCallbacks,
+        completer: Completer,
+    ) -> tuple[AssistantMessage, Usage | None]:
+        request_id = uuid4().hex
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[tuple[AssistantMessage, Usage | None]] = loop.create_future()
+
+        @dataclass(slots=True)
+        class _ReplySink:
+            async def send_message(self, message: LLMCompleteStepResponse) -> None:
+                if message.request_id != request_id:
+                    future.set_exception(RuntimeError(f"Mismatched LLM response id: {message.request_id}"))
+                    return
+                if message.error is not None:
+                    future.set_exception(message.error)
+                    return
+                if message.message is None:
+                    future.set_exception(RuntimeError("LLM response missing message."))
+                    return
+                future.set_result((message.message, message.usage))
+
+        await self.send_message(
+            LLMCompleteStepRequest(
+                request_id=request_id,
+                history=history,
+                model=model,
+                tools=tools,
+                progress_callbacks=progress_callbacks,
+                completer=completer,
+                reply_to=_ReplySink(),
+            )
+        )
+        return await future
+
+    async def send_message(self, message: LLMCompleteStepRequest) -> None:
+        self.start()
+        await self._actor.send(message)
+
+    async def _handle_message(self, message: LLMCompleteStepRequest) -> None:
+        try:
+            if not message.history:
+                raise RuntimeError("History is required in order to run a step.")
+            completion = await message.completer(
+                message.history,
+                model=message.model,
+                tools=message.tools,
+                callbacks=message.progress_callbacks,
+            )
+            await message.reply_to.send_message(
+                LLMCompleteStepResponse(
+                    request_id=message.request_id,
+                    message=completion.message,
+                    usage=completion.usage,
+                )
+            )
+        except BaseException as exc:
+            await message.reply_to.send_message(
+                LLMCompleteStepResponse(
+                    request_id=message.request_id,
+                    message=None,
+                    usage=None,
+                    error=exc,
+                )
+            )
+        return None
