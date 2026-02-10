@@ -85,10 +85,13 @@
 ## Next steps (actor-driven core)
 - [x] Move agent loop logic from `framework/agent.py` into `AgentActor` so the loop is fully message-driven and state-owned by the actor.
 - [x] Move tool call execution + tool-result history append into `ToolCallActor`, removing direct orchestration from `framework/execution.py`.
-- [x] Make `SystemActors` the primary orchestration surface (expose run_chat/run_agent via actor messages).
-- [x] Slim `Session` to wiring/config + actor lifecycle only, delegating run calls to `SystemActors`/actors.
+- [x] Remove `SystemActors` and wire actors directly (expose run_chat/run_agent via actor messages).
+- [x] Slim `Session` to wiring/config + actor lifecycle only, delegating run calls to actors directly.
 - [x] Update tests to drive agent/tool behavior via actor messages; keep `Session` tests focused on wiring and integration.
 - [x] Refactor actors to send-only messaging with response channels (remove `Actor.ask` usage).
+- [x] Remove `ChatLoopActor` and run chat flow directly in `AgentActor` using `UserActor`/`ToolCallActor`.
+- [x] Remove `SystemActors` and wire actors directly in Session/tools/tests.
+- [x] Make `AgentActor` own history and expose history snapshots via `get_history` / `get_agent_history`.
 
 ## When not to proceed
 - If you cannot accept a step-by-step cutover that removes each legacy path as you go, or if feature delivery is the priority, delay this migration; the actor pattern adds overhead and risk during transition.

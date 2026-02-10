@@ -63,8 +63,11 @@ async def _run_agent_with_actors(
             completer=completer,
             ui=actors.user_actor,
             progress_callbacks=callbacks,
-            system_actors=actors,
+            agent_actor=actors.agent_actor,
+            tool_call_actor=actors.tool_call_actor,
+            user_actor=actors.user_actor,
         )
+        ctx.state.history = await actors.agent_actor.get_agent_history(id(ctx.state))
 
 
 @pytest.mark.asyncio
