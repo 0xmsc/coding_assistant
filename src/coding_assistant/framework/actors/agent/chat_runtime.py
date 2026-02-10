@@ -1,21 +1,18 @@
-import logging
+from typing import TYPE_CHECKING
 
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
+from coding_assistant.framework.types import Completer
 from coding_assistant.llm.types import (
     BaseMessage,
     NullProgressCallbacks,
     ProgressCallbacks,
     Tool,
 )
-from typing import TYPE_CHECKING
-from coding_assistant.framework.types import Completer
 from coding_assistant.ui import UI
 
 if TYPE_CHECKING:
     from coding_assistant.framework.execution import AgentActor, ToolCallActor
-
-logger = logging.getLogger(__name__)
 
 
 async def run_chat_loop(

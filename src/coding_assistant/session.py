@@ -6,7 +6,7 @@ from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
-from coding_assistant.framework.chat import run_chat_loop
+from coding_assistant.framework.actors.agent.chat_runtime import run_chat_loop
 from coding_assistant.framework.execution import AgentActor, LLMActor, ToolCallActor
 from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.history_manager import history_manager_scope

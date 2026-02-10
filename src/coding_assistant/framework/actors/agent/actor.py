@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
 from uuid import uuid4
@@ -13,6 +13,7 @@ from coding_assistant.framework.actors.agent.image_io import get_image
 from coding_assistant.framework.actors.common.contracts import MessageSink
 from coding_assistant.framework.actors.common.messages import (
     AgentYieldedToUser,
+    CancelToolCallsRequest,
     ChatPromptInput,
     ClearHistoryRequested,
     CompactionRequested,
@@ -22,12 +23,21 @@ from coding_assistant.framework.actors.common.messages import (
     ImageAttachRequested,
     LLMCompleteStepRequest,
     LLMCompleteStepResponse,
+    RunAgentRequest,
+    RunChatRequest,
+    RunCompleted,
+    RunFailed,
     SessionExitRequested,
     UserInputFailed,
     UserTextSubmitted,
 )
 from coding_assistant.framework.builtin_tools import CompactConversationTool
-from coding_assistant.framework.history import append_assistant_message, append_user_message, clear_history
+from coding_assistant.framework.history import (
+    append_assistant_message,
+    append_tool_message,
+    append_user_message,
+    clear_history,
+)
 from coding_assistant.framework.interrupts import InterruptController
 from coding_assistant.framework.results import CompactConversationResult, FinishTaskResult, TextResult
 from coding_assistant.framework.types import AgentContext, AgentDescription, AgentOutput, AgentState, Completer
@@ -37,6 +47,7 @@ from coding_assistant.llm.types import (
     ProgressCallbacks,
     StatusLevel,
     Tool,
+    ToolMessage,
     ToolResult,
     Usage,
     UserMessage,
@@ -55,29 +66,15 @@ class _DoSingleStep:
     context_name: str
 
 
-@dataclass(slots=True)
-class _RunAgentLoop:
-    request_id: str
-    ctx: AgentContext
-    tools: Sequence[Tool]
-    progress_callbacks: ProgressCallbacks
-    completer: Completer
-    compact_conversation_at_tokens: int
-
-
-@dataclass(slots=True)
-class _RunChatLoop:
-    request_id: str
-    model: str
-    tools: list[Tool]
-    instructions: str | None
-    callbacks: ProgressCallbacks
-    completer: Completer
-    context_name: str
-
-
 _AgentMessage = (
-    _DoSingleStep | _RunAgentLoop | _RunChatLoop | LLMCompleteStepResponse | HandleToolCallsResponse | ChatPromptInput
+    _DoSingleStep
+    | RunAgentRequest
+    | RunChatRequest
+    | RunCompleted
+    | RunFailed
+    | LLMCompleteStepResponse
+    | HandleToolCallsResponse
+    | ChatPromptInput
 )
 
 START_MESSAGE_TEMPLATE = """
@@ -117,12 +114,12 @@ class AgentActor:
         self._agent_histories: dict[int, list[BaseMessage]] = {}
         self._inflight: set[asyncio.Task[None]] = set()
 
-        self._tool_call_sink: MessageSink[HandleToolCallsRequest] | None = None
+        self._tool_call_sink: MessageSink[HandleToolCallsRequest | CancelToolCallsRequest] | None = None
         self._user_sink: MessageSink[AgentYieldedToUser] | None = None
 
         self._pending_api: dict[str, asyncio.Future[object]] = {}
         self._pending_llm: dict[str, asyncio.Future[tuple[AssistantMessage, Usage | None]]] = {}
-        self._pending_tool: dict[str, asyncio.Future[None]] = {}
+        self._pending_tool: dict[str, asyncio.Future[HandleToolCallsResponse]] = {}
         self._pending_chat_input: asyncio.Future[ChatPromptInput] | None = None
         self._queued_chat_inputs: list[ChatPromptInput] = []
 
@@ -199,7 +196,7 @@ class AgentActor:
         progress_callbacks: ProgressCallbacks,
         completer: Completer,
         compact_conversation_at_tokens: int,
-        tool_call_actor: MessageSink[HandleToolCallsRequest],
+        tool_call_actor: MessageSink[HandleToolCallsRequest | CancelToolCallsRequest],
     ) -> None:
         self.start()
         self._tool_call_sink = tool_call_actor
@@ -211,7 +208,7 @@ class AgentActor:
         fut: asyncio.Future[object] = loop.create_future()
         self._pending_api[request_id] = fut
         await self.send_message(
-            _RunAgentLoop(
+            RunAgentRequest(
                 request_id=request_id,
                 ctx=ctx,
                 tools=tools,
@@ -232,7 +229,7 @@ class AgentActor:
         completer: Completer,
         context_name: str,
         user_actor: UI,
-        tool_call_actor: MessageSink[HandleToolCallsRequest],
+        tool_call_actor: MessageSink[HandleToolCallsRequest | CancelToolCallsRequest],
     ) -> None:
         self.start()
         if not hasattr(user_actor, "send_message"):
@@ -245,7 +242,7 @@ class AgentActor:
         fut: asyncio.Future[object] = loop.create_future()
         self._pending_api[request_id] = fut
         await self.send_message(
-            _RunChatLoop(
+            RunChatRequest(
                 request_id=request_id,
                 model=model,
                 tools=tools,
@@ -272,15 +269,21 @@ class AgentActor:
                 asyncio.create_task(self._run_single_step_with_response(message), name="agent-single-step")
             )
             return None
-        if isinstance(message, _RunAgentLoop):
-            self._track_task(
-                asyncio.create_task(self._run_agent_loop_with_response(message), name="agent-run-agent-loop")
-            )
+        if isinstance(message, RunAgentRequest):
+            self._track_task(asyncio.create_task(self._run_agent_loop_request(message), name="agent-run-agent-loop"))
             return None
-        if isinstance(message, _RunChatLoop):
-            self._track_task(
-                asyncio.create_task(self._run_chat_loop_with_response(message), name="agent-run-chat-loop")
-            )
+        if isinstance(message, RunChatRequest):
+            self._track_task(asyncio.create_task(self._run_chat_loop_request(message), name="agent-run-chat-loop"))
+            return None
+        if isinstance(message, RunCompleted):
+            fut = self._pending_api.pop(message.request_id, None)
+            if fut is not None and not fut.done():
+                fut.set_result(None)
+            return None
+        if isinstance(message, RunFailed):
+            fut = self._pending_api.pop(message.request_id, None)
+            if fut is not None and not fut.done():
+                fut.set_exception(message.error)
             return None
         if isinstance(message, LLMCompleteStepResponse):
             llm_future = self._pending_llm.pop(message.request_id, None)
@@ -297,11 +300,13 @@ class AgentActor:
         if isinstance(message, HandleToolCallsResponse):
             tool_future = self._pending_tool.pop(message.request_id, None)
             if tool_future is None:
-                raise RuntimeError(f"Unknown tool-call response id: {message.request_id}")
+                return None
             if message.error is not None:
-                tool_future.set_exception(message.error)
+                if not tool_future.done():
+                    tool_future.set_exception(message.error)
             else:
-                tool_future.set_result(None)
+                if not tool_future.done():
+                    tool_future.set_result(message)
             return None
         if isinstance(message, UserInputFailed):
             if self._pending_chat_input is not None and not self._pending_chat_input.done():
@@ -350,27 +355,21 @@ class AgentActor:
         else:
             fut.set_result(result)
 
-    async def _run_agent_loop_with_response(self, message: _RunAgentLoop) -> None:
-        fut = self._pending_api.pop(message.request_id, None)
-        if fut is None:
-            raise RuntimeError(f"Unknown agent-loop request id: {message.request_id}")
+    async def _run_agent_loop_request(self, message: RunAgentRequest) -> None:
         try:
             await self._run_agent_loop_impl(message)
         except BaseException as exc:
-            fut.set_exception(exc)
-        else:
-            fut.set_result(None)
+            await self.send_message(RunFailed(request_id=message.request_id, error=exc))
+            return
+        await self.send_message(RunCompleted(request_id=message.request_id))
 
-    async def _run_chat_loop_with_response(self, message: _RunChatLoop) -> None:
-        fut = self._pending_api.pop(message.request_id, None)
-        if fut is None:
-            raise RuntimeError(f"Unknown chat-loop request id: {message.request_id}")
+    async def _run_chat_loop_request(self, message: RunChatRequest) -> None:
         try:
             await self._run_chat_loop_impl(message)
         except BaseException as exc:
-            fut.set_exception(exc)
-        else:
-            fut.set_result(None)
+            await self.send_message(RunFailed(request_id=message.request_id, error=exc))
+            return
+        await self.send_message(RunCompleted(request_id=message.request_id))
 
     async def _request_llm(
         self,
@@ -388,7 +387,7 @@ class AgentActor:
         await self._llm_gateway.send_message(
             LLMCompleteStepRequest(
                 request_id=request_id,
-                history=history,
+                history=tuple(history),
                 model=model,
                 tools=tools,
                 progress_callbacks=progress_callbacks,
@@ -402,27 +401,29 @@ class AgentActor:
         self,
         *,
         assistant_message: AssistantMessage,
-        history: list[BaseMessage],
-        task_created_callback: Callable[[str, asyncio.Task[object]], None] | None,
-        handle_tool_result: Callable[[ToolResult], str] | None,
-    ) -> None:
+    ) -> HandleToolCallsResponse:
         if self._tool_call_sink is None:
             raise RuntimeError("AgentActor is missing ToolCallActor runtime dependency.")
         request_id = self._next_id()
         loop = asyncio.get_running_loop()
-        fut: asyncio.Future[None] = loop.create_future()
+        fut: asyncio.Future[HandleToolCallsResponse] = loop.create_future()
         self._pending_tool[request_id] = fut
         await self._tool_call_sink.send_message(
             HandleToolCallsRequest(
                 request_id=request_id,
                 message=assistant_message,
-                history=history,
-                task_created_callback=task_created_callback,
-                handle_tool_result=handle_tool_result,
                 reply_to=self,
             )
         )
-        await fut
+        try:
+            return await asyncio.shield(fut)
+        except asyncio.CancelledError:
+            await self._tool_call_sink.send_message(CancelToolCallsRequest(request_id=request_id))
+            try:
+                await asyncio.shield(fut)
+            except BaseException:
+                pass
+            raise
 
     async def _wait_for_chat_input(self, words: list[str] | None = None) -> ChatPromptInput:
         if self._user_sink is None:
@@ -494,7 +495,7 @@ class AgentActor:
             return result.content
         return f"Tool produced result of type {type(result).__name__}"
 
-    async def _run_agent_loop_impl(self, message: _RunAgentLoop) -> None:
+    async def _run_agent_loop_impl(self, message: RunAgentRequest) -> None:
         if self._tool_call_sink is None:
             raise RuntimeError("AgentActor is missing ToolCallActor runtime dependency.")
         ctx = message.ctx
@@ -534,18 +535,26 @@ class AgentActor:
             )
 
             if getattr(assistant_message, "tool_calls", []):
-                await self._request_tool_calls(
-                    assistant_message=assistant_message,
-                    history=history,
-                    task_created_callback=None,
-                    handle_tool_result=lambda result: self.handle_tool_result_agent(
-                        result,
+                tool_call_response = await self._request_tool_calls(assistant_message=assistant_message)
+                for item in tool_call_response.results:
+                    result_summary = self.handle_tool_result_agent(
+                        item.result,
                         desc=desc,
                         state=state,
                         progress_callbacks=message.progress_callbacks,
                         history=history,
-                    ),
-                )
+                    )
+                    append_tool_message(
+                        history,
+                        callbacks=message.progress_callbacks,
+                        context_name=desc.name,
+                        message=ToolMessage(
+                            tool_call_id=item.tool_call_id,
+                            name=item.name,
+                            content=result_summary,
+                        ),
+                        arguments=item.arguments,
+                    )
             else:
                 user_msg2 = UserMessage(
                     content=(
@@ -577,7 +586,7 @@ class AgentActor:
 
         assert state.output is not None
 
-    async def _run_chat_loop_impl(self, message: _RunChatLoop) -> None:
+    async def _run_chat_loop_impl(self, message: RunChatRequest) -> None:
         if self._user_sink is None:
             raise RuntimeError("AgentActor is missing UserActor runtime dependency.")
         if self._tool_call_sink is None:
@@ -708,19 +717,31 @@ class AgentActor:
                         usage = Usage(tokens=step_usage.tokens, cost=usage.cost + step_usage.cost)
 
                     if getattr(assistant_message, "tool_calls", []):
-                        await self._request_tool_calls(
-                            assistant_message=assistant_message,
-                            history=self._chat_history,
-                            task_created_callback=lambda tool_id, task: interrupt_controller.register_task(
-                                tool_id, task
-                            ),
-                            handle_tool_result=lambda result: handle_tool_result_chat(
-                                result,
+                        handle_tool_calls_task = loop.create_task(
+                            self._request_tool_calls(assistant_message=assistant_message), name="tool_calls"
+                        )
+                        interrupt_controller.register_task("tool_calls", handle_tool_calls_task)
+                        tool_call_response = await handle_tool_calls_task
+                        for item in tool_call_response.results:
+                            result_summary = handle_tool_result_chat(
+                                item.result,
                                 history=self._chat_history,
                                 callbacks=message.callbacks,
                                 context_name=message.context_name,
-                            ),
-                        )
+                            )
+                            append_tool_message(
+                                self._chat_history,
+                                callbacks=message.callbacks,
+                                context_name=message.context_name,
+                                message=ToolMessage(
+                                    tool_call_id=item.tool_call_id,
+                                    name=item.name,
+                                    content=result_summary,
+                                ),
+                                arguments=item.arguments,
+                            )
+                        if tool_call_response.cancelled:
+                            raise asyncio.CancelledError()
                     else:
                         need_user_input = True
                 except asyncio.CancelledError:

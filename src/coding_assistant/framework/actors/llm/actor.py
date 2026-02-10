@@ -31,7 +31,7 @@ class LLMActor:
     async def complete_step(
         self,
         *,
-        history: list[BaseMessage],
+        history: Sequence[BaseMessage],
         model: str,
         tools: Sequence[Tool],
         progress_callbacks: ProgressCallbacks,
@@ -58,7 +58,7 @@ class LLMActor:
         await self.send_message(
             LLMCompleteStepRequest(
                 request_id=request_id,
-                history=history,
+                history=tuple(history),
                 model=model,
                 tools=tools,
                 progress_callbacks=progress_callbacks,
@@ -77,7 +77,7 @@ class LLMActor:
             if not message.history:
                 raise RuntimeError("History is required in order to run a step.")
             completion = await message.completer(
-                message.history,
+                list(message.history),
                 model=message.model,
                 tools=message.tools,
                 callbacks=message.progress_callbacks,
