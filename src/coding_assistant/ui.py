@@ -1,9 +1,11 @@
+import asyncio
 import logging
 import re
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import AsyncIterator
+from typing import AsyncIterator, Callable, Generic, TypeVar
+from uuid import uuid4
 
 from typing import Iterable
 
@@ -16,7 +18,15 @@ from rich import print
 from rich.console import Console
 from rich.rule import Rule
 
-from coding_assistant.framework.actor_runtime import Actor, ResponseChannel
+from coding_assistant.framework.actor_runtime import Actor
+from coding_assistant.framework.actors.common.messages import (
+    AskRequest,
+    AskResponse,
+    ConfirmRequest,
+    ConfirmResponse,
+    PromptRequest,
+    PromptResponse,
+)
 from coding_assistant.paths import get_app_cache_dir
 
 logger = logging.getLogger(__name__)
@@ -101,26 +111,24 @@ class NullUI(UI):
         raise RuntimeError("No UI available")
 
 
-@dataclass(slots=True)
-class _Ask:
-    prompt_text: str
-    default: str | None
-    response_channel: ResponseChannel[str]
+_UIMessage = AskRequest | ConfirmRequest | PromptRequest
+ResponseT = TypeVar("ResponseT")
 
 
 @dataclass(slots=True)
-class _Confirm:
-    prompt_text: str
-    response_channel: ResponseChannel[bool]
+class _LocalReplySink(Generic[ResponseT]):
+    future: asyncio.Future[ResponseT]
+    extractor: Callable[[object], ResponseT | BaseException]
 
-
-@dataclass(slots=True)
-class _Prompt:
-    words: list[str] | None
-    response_channel: ResponseChannel[str]
-
-
-_UIMessage = _Ask | _Confirm | _Prompt
+    async def send_message(self, message: object) -> None:
+        try:
+            value = self.extractor(message)
+            if isinstance(value, BaseException):
+                self.future.set_exception(value)
+            else:
+                self.future.set_result(value)
+        except BaseException as exc:
+            self.future.set_exception(exc)
 
 
 class ActorUI(UI):
@@ -142,35 +150,109 @@ class ActorUI(UI):
         self._started = False
 
     async def ask(self, prompt_text: str, default: str | None = None) -> str:
-        self.start()
-        response_channel: ResponseChannel[str] = ResponseChannel()
-        await self._actor.send(_Ask(prompt_text=prompt_text, default=default, response_channel=response_channel))
-        return await response_channel.wait()
+        request_id = uuid4().hex
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[str] = loop.create_future()
+        sink = _LocalReplySink[str](
+            future=future,
+            extractor=lambda msg: self._extract_ask_response(msg, request_id),
+        )
+        await self.send_message(
+            AskRequest(request_id=request_id, prompt_text=prompt_text, default=default, reply_to=sink)
+        )
+        return await future
 
     async def confirm(self, prompt_text: str) -> bool:
-        self.start()
-        response_channel: ResponseChannel[bool] = ResponseChannel()
-        await self._actor.send(_Confirm(prompt_text=prompt_text, response_channel=response_channel))
-        return await response_channel.wait()
+        request_id = uuid4().hex
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[bool] = loop.create_future()
+        sink = _LocalReplySink[bool](
+            future=future,
+            extractor=lambda msg: self._extract_confirm_response(msg, request_id),
+        )
+        await self.send_message(ConfirmRequest(request_id=request_id, prompt_text=prompt_text, reply_to=sink))
+        return await future
 
     async def prompt(self, words: list[str] | None = None) -> str:
+        request_id = uuid4().hex
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[str] = loop.create_future()
+        sink = _LocalReplySink[str](
+            future=future,
+            extractor=lambda msg: self._extract_prompt_response(msg, request_id),
+        )
+        await self.send_message(PromptRequest(request_id=request_id, words=words, reply_to=sink))
+        return await future
+
+    async def send_message(self, message: _UIMessage) -> None:
         self.start()
-        response_channel: ResponseChannel[str] = ResponseChannel()
-        await self._actor.send(_Prompt(words=words, response_channel=response_channel))
-        return await response_channel.wait()
+        await self._actor.send(message)
+
+    @staticmethod
+    def _extract_ask_response(message: object, request_id: str) -> str | BaseException:
+        if not isinstance(message, AskResponse):
+            raise RuntimeError(f"Unexpected ask response type: {type(message).__name__}")
+        if message.request_id != request_id:
+            raise RuntimeError(f"Mismatched ask response id: {message.request_id}")
+        if message.error is not None:
+            return message.error
+        if message.value is None:
+            raise RuntimeError("Ask response missing value.")
+        return message.value
+
+    @staticmethod
+    def _extract_confirm_response(message: object, request_id: str) -> bool | BaseException:
+        if not isinstance(message, ConfirmResponse):
+            raise RuntimeError(f"Unexpected confirm response type: {type(message).__name__}")
+        if message.request_id != request_id:
+            raise RuntimeError(f"Mismatched confirm response id: {message.request_id}")
+        if message.error is not None:
+            return message.error
+        if message.value is None:
+            raise RuntimeError("Confirm response missing value.")
+        return message.value
+
+    @staticmethod
+    def _extract_prompt_response(message: object, request_id: str) -> str | BaseException:
+        if not isinstance(message, PromptResponse):
+            raise RuntimeError(f"Unexpected prompt response type: {type(message).__name__}")
+        if message.request_id != request_id:
+            raise RuntimeError(f"Mismatched prompt response id: {message.request_id}")
+        if message.error is not None:
+            return message.error
+        if message.value is None:
+            raise RuntimeError("Prompt response missing value.")
+        return message.value
 
     async def _handle_message(self, message: _UIMessage) -> None:
-        if isinstance(message, _Ask):
-            ask_response = await self._ui.ask(message.prompt_text, default=message.default)
-            message.response_channel.send(ask_response)
+        if isinstance(message, AskRequest):
+            try:
+                ask_response = await self._ui.ask(message.prompt_text, default=message.default)
+                await message.reply_to.send_message(AskResponse(request_id=message.request_id, value=ask_response))
+            except BaseException as exc:
+                await message.reply_to.send_message(AskResponse(request_id=message.request_id, value=None, error=exc))
             return None
-        if isinstance(message, _Confirm):
-            confirm_response = await self._ui.confirm(message.prompt_text)
-            message.response_channel.send(confirm_response)
+        if isinstance(message, ConfirmRequest):
+            try:
+                confirm_response = await self._ui.confirm(message.prompt_text)
+                await message.reply_to.send_message(
+                    ConfirmResponse(request_id=message.request_id, value=confirm_response)
+                )
+            except BaseException as exc:
+                await message.reply_to.send_message(
+                    ConfirmResponse(request_id=message.request_id, value=None, error=exc)
+                )
             return None
-        if isinstance(message, _Prompt):
-            prompt_response = await self._ui.prompt(message.words)
-            message.response_channel.send(prompt_response)
+        if isinstance(message, PromptRequest):
+            try:
+                prompt_response = await self._ui.prompt(message.words)
+                await message.reply_to.send_message(
+                    PromptResponse(request_id=message.request_id, value=prompt_response)
+                )
+            except BaseException as exc:
+                await message.reply_to.send_message(
+                    PromptResponse(request_id=message.request_id, value=None, error=exc)
+                )
             return None
         raise RuntimeError(f"Unknown UI message: {message!r}")
 
