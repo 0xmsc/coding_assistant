@@ -1,7 +1,8 @@
 import logging
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Sequence, TYPE_CHECKING
+from typing import Any, AsyncIterator, Sequence, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
@@ -22,11 +23,10 @@ from coding_assistant.framework.types import (
 )
 from coding_assistant.framework.results import TextResult
 from coding_assistant.llm.openai import complete as openai_complete
-from coding_assistant.ui import DefaultAnswerUI, UI
+from coding_assistant.ui import ActorUI, DefaultAnswerUI, UI, UserActor
 
 if TYPE_CHECKING:
     from coding_assistant.framework.execution import AgentActor, ToolCallActor
-    from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +170,42 @@ class AgentTool(Tool):
         self.history: list[BaseMessage] = []
         self.summary: str = ""
 
+    @asynccontextmanager
+    async def _runtime_scope(self, *, tools: Sequence[Tool]) -> AsyncIterator[tuple["AgentActor", "ToolCallActor", UI]]:
+        from coding_assistant.framework.execution import AgentActor, ToolCallActor
+
+        if self._agent_actor is not None and self._tool_call_actor is not None and self._user_actor is not None:
+            yield self._agent_actor, self._tool_call_actor, self._user_actor
+            return
+
+        owns_user_actor = self._user_actor is None
+        user_actor: UI = self._user_actor if self._user_actor is not None else UserActor(self._ui, context_name="Agent")
+        tool_call_actor = self._tool_call_actor or ToolCallActor(
+            tools=tools,
+            ui=user_actor,
+            context_name="Agent",
+            progress_callbacks=self._progress_callbacks,
+            tool_callbacks=self._tool_callbacks,
+        )
+        agent_actor = self._agent_actor or AgentActor(context_name="Agent")
+
+        if owns_user_actor and isinstance(user_actor, ActorUI):
+            user_actor.start()
+        if self._tool_call_actor is None:
+            tool_call_actor.start()
+        if self._agent_actor is None:
+            agent_actor.start()
+
+        try:
+            yield agent_actor, tool_call_actor, user_actor
+        finally:
+            if self._tool_call_actor is None:
+                await tool_call_actor.stop()
+            if self._agent_actor is None:
+                await agent_actor.stop()
+            if owns_user_actor and isinstance(user_actor, ActorUI):
+                await user_actor.stop()
+
     def name(self) -> str:
         return self._name
 
@@ -210,6 +246,10 @@ class AgentTool(Tool):
                     progress_callbacks=NullProgressCallbacks(),
                     tool_callbacks=self._tool_callbacks,
                     completer=self._completer,
+                    # Nested agents run on their own actor runtime to avoid re-entrancy deadlocks.
+                    agent_actor=None,
+                    tool_call_actor=None,
+                    user_actor=None,
                 ),
                 *self._tools,
             ],
@@ -218,17 +258,19 @@ class AgentTool(Tool):
         ctx = AgentContext(desc=desc, state=state)
 
         try:
-            await run_agent_loop(
-                ctx,
-                progress_callbacks=self._progress_callbacks,
-                tool_callbacks=self._tool_callbacks,
-                compact_conversation_at_tokens=self._compact_conversation_at_tokens,
-                completer=self._completer,
-                ui=self._ui,
-                agent_actor=self._agent_actor,
-                tool_call_actor=self._tool_call_actor,
-                user_actor=self._user_actor,
-            )
+            tools_with_meta = list(desc.tools)
+            async with self._runtime_scope(tools=tools_with_meta) as (agent_actor, tool_call_actor, user_actor):
+                await run_agent_loop(
+                    ctx,
+                    progress_callbacks=self._progress_callbacks,
+                    tool_callbacks=self._tool_callbacks,
+                    compact_conversation_at_tokens=self._compact_conversation_at_tokens,
+                    completer=self._completer,
+                    ui=self._ui,
+                    agent_actor=agent_actor,
+                    tool_call_actor=tool_call_actor,
+                    user_actor=user_actor,
+                )
             assert state.output is not None, "Agent did not produce output"
             self.summary = state.output.summary
             return TextResult(content=state.output.result)

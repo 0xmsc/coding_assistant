@@ -172,6 +172,8 @@ class Session:
 
     async def run_chat(self, history: Optional[list[BaseMessage]] = None) -> None:
         chat_history = history or []
+        if self._agent_actor is None or self._tool_call_actor is None or self._user_actor is None:
+            raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running chat.")
         async with history_manager_scope(context_name="session") as history_manager:
             try:
                 await run_chat_loop(
@@ -194,6 +196,10 @@ class Session:
                 )
 
     async def run_agent(self, task: str, history: Optional[list[BaseMessage]] = None) -> Any:
+        if self._agent_actor is None or self._tool_call_actor is None or self._user_actor is None:
+            raise RuntimeError(
+                "Session actors are not initialized. Use `async with Session(...)` before running agent."
+            )
         ui = self._user_actor if self._user_actor else self.ui
         agent_mode_tools = [
             AskClientTool(ui=ui),
