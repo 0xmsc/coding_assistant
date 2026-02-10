@@ -17,6 +17,8 @@ from coding_assistant.framework.tests.helpers import (
 from coding_assistant.framework.types import AgentContext
 from coding_assistant.framework.results import TextResult
 from coding_assistant.llm.types import BaseMessage, NullProgressCallbacks, Tool, UserMessage
+from coding_assistant.tools.tools import AgentTool
+from coding_assistant.ui import NullUI
 
 
 class FakeEchoTool(Tool):
@@ -99,3 +101,18 @@ async def test_system_actor_agent_loop_finishes() -> None:
 
     assert state.output is not None
     assert state.output.result == "ok"
+
+
+def test_agent_tool_requires_actor_dependencies() -> None:
+    with pytest.raises(RuntimeError, match="AgentTool requires actor-backed dependencies"):
+        AgentTool(
+            model="test-model",
+            expert_model="test-expert-model",
+            compact_conversation_at_tokens=200_000,
+            enable_ask_user=False,
+            tools=[],
+            ui=NullUI(),
+            agent_actor=None,  # type: ignore[arg-type]
+            tool_call_actor=None,  # type: ignore[arg-type]
+            user_actor=None,  # type: ignore[arg-type]
+        )

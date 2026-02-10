@@ -54,6 +54,7 @@ async def run_agent_loop(
         tools_with_meta.append(FinishTaskTool())
     if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
         tools_with_meta.append(CompactConversationTool())
+    tool_call_actor.set_tools(tools_with_meta)
 
     try:
         await agent_actor.run_agent_loop(

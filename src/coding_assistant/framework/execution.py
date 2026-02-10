@@ -105,6 +105,9 @@ class ToolCallActor:
         )
         await response_channel.wait()
 
+    def set_tools(self, tools: Sequence[Tool]) -> None:
+        self._executor.set_tools(tools)
+
     async def _handle_message(self, message: _HandleToolCalls) -> None:
         if not isinstance(message, _HandleToolCalls):
             raise RuntimeError(f"Unknown tool call message: {message!r}")
@@ -274,6 +277,7 @@ class AgentActor:
         self._started = False
         self._chat_history: list[BaseMessage] = []
         self._agent_histories: dict[int, list[BaseMessage]] = {}
+        self._inflight: set[asyncio.Task[None]] = set()
 
     def start(self) -> None:
         if self._started:
@@ -285,6 +289,11 @@ class AgentActor:
         if not self._started:
             return
         await self._actor.stop()
+        if self._inflight:
+            for task in list(self._inflight):
+                task.cancel()
+            await asyncio.gather(*list(self._inflight), return_exceptions=True)
+            self._inflight.clear()
         self._started = False
 
     async def do_single_step(
@@ -390,14 +399,42 @@ class AgentActor:
             message.response_channel.send(result)
             return None
         if isinstance(message, _RunAgentLoop):
-            await self._run_agent_loop_impl(message)
-            message.response_channel.send(None)
+            self._track_task(
+                asyncio.create_task(
+                    self._run_agent_loop_with_response(message),
+                    name="agent-run-agent-loop",
+                )
+            )
             return None
         if isinstance(message, _RunChatLoop):
-            await self._run_chat_loop_impl(message)
-            message.response_channel.send(None)
+            self._track_task(
+                asyncio.create_task(
+                    self._run_chat_loop_with_response(message),
+                    name="agent-run-chat-loop",
+                )
+            )
             return None
         raise RuntimeError(f"Unknown agent message: {message!r}")
+
+    def _track_task(self, task: asyncio.Task[None]) -> None:
+        self._inflight.add(task)
+        task.add_done_callback(self._inflight.discard)
+
+    async def _run_agent_loop_with_response(self, message: _RunAgentLoop) -> None:
+        try:
+            await self._run_agent_loop_impl(message)
+        except BaseException as exc:
+            message.response_channel.send_error(exc)
+        else:
+            message.response_channel.send(None)
+
+    async def _run_chat_loop_with_response(self, message: _RunChatLoop) -> None:
+        try:
+            await self._run_chat_loop_impl(message)
+        except BaseException as exc:
+            message.response_channel.send_error(exc)
+        else:
+            message.response_channel.send(None)
 
     @staticmethod
     def handle_finish_task_result(result: FinishTaskResult, *, state: AgentState) -> str:
