@@ -7,6 +7,7 @@ from typing import cast
 from uuid import uuid4
 
 from coding_assistant.framework.actor_runtime import Actor
+from coding_assistant.framework.actors.agent.chat_policy import create_chat_start_message, handle_tool_result_chat
 from coding_assistant.framework.actors.common.contracts import MessageSink
 from coding_assistant.framework.actors.common.messages import (
     AgentYieldedToUser,
@@ -24,7 +25,6 @@ from coding_assistant.framework.actors.common.messages import (
     UserTextSubmitted,
 )
 from coding_assistant.framework.builtin_tools import CompactConversationTool
-from coding_assistant.framework.chat import _create_chat_start_message, handle_tool_result_chat
 from coding_assistant.framework.history import append_assistant_message, append_user_message, clear_history
 from coding_assistant.framework.image import get_image
 from coding_assistant.framework.interrupts import InterruptController
@@ -604,7 +604,7 @@ class AgentActor:
             "  /help - Show this help"
         )
 
-        start_message = _create_chat_start_message(message.instructions)
+        start_message = create_chat_start_message(message.instructions)
         start_user_msg = UserMessage(content=start_message)
         append_user_message(
             self._chat_history,
