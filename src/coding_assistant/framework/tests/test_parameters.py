@@ -2,7 +2,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
-from coding_assistant.framework.parameters import parameters_from_model, format_parameters
+from coding_assistant.framework.actors.agent.formatting import format_parameters
+from coding_assistant.framework.parameters import parameters_from_model
 
 
 class ExampleSchema(BaseModel):
