@@ -11,7 +11,7 @@
 - [x] Phase 3 complete
 - [x] Phase 4 complete
 - [x] Phase 5 complete
-- [ ] Phase 6 complete
+- [x] Phase 6 complete
 - [ ] Final cleanup complete
 
 ## Runtime handoff protocol (must hold)
@@ -76,13 +76,13 @@
 - [x] Run `just test`
 
 ## Phase 6: Import hygiene and anti-coupling checks
-- [ ] Ensure `actors/agent` does not import `actors/llm`, `actors/tool_call`, `actors/user` directly
-- [ ] Ensure `actors/llm` does not import `actors/agent`, `actors/tool_call`, `actors/user` directly
-- [ ] Ensure `actors/tool_call` does not import `actors/agent`, `actors/llm`, `actors/user` directly
-- [ ] Ensure `actors/user` does not import `actors/agent`, `actors/llm`, `actors/tool_call` directly
-- [ ] Keep cross-actor communication via shared messages/contracts in `actors/common`
-- [ ] Run `just lint`
-- [ ] Run `just test`
+- [x] Ensure `actors/agent` does not import `actors/llm`, `actors/tool_call`, `actors/user` directly
+- [x] Ensure `actors/llm` does not import `actors/agent`, `actors/tool_call`, `actors/user` directly
+- [x] Ensure `actors/tool_call` does not import `actors/agent`, `actors/llm`, `actors/user` directly
+- [x] Ensure `actors/user` does not import `actors/agent`, `actors/llm`, `actors/tool_call` directly
+- [x] Keep cross-actor communication via shared messages/contracts in `actors/common`
+- [x] Run `just lint`
+- [x] Run `just test`
 
 ## Final cleanup
 - [ ] Remove no-longer-needed compatibility facades after all imports are migrated
