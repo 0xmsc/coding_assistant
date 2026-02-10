@@ -6,11 +6,9 @@ from typing import TypeAlias
 
 from coding_assistant.framework.actors.common.contracts import MessageSink
 from coding_assistant.framework.types import AgentContext
-from coding_assistant.framework.types import Completer
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
-    ProgressCallbacks,
     Tool,
     ToolResult,
     Usage,
@@ -23,8 +21,6 @@ class LLMCompleteStepRequest:
     history: tuple[BaseMessage, ...]
     model: str
     tools: Sequence[Tool]
-    progress_callbacks: ProgressCallbacks
-    completer: Completer
     reply_to: MessageSink["LLMCompleteStepResponse"]
 
 
@@ -41,8 +37,6 @@ class RunAgentRequest:
     request_id: str
     ctx: AgentContext
     tools: Sequence[Tool]
-    progress_callbacks: ProgressCallbacks
-    completer: Completer
     compact_conversation_at_tokens: int
 
 
@@ -50,10 +44,8 @@ class RunAgentRequest:
 class RunChatRequest:
     request_id: str
     model: str
-    tools: list[Tool]
+    tools: tuple[Tool, ...]
     instructions: str | None
-    callbacks: ProgressCallbacks
-    completer: Completer
     context_name: str
 
 
@@ -73,6 +65,11 @@ class HandleToolCallsRequest:
     request_id: str
     message: AssistantMessage
     reply_to: MessageSink["HandleToolCallsResponse"]
+
+
+@dataclass(slots=True)
+class ConfigureToolSetRequest:
+    tools: tuple[Tool, ...]
 
 
 @dataclass(slots=True)

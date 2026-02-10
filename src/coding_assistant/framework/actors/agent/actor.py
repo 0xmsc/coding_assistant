@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 from coding_assistant.framework.actor_runtime import Actor
@@ -17,6 +17,7 @@ from coding_assistant.framework.actors.common.messages import (
     ChatPromptInput,
     ClearHistoryRequested,
     CompactionRequested,
+    ConfigureToolSetRequest,
     HandleToolCallsRequest,
     HandleToolCallsResponse,
     HelpRequested,
@@ -122,6 +123,8 @@ class AgentActor:
         self._pending_tool: dict[str, asyncio.Future[HandleToolCallsResponse]] = {}
         self._pending_chat_input: asyncio.Future[ChatPromptInput] | None = None
         self._queued_chat_inputs: list[ChatPromptInput] = []
+        self._run_agent_runtime: dict[str, tuple[ProgressCallbacks, Completer]] = {}
+        self._run_chat_runtime: dict[str, tuple[ProgressCallbacks, Completer]] = {}
 
     def start(self) -> None:
         if self._started:
@@ -158,6 +161,8 @@ class AgentActor:
             self._pending_chat_input.set_exception(RuntimeError(reason))
         self._pending_chat_input = None
         self._queued_chat_inputs.clear()
+        self._run_agent_runtime.clear()
+        self._run_chat_runtime.clear()
 
     async def do_single_step(
         self,
@@ -196,7 +201,7 @@ class AgentActor:
         progress_callbacks: ProgressCallbacks,
         completer: Completer,
         compact_conversation_at_tokens: int,
-        tool_call_actor: MessageSink[HandleToolCallsRequest | CancelToolCallsRequest],
+        tool_call_actor: MessageSink[HandleToolCallsRequest | CancelToolCallsRequest | ConfigureToolSetRequest],
     ) -> None:
         self.start()
         self._tool_call_sink = tool_call_actor
@@ -207,48 +212,49 @@ class AgentActor:
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[object] = loop.create_future()
         self._pending_api[request_id] = fut
+        self._run_agent_runtime[request_id] = (progress_callbacks, completer)
         await self.send_message(
             RunAgentRequest(
                 request_id=request_id,
                 ctx=ctx,
                 tools=tools,
-                progress_callbacks=progress_callbacks,
-                completer=completer,
                 compact_conversation_at_tokens=compact_conversation_at_tokens,
             )
         )
         await fut
+        ctx.state.history = list(self._agent_histories.get(state_id, []))
 
     async def run_chat_loop(
         self,
         *,
+        history: list[BaseMessage],
         model: str,
-        tools: list[Tool],
+        tools: Sequence[Tool],
         instructions: str | None,
         callbacks: ProgressCallbacks,
         completer: Completer,
         context_name: str,
         user_actor: UI,
-        tool_call_actor: MessageSink[HandleToolCallsRequest | CancelToolCallsRequest],
+        tool_call_actor: MessageSink[HandleToolCallsRequest | CancelToolCallsRequest | ConfigureToolSetRequest],
     ) -> None:
         self.start()
         if not hasattr(user_actor, "send_message"):
             raise RuntimeError("AgentActor requires a message-capable user actor.")
         self._user_sink = cast(MessageSink[AgentYieldedToUser], user_actor)
         self._tool_call_sink = tool_call_actor
+        self._chat_history = history
 
         request_id = self._next_id()
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[object] = loop.create_future()
         self._pending_api[request_id] = fut
+        self._run_chat_runtime[request_id] = (callbacks, completer)
         await self.send_message(
             RunChatRequest(
                 request_id=request_id,
                 model=model,
-                tools=tools,
+                tools=tuple(tools),
                 instructions=instructions,
-                callbacks=callbacks,
-                completer=completer,
                 context_name=context_name,
             )
         )
@@ -288,14 +294,17 @@ class AgentActor:
         if isinstance(message, LLMCompleteStepResponse):
             llm_future = self._pending_llm.pop(message.request_id, None)
             if llm_future is None:
-                raise RuntimeError(f"Unknown LLM response id: {message.request_id}")
+                return None
             if message.error is not None:
-                llm_future.set_exception(message.error)
+                if not llm_future.done():
+                    llm_future.set_exception(message.error)
             else:
                 if message.message is None:
-                    llm_future.set_exception(RuntimeError("LLM response missing message."))
+                    if not llm_future.done():
+                        llm_future.set_exception(RuntimeError("LLM response missing message."))
                 else:
-                    llm_future.set_result((message.message, message.usage))
+                    if not llm_future.done():
+                        llm_future.set_result((message.message, message.usage))
             return None
         if isinstance(message, HandleToolCallsResponse):
             tool_future = self._pending_tool.pop(message.request_id, None)
@@ -356,16 +365,30 @@ class AgentActor:
             fut.set_result(result)
 
     async def _run_agent_loop_request(self, message: RunAgentRequest) -> None:
+        runtime = self._run_agent_runtime.pop(message.request_id, None)
+        if runtime is None:
+            await self.send_message(
+                RunFailed(request_id=message.request_id, error=RuntimeError("Missing agent runtime config."))
+            )
+            return
+        progress_callbacks, completer = runtime
         try:
-            await self._run_agent_loop_impl(message)
+            await self._run_agent_loop_impl(message, progress_callbacks=progress_callbacks, completer=completer)
         except BaseException as exc:
             await self.send_message(RunFailed(request_id=message.request_id, error=exc))
             return
         await self.send_message(RunCompleted(request_id=message.request_id))
 
     async def _run_chat_loop_request(self, message: RunChatRequest) -> None:
+        runtime = self._run_chat_runtime.pop(message.request_id, None)
+        if runtime is None:
+            await self.send_message(
+                RunFailed(request_id=message.request_id, error=RuntimeError("Missing chat runtime config."))
+            )
+            return
+        callbacks, completer = runtime
         try:
-            await self._run_chat_loop_impl(message)
+            await self._run_chat_loop_impl(message, callbacks=callbacks, completer=completer)
         except BaseException as exc:
             await self.send_message(RunFailed(request_id=message.request_id, error=exc))
             return
@@ -384,14 +407,15 @@ class AgentActor:
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[tuple[AssistantMessage, Usage | None]] = loop.create_future()
         self._pending_llm[request_id] = fut
+        llm_runtime_gateway = cast(Any, self._llm_gateway)
+        if hasattr(llm_runtime_gateway, "set_runtime"):
+            llm_runtime_gateway.set_runtime(completer=completer, progress_callbacks=progress_callbacks)
         await self._llm_gateway.send_message(
             LLMCompleteStepRequest(
                 request_id=request_id,
                 history=tuple(history),
                 model=model,
                 tools=tools,
-                progress_callbacks=progress_callbacks,
-                completer=completer,
                 reply_to=self,
             )
         )
@@ -495,7 +519,9 @@ class AgentActor:
             return result.content
         return f"Tool produced result of type {type(result).__name__}"
 
-    async def _run_agent_loop_impl(self, message: RunAgentRequest) -> None:
+    async def _run_agent_loop_impl(
+        self, message: RunAgentRequest, *, progress_callbacks: ProgressCallbacks, completer: Completer
+    ) -> None:
         if self._tool_call_sink is None:
             raise RuntimeError("AgentActor is missing ToolCallActor runtime dependency.")
         ctx = message.ctx
@@ -513,7 +539,7 @@ class AgentActor:
         user_msg = UserMessage(content=start_message)
         append_user_message(
             history,
-            callbacks=message.progress_callbacks,
+            callbacks=progress_callbacks,
             context_name=desc.name,
             message=user_msg,
         )
@@ -523,13 +549,13 @@ class AgentActor:
                 history=history,
                 model=desc.model,
                 tools=message.tools,
-                progress_callbacks=message.progress_callbacks,
-                completer=message.completer,
+                progress_callbacks=progress_callbacks,
+                completer=completer,
             )
 
             append_assistant_message(
                 history,
-                callbacks=message.progress_callbacks,
+                callbacks=progress_callbacks,
                 context_name=desc.name,
                 message=assistant_message,
             )
@@ -541,12 +567,12 @@ class AgentActor:
                         item.result,
                         desc=desc,
                         state=state,
-                        progress_callbacks=message.progress_callbacks,
+                        progress_callbacks=progress_callbacks,
                         history=history,
                     )
                     append_tool_message(
                         history,
-                        callbacks=message.progress_callbacks,
+                        callbacks=progress_callbacks,
                         context_name=desc.name,
                         message=ToolMessage(
                             tool_call_id=item.tool_call_id,
@@ -565,7 +591,7 @@ class AgentActor:
                 )
                 append_user_message(
                     history,
-                    callbacks=message.progress_callbacks,
+                    callbacks=progress_callbacks,
                     context_name=desc.name,
                     message=user_msg2,
                 )
@@ -579,14 +605,16 @@ class AgentActor:
                 )
                 append_user_message(
                     history,
-                    callbacks=message.progress_callbacks,
+                    callbacks=progress_callbacks,
                     context_name=desc.name,
                     message=user_msg3,
                 )
 
         assert state.output is not None
 
-    async def _run_chat_loop_impl(self, message: RunChatRequest) -> None:
+    async def _run_chat_loop_impl(
+        self, message: RunChatRequest, *, callbacks: ProgressCallbacks, completer: Completer
+    ) -> None:
         if self._user_sink is None:
             raise RuntimeError("AgentActor is missing UserActor runtime dependency.")
         if self._tool_call_sink is None:
@@ -598,9 +626,9 @@ class AgentActor:
         if self._chat_history:
             for entry in self._chat_history:
                 if isinstance(entry, AssistantMessage):
-                    message.callbacks.on_assistant_message(message.context_name, entry, force=True)
+                    callbacks.on_assistant_message(message.context_name, entry, force=True)
                 elif isinstance(entry, UserMessage):
-                    message.callbacks.on_user_message(message.context_name, entry, force=True)
+                    callbacks.on_user_message(message.context_name, entry, force=True)
 
         need_user_input = True
         command_names = ["/exit", "/compact", "/clear", "/image", "/help"]
@@ -617,7 +645,7 @@ class AgentActor:
         start_user_msg = UserMessage(content=start_message)
         append_user_message(
             self._chat_history,
-            callbacks=message.callbacks,
+            callbacks=callbacks,
             context_name=message.context_name,
             message=start_user_msg,
             force=True,
@@ -629,9 +657,7 @@ class AgentActor:
             if need_user_input:
                 need_user_input = False
 
-                message.callbacks.on_status_message(
-                    f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", level=StatusLevel.INFO
-                )
+                callbacks.on_status_message(f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", level=StatusLevel.INFO)
                 prompt_input = await self._wait_for_chat_input(command_names)
                 if isinstance(prompt_input, SessionExitRequested):
                     break
@@ -641,7 +667,7 @@ class AgentActor:
                     )
                     append_user_message(
                         self._chat_history,
-                        callbacks=message.callbacks,
+                        callbacks=callbacks,
                         context_name=message.context_name,
                         message=compact_msg,
                         force=True,
@@ -649,14 +675,12 @@ class AgentActor:
                     need_user_input = True
                 elif isinstance(prompt_input, ClearHistoryRequested):
                     clear_history(self._chat_history)
-                    message.callbacks.on_status_message("History cleared.", level=StatusLevel.SUCCESS)
+                    callbacks.on_status_message("History cleared.", level=StatusLevel.SUCCESS)
                     need_user_input = True
                     continue
                 elif isinstance(prompt_input, ImageAttachRequested):
                     if prompt_input.source is None:
-                        message.callbacks.on_status_message(
-                            "/image requires a path or URL argument.", level=StatusLevel.ERROR
-                        )
+                        callbacks.on_status_message("/image requires a path or URL argument.", level=StatusLevel.ERROR)
                     else:
                         try:
                             data_url = await get_image(prompt_input.source)
@@ -664,26 +688,26 @@ class AgentActor:
                             user_msg = UserMessage(content=image_content)
                             append_user_message(
                                 self._chat_history,
-                                callbacks=message.callbacks,
+                                callbacks=callbacks,
                                 context_name=message.context_name,
                                 message=user_msg,
                             )
-                            message.callbacks.on_status_message(
+                            callbacks.on_status_message(
                                 f"Image added from {prompt_input.source}.", level=StatusLevel.SUCCESS
                             )
                         except Exception as exc:
-                            message.callbacks.on_status_message(f"Error loading image: {exc}", level=StatusLevel.ERROR)
+                            callbacks.on_status_message(f"Error loading image: {exc}", level=StatusLevel.ERROR)
                     need_user_input = True
                     continue
                 elif isinstance(prompt_input, HelpRequested):
-                    message.callbacks.on_status_message(help_text, level=StatusLevel.INFO)
+                    callbacks.on_status_message(help_text, level=StatusLevel.INFO)
                     need_user_input = True
                     continue
                 elif isinstance(prompt_input, UserTextSubmitted):
                     user_msg = UserMessage(content=prompt_input.text)
                     append_user_message(
                         self._chat_history,
-                        callbacks=message.callbacks,
+                        callbacks=callbacks,
                         context_name=message.context_name,
                         message=user_msg,
                     )
@@ -698,8 +722,8 @@ class AgentActor:
                             history=self._chat_history,
                             model=message.model,
                             tools=tools,
-                            progress_callbacks=message.callbacks,
-                            completer=message.completer,
+                            progress_callbacks=callbacks,
+                            completer=completer,
                         ),
                         name="do_single_step",
                     )
@@ -708,7 +732,7 @@ class AgentActor:
                     assistant_message, step_usage = await do_single_step_task
                     append_assistant_message(
                         self._chat_history,
-                        callbacks=message.callbacks,
+                        callbacks=callbacks,
                         context_name=message.context_name,
                         message=assistant_message,
                     )
@@ -726,12 +750,12 @@ class AgentActor:
                             result_summary = handle_tool_result_chat(
                                 item.result,
                                 history=self._chat_history,
-                                callbacks=message.callbacks,
+                                callbacks=callbacks,
                                 context_name=message.context_name,
                             )
                             append_tool_message(
                                 self._chat_history,
-                                callbacks=message.callbacks,
+                                callbacks=callbacks,
                                 context_name=message.context_name,
                                 message=ToolMessage(
                                     tool_call_id=item.tool_call_id,
