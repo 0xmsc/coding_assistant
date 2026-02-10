@@ -108,6 +108,7 @@ async def run_chat_loop(
     tools_with_meta = list(tools)
     if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
         tools_with_meta.append(CompactConversationTool())
+    tool_call_actor.set_tools(tools_with_meta)
 
     await agent_actor.set_history(history)
     try:

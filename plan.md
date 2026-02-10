@@ -102,15 +102,15 @@
   - Delete the branch that constructs a temporary `AgentActor` when none is provided.
   - Require actor-backed execution path (explicit actor dependency or Session-owned actor).
   - Update call sites/tests to pass actor context explicitly.
-- [ ] **Enforce long-lived actor reuse for nested agent launches**:
+- [x] **Enforce long-lived actor reuse for nested agent launches**:
   - Ensure `AgentTool`/sub-agent flows always run through pre-existing actor instances.
   - Prevent per-call actor creation in nested contexts.
   - Add guardrails (runtime assertions or explicit wiring checks) that fail fast on non-actor paths.
-- [ ] **Finalize strict actor architecture tests**:
+- [x] **Finalize strict actor architecture tests**:
   - Add/adjust tests proving chat/agent execution cannot run without actor-backed dependencies.
   - Remove or rewrite tests that validate wrapper-created actor behavior.
   - Keep `Session` integration tests focused on lifecycle/wiring and actor ownership.
-- [ ] **Update docs to match actual strict actor state**:
+- [x] **Update docs to match actual strict actor state**:
   - Document actor ownership boundaries and required wiring in `README.md`.
   - Add a short architecture note describing forbidden non-actor orchestration paths.
   - Mark this migration complete only when all fallback/wrapper orchestration code paths are removed.
