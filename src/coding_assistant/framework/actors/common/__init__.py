@@ -1,15 +1,24 @@
 from coding_assistant.framework.actors.common.contracts import MessageSink
 from coding_assistant.framework.actors.common.messages import (
+    AgentYieldedToUser,
     AskRequest,
     AskResponse,
+    ChatPromptInput,
+    ClearHistoryRequested,
+    CompactionRequested,
     ConfirmRequest,
     ConfirmResponse,
     HandleToolCallsRequest,
     HandleToolCallsResponse,
+    HelpRequested,
+    ImageAttachRequested,
     LLMCompleteStepRequest,
     LLMCompleteStepResponse,
     PromptRequest,
     PromptResponse,
+    SessionExitRequested,
+    UserInputFailed,
+    UserTextSubmitted,
 )
 
 __all__ = [
@@ -20,8 +29,17 @@ __all__ = [
     "HandleToolCallsResponse",
     "AskRequest",
     "AskResponse",
+    "AgentYieldedToUser",
     "ConfirmRequest",
     "ConfirmResponse",
+    "UserTextSubmitted",
+    "SessionExitRequested",
+    "ClearHistoryRequested",
+    "CompactionRequested",
+    "ImageAttachRequested",
+    "HelpRequested",
+    "UserInputFailed",
+    "ChatPromptInput",
     "PromptRequest",
     "PromptResponse",
 ]

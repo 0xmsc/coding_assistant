@@ -3,25 +3,28 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import cast
 from uuid import uuid4
 
 from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.actors.common.contracts import MessageSink
 from coding_assistant.framework.actors.common.messages import (
+    AgentYieldedToUser,
+    ChatPromptInput,
+    ClearHistoryRequested,
+    CompactionRequested,
     HandleToolCallsRequest,
     HandleToolCallsResponse,
+    HelpRequested,
+    ImageAttachRequested,
     LLMCompleteStepRequest,
     LLMCompleteStepResponse,
-    PromptRequest,
-    PromptResponse,
+    SessionExitRequested,
+    UserInputFailed,
+    UserTextSubmitted,
 )
 from coding_assistant.framework.builtin_tools import CompactConversationTool
-from coding_assistant.framework.chat import (
-    ChatCommand,
-    ChatCommandResult,
-    _create_chat_start_message,
-    handle_tool_result_chat,
-)
+from coding_assistant.framework.chat import _create_chat_start_message, handle_tool_result_chat
 from coding_assistant.framework.history import append_assistant_message, append_user_message, clear_history
 from coding_assistant.framework.image import get_image
 from coding_assistant.framework.interrupts import InterruptController
@@ -74,7 +77,7 @@ class _RunChatLoop:
 
 
 _AgentMessage = (
-    _DoSingleStep | _RunAgentLoop | _RunChatLoop | LLMCompleteStepResponse | HandleToolCallsResponse | PromptResponse
+    _DoSingleStep | _RunAgentLoop | _RunChatLoop | LLMCompleteStepResponse | HandleToolCallsResponse | ChatPromptInput
 )
 
 START_MESSAGE_TEMPLATE = """
@@ -115,12 +118,13 @@ class AgentActor:
         self._inflight: set[asyncio.Task[None]] = set()
 
         self._tool_call_sink: MessageSink[HandleToolCallsRequest] | None = None
-        self._user_sink: MessageSink[PromptRequest] | None = None
+        self._user_sink: MessageSink[AgentYieldedToUser] | None = None
 
         self._pending_api: dict[str, asyncio.Future[object]] = {}
         self._pending_llm: dict[str, asyncio.Future[tuple[AssistantMessage, Usage | None]]] = {}
         self._pending_tool: dict[str, asyncio.Future[None]] = {}
-        self._pending_prompt: dict[str, asyncio.Future[str]] = {}
+        self._pending_chat_input: asyncio.Future[ChatPromptInput] | None = None
+        self._queued_chat_inputs: list[ChatPromptInput] = []
 
     def start(self) -> None:
         if self._started:
@@ -148,11 +152,15 @@ class AgentActor:
         return uuid4().hex
 
     def _cancel_pending(self, reason: str) -> None:
-        for mapping in (self._pending_api, self._pending_llm, self._pending_tool, self._pending_prompt):
+        for mapping in (self._pending_api, self._pending_llm, self._pending_tool):
             for fut in mapping.values():
                 if not fut.done():
                     fut.set_exception(RuntimeError(reason))
             mapping.clear()
+        if self._pending_chat_input is not None and not self._pending_chat_input.done():
+            self._pending_chat_input.set_exception(RuntimeError(reason))
+        self._pending_chat_input = None
+        self._queued_chat_inputs.clear()
 
     async def do_single_step(
         self,
@@ -229,7 +237,7 @@ class AgentActor:
         self.start()
         if not hasattr(user_actor, "send_message"):
             raise RuntimeError("AgentActor requires a message-capable user actor.")
-        self._user_sink = user_actor
+        self._user_sink = cast(MessageSink[AgentYieldedToUser], user_actor)
         self._tool_call_sink = tool_call_actor
 
         request_id = self._next_id()
@@ -295,17 +303,29 @@ class AgentActor:
             else:
                 tool_future.set_result(None)
             return None
-        if isinstance(message, PromptResponse):
-            prompt_future = self._pending_prompt.pop(message.request_id, None)
-            if prompt_future is None:
-                raise RuntimeError(f"Unknown prompt response id: {message.request_id}")
-            if message.error is not None:
-                prompt_future.set_exception(message.error)
+        if isinstance(message, UserInputFailed):
+            if self._pending_chat_input is not None and not self._pending_chat_input.done():
+                self._pending_chat_input.set_exception(message.error)
+                self._pending_chat_input = None
             else:
-                if message.value is None:
-                    prompt_future.set_exception(RuntimeError("Prompt response missing value."))
-                else:
-                    prompt_future.set_result(message.value)
+                raise RuntimeError("Received UserInputFailed but no chat input is pending.")
+            return None
+        if isinstance(
+            message,
+            (
+                UserTextSubmitted,
+                SessionExitRequested,
+                ClearHistoryRequested,
+                CompactionRequested,
+                ImageAttachRequested,
+                HelpRequested,
+            ),
+        ):
+            if self._pending_chat_input is not None and not self._pending_chat_input.done():
+                self._pending_chat_input.set_result(message)
+                self._pending_chat_input = None
+            else:
+                self._queued_chat_inputs.append(message)
             return None
         raise RuntimeError(f"Unknown agent message: {message!r}")
 
@@ -404,14 +424,17 @@ class AgentActor:
         )
         await fut
 
-    async def _request_prompt(self, words: list[str] | None = None) -> str:
+    async def _wait_for_chat_input(self, words: list[str] | None = None) -> ChatPromptInput:
         if self._user_sink is None:
             raise RuntimeError("AgentActor is missing UserActor runtime dependency.")
-        request_id = self._next_id()
+        if self._queued_chat_inputs:
+            return self._queued_chat_inputs.pop(0)
+        if self._pending_chat_input is not None and not self._pending_chat_input.done():
+            raise RuntimeError("AgentActor is already waiting for chat input.")
         loop = asyncio.get_running_loop()
-        fut: asyncio.Future[str] = loop.create_future()
-        self._pending_prompt[request_id] = fut
-        await self._user_sink.send_message(PromptRequest(request_id=request_id, words=words, reply_to=self))
+        fut: asyncio.Future[ChatPromptInput] = loop.create_future()
+        self._pending_chat_input = fut
+        await self._user_sink.send_message(AgentYieldedToUser(request_id=self._next_id(), words=words, reply_to=self))
         return await fut
 
     @staticmethod
@@ -571,66 +594,15 @@ class AgentActor:
                     message.callbacks.on_user_message(message.context_name, entry, force=True)
 
         need_user_input = True
-
-        async def _exit_cmd(arg: str | None = None) -> ChatCommandResult:
-            return ChatCommandResult.EXIT
-
-        async def _compact_cmd(arg: str | None = None) -> ChatCommandResult:
-            compact_msg = UserMessage(
-                content="Immediately compact our conversation so far by using the `compact_conversation` tool."
-            )
-            append_user_message(
-                self._chat_history,
-                callbacks=message.callbacks,
-                context_name=message.context_name,
-                message=compact_msg,
-                force=True,
-            )
-
-            nonlocal need_user_input
-            need_user_input = True
-
-            return ChatCommandResult.PROCEED_WITH_MODEL
-
-        async def _clear_cmd(arg: str | None = None) -> ChatCommandResult:
-            clear_history(self._chat_history)
-            message.callbacks.on_status_message("History cleared.", level=StatusLevel.SUCCESS)
-            return ChatCommandResult.PROCEED_WITH_PROMPT
-
-        async def _image_cmd(arg: str | None = None) -> ChatCommandResult:
-            if arg is None:
-                message.callbacks.on_status_message("/image requires a path or URL argument.", level=StatusLevel.ERROR)
-                return ChatCommandResult.PROCEED_WITH_PROMPT
-            try:
-                data_url = await get_image(arg.strip())
-                image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
-                user_msg = UserMessage(content=image_content)
-                append_user_message(
-                    self._chat_history,
-                    callbacks=message.callbacks,
-                    context_name=message.context_name,
-                    message=user_msg,
-                )
-                message.callbacks.on_status_message(f"Image added from {arg}.", level=StatusLevel.SUCCESS)
-                return ChatCommandResult.PROCEED_WITH_PROMPT
-            except Exception as exc:
-                message.callbacks.on_status_message(f"Error loading image: {exc}", level=StatusLevel.ERROR)
-                return ChatCommandResult.PROCEED_WITH_PROMPT
-
-        async def _help_cmd(arg: str | None = None) -> ChatCommandResult:
-            help_text = "Available commands:\n" + "\n".join(f"  {cmd.name} - {cmd.help}" for cmd in commands)
-            message.callbacks.on_status_message(help_text, level=StatusLevel.INFO)
-            return ChatCommandResult.PROCEED_WITH_PROMPT
-
-        commands = [
-            ChatCommand("/exit", "Exit the chat", _exit_cmd),
-            ChatCommand("/compact", "Compact the conversation history", _compact_cmd),
-            ChatCommand("/clear", "Clear the conversation history", _clear_cmd),
-            ChatCommand("/image", "Add an image (path or URL) to history", _image_cmd),
-            ChatCommand("/help", "Show this help", _help_cmd),
-        ]
-        command_map = {cmd.name: cmd for cmd in commands}
-        command_names = list(command_map.keys())
+        command_names = ["/exit", "/compact", "/clear", "/image", "/help"]
+        help_text = (
+            "Available commands:\n"
+            "  /exit - Exit the chat\n"
+            "  /compact - Compact the conversation history\n"
+            "  /clear - Clear the conversation history\n"
+            "  /image - Add an image (path or URL) to history\n"
+            "  /help - Show this help"
+        )
 
         start_message = _create_chat_start_message(message.instructions)
         start_user_msg = UserMessage(content=start_message)
@@ -651,27 +623,63 @@ class AgentActor:
                 message.callbacks.on_status_message(
                     f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", level=StatusLevel.INFO
                 )
-                answer = await self._request_prompt(command_names)
-                answer_strip = answer.strip()
-
-                parts = answer_strip.split(maxsplit=1)
-                cmd = parts[0]
-                arg = parts[1] if len(parts) > 1 else None
-                if tool := command_map.get(cmd):
-                    result = await tool.execute(arg)
-                    if result == ChatCommandResult.EXIT:
-                        break
-                    if result == ChatCommandResult.PROCEED_WITH_PROMPT:
-                        need_user_input = True
-                        continue
-                else:
-                    user_msg = UserMessage(content=answer)
+                prompt_input = await self._wait_for_chat_input(command_names)
+                if isinstance(prompt_input, SessionExitRequested):
+                    break
+                if isinstance(prompt_input, CompactionRequested):
+                    compact_msg = UserMessage(
+                        content="Immediately compact our conversation so far by using the `compact_conversation` tool."
+                    )
+                    append_user_message(
+                        self._chat_history,
+                        callbacks=message.callbacks,
+                        context_name=message.context_name,
+                        message=compact_msg,
+                        force=True,
+                    )
+                    need_user_input = True
+                elif isinstance(prompt_input, ClearHistoryRequested):
+                    clear_history(self._chat_history)
+                    message.callbacks.on_status_message("History cleared.", level=StatusLevel.SUCCESS)
+                    need_user_input = True
+                    continue
+                elif isinstance(prompt_input, ImageAttachRequested):
+                    if prompt_input.source is None:
+                        message.callbacks.on_status_message(
+                            "/image requires a path or URL argument.", level=StatusLevel.ERROR
+                        )
+                    else:
+                        try:
+                            data_url = await get_image(prompt_input.source)
+                            image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
+                            user_msg = UserMessage(content=image_content)
+                            append_user_message(
+                                self._chat_history,
+                                callbacks=message.callbacks,
+                                context_name=message.context_name,
+                                message=user_msg,
+                            )
+                            message.callbacks.on_status_message(
+                                f"Image added from {prompt_input.source}.", level=StatusLevel.SUCCESS
+                            )
+                        except Exception as exc:
+                            message.callbacks.on_status_message(f"Error loading image: {exc}", level=StatusLevel.ERROR)
+                    need_user_input = True
+                    continue
+                elif isinstance(prompt_input, HelpRequested):
+                    message.callbacks.on_status_message(help_text, level=StatusLevel.INFO)
+                    need_user_input = True
+                    continue
+                elif isinstance(prompt_input, UserTextSubmitted):
+                    user_msg = UserMessage(content=prompt_input.text)
                     append_user_message(
                         self._chat_history,
                         callbacks=message.callbacks,
                         context_name=message.context_name,
                         message=user_msg,
                     )
+                else:
+                    raise RuntimeError(f"Unsupported chat prompt input: {prompt_input!r}")
 
             loop = asyncio.get_running_loop()
             with InterruptController(loop) as interrupt_controller:
