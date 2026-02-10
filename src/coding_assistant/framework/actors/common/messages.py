@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import TypeAlias
 
 from coding_assistant.framework.actors.common.contracts import MessageSink
 from coding_assistant.framework.types import Completer
@@ -81,14 +82,68 @@ class ConfirmResponse:
 
 
 @dataclass(slots=True)
+class UserTextSubmitted:
+    text: str
+
+
+@dataclass(slots=True)
+class SessionExitRequested:
+    pass
+
+
+@dataclass(slots=True)
+class ClearHistoryRequested:
+    pass
+
+
+@dataclass(slots=True)
+class CompactionRequested:
+    pass
+
+
+@dataclass(slots=True)
+class ImageAttachRequested:
+    source: str | None
+
+
+@dataclass(slots=True)
+class HelpRequested:
+    pass
+
+
+@dataclass(slots=True)
+class UserInputFailed:
+    error: BaseException
+
+
+ChatPromptInput: TypeAlias = (
+    UserTextSubmitted
+    | SessionExitRequested
+    | ClearHistoryRequested
+    | CompactionRequested
+    | ImageAttachRequested
+    | HelpRequested
+    | UserInputFailed
+)
+
+
+@dataclass(slots=True)
+class AgentYieldedToUser:
+    request_id: str
+    words: list[str] | None
+    reply_to: MessageSink[ChatPromptInput]
+
+
+@dataclass(slots=True)
 class PromptRequest:
     request_id: str
     words: list[str] | None
     reply_to: MessageSink["PromptResponse"]
+    parse_chat_intent: bool = False
 
 
 @dataclass(slots=True)
 class PromptResponse:
     request_id: str
-    value: str | None
+    value: str | ChatPromptInput | None
     error: BaseException | None = None

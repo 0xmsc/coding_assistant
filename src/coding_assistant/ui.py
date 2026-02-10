@@ -20,16 +20,44 @@ from rich.rule import Rule
 
 from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.actors.common.messages import (
+    AgentYieldedToUser,
     AskRequest,
     AskResponse,
+    ChatPromptInput,
+    ClearHistoryRequested,
+    CompactionRequested,
     ConfirmRequest,
     ConfirmResponse,
+    HelpRequested,
+    ImageAttachRequested,
     PromptRequest,
     PromptResponse,
+    SessionExitRequested,
+    UserInputFailed,
+    UserTextSubmitted,
 )
 from coding_assistant.paths import get_app_cache_dir
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_chat_prompt_input(raw_input: str) -> ChatPromptInput:
+    stripped = raw_input.strip()
+    parts = stripped.split(maxsplit=1)
+    command = parts[0] if parts else ""
+    arg = parts[1] if len(parts) > 1 else None
+
+    if command == "/exit":
+        return SessionExitRequested()
+    if command == "/compact":
+        return CompactionRequested()
+    if command == "/clear":
+        return ClearHistoryRequested()
+    if command == "/image":
+        return ImageAttachRequested(source=arg.strip() if arg else None)
+    if command == "/help":
+        return HelpRequested()
+    return UserTextSubmitted(text=raw_input)
 
 
 class UI(ABC):
@@ -111,7 +139,7 @@ class NullUI(UI):
         raise RuntimeError("No UI available")
 
 
-_UIMessage = AskRequest | ConfirmRequest | PromptRequest
+_UIMessage = AgentYieldedToUser | AskRequest | ConfirmRequest | PromptRequest
 ResponseT = TypeVar("ResponseT")
 
 
@@ -222,9 +250,20 @@ class ActorUI(UI):
             return message.error
         if message.value is None:
             raise RuntimeError("Prompt response missing value.")
+        if not isinstance(message.value, str):
+            raise RuntimeError(f"Expected string prompt value, got {type(message.value).__name__}.")
         return message.value
 
     async def _handle_message(self, message: _UIMessage) -> None:
+        if isinstance(message, AgentYieldedToUser):
+            try:
+                prompt_response = await self._ui.prompt(message.words)
+                prompt_input = _parse_chat_prompt_input(prompt_response)
+                await message.reply_to.send_message(prompt_input)
+            except BaseException as exc:
+                logger.exception("Failed to handle AgentYieldedToUser message: %s", exc)
+                await message.reply_to.send_message(UserInputFailed(error=exc))
+            return None
         if isinstance(message, AskRequest):
             try:
                 ask_response = await self._ui.ask(message.prompt_text, default=message.default)
@@ -246,9 +285,10 @@ class ActorUI(UI):
         if isinstance(message, PromptRequest):
             try:
                 prompt_response = await self._ui.prompt(message.words)
-                await message.reply_to.send_message(
-                    PromptResponse(request_id=message.request_id, value=prompt_response)
-                )
+                prompt_value: str | ChatPromptInput = prompt_response
+                if message.parse_chat_intent:
+                    prompt_value = _parse_chat_prompt_input(prompt_response)
+                await message.reply_to.send_message(PromptResponse(request_id=message.request_id, value=prompt_value))
             except BaseException as exc:
                 await message.reply_to.send_message(
                     PromptResponse(request_id=message.request_id, value=None, error=exc)
