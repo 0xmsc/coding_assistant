@@ -42,6 +42,9 @@ class ToolExecutor:
     async def stop(self) -> None:
         await self._actor.stop()
 
+    def set_tools(self, tools: Sequence[Tool]) -> None:
+        self.tools = list(tools)
+
     async def submit(self, tool_call: ToolCall) -> asyncio.Task[ToolResult]:
         response_channel: ResponseChannel[asyncio.Task[ToolResult]] = ResponseChannel()
         await self._actor.send(_ToolCallRequest(tool_call=tool_call, response_channel=response_channel))
