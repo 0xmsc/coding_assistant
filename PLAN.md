@@ -8,7 +8,7 @@
 ## Tracking
 - [x] Phase 1 complete
 - [x] Phase 2 complete
-- [ ] Phase 3 complete
+- [x] Phase 3 complete
 - [ ] Phase 4 complete
 - [ ] Phase 5 complete
 - [ ] Phase 6 complete
@@ -48,14 +48,14 @@
 - [x] Run `just test`
 
 ## Phase 3: Agent formatting + image helper
-- [ ] Create `src/coding_assistant/framework/actors/agent/formatting.py`
-- [ ] Move `format_parameters` from `src/coding_assistant/framework/parameters.py`
-- [ ] Create `src/coding_assistant/framework/actors/agent/image_io.py`
-- [ ] Move `get_image` from `src/coding_assistant/framework/image.py`
-- [ ] Update `src/coding_assistant/framework/actors/agent/actor.py` imports
-- [ ] Keep compatibility facades in original files
-- [ ] Run `just lint`
-- [ ] Run `just test`
+- [x] Create `src/coding_assistant/framework/actors/agent/formatting.py`
+- [x] Move `format_parameters` from `src/coding_assistant/framework/parameters.py`
+- [x] Create `src/coding_assistant/framework/actors/agent/image_io.py`
+- [x] Move `get_image` from `src/coding_assistant/framework/image.py`
+- [x] Update `src/coding_assistant/framework/actors/agent/actor.py` imports
+- [x] Keep compatibility facades in original files
+- [x] Run `just lint`
+- [x] Run `just test`
 
 ## Phase 4: Tool-call executor colocation
 - [ ] Create `src/coding_assistant/framework/actors/tool_call/executor.py`

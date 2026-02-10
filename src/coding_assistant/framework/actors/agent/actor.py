@@ -8,6 +8,8 @@ from uuid import uuid4
 
 from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.actors.agent.chat_policy import create_chat_start_message, handle_tool_result_chat
+from coding_assistant.framework.actors.agent.formatting import format_parameters
+from coding_assistant.framework.actors.agent.image_io import get_image
 from coding_assistant.framework.actors.common.contracts import MessageSink
 from coding_assistant.framework.actors.common.messages import (
     AgentYieldedToUser,
@@ -26,9 +28,7 @@ from coding_assistant.framework.actors.common.messages import (
 )
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.history import append_assistant_message, append_user_message, clear_history
-from coding_assistant.framework.image import get_image
 from coding_assistant.framework.interrupts import InterruptController
-from coding_assistant.framework.parameters import format_parameters
 from coding_assistant.framework.results import CompactConversationResult, FinishTaskResult, TextResult
 from coding_assistant.framework.types import AgentContext, AgentDescription, AgentOutput, AgentState, Completer
 from coding_assistant.llm.types import (
