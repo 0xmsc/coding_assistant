@@ -83,7 +83,9 @@ async def _run_chat_with_actors(
             completer=completer,
             ui=actors.user_actor,
             context_name=context_name,
-            system_actors=actors,
+            agent_actor=actors.agent_actor,
+            tool_call_actor=actors.tool_call_actor,
+            user_actor=actors.user_actor,
         )
 
 

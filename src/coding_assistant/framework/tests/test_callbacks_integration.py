@@ -51,8 +51,11 @@ async def test_agent_loop_runs_successfully() -> None:
             compact_conversation_at_tokens=200_000,
             completer=completer,
             ui=actors.user_actor,
-            system_actors=actors,
+            agent_actor=actors.agent_actor,
+            tool_call_actor=actors.tool_call_actor,
+            user_actor=actors.user_actor,
         )
+        state.history = await actors.agent_actor.get_agent_history(id(state))
 
     assert state.output is not None
     assert state.output.result == "r"
@@ -79,8 +82,11 @@ async def test_on_tool_message_called_with_arguments_and_result() -> None:
             compact_conversation_at_tokens=200_000,
             completer=completer,
             ui=actors.user_actor,
-            system_actors=actors,
+            agent_actor=actors.agent_actor,
+            tool_call_actor=actors.tool_call_actor,
+            user_actor=actors.user_actor,
         )
+        state.history = await actors.agent_actor.get_agent_history(id(state))
 
     found = False
     for call_args in callbacks.on_tool_message.call_args_list:
