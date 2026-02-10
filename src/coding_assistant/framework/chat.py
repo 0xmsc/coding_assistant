@@ -1,40 +1,29 @@
-from __future__ import annotations
-
-import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
 import logging
-from typing import TYPE_CHECKING
 
-from coding_assistant.framework.actor_runtime import Actor, ResponseChannel
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import (
-    AssistantMessage,
     BaseMessage,
     NullProgressCallbacks,
     ProgressCallbacks,
-    StatusLevel,
     Tool,
     ToolResult,
-    Usage,
     UserMessage,
 )
-from coding_assistant.framework.execution import AgentActor, ToolCallActor
+from typing import TYPE_CHECKING
 from coding_assistant.framework.history import (
-    append_assistant_message,
     append_user_message,
     clear_history,
 )
-from coding_assistant.framework.interrupts import InterruptController
 from coding_assistant.framework.types import Completer
 from coding_assistant.framework.results import CompactConversationResult, TextResult
-from coding_assistant.ui import UI
-from coding_assistant.framework.image import get_image
+from coding_assistant.ui import ActorUI, UI, UserActor
 
 if TYPE_CHECKING:
-    from coding_assistant.framework.system_actors import SystemActors
+    from coding_assistant.framework.execution import AgentActor, ToolCallActor
 
 logger = logging.getLogger(__name__)
 
@@ -101,238 +90,6 @@ class ChatCommand:
     execute: Callable[[str | None], Awaitable[ChatCommandResult]]
 
 
-@dataclass(slots=True)
-class _RunChatLoop:
-    history: list[BaseMessage]
-    model: str
-    tools: list[Tool]
-    instructions: str | None
-    callbacks: ProgressCallbacks
-    completer: Completer
-    context_name: str
-    response_channel: ResponseChannel[None]
-
-
-class ChatLoopActor:
-    def __init__(
-        self,
-        *,
-        user_actor: UI,
-        tool_call_actor: ToolCallActor,
-        agent_actor: AgentActor,
-        context_name: str = "chat",
-    ) -> None:
-        self._user_actor = user_actor
-        self._tool_call_actor = tool_call_actor
-        self._agent_actor = agent_actor
-        self._actor: Actor[_RunChatLoop] = Actor(name=f"{context_name}.chat-loop", handler=self._handle_message)
-        self._started = False
-
-    def start(self) -> None:
-        if self._started:
-            return
-        self._actor.start()
-        self._started = True
-
-    async def stop(self) -> None:
-        if not self._started:
-            return
-        await self._actor.stop()
-        self._started = False
-
-    async def run_chat_loop(
-        self,
-        *,
-        history: list[BaseMessage],
-        model: str,
-        tools: list[Tool],
-        instructions: str | None,
-        callbacks: ProgressCallbacks,
-        completer: Completer,
-        context_name: str,
-    ) -> None:
-        self.start()
-        response_channel: ResponseChannel[None] = ResponseChannel()
-        await self._actor.send(
-            _RunChatLoop(
-                history=history,
-                model=model,
-                tools=tools,
-                instructions=instructions,
-                callbacks=callbacks,
-                completer=completer,
-                context_name=context_name,
-                response_channel=response_channel,
-            )
-        )
-        await response_channel.wait()
-
-    async def _handle_message(self, message: _RunChatLoop) -> None:
-        if not isinstance(message, _RunChatLoop):
-            raise RuntimeError(f"Unknown chat loop message: {message!r}")
-        await self._run_chat_loop_impl(message)
-        message.response_channel.send(None)
-
-    async def _run_chat_loop_impl(self, message: _RunChatLoop) -> None:
-        tools = list(message.tools)
-        if not any(tool.name() == "compact_conversation" for tool in tools):
-            tools.append(CompactConversationTool())
-
-        if message.history:
-            for entry in message.history:
-                if isinstance(entry, AssistantMessage):
-                    message.callbacks.on_assistant_message(message.context_name, entry, force=True)
-                elif isinstance(entry, UserMessage):
-                    message.callbacks.on_user_message(message.context_name, entry, force=True)
-
-        need_user_input = True
-
-        async def _exit_cmd(arg: str | None = None) -> ChatCommandResult:
-            return ChatCommandResult.EXIT
-
-        async def _compact_cmd(arg: str | None = None) -> ChatCommandResult:
-            compact_msg = UserMessage(
-                content="Immediately compact our conversation so far by using the `compact_conversation` tool."
-            )
-            append_user_message(
-                message.history,
-                callbacks=message.callbacks,
-                context_name=message.context_name,
-                message=compact_msg,
-                force=True,
-            )
-
-            nonlocal need_user_input
-            need_user_input = True
-
-            return ChatCommandResult.PROCEED_WITH_MODEL
-
-        async def _clear_cmd(arg: str | None = None) -> ChatCommandResult:
-            clear_history(message.history)
-            message.callbacks.on_status_message("History cleared.", level=StatusLevel.SUCCESS)
-            return ChatCommandResult.PROCEED_WITH_PROMPT
-
-        async def _image_cmd(arg: str | None = None) -> ChatCommandResult:
-            if arg is None:
-                message.callbacks.on_status_message("/image requires a path or URL argument.", level=StatusLevel.ERROR)
-                return ChatCommandResult.PROCEED_WITH_PROMPT
-            try:
-                data_url = await get_image(arg.strip())
-                image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
-                user_msg = UserMessage(content=image_content)
-                append_user_message(
-                    message.history,
-                    callbacks=message.callbacks,
-                    context_name=message.context_name,
-                    message=user_msg,
-                )
-                message.callbacks.on_status_message(f"Image added from {arg}.", level=StatusLevel.SUCCESS)
-                return ChatCommandResult.PROCEED_WITH_PROMPT
-            except Exception as e:
-                message.callbacks.on_status_message(f"Error loading image: {e}", level=StatusLevel.ERROR)
-                return ChatCommandResult.PROCEED_WITH_PROMPT
-
-        async def _help_cmd(arg: str | None = None) -> ChatCommandResult:
-            help_text = "Available commands:\n" + "\n".join(f"  {cmd.name} - {cmd.help}" for cmd in commands)
-            message.callbacks.on_status_message(help_text, level=StatusLevel.INFO)
-            return ChatCommandResult.PROCEED_WITH_PROMPT
-
-        commands = [
-            ChatCommand("/exit", "Exit the chat", _exit_cmd),
-            ChatCommand("/compact", "Compact the conversation history", _compact_cmd),
-            ChatCommand("/clear", "Clear the conversation history", _clear_cmd),
-            ChatCommand("/image", "Add an image (path or URL) to history", _image_cmd),
-            ChatCommand("/help", "Show this help", _help_cmd),
-        ]
-        command_map = {cmd.name: cmd for cmd in commands}
-        command_names = list(command_map.keys())
-
-        start_message = _create_chat_start_message(message.instructions)
-        start_user_msg = UserMessage(content=start_message)
-        append_user_message(
-            message.history,
-            callbacks=message.callbacks,
-            context_name=message.context_name,
-            message=start_user_msg,
-            force=True,
-        )
-
-        usage = Usage(0, 0.0)
-
-        while True:
-            if need_user_input:
-                need_user_input = False
-
-                message.callbacks.on_status_message(
-                    f"💰 {usage.tokens} tokens • ${usage.cost:.2f}", level=StatusLevel.INFO
-                )
-                answer = await self._user_actor.prompt(words=command_names)
-                answer_strip = answer.strip()
-
-                parts = answer_strip.split(maxsplit=1)
-                cmd = parts[0]
-                arg = parts[1] if len(parts) > 1 else None
-                if tool := command_map.get(cmd):
-                    result = await tool.execute(arg)
-                    if result == ChatCommandResult.EXIT:
-                        break
-                    if result == ChatCommandResult.PROCEED_WITH_PROMPT:
-                        need_user_input = True
-                        continue
-                else:
-                    user_msg = UserMessage(content=answer)
-                    append_user_message(
-                        message.history,
-                        callbacks=message.callbacks,
-                        context_name=message.context_name,
-                        message=user_msg,
-                    )
-
-            loop = asyncio.get_running_loop()
-            with InterruptController(loop) as interrupt_controller:
-                try:
-                    do_single_step_task = loop.create_task(
-                        self._agent_actor.do_single_step(
-                            history=message.history,
-                            model=message.model,
-                            tools=tools,
-                            progress_callbacks=message.callbacks,
-                            completer=message.completer,
-                            context_name=message.context_name,
-                        ),
-                        name="do_single_step",
-                    )
-                    interrupt_controller.register_task("do_single_step", do_single_step_task)
-
-                    assistant_message, step_usage = await do_single_step_task
-                    append_assistant_message(
-                        message.history,
-                        callbacks=message.callbacks,
-                        context_name=message.context_name,
-                        message=assistant_message,
-                    )
-
-                    if step_usage:
-                        usage = Usage(tokens=step_usage.tokens, cost=usage.cost + step_usage.cost)
-
-                    if getattr(assistant_message, "tool_calls", []):
-                        await self._tool_call_actor.handle_tool_calls(
-                            assistant_message,
-                            history=message.history,
-                            task_created_callback=interrupt_controller.register_task,
-                            handle_tool_result=lambda result: handle_tool_result_chat(
-                                result,
-                                history=message.history,
-                                callbacks=message.callbacks,
-                                context_name=message.context_name,
-                            ),
-                        )
-                    else:
-                        need_user_input = True
-                except asyncio.CancelledError:
-                    need_user_input = True
-
-
 async def run_chat_loop(
     *,
     history: list[BaseMessage],
@@ -344,38 +101,77 @@ async def run_chat_loop(
     completer: Completer,
     ui: UI,
     context_name: str,
-    system_actors: SystemActors | None = None,
+    agent_actor: "AgentActor | None" = None,
+    tool_call_actor: "ToolCallActor | None" = None,
+    user_actor: UI | None = None,
 ) -> None:
     tools_with_meta = list(tools)
     if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
         tools_with_meta.append(CompactConversationTool())
-    if system_actors is None:
-        from coding_assistant.framework.system_actors import system_actor_scope
-
-        async with system_actor_scope(
-            tools=tools_with_meta,
-            ui=ui,
-            progress_callbacks=callbacks,
-            tool_callbacks=tool_callbacks,
-            context_name=context_name,
-        ) as actors:
-            await actors.run_chat_loop(
-                history=history,
-                model=model,
-                tools=tools_with_meta,
-                instructions=instructions,
-                callbacks=callbacks,
-                completer=completer,
-                context_name=context_name,
-            )
-        return
-
-    await system_actors.run_chat_loop(
-        history=history,
-        model=model,
+    owns_user_actor = user_actor is None
+    resolved_user_actor = user_actor
+    if resolved_user_actor is None:
+        resolved_user_actor = ui if isinstance(ui, ActorUI) else UserActor(ui, context_name=context_name)
+    owns_tool_call_actor = tool_call_actor is None
+    resolved_tool_call_actor = tool_call_actor or _tool_call_actor(
         tools=tools_with_meta,
-        instructions=instructions,
-        callbacks=callbacks,
-        completer=completer,
+        ui=resolved_user_actor,
         context_name=context_name,
+        progress_callbacks=callbacks,
+        tool_callbacks=tool_callbacks,
+    )
+    owns_agent_actor = agent_actor is None
+    resolved_agent_actor = agent_actor or _agent_actor(context_name=context_name)
+
+    if owns_user_actor and isinstance(resolved_user_actor, ActorUI):
+        resolved_user_actor.start()
+    if owns_tool_call_actor:
+        resolved_tool_call_actor.start()
+    if owns_agent_actor:
+        resolved_agent_actor.start()
+
+    await resolved_agent_actor.set_history(history)
+    try:
+        await resolved_agent_actor.run_chat_loop(
+            model=model,
+            tools=tools_with_meta,
+            instructions=instructions,
+            callbacks=callbacks,
+            completer=completer,
+            context_name=context_name,
+            user_actor=resolved_user_actor,
+            tool_call_actor=resolved_tool_call_actor,
+        )
+    finally:
+        history[:] = await resolved_agent_actor.get_history()
+        if owns_tool_call_actor:
+            await resolved_tool_call_actor.stop()
+        if owns_agent_actor:
+            await resolved_agent_actor.stop()
+        if owns_user_actor and isinstance(resolved_user_actor, ActorUI):
+            await resolved_user_actor.stop()
+
+
+def _agent_actor(*, context_name: str) -> "AgentActor":
+    from coding_assistant.framework.execution import AgentActor
+
+    return AgentActor(context_name=context_name)
+
+
+def _tool_call_actor(
+    *,
+    tools: list[Tool],
+    ui: UI,
+    context_name: str,
+    progress_callbacks: ProgressCallbacks,
+    tool_callbacks: ToolCallbacks,
+) -> "ToolCallActor":
+    from coding_assistant.framework.execution import ToolCallActor
+
+    return ToolCallActor(
+        tools=tools,
+        ui=ui,
+        context_name=context_name,
+        progress_callbacks=progress_callbacks,
+        tool_callbacks=tool_callbacks,
     )

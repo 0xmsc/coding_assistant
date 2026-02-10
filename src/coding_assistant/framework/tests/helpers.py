@@ -1,11 +1,11 @@
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any, AsyncIterator, Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.framework.execution import AgentActor, ToolCallActor
 from coding_assistant.framework.parameters import Parameter
-from coding_assistant.framework.system_actors import SystemActors, system_actor_scope
 from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -17,7 +17,7 @@ from coding_assistant.llm.types import (
     Usage,
 )
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
-from coding_assistant.ui import UI
+from coding_assistant.ui import ActorUI, UI, UserActor
 
 
 def FakeMessage(
@@ -170,6 +170,13 @@ async def tool_call_actor_scope(
         await actor.stop()
 
 
+@dataclass(slots=True)
+class ActorBundle:
+    agent_actor: AgentActor
+    tool_call_actor: ToolCallActor
+    user_actor: UI
+
+
 @asynccontextmanager
 async def system_actor_scope_for_tests(
     *,
@@ -178,12 +185,30 @@ async def system_actor_scope_for_tests(
     context_name: str = "test",
     progress_callbacks: ProgressCallbacks | None = None,
     tool_callbacks: ToolCallbacks | None = None,
-) -> AsyncIterator[SystemActors]:
-    async with system_actor_scope(
+) -> AsyncIterator[ActorBundle]:
+    owns_user_actor = not isinstance(ui, ActorUI)
+    user_actor = ui if isinstance(ui, ActorUI) else UserActor(ui, context_name=context_name)
+    tool_call_actor = ToolCallActor(
         tools=tools,
-        ui=ui,
+        ui=user_actor,
+        context_name=context_name,
         progress_callbacks=progress_callbacks or NullProgressCallbacks(),
         tool_callbacks=tool_callbacks or NullToolCallbacks(),
-        context_name=context_name,
-    ) as actors:
-        yield actors
+    )
+    agent_actor = AgentActor(context_name=context_name)
+
+    if owns_user_actor and isinstance(user_actor, ActorUI):
+        user_actor.start()
+    tool_call_actor.start()
+    agent_actor.start()
+    try:
+        yield ActorBundle(
+            agent_actor=agent_actor,
+            tool_call_actor=tool_call_actor,
+            user_actor=user_actor,
+        )
+    finally:
+        await tool_call_actor.stop()
+        await agent_actor.stop()
+        if owns_user_actor and isinstance(user_actor, ActorUI):
+            await user_actor.stop()

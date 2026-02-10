@@ -6,9 +6,8 @@ from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
-from coding_assistant.framework.chat import ChatLoopActor, run_chat_loop
+from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.framework.execution import AgentActor, ToolCallActor
-from coding_assistant.framework.system_actors import SystemActors
 from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.history_manager import history_manager_scope
 from coding_assistant.instructions import get_instructions
@@ -59,7 +58,9 @@ class Session:
         self.instructions: str = ""
         self._mcp_manager: Optional[MCPServerManager] = None
         self._mcp_servers: Optional[list[Any]] = None
-        self._system_actors: SystemActors | None = None
+        self._agent_actor: AgentActor | None = None
+        self._tool_call_actor: ToolCallActor | None = None
+        self._user_actor: UI | None = None
 
     @property
     def mcp_servers(self) -> Optional[list[Any]]:
@@ -140,18 +141,13 @@ class Session:
             tool_callbacks=self.tool_callbacks,
         )
         agent_actor = AgentActor(context_name="Orchestrator")
-        self._system_actors = SystemActors(
-            agent_actor=agent_actor,
-            tool_call_actor=tool_call_actor,
-            chat_actor=ChatLoopActor(
-                user_actor=user_actor,
-                tool_call_actor=tool_call_actor,
-                agent_actor=agent_actor,
-                context_name="Orchestrator",
-            ),
-            user_actor=user_actor,
-        )
-        self._system_actors.start()
+        self._agent_actor = agent_actor
+        self._tool_call_actor = tool_call_actor
+        self._user_actor = user_actor
+        if isinstance(user_actor, UserActor):
+            user_actor.start()
+        self._tool_call_actor.start()
+        self._agent_actor.start()
 
         self.callbacks.on_status_message("Session initialized.", level=StatusLevel.SUCCESS)
         self.callbacks.on_status_message(f"Using model {self.config.model}.", level=StatusLevel.SUCCESS)
@@ -159,9 +155,15 @@ class Session:
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if self._system_actors:
-            await self._system_actors.stop()
-            self._system_actors = None
+        if self._tool_call_actor:
+            await self._tool_call_actor.stop()
+            self._tool_call_actor = None
+        if self._agent_actor:
+            await self._agent_actor.stop()
+            self._agent_actor = None
+        if self._user_actor and isinstance(self._user_actor, UserActor):
+            await self._user_actor.stop()
+        self._user_actor = None
 
         if self._mcp_manager:
             await self._mcp_manager.shutdown(exc_type=exc_type, exc_val=exc_val, exc_tb=exc_tb)
@@ -172,35 +174,27 @@ class Session:
         chat_history = history or []
         async with history_manager_scope(context_name="session") as history_manager:
             try:
-                if self._system_actors:
-                    await self._system_actors.run_chat_loop(
-                        history=chat_history,
-                        model=self.config.model,
-                        tools=self.tools,
-                        instructions=self.instructions,
-                        callbacks=self.callbacks,
-                        completer=openai_complete,
-                        context_name="Orchestrator",
-                    )
-                else:
-                    await run_chat_loop(
-                        history=chat_history,
-                        model=self.config.model,
-                        tools=self.tools,
-                        instructions=self.instructions,
-                        callbacks=self.callbacks,
-                        tool_callbacks=self.tool_callbacks,
-                        completer=openai_complete,
-                        ui=self.ui,
-                        context_name="Orchestrator",
-                    )
+                await run_chat_loop(
+                    history=chat_history,
+                    model=self.config.model,
+                    tools=self.tools,
+                    instructions=self.instructions,
+                    callbacks=self.callbacks,
+                    tool_callbacks=self.tool_callbacks,
+                    completer=openai_complete,
+                    ui=self.ui,
+                    context_name="Orchestrator",
+                    agent_actor=self._agent_actor,
+                    tool_call_actor=self._tool_call_actor,
+                    user_actor=self._user_actor,
+                )
             finally:
                 await history_manager.save_orchestrator_history(
                     working_directory=self.working_directory, history=chat_history
                 )
 
     async def run_agent(self, task: str, history: Optional[list[BaseMessage]] = None) -> Any:
-        ui = self._system_actors.user_actor if self._system_actors else self.ui
+        ui = self._user_actor if self._user_actor else self.ui
         agent_mode_tools = [
             AskClientTool(ui=ui),
             *self.tools,
@@ -218,7 +212,9 @@ class Session:
             tool_callbacks=self.tool_callbacks,
             name="launch_orchestrator_agent",
             completer=openai_complete,
-            system_actors=self._system_actors,
+            agent_actor=self._agent_actor,
+            tool_call_actor=self._tool_call_actor,
+            user_actor=self._user_actor,
         )
 
         params = {

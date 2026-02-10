@@ -25,7 +25,8 @@ from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.ui import DefaultAnswerUI, UI
 
 if TYPE_CHECKING:
-    from coding_assistant.framework.system_actors import SystemActors
+    from coding_assistant.framework.execution import AgentActor, ToolCallActor
+    from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +148,9 @@ class AgentTool(Tool):
         name: str = "launch_agent",
         history: Sequence[BaseMessage] | None = None,
         completer: Completer | None = None,
-        system_actors: "SystemActors | None" = None,
+        agent_actor: "AgentActor | None" = None,
+        tool_call_actor: "ToolCallActor | None" = None,
+        user_actor: "UI | None" = None,
     ) -> None:
         super().__init__()
         self._model = model
@@ -161,7 +164,9 @@ class AgentTool(Tool):
         self._name = name
         self._history = history
         self._completer = completer or openai_complete
-        self._system_actors = system_actors
+        self._agent_actor = agent_actor
+        self._tool_call_actor = tool_call_actor
+        self._user_actor = user_actor
         self.history: list[BaseMessage] = []
         self.summary: str = ""
 
@@ -220,7 +225,9 @@ class AgentTool(Tool):
                 compact_conversation_at_tokens=self._compact_conversation_at_tokens,
                 completer=self._completer,
                 ui=self._ui,
-                system_actors=self._system_actors,
+                agent_actor=self._agent_actor,
+                tool_call_actor=self._tool_call_actor,
+                user_actor=self._user_actor,
             )
             assert state.output is not None, "Agent did not produce output"
             self.summary = state.output.summary

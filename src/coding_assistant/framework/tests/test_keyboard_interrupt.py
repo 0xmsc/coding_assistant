@@ -35,7 +35,9 @@ async def test_run_chat_loop_raises_keyboard_interrupt_at_prompt() -> None:
                 completer=AsyncMock(),
                 ui=actors.user_actor,
                 context_name="test",
-                system_actors=actors,
+                agent_actor=actors.agent_actor,
+                tool_call_actor=actors.tool_call_actor,
+                user_actor=actors.user_actor,
             )
 
     # Verify prompt was called
