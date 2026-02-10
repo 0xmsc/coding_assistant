@@ -1,10 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Sequence
-from dataclasses import dataclass
-from uuid import uuid4
-
 from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.actors.common.messages import (
     ConfigureLLMRuntimeRequest,
@@ -13,14 +8,7 @@ from coding_assistant.framework.actors.common.messages import (
 )
 from coding_assistant.framework.types import Completer
 from coding_assistant.llm.openai import complete as openai_complete
-from coding_assistant.llm.types import (
-    AssistantMessage,
-    BaseMessage,
-    NullProgressCallbacks,
-    ProgressCallbacks,
-    Tool,
-    Usage,
-)
+from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
 
 
 class LLMActor:
@@ -43,45 +31,6 @@ class LLMActor:
             return
         await self._actor.stop()
         self._started = False
-
-    async def complete_step(
-        self,
-        *,
-        history: Sequence[BaseMessage],
-        model: str,
-        tools: Sequence[Tool],
-        progress_callbacks: ProgressCallbacks,
-        completer: Completer,
-    ) -> tuple[AssistantMessage, Usage | None]:
-        await self.send_message(ConfigureLLMRuntimeRequest(completer=completer, progress_callbacks=progress_callbacks))
-        request_id = uuid4().hex
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[tuple[AssistantMessage, Usage | None]] = loop.create_future()
-
-        @dataclass(slots=True)
-        class _ReplySink:
-            async def send_message(self, message: LLMCompleteStepResponse) -> None:
-                if message.request_id != request_id:
-                    future.set_exception(RuntimeError(f"Mismatched LLM response id: {message.request_id}"))
-                    return
-                if message.error is not None:
-                    future.set_exception(message.error)
-                    return
-                if message.message is None:
-                    future.set_exception(RuntimeError("LLM response missing message."))
-                    return
-                future.set_result((message.message, message.usage))
-
-        await self.send_message(
-            LLMCompleteStepRequest(
-                request_id=request_id,
-                history=tuple(history),
-                model=model,
-                tools=tools,
-                reply_to=_ReplySink(),
-            )
-        )
-        return await future
 
     async def send_message(self, message: LLMCompleteStepRequest | ConfigureLLMRuntimeRequest) -> None:
         self.start()

@@ -3,10 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from json import JSONDecodeError
 from typing import Any
-from uuid import uuid4
 
 from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.actors.common.messages import (
@@ -17,16 +15,13 @@ from coding_assistant.framework.actors.common.messages import (
     ToolCallExecutionResult,
 )
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
-from coding_assistant.framework.history import append_tool_message
 from coding_assistant.framework.results import TextResult
 from coding_assistant.framework.actors.tool_call.executor import ToolExecutor
 from coding_assistant.llm.types import (
     AssistantMessage,
-    BaseMessage,
     NullProgressCallbacks,
     ProgressCallbacks,
     Tool,
-    ToolMessage,
     ToolResult,
 )
 from coding_assistant.ui import UI
@@ -74,64 +69,6 @@ class ToolCallActor:
         await self._actor.stop()
         await self._executor.stop()
         self._started = False
-
-    async def handle_tool_calls(
-        self,
-        message: AssistantMessage,
-        *,
-        history: list[BaseMessage] | None = None,
-        handle_tool_result: Callable[[ToolResult], str] | None = None,
-    ) -> list[ToolCallExecutionResult]:
-        if history is not None:
-            request_id = uuid4().hex
-
-            def _on_result(item: ToolCallExecutionResult) -> None:
-                if handle_tool_result is not None:
-                    result_summary = handle_tool_result(item.result)
-                elif isinstance(item.result, TextResult):
-                    result_summary = item.result.content
-                else:
-                    result_summary = f"Tool produced result of type {type(item.result).__name__}"
-                append_tool_message(
-                    history,
-                    callbacks=self._executor.progress_callbacks,
-                    context_name=self._executor.context_name,
-                    message=ToolMessage(
-                        tool_call_id=item.tool_call_id,
-                        name=item.name,
-                        content=result_summary,
-                    ),
-                    arguments=item.arguments,
-                )
-
-            results, cancelled = await self._handle_tool_calls(request_id, message, on_result=_on_result)
-            if cancelled:
-                raise asyncio.CancelledError()
-            return results
-
-        request_id = uuid4().hex
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[list[ToolCallExecutionResult]] = loop.create_future()
-
-        @dataclass(slots=True)
-        class _ReplySink:
-            async def send_message(self, message: HandleToolCallsResponse) -> None:
-                if message.request_id != request_id:
-                    future.set_exception(RuntimeError(f"Mismatched tool response id: {message.request_id}"))
-                    return
-                if message.error is not None:
-                    future.set_exception(message.error)
-                    return
-                future.set_result(message.results)
-
-        await self.send_message(
-            HandleToolCallsRequest(
-                request_id=request_id,
-                message=message,
-                reply_to=_ReplySink(),
-            )
-        )
-        return await future
 
     async def send_message(
         self, message: HandleToolCallsRequest | CancelToolCallsRequest | ConfigureToolSetRequest

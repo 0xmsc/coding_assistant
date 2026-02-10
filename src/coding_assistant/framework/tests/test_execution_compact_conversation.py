@@ -13,6 +13,8 @@ from coding_assistant.framework.tests.helpers import (
     FunctionCall,
     ToolCall,
     agent_actor_scope,
+    append_tool_call_results_to_history,
+    execute_tool_calls_via_messages,
     make_test_agent,
     make_ui_mock,
     tool_call_actor_scope,
@@ -60,7 +62,14 @@ async def test_compact_conversation_resets_history() -> None:
         context_name=desc.name,
         progress_callbacks=callbacks,
     ) as actor:
-        await actor.handle_tool_calls(msg, history=state.history, handle_tool_result=handle_tool_result)
+        response = await execute_tool_calls_via_messages(actor, message=msg)
+        append_tool_call_results_to_history(
+            history=state.history,
+            execution_results=response.results,
+            context_name=desc.name,
+            progress_callbacks=callbacks,
+            handle_tool_result=handle_tool_result,
+        )
 
     assert any(force for content, force in callbacks.user_messages if summary_text in content)
 
@@ -110,7 +119,14 @@ async def test_compact_conversation_resets_history() -> None:
         context_name=desc.name,
         progress_callbacks=callbacks,
     ) as actor:
-        await actor.handle_tool_calls(msg, history=state.history, handle_tool_result=handle_tool_result_2)
+        response = await execute_tool_calls_via_messages(actor, message=msg)
+        append_tool_call_results_to_history(
+            history=state.history,
+            execution_results=response.results,
+            context_name=desc.name,
+            progress_callbacks=callbacks,
+            handle_tool_result=handle_tool_result_2,
+        )
 
     assert message_to_dict(state.history[-2]) == {
         "role": "assistant",

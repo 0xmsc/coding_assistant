@@ -7,6 +7,8 @@ from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     agent_actor_scope,
+    append_tool_call_results_to_history,
+    execute_tool_calls_via_messages,
     make_test_agent,
     make_ui_mock,
     system_actor_scope_for_tests,
@@ -68,7 +70,13 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold() -> None:
 
     # Simulate loop behavior: execute tools and then append shorten prompt due to tokens
     async with tool_call_actor_scope(tools=desc.tools, ui=make_ui_mock(), context_name=desc.name) as actor:
-        await actor.handle_tool_calls(msg, history=state.history)
+        response = await execute_tool_calls_via_messages(actor, message=msg)
+        append_tool_call_results_to_history(
+            history=state.history,
+            execution_results=response.results,
+            context_name=desc.name,
+            progress_callbacks=NullProgressCallbacks(),
+        )
     if usage is not None and usage.tokens > 1000:
         state.history.append(
             UserMessage(
@@ -169,7 +177,6 @@ async def test_auto_inject_builtin_tools() -> None:
             tool_call_actor=actors.tool_call_actor,
             user_actor=actors.user_actor,
         )
-        ctx.state.history = await actors.agent_actor.get_agent_history(id(ctx.state))
 
     assert state.output is not None
     assert state.output.result == "ok"
