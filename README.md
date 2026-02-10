@@ -17,9 +17,15 @@ Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automa
 ## Actor Architecture
 
 - Session startup creates and owns long-lived actors (`AgentActor`, `ToolCallActor`, `UserActor`).
-- Chat and agent execution must run with actor-backed dependencies; non-actor fallback paths are not supported.
-- Sub-agent launches (`launch_agent`) must reuse actor-backed runtime wiring; per-call actor creation is forbidden.
-- Tool execution is actor-driven and must be wired to the active run's tool list before each chat/agent loop.
+- Actor communication is message-driven through `framework/actors/common/messages.py`.
+- Chat handoff uses explicit messages (`AgentYieldedToUser` + typed user intent messages).
+- Tool-call execution uses actor messages and structured results (no callback side channels).
+- Main actor module layout:
+  - `framework/actors/agent/*`
+  - `framework/actors/tool_call/*`
+  - `framework/actors/llm/*`
+  - `framework/actors/user/*`
+  - `framework/actors/common/*`
 
 ## Requirements
 

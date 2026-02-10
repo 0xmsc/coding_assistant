@@ -68,9 +68,3 @@ def parameters_from_model(model: BaseModel) -> list[Parameter]:
         )
 
     return params
-
-
-def format_parameters(parameters: list[Parameter]) -> str:
-    from coding_assistant.framework.actors.agent.formatting import format_parameters as _format_parameters
-
-    return _format_parameters(parameters)

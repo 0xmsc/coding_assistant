@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TypeAlias
 
 from coding_assistant.framework.actors.common.contracts import MessageSink
+from coding_assistant.framework.types import AgentContext
 from coding_assistant.framework.types import Completer
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -20,7 +20,7 @@ from coding_assistant.llm.types import (
 @dataclass(slots=True)
 class LLMCompleteStepRequest:
     request_id: str
-    history: list[BaseMessage]
+    history: tuple[BaseMessage, ...]
     model: str
     tools: Sequence[Tool]
     progress_callbacks: ProgressCallbacks
@@ -37,19 +37,64 @@ class LLMCompleteStepResponse:
 
 
 @dataclass(slots=True)
+class RunAgentRequest:
+    request_id: str
+    ctx: AgentContext
+    tools: Sequence[Tool]
+    progress_callbacks: ProgressCallbacks
+    completer: Completer
+    compact_conversation_at_tokens: int
+
+
+@dataclass(slots=True)
+class RunChatRequest:
+    request_id: str
+    model: str
+    tools: list[Tool]
+    instructions: str | None
+    callbacks: ProgressCallbacks
+    completer: Completer
+    context_name: str
+
+
+@dataclass(slots=True)
+class RunCompleted:
+    request_id: str
+
+
+@dataclass(slots=True)
+class RunFailed:
+    request_id: str
+    error: BaseException
+
+
+@dataclass(slots=True)
 class HandleToolCallsRequest:
     request_id: str
     message: AssistantMessage
-    history: list[BaseMessage]
-    task_created_callback: Callable[[str, asyncio.Task[object]], None] | None
-    handle_tool_result: Callable[[ToolResult], str] | None
     reply_to: MessageSink["HandleToolCallsResponse"]
 
 
 @dataclass(slots=True)
 class HandleToolCallsResponse:
     request_id: str
+    results: list["ToolCallExecutionResult"]
+    cancelled: bool = False
     error: BaseException | None = None
+
+
+@dataclass(slots=True)
+class CancelToolCallsRequest:
+    request_id: str
+
+
+@dataclass(slots=True)
+class ToolCallExecutionResult:
+    tool_call_id: str
+    name: str
+    arguments: dict[str, object]
+    result: ToolResult
+    cancelled: bool = False
 
 
 @dataclass(slots=True)

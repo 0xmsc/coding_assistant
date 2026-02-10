@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from coding_assistant.framework.chat import run_chat_loop
+from coding_assistant.framework.actors.agent.chat_runtime import run_chat_loop
 from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
 from coding_assistant.framework.tests.helpers import system_actor_scope_for_tests
 from coding_assistant.llm.types import BaseMessage, Tool, UserMessage

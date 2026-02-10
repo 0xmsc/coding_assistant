@@ -6,7 +6,7 @@ import signal
 import pytest
 from unittest.mock import patch
 
-from coding_assistant.framework.chat import run_chat_loop
+from coding_assistant.framework.actors.agent.chat_runtime import run_chat_loop
 from coding_assistant.framework.interrupts import InterruptController
 from coding_assistant.llm.types import UserMessage, BaseMessage, Tool
 from coding_assistant.framework.tests.helpers import (
