@@ -6,8 +6,9 @@ import logging
 from dataclasses import dataclass, field
 from json import JSONDecodeError
 from typing import Any, Sequence
+from uuid import uuid4
 
-from coding_assistant.framework.actor_runtime import Actor, ResponseChannel
+from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
 from coding_assistant.llm.types import Tool, ToolCall, ToolResult
@@ -20,8 +21,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass(slots=True)
 class _ToolCallRequest:
+    request_id: str
     tool_call: ToolCall
-    response_channel: ResponseChannel[asyncio.Task[ToolResult]]
+
+
+@dataclass(slots=True)
+class _ToolCallSpawned:
+    request_id: str
+    task: asyncio.Task[ToolResult] | None
+    error: BaseException | None = None
 
 
 @dataclass(slots=True)
@@ -31,32 +39,57 @@ class ToolExecutor:
     context_name: str = "tool-executor"
     progress_callbacks: ProgressCallbacks = NullProgressCallbacks()
     tool_callbacks: ToolCallbacks = NullToolCallbacks()
-    _actor: Actor["_ToolCallRequest"] = field(init=False)
+    _actor: Actor["_ToolMessage"] = field(init=False)
+    _pending: dict[str, asyncio.Future[asyncio.Task[ToolResult]]] = field(init=False, default_factory=dict)
 
     def __post_init__(self) -> None:
-        self._actor = Actor(name=f"{self.context_name}.tool-executor", handler=self._spawn_task)
+        self._actor = Actor(name=f"{self.context_name}.tool-executor", handler=self._handle_message)
 
     def start(self) -> None:
         self._actor.start()
 
     async def stop(self) -> None:
         await self._actor.stop()
+        for future in self._pending.values():
+            if not future.done():
+                future.set_exception(RuntimeError("ToolExecutor stopped before reply."))
+        self._pending.clear()
 
     def set_tools(self, tools: Sequence[Tool]) -> None:
         self.tools = list(tools)
 
     async def submit(self, tool_call: ToolCall) -> asyncio.Task[ToolResult]:
-        response_channel: ResponseChannel[asyncio.Task[ToolResult]] = ResponseChannel()
-        await self._actor.send(_ToolCallRequest(tool_call=tool_call, response_channel=response_channel))
-        return await response_channel.wait()
+        request_id = uuid4().hex
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[asyncio.Task[ToolResult]] = loop.create_future()
+        self._pending[request_id] = future
+        await self._actor.send(_ToolCallRequest(request_id=request_id, tool_call=tool_call))
+        return await future
 
-    async def _spawn_task(self, message: "_ToolCallRequest") -> None:
-        task = asyncio.create_task(
-            self._execute_tool_call(message.tool_call),
-            name=f"{message.tool_call.function.name} ({message.tool_call.id})",
-        )
-        message.response_channel.send(task)
-        return None
+    async def _handle_message(self, message: "_ToolMessage") -> None:
+        if isinstance(message, _ToolCallRequest):
+            try:
+                task = asyncio.create_task(
+                    self._execute_tool_call(message.tool_call),
+                    name=f"{message.tool_call.function.name} ({message.tool_call.id})",
+                )
+                await self._actor.send(_ToolCallSpawned(request_id=message.request_id, task=task))
+            except BaseException as exc:
+                await self._actor.send(_ToolCallSpawned(request_id=message.request_id, task=None, error=exc))
+            return None
+        if isinstance(message, _ToolCallSpawned):
+            future = self._pending.pop(message.request_id, None)
+            if future is None:
+                raise RuntimeError(f"Unknown tool spawn response id: {message.request_id}")
+            if message.error is not None:
+                future.set_exception(message.error)
+            else:
+                if message.task is None:
+                    future.set_exception(RuntimeError("Tool spawn response missing task."))
+                else:
+                    future.set_result(message.task)
+            return None
+        raise RuntimeError(f"Unknown tool executor message: {message!r}")
 
     async def _execute_tool_call(self, tool_call: ToolCall) -> ToolResult:
         function_name = tool_call.function.name
@@ -116,3 +149,6 @@ class ToolExecutor:
             if tool.name() == function_name:
                 return await tool.execute(function_args)
         raise ValueError(f"Tool {function_name} not found in agent tools.")
+
+
+_ToolMessage = _ToolCallRequest | _ToolCallSpawned
