@@ -11,6 +11,7 @@ from uuid import uuid4
 from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.actors.common.messages import (
     CancelToolCallsRequest,
+    ConfigureToolSetRequest,
     HandleToolCallsRequest,
     HandleToolCallsResponse,
     ToolCallExecutionResult,
@@ -48,7 +49,7 @@ class ToolCallActor:
             ui=ui,
             context_name=context_name,
         )
-        self._actor: Actor[HandleToolCallsRequest | CancelToolCallsRequest] = Actor(
+        self._actor: Actor[HandleToolCallsRequest | CancelToolCallsRequest | ConfigureToolSetRequest] = Actor(
             name=f"{context_name}.tool-calls", handler=self._handle_message
         )
         self._inflight_tasks_by_request: dict[str, set[asyncio.Task[ToolResult]]] = {}
@@ -73,9 +74,6 @@ class ToolCallActor:
         await self._actor.stop()
         await self._executor.stop()
         self._started = False
-
-    def set_tools(self, tools: Sequence[Tool]) -> None:
-        self._executor.set_tools(tools)
 
     async def handle_tool_calls(
         self,
@@ -135,11 +133,18 @@ class ToolCallActor:
         )
         return await future
 
-    async def send_message(self, message: HandleToolCallsRequest | CancelToolCallsRequest) -> None:
+    async def send_message(
+        self, message: HandleToolCallsRequest | CancelToolCallsRequest | ConfigureToolSetRequest
+    ) -> None:
         self.start()
         await self._actor.send(message)
 
-    async def _handle_message(self, message: HandleToolCallsRequest | CancelToolCallsRequest) -> None:
+    async def _handle_message(
+        self, message: HandleToolCallsRequest | CancelToolCallsRequest | ConfigureToolSetRequest
+    ) -> None:
+        if isinstance(message, ConfigureToolSetRequest):
+            self._executor.set_tools(message.tools)
+            return None
         if isinstance(message, CancelToolCallsRequest):
             request_task = self._inflight_requests.pop(message.request_id, None)
             if request_task is not None:

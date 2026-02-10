@@ -58,8 +58,8 @@ async def test_system_actor_chat_loop_executes_tool_then_exits() -> None:
         context_name="test",
         progress_callbacks=callbacks,
     ) as actors:
-        await actors.agent_actor.set_history(history)
         await actors.agent_actor.run_chat_loop(
+            history=history,
             model=model,
             tools=[echo_tool],
             instructions=instructions,
@@ -69,7 +69,6 @@ async def test_system_actor_chat_loop_executes_tool_then_exits() -> None:
             user_actor=actors.user_actor,
             tool_call_actor=actors.tool_call_actor,
         )
-    history[:] = await actors.agent_actor.get_history()
 
     assert echo_tool.called_with == {"text": "hi"}
 
@@ -97,8 +96,6 @@ async def test_system_actor_agent_loop_finishes() -> None:
             compact_conversation_at_tokens=200_000,
             tool_call_actor=actors.tool_call_actor,
         )
-    state.history = await actors.agent_actor.get_agent_history(id(state))
-
     assert state.output is not None
     assert state.output.result == "ok"
 
