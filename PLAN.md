@@ -7,7 +7,7 @@
 
 ## Tracking
 - [x] Phase 1 complete
-- [ ] Phase 2 complete
+- [x] Phase 2 complete
 - [ ] Phase 3 complete
 - [ ] Phase 4 complete
 - [ ] Phase 5 complete
@@ -39,9 +39,9 @@
 - [x] Handle only domain messages from `UserActor` (text, clear, compact, image, exit)
 - [x] Keep AgentActor as state owner (history mutation and execution control)
 - [x] Define chat execution rule: run agent steps continuously while tool calls exist; emit `AgentYieldedToUser` when a step has no tool calls
-- [ ] Move chat policy helpers into `src/coding_assistant/framework/actors/agent/chat_policy.py`
-- [ ] Move `_create_chat_start_message` from `src/coding_assistant/framework/chat.py`
-- [ ] Move `handle_tool_result_chat` from `src/coding_assistant/framework/chat.py`
+- [x] Move chat policy helpers into `src/coding_assistant/framework/actors/agent/chat_policy.py`
+- [x] Move `_create_chat_start_message` from `src/coding_assistant/framework/chat.py`
+- [x] Move `handle_tool_result_chat` from `src/coding_assistant/framework/chat.py`
 - [x] Update `src/coding_assistant/framework/actors/agent/actor.py` imports
 - [x] Keep `src/coding_assistant/framework/chat.py` as compatibility facade
 - [x] Run `just lint`
