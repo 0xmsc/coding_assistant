@@ -10,7 +10,7 @@
 - [x] Phase 2 complete
 - [x] Phase 3 complete
 - [x] Phase 4 complete
-- [ ] Phase 5 complete
+- [x] Phase 5 complete
 - [ ] Phase 6 complete
 - [ ] Final cleanup complete
 
@@ -66,14 +66,14 @@
 - [x] Run `just test`
 
 ## Phase 5: User actor split from terminal UI
-- [ ] Create `src/coding_assistant/framework/actors/user/actor.py`
-- [ ] Move `ActorUI` from `src/coding_assistant/ui.py`
-- [ ] Move `UserActor` from `src/coding_assistant/ui.py`
-- [ ] Move actor message handling from `src/coding_assistant/ui.py`
-- [ ] Keep terminal UI classes in `src/coding_assistant/ui.py` (`UI`, `PromptToolkitUI`, `DefaultAnswerUI`, `NullUI`)
-- [ ] Re-export moved actor classes from `src/coding_assistant/ui.py` for compatibility
-- [ ] Run `just lint`
-- [ ] Run `just test`
+- [x] Create `src/coding_assistant/framework/actors/user/actor.py`
+- [x] Move `ActorUI` from `src/coding_assistant/ui.py`
+- [x] Move `UserActor` from `src/coding_assistant/ui.py`
+- [x] Move actor message handling from `src/coding_assistant/ui.py`
+- [x] Keep terminal UI classes in `src/coding_assistant/ui.py` (`UI`, `PromptToolkitUI`, `DefaultAnswerUI`, `NullUI`)
+- [x] Re-export moved actor classes from `src/coding_assistant/ui.py` for compatibility
+- [x] Run `just lint`
+- [x] Run `just test`
 
 ## Phase 6: Import hygiene and anti-coupling checks
 - [ ] Ensure `actors/agent` does not import `actors/llm`, `actors/tool_call`, `actors/user` directly
