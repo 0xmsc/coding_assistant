@@ -1,10 +1,9 @@
 import json5
-from dataclasses import dataclass
 from typing import Any
 import pytest
 
 import coding_assistant.trace as trace
-from coding_assistant.framework.actor_runtime import Actor, ActorStoppedError, ResponseChannel
+from coding_assistant.framework.actor_runtime import Actor, ActorStoppedError
 from coding_assistant.trace import enable_tracing
 
 
@@ -21,26 +20,6 @@ async def test_actor_send_processes_messages() -> None:
     await actor.stop()
 
     assert seen == ["hello"]
-
-
-@pytest.mark.asyncio
-async def test_actor_send_with_response_channel() -> None:
-    @dataclass(slots=True)
-    class Request:
-        message: str
-        response_channel: ResponseChannel[str]
-
-    async def handler(message: Request) -> None:
-        message.response_channel.send(f"ok:{message.message}")
-
-    actor = Actor[Request](name="test", handler=handler)
-    actor.start()
-    response_channel: ResponseChannel[str] = ResponseChannel()
-    await actor.send(Request(message="ping", response_channel=response_channel))
-    result = await response_channel.wait()
-    await actor.stop()
-
-    assert result == "ok:ping"
 
 
 @pytest.mark.asyncio

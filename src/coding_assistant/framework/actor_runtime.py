@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from time import monotonic
 from typing import Any, Awaitable, Callable, Generic, TypeVar
 
@@ -11,30 +11,6 @@ from coding_assistant.trace import trace_enabled, trace_json
 logger = logging.getLogger(__name__)
 
 MessageT = TypeVar("MessageT")
-ResponseT = TypeVar("ResponseT")
-
-
-@dataclass(slots=True)
-class ResponseChannel(Generic[ResponseT]):
-    queue: asyncio.Queue[ResponseT | BaseException] = field(default_factory=asyncio.Queue)
-
-    async def wait(self) -> ResponseT:
-        item = await self.queue.get()
-        if isinstance(item, BaseException):
-            raise item
-        return item
-
-    def send(self, message: ResponseT) -> None:
-        self.queue.put_nowait(message)
-
-    def send_error(self, exc: BaseException) -> None:
-        self.queue.put_nowait(exc)
-
-
-def _maybe_send_error(message: MessageT, exc: BaseException) -> None:
-    response_channel = getattr(message, "response_channel", None)
-    if isinstance(response_channel, ResponseChannel):
-        response_channel.send_error(exc)
 
 
 class ActorStoppedError(RuntimeError):
@@ -121,7 +97,6 @@ class Actor(Generic[MessageT]):
                         "error": repr(exc),
                     },
                 )
-                _maybe_send_error(envelope.message, exc)
                 logger.exception("Actor %s handler error", self._name)
                 continue
             except BaseException as exc:
@@ -137,7 +112,6 @@ class Actor(Generic[MessageT]):
                         "error": repr(exc),
                     },
                 )
-                _maybe_send_error(envelope.message, exc)
                 if isinstance(exc, asyncio.CancelledError):
                     raise
                 break
