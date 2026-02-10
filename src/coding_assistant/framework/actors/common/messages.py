@@ -5,10 +5,11 @@ from dataclasses import dataclass
 from typing import TypeAlias
 
 from coding_assistant.framework.actors.common.contracts import MessageSink
-from coding_assistant.framework.types import AgentContext
+from coding_assistant.framework.types import AgentContext, Completer
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
+    ProgressCallbacks,
     Tool,
     ToolResult,
     Usage,
@@ -22,6 +23,12 @@ class LLMCompleteStepRequest:
     model: str
     tools: Sequence[Tool]
     reply_to: MessageSink["LLMCompleteStepResponse"]
+
+
+@dataclass(slots=True)
+class ConfigureLLMRuntimeRequest:
+    completer: "Completer"
+    progress_callbacks: "ProgressCallbacks"
 
 
 @dataclass(slots=True)

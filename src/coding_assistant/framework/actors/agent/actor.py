@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import cast
 from uuid import uuid4
 
 from coding_assistant.framework.actor_runtime import Actor
@@ -17,6 +17,7 @@ from coding_assistant.framework.actors.common.messages import (
     ChatPromptInput,
     ClearHistoryRequested,
     CompactionRequested,
+    ConfigureLLMRuntimeRequest,
     ConfigureToolSetRequest,
     HandleToolCallsRequest,
     HandleToolCallsResponse,
@@ -107,7 +108,12 @@ def _create_start_message(*, desc: AgentDescription) -> str:
 
 
 class AgentActor:
-    def __init__(self, *, llm_gateway: MessageSink[LLMCompleteStepRequest], context_name: str = "agent") -> None:
+    def __init__(
+        self,
+        *,
+        llm_gateway: MessageSink[LLMCompleteStepRequest | ConfigureLLMRuntimeRequest],
+        context_name: str = "agent",
+    ) -> None:
         self._actor: Actor[_AgentMessage] = Actor(name=f"{context_name}.agent-loop", handler=self._handle_message)
         self._llm_gateway = llm_gateway
         self._started = False
@@ -407,9 +413,9 @@ class AgentActor:
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[tuple[AssistantMessage, Usage | None]] = loop.create_future()
         self._pending_llm[request_id] = fut
-        llm_runtime_gateway = cast(Any, self._llm_gateway)
-        if hasattr(llm_runtime_gateway, "set_runtime"):
-            llm_runtime_gateway.set_runtime(completer=completer, progress_callbacks=progress_callbacks)
+        await self._llm_gateway.send_message(
+            ConfigureLLMRuntimeRequest(completer=completer, progress_callbacks=progress_callbacks)
+        )
         await self._llm_gateway.send_message(
             LLMCompleteStepRequest(
                 request_id=request_id,
