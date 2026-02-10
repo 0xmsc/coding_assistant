@@ -4,7 +4,7 @@ from typing import Any, AsyncIterator, Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
 
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
-from coding_assistant.framework.execution import AgentActor, ToolCallActor
+from coding_assistant.framework.execution import AgentActor, LLMActor, ToolCallActor
 from coding_assistant.framework.parameters import Parameter
 from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext
 from coding_assistant.llm.types import (
@@ -139,12 +139,15 @@ def make_test_context(
 
 @asynccontextmanager
 async def agent_actor_scope(*, context_name: str = "test") -> AsyncIterator[AgentActor]:
-    actor = AgentActor(context_name=context_name)
+    llm_actor = LLMActor(context_name=context_name)
+    actor = AgentActor(context_name=context_name, llm_gateway=llm_actor)
+    llm_actor.start()
     actor.start()
     try:
         yield actor
     finally:
         await actor.stop()
+        await llm_actor.stop()
 
 
 @asynccontextmanager
@@ -195,10 +198,12 @@ async def system_actor_scope_for_tests(
         progress_callbacks=progress_callbacks or NullProgressCallbacks(),
         tool_callbacks=tool_callbacks or NullToolCallbacks(),
     )
-    agent_actor = AgentActor(context_name=context_name)
+    llm_actor = LLMActor(context_name=context_name)
+    agent_actor = AgentActor(context_name=context_name, llm_gateway=llm_actor)
 
     if owns_user_actor and isinstance(user_actor, ActorUI):
         user_actor.start()
+    llm_actor.start()
     tool_call_actor.start()
     agent_actor.start()
     try:
@@ -210,5 +215,6 @@ async def system_actor_scope_for_tests(
     finally:
         await tool_call_actor.stop()
         await agent_actor.stop()
+        await llm_actor.stop()
         if owns_user_actor and isinstance(user_actor, ActorUI):
             await user_actor.stop()

@@ -7,7 +7,7 @@ from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
 from coding_assistant.framework.chat import run_chat_loop
-from coding_assistant.framework.execution import AgentActor, ToolCallActor
+from coding_assistant.framework.execution import AgentActor, LLMActor, ToolCallActor
 from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.history_manager import history_manager_scope
 from coding_assistant.instructions import get_instructions
@@ -59,6 +59,7 @@ class Session:
         self._mcp_manager: Optional[MCPServerManager] = None
         self._mcp_servers: Optional[list[Any]] = None
         self._agent_actor: AgentActor | None = None
+        self._llm_actor: LLMActor | None = None
         self._tool_call_actor: ToolCallActor | None = None
         self._user_actor: UI | None = None
 
@@ -140,12 +141,15 @@ class Session:
             progress_callbacks=self.callbacks,
             tool_callbacks=self.tool_callbacks,
         )
-        agent_actor = AgentActor(context_name="Orchestrator")
+        llm_actor = LLMActor(context_name="Orchestrator")
+        agent_actor = AgentActor(context_name="Orchestrator", llm_gateway=llm_actor)
         self._agent_actor = agent_actor
+        self._llm_actor = llm_actor
         self._tool_call_actor = tool_call_actor
         self._user_actor = user_actor
         if isinstance(user_actor, UserActor):
             user_actor.start()
+        self._llm_actor.start()
         self._tool_call_actor.start()
         self._agent_actor.start()
 
@@ -161,6 +165,9 @@ class Session:
         if self._agent_actor:
             await self._agent_actor.stop()
             self._agent_actor = None
+        if self._llm_actor:
+            await self._llm_actor.stop()
+            self._llm_actor = None
         if self._user_actor and isinstance(self._user_actor, UserActor):
             await self._user_actor.stop()
         self._user_actor = None
