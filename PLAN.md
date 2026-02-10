@@ -9,7 +9,7 @@
 - [x] Phase 1 complete
 - [x] Phase 2 complete
 - [x] Phase 3 complete
-- [ ] Phase 4 complete
+- [x] Phase 4 complete
 - [ ] Phase 5 complete
 - [ ] Phase 6 complete
 - [ ] Final cleanup complete
@@ -58,12 +58,12 @@
 - [x] Run `just test`
 
 ## Phase 4: Tool-call executor colocation
-- [ ] Create `src/coding_assistant/framework/actors/tool_call/executor.py`
-- [ ] Move `ToolExecutor` from `src/coding_assistant/framework/tool_executor.py`
-- [ ] Update `src/coding_assistant/framework/actors/tool_call/actor.py` imports
-- [ ] Keep `src/coding_assistant/framework/tool_executor.py` as compatibility facade
-- [ ] Run `just lint`
-- [ ] Run `just test`
+- [x] Create `src/coding_assistant/framework/actors/tool_call/executor.py`
+- [x] Move `ToolExecutor` from `src/coding_assistant/framework/tool_executor.py`
+- [x] Update `src/coding_assistant/framework/actors/tool_call/actor.py` imports
+- [x] Keep `src/coding_assistant/framework/tool_executor.py` as compatibility facade
+- [x] Run `just lint`
+- [x] Run `just test`
 
 ## Phase 5: User actor split from terminal UI
 - [ ] Create `src/coding_assistant/framework/actors/user/actor.py`

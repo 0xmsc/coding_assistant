@@ -13,7 +13,7 @@ from coding_assistant.framework.actors.common.messages import HandleToolCallsReq
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.framework.history import append_tool_message
 from coding_assistant.framework.results import TextResult
-from coding_assistant.framework.tool_executor import ToolExecutor
+from coding_assistant.framework.actors.tool_call.executor import ToolExecutor
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
