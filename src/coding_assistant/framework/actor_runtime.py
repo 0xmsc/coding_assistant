@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
+from typing import Mapping
 from time import monotonic
 from typing import Any, Awaitable, Callable, Generic, TypeVar
 
@@ -25,6 +26,39 @@ class _Stop:
 class _Envelope(Generic[MessageT]):
     message: MessageT | _Stop
     enqueued_at: float
+
+
+_TRACE_REPR_MAX_CHARS = 2000
+
+
+def _truncate_text(text: str, *, max_chars: int = _TRACE_REPR_MAX_CHARS) -> str:
+    if len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars]}...<truncated>"
+
+
+def _serialize_dataclass_trace_value(value: object) -> Any:
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    if is_dataclass(value):
+        return {field.name: _serialize_dataclass_trace_value(getattr(value, field.name)) for field in fields(value)}
+    if isinstance(value, Mapping):
+        return {str(key): _serialize_dataclass_trace_value(item) for key, item in value.items()}
+    if isinstance(value, list | tuple | set | frozenset):
+        return [_serialize_dataclass_trace_value(item) for item in value]
+    return _truncate_text(repr(value))
+
+
+def _serialize_trace_message(message: object) -> Any | None:
+    if not is_dataclass(message):
+        return None
+    try:
+        return _serialize_dataclass_trace_value(message)
+    except BaseException as exc:
+        return {
+            "serialization_error": _truncate_text(repr(exc)),
+            "repr": _truncate_text(repr(message)),
+        }
 
 
 def _trace_actor_event(event: str, *, actor_name: str, data: dict[str, Any] | None = None) -> None:
@@ -69,6 +103,7 @@ class Actor(Generic[MessageT]):
             envelope = await self._queue.get()
             if isinstance(envelope.message, _Stop):
                 break
+            serialized_message = _serialize_trace_message(envelope.message)
             queue_wait_ms = (monotonic() - envelope.enqueued_at) * 1000
             handler_start = monotonic()
             try:
@@ -79,6 +114,7 @@ class Actor(Generic[MessageT]):
                     actor_name=self._name,
                     data={
                         "message_type": type(envelope.message).__name__,
+                        "message": serialized_message,
                         "queue_wait_ms": queue_wait_ms,
                         "handler_ms": handler_ms,
                         "status": "ok",
@@ -91,6 +127,7 @@ class Actor(Generic[MessageT]):
                     actor_name=self._name,
                     data={
                         "message_type": type(envelope.message).__name__,
+                        "message": serialized_message,
                         "queue_wait_ms": queue_wait_ms,
                         "handler_ms": handler_ms,
                         "status": "error",
@@ -106,6 +143,7 @@ class Actor(Generic[MessageT]):
                     actor_name=self._name,
                     data={
                         "message_type": type(envelope.message).__name__,
+                        "message": serialized_message,
                         "queue_wait_ms": queue_wait_ms,
                         "handler_ms": handler_ms,
                         "status": "fatal",

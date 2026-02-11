@@ -1,4 +1,5 @@
 import json5
+from dataclasses import dataclass
 from typing import Any
 import pytest
 
@@ -59,7 +60,39 @@ async def test_actor_traces_lifecycle_and_latency(tmp_path: Any) -> None:
     message_event = next(event for event in events if event["event"] == "actor.message")
     assert message_event["actor"] == "trace"
     assert message_event["message_type"] == "str"
+    assert message_event["message"] is None
     assert message_event["queue_wait_ms"] >= 0
     assert message_event["handler_ms"] >= 0
+
+    trace._trace_dir = None
+
+
+@dataclass(slots=True)
+class _MessageWithNonSerializableField:
+    text: str
+    callback: object
+
+
+@pytest.mark.asyncio
+async def test_actor_trace_serializes_dataclass_messages(tmp_path: Any) -> None:
+    trace._trace_dir = None
+    trace_dir = tmp_path / "traces"
+    enable_tracing(trace_dir)
+
+    async def handler(message: _MessageWithNonSerializableField) -> None:
+        return None
+
+    actor = Actor[_MessageWithNonSerializableField](name="trace", handler=handler)
+    actor.start()
+    await actor.send(_MessageWithNonSerializableField(text="hello", callback=lambda: None))
+    await actor.stop()
+
+    files = list(trace_dir.glob("*_actor_event.json5"))
+    assert files, "Expected actor trace events to be written"
+
+    events = [json5.loads(path.read_text()) for path in files]
+    message_event = next(event for event in events if event["event"] == "actor.message")
+    assert message_event["message"]["text"] == "hello"
+    assert isinstance(message_event["message"]["callback"], str)
 
     trace._trace_dir = None
