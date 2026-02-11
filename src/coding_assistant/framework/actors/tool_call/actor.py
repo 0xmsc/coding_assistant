@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from json import JSONDecodeError
 from typing import Any
 
+from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.actors.common.messages import (
     CancelToolCallsRequest,
@@ -33,6 +34,7 @@ class ToolCallActor:
         tools: Sequence[Tool],
         ui: UI,
         context_name: str,
+        actor_directory: ActorDirectory | None = None,
         progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
         tool_callbacks: ToolCallbacks = NullToolCallbacks(),
     ) -> None:
@@ -46,6 +48,7 @@ class ToolCallActor:
         self._actor: Actor[HandleToolCallsRequest | CancelToolCallsRequest] = Actor(
             name=f"{context_name}.tool-calls", handler=self._handle_message
         )
+        self._actor_directory = actor_directory
         self._inflight_tasks_by_request: dict[str, set[asyncio.Task[ToolResult]]] = {}
         self._inflight_requests: dict[str, asyncio.Task[None]] = {}
         self._started = False
@@ -82,12 +85,13 @@ class ToolCallActor:
                 task.cancel()
             return None
         if message.request_id in self._inflight_requests:
-            await message.reply_to.send_message(
+            await self._send_response(
+                message,
                 HandleToolCallsResponse(
                     request_id=message.request_id,
                     results=[],
                     error=RuntimeError(f"Duplicate tool-call request id: {message.request_id}"),
-                )
+                ),
             )
             return None
 
@@ -98,16 +102,17 @@ class ToolCallActor:
                     message.message,
                     tools=message.tools,
                 )
-                await message.reply_to.send_message(
-                    HandleToolCallsResponse(request_id=message.request_id, results=results, cancelled=cancelled)
+                await self._send_response(
+                    message,
+                    HandleToolCallsResponse(request_id=message.request_id, results=results, cancelled=cancelled),
                 )
             except asyncio.CancelledError:
-                await message.reply_to.send_message(
-                    HandleToolCallsResponse(request_id=message.request_id, results=[], cancelled=True)
+                await self._send_response(
+                    message, HandleToolCallsResponse(request_id=message.request_id, results=[], cancelled=True)
                 )
             except BaseException as exc:
-                await message.reply_to.send_message(
-                    HandleToolCallsResponse(request_id=message.request_id, results=[], error=exc)
+                await self._send_response(
+                    message, HandleToolCallsResponse(request_id=message.request_id, results=[], error=exc)
                 )
             finally:
                 self._inflight_requests.pop(message.request_id, None)
@@ -172,3 +177,13 @@ class ToolCallActor:
             self._inflight_tasks_by_request.pop(request_id, None)
 
         return execution_results, any_cancelled
+
+    async def _send_response(self, request: HandleToolCallsRequest, response: HandleToolCallsResponse) -> None:
+        if request.reply_to_uri is not None:
+            if self._actor_directory is None:
+                raise RuntimeError("ToolCallActor cannot send by URI without actor directory.")
+            await self._actor_directory.send_message(uri=request.reply_to_uri, message=response)
+            return
+        if request.reply_to is None:
+            raise RuntimeError("HandleToolCallsRequest is missing reply target.")
+        await request.reply_to.send_message(response)

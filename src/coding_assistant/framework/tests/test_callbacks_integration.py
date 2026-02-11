@@ -52,8 +52,8 @@ async def test_agent_loop_runs_successfully() -> None:
             completer=completer,
             ui=actors.user_actor,
             agent_actor=actors.agent_actor,
-            tool_call_actor=actors.tool_call_actor,
-            user_actor=actors.user_actor,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
+            user_actor_uri=actors.user_actor_uri,
         )
 
     assert state.output is not None
@@ -82,8 +82,8 @@ async def test_on_tool_message_called_with_arguments_and_result() -> None:
             completer=completer,
             ui=actors.user_actor,
             agent_actor=actors.agent_actor,
-            tool_call_actor=actors.tool_call_actor,
-            user_actor=actors.user_actor,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
+            user_actor_uri=actors.user_actor_uri,
         )
 
     found = False

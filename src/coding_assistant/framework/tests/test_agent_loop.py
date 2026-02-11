@@ -64,8 +64,8 @@ async def _run_agent_with_actors(
             ui=actors.user_actor,
             progress_callbacks=callbacks,
             agent_actor=actors.agent_actor,
-            tool_call_actor=actors.tool_call_actor,
-            user_actor=actors.user_actor,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
+            user_actor_uri=actors.user_actor_uri,
         )
 
 

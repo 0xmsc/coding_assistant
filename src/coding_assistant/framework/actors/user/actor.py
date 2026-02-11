@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import AsyncIterator, Callable, Generic, TypeVar
 from uuid import uuid4
 
+from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.actors.common.messages import (
     AgentYieldedToUser,
@@ -68,9 +69,10 @@ class _LocalReplySink(Generic[ResponseT]):
 
 
 class ActorUI(UI):
-    def __init__(self, ui: UI, *, context_name: str = "ui") -> None:
+    def __init__(self, ui: UI, *, context_name: str = "ui", actor_directory: ActorDirectory | None = None) -> None:
         self._ui = ui
         self._actor: Actor[_UIMessage] = Actor(name=f"{context_name}.ui", handler=self._handle_message)
+        self._actor_directory = actor_directory
         self._started = False
 
     def start(self) -> None:
@@ -167,10 +169,26 @@ class ActorUI(UI):
             try:
                 prompt_response = await self._ui.prompt(message.words)
                 prompt_input = _parse_chat_prompt_input(prompt_response)
-                await message.reply_to.send_message(prompt_input)
+                if message.reply_to_uri is not None:
+                    if self._actor_directory is None:
+                        raise RuntimeError("UserActor cannot send by URI without actor directory.")
+                    await self._actor_directory.send_message(uri=message.reply_to_uri, message=prompt_input)
+                elif message.reply_to is not None:
+                    await message.reply_to.send_message(prompt_input)
+                else:
+                    raise RuntimeError("AgentYieldedToUser is missing reply target.")
             except BaseException as exc:
                 logger.exception("Failed to handle AgentYieldedToUser message: %s", exc)
-                await message.reply_to.send_message(UserInputFailed(error=exc))
+                if message.reply_to_uri is not None:
+                    if self._actor_directory is None:
+                        raise RuntimeError("UserActor cannot send by URI without actor directory.")
+                    await self._actor_directory.send_message(
+                        uri=message.reply_to_uri, message=UserInputFailed(error=exc)
+                    )
+                elif message.reply_to is not None:
+                    await message.reply_to.send_message(UserInputFailed(error=exc))
+                else:
+                    raise RuntimeError("AgentYieldedToUser is missing reply target.")
             return None
         if isinstance(message, AskRequest):
             try:
@@ -206,8 +224,8 @@ class ActorUI(UI):
 
 
 class UserActor(ActorUI):
-    def __init__(self, ui: UI, *, context_name: str = "user") -> None:
-        super().__init__(ui, context_name=context_name)
+    def __init__(self, ui: UI, *, context_name: str = "user", actor_directory: ActorDirectory | None = None) -> None:
+        super().__init__(ui, context_name=context_name, actor_directory=actor_directory)
 
 
 @asynccontextmanager

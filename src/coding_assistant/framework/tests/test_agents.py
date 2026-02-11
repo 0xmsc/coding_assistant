@@ -30,8 +30,8 @@ async def test_orchestrator_tool() -> None:
             history=None,
             ui=ui,
             agent_actor=actors.agent_actor,
-            tool_call_actor=actors.tool_call_actor,
-            user_actor=actors.user_actor,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
+            user_actor_uri=actors.user_actor_uri,
         )
         result = await tool.execute(parameters={"task": "Say 'Hello, World!'"})
     assert result.content == "Hello, World!"
@@ -52,8 +52,8 @@ async def test_orchestrator_tool_resume() -> None:
             history=None,
             ui=ui,
             agent_actor=actors.agent_actor,
-            tool_call_actor=actors.tool_call_actor,
-            user_actor=actors.user_actor,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
+            user_actor_uri=actors.user_actor_uri,
         )
 
         result = await first.execute(parameters={"task": "Say 'Hello, World!'"})
@@ -68,8 +68,8 @@ async def test_orchestrator_tool_resume() -> None:
             history=first.history,
             ui=ui,
             agent_actor=actors.agent_actor,
-            tool_call_actor=actors.tool_call_actor,
-            user_actor=actors.user_actor,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
+            user_actor_uri=actors.user_actor_uri,
         )
         result = await second.execute(
             parameters={"task": "Re-do your previous task, just translate your output to German."}
@@ -92,8 +92,8 @@ async def test_orchestrator_tool_instructions() -> None:
             history=None,
             ui=ui,
             agent_actor=actors.agent_actor,
-            tool_call_actor=actors.tool_call_actor,
-            user_actor=actors.user_actor,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
+            user_actor_uri=actors.user_actor_uri,
         )
         result = await tool.execute(
             parameters={

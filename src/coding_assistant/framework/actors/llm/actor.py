@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.actors.common.messages import (
     LLMCompleteStepRequest,
@@ -8,8 +9,9 @@ from coding_assistant.framework.actors.common.messages import (
 
 
 class LLMActor:
-    def __init__(self, *, context_name: str = "llm") -> None:
+    def __init__(self, *, context_name: str = "llm", actor_directory: ActorDirectory | None = None) -> None:
         self._actor: Actor[LLMCompleteStepRequest] = Actor(name=f"{context_name}.llm", handler=self._handle_message)
+        self._actor_directory = actor_directory
         self._started = False
 
     def start(self) -> None:
@@ -38,20 +40,27 @@ class LLMActor:
                 tools=message.tools,
                 callbacks=message.progress_callbacks,
             )
-            await message.reply_to.send_message(
+            await self._send_response(
+                message,
                 LLMCompleteStepResponse(
                     request_id=message.request_id,
                     message=completion.message,
                     usage=completion.usage,
-                )
+                ),
             )
         except BaseException as exc:
-            await message.reply_to.send_message(
-                LLMCompleteStepResponse(
-                    request_id=message.request_id,
-                    message=None,
-                    usage=None,
-                    error=exc,
-                )
+            await self._send_response(
+                message,
+                LLMCompleteStepResponse(request_id=message.request_id, message=None, usage=None, error=exc),
             )
         return None
+
+    async def _send_response(self, request: LLMCompleteStepRequest, response: LLMCompleteStepResponse) -> None:
+        if request.reply_to_uri is not None:
+            if self._actor_directory is None:
+                raise RuntimeError("LLMActor cannot send by URI without actor directory.")
+            await self._actor_directory.send_message(uri=request.reply_to_uri, message=response)
+            return
+        if request.reply_to is None:
+            raise RuntimeError("LLMCompleteStepRequest is missing reply target.")
+        await request.reply_to.send_message(response)

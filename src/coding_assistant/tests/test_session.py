@@ -100,7 +100,9 @@ async def test_session_run_chat(session_args: dict[str, Any]) -> None:
     session.instructions = "test instructions"
     session._agent_actor = MagicMock()
     session._tool_call_actor = MagicMock()
+    session._tool_call_actor_uri = "actor://test/tool-call"
     session._user_actor = MagicMock(spec=UI)
+    session._user_actor_uri = "actor://test/user"
 
     with (
         patch("coding_assistant.session.run_chat_loop", new_callable=AsyncMock) as mock_chat_loop,
@@ -131,7 +133,9 @@ async def test_session_run_agent(session_args: dict[str, Any]) -> None:
     session.instructions = "test instructions"
     session._agent_actor = MagicMock()
     session._tool_call_actor = MagicMock()
+    session._tool_call_actor_uri = "actor://test/tool-call"
     session._user_actor = MagicMock(spec=UI)
+    session._user_actor_uri = "actor://test/user"
 
     with (
         patch("coding_assistant.session.AgentTool") as mock_agent_tool_class,

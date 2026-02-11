@@ -1,4 +1,0 @@
-- [x] Make LLM execution config request-scoped (no global runtime mutation race)
-- [x] Make tool set request-scoped for tool-call handling (no cross-run clobber)
-- [x] Update tests to cover concurrent behavior expectations
-- [x] Run just lint and just test
