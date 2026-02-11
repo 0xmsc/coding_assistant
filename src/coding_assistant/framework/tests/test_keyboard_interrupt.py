@@ -27,7 +27,7 @@ async def test_run_chat_loop_raises_keyboard_interrupt_at_prompt() -> None:
 
     with pytest.raises(KeyboardInterrupt):
         async with system_actor_scope_for_tests(tools=tools_with_meta, ui=ui, context_name="test") as actors:
-            await actors.agent_actor.run_chat_loop(
+            await actors.chat_actor.run_chat_loop(
                 history=history,
                 model=model,
                 tools=tools_with_meta,

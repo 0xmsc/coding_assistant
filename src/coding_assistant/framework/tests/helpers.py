@@ -15,6 +15,7 @@ from coding_assistant.framework.actors.common.messages import (
     ToolCallExecutionResult,
 )
 from coding_assistant.framework.actors.agent.actor import AgentActor
+from coding_assistant.framework.actors.chat.actor import ChatActor
 from coding_assistant.framework.actors.llm.actor import LLMActor
 from coding_assistant.framework.actors.tool_call.actor import ToolCallActor
 from coding_assistant.framework.parameters import Parameter
@@ -258,10 +259,12 @@ async def tool_call_actor_scope(
 @dataclass(slots=True)
 class ActorBundle:
     agent_actor: AgentActor
+    chat_actor: ChatActor
     tool_call_actor: ToolCallActor
     user_actor: UI
     actor_directory: ActorDirectory
     agent_actor_uri: str
+    chat_actor_uri: str
     llm_actor_uri: str
     tool_call_actor_uri: str
     user_actor_uri: str
@@ -278,6 +281,7 @@ async def system_actor_scope_for_tests(
 ) -> AsyncIterator[ActorBundle]:
     actor_directory = ActorDirectory()
     agent_actor_uri = f"actor://{context_name}/agent"
+    chat_actor_uri = f"actor://{context_name}/chat"
     llm_actor_uri = f"actor://{context_name}/llm"
     tool_call_actor_uri = f"actor://{context_name}/tool-call"
     user_actor_uri = f"actor://{context_name}/user"
@@ -295,6 +299,12 @@ async def system_actor_scope_for_tests(
         tool_callbacks=tool_callbacks or NullToolCallbacks(),
     )
     llm_actor = LLMActor(context_name=context_name, actor_directory=actor_directory)
+    chat_actor = ChatActor(
+        context_name=context_name,
+        actor_directory=actor_directory,
+        self_uri=chat_actor_uri,
+        llm_actor_uri=llm_actor_uri,
+    )
     agent_actor = AgentActor(
         context_name=context_name,
         actor_directory=actor_directory,
@@ -302,6 +312,7 @@ async def system_actor_scope_for_tests(
         llm_actor_uri=llm_actor_uri,
     )
     actor_directory.register(uri=agent_actor_uri, actor=agent_actor)
+    actor_directory.register(uri=chat_actor_uri, actor=chat_actor)
     actor_directory.register(uri=llm_actor_uri, actor=llm_actor)
     actor_directory.register(uri=tool_call_actor_uri, actor=tool_call_actor)
     actor_directory.register(uri=user_actor_uri, actor=user_actor)
@@ -311,24 +322,29 @@ async def system_actor_scope_for_tests(
     llm_actor.start()
     tool_call_actor.start()
     agent_actor.start()
+    chat_actor.start()
     try:
         yield ActorBundle(
             agent_actor=agent_actor,
+            chat_actor=chat_actor,
             tool_call_actor=tool_call_actor,
             user_actor=user_actor,
             actor_directory=actor_directory,
             agent_actor_uri=agent_actor_uri,
+            chat_actor_uri=chat_actor_uri,
             llm_actor_uri=llm_actor_uri,
             tool_call_actor_uri=tool_call_actor_uri,
             user_actor_uri=user_actor_uri,
         )
     finally:
+        await chat_actor.stop()
         await tool_call_actor.stop()
         await agent_actor.stop()
         await llm_actor.stop()
         if owns_user_actor and isinstance(user_actor, ActorUI):
             await user_actor.stop()
         actor_directory.unregister(uri=agent_actor_uri)
+        actor_directory.unregister(uri=chat_actor_uri)
         actor_directory.unregister(uri=llm_actor_uri)
         actor_directory.unregister(uri=tool_call_actor_uri)
         actor_directory.unregister(uri=user_actor_uri)
