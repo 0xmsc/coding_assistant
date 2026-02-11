@@ -25,6 +25,7 @@ For non-trivial changes:
 - **Focus on WHY**: Document intent, not mechanics.
 - **Edge Cases**: Consider and test error scenarios.
 - **Existing Style**: Match existing patterns and formatting.
+- **No Abbreviations**: Use full words in identifiers. E.g., `Message` not `Msg`, `Number` not `Num`, `FileDescriptorSet` not `Fds`.
 
 ## Language-Specific References
 When working with specific languages, consult the following references:
