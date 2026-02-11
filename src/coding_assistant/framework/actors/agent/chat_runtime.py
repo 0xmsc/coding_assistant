@@ -9,10 +9,9 @@ from coding_assistant.llm.types import (
     ProgressCallbacks,
     Tool,
 )
-from coding_assistant.ui import UI
 
 if TYPE_CHECKING:
-    from coding_assistant.framework.execution import AgentActor, ToolCallActor
+    from coding_assistant.framework.execution import AgentActor
 
 
 async def run_chat_loop(
@@ -24,11 +23,11 @@ async def run_chat_loop(
     callbacks: ProgressCallbacks = NullProgressCallbacks(),
     tool_callbacks: ToolCallbacks = NullToolCallbacks(),  # Kept for API compatibility.
     completer: Completer,
-    ui: UI,  # Kept for API compatibility.
+    ui: object,  # Kept for API compatibility.
     context_name: str,
     agent_actor: "AgentActor",
-    tool_call_actor: "ToolCallActor",
-    user_actor: UI,
+    tool_call_actor_uri: str,
+    user_actor_uri: str,
 ) -> None:
     tools_with_meta = list(tools)
     if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
@@ -42,6 +41,6 @@ async def run_chat_loop(
         callbacks=callbacks,
         completer=completer,
         context_name=context_name,
-        user_actor=user_actor,
-        tool_call_actor=tool_call_actor,
+        user_actor_uri=user_actor_uri,
+        tool_call_actor_uri=tool_call_actor_uri,
     )

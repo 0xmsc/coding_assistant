@@ -24,7 +24,8 @@ class LLMCompleteStepRequest:
     tools: Sequence[Tool]
     completer: "Completer"
     progress_callbacks: "ProgressCallbacks"
-    reply_to: MessageSink["LLMCompleteStepResponse"]
+    reply_to: MessageSink["LLMCompleteStepResponse"] | None = None
+    reply_to_uri: str | None = None
 
 
 @dataclass(slots=True)
@@ -67,7 +68,8 @@ class RunFailed:
 class HandleToolCallsRequest:
     request_id: str
     message: AssistantMessage
-    reply_to: MessageSink["HandleToolCallsResponse"]
+    reply_to: MessageSink["HandleToolCallsResponse"] | None = None
+    reply_to_uri: str | None = None
     tools: tuple[Tool, ...] | None = None
 
 
@@ -172,7 +174,8 @@ ChatPromptInput: TypeAlias = (
 class AgentYieldedToUser:
     request_id: str
     words: list[str] | None
-    reply_to: MessageSink[ChatPromptInput]
+    reply_to: MessageSink[ChatPromptInput] | None = None
+    reply_to_uri: str | None = None
 
 
 @dataclass(slots=True)

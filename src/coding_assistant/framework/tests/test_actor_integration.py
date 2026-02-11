@@ -66,8 +66,8 @@ async def test_system_actor_chat_loop_executes_tool_then_exits() -> None:
             callbacks=callbacks,
             completer=completer,
             context_name="test",
-            user_actor=actors.user_actor,
-            tool_call_actor=actors.tool_call_actor,
+            user_actor_uri=actors.user_actor_uri,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
         )
 
     assert echo_tool.called_with == {"text": "hi"}
@@ -94,7 +94,7 @@ async def test_system_actor_agent_loop_finishes() -> None:
             progress_callbacks=callbacks,
             completer=completer,
             compact_conversation_at_tokens=200_000,
-            tool_call_actor=actors.tool_call_actor,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
         )
     assert state.output is not None
     assert state.output.result == "ok"
@@ -110,6 +110,6 @@ def test_agent_tool_requires_actor_dependencies() -> None:
             tools=[],
             ui=NullUI(),
             agent_actor=None,  # type: ignore[arg-type]
-            tool_call_actor=None,  # type: ignore[arg-type]
-            user_actor=None,  # type: ignore[arg-type]
+            tool_call_actor_uri=None,  # type: ignore[arg-type]
+            user_actor_uri=None,
         )

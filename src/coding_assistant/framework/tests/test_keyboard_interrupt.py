@@ -36,8 +36,8 @@ async def test_run_chat_loop_raises_keyboard_interrupt_at_prompt() -> None:
                 ui=actors.user_actor,
                 context_name="test",
                 agent_actor=actors.agent_actor,
-                tool_call_actor=actors.tool_call_actor,
-                user_actor=actors.user_actor,
+                tool_call_actor_uri=actors.tool_call_actor_uri,
+                user_actor_uri=actors.user_actor_uri,
             )
 
     # Verify prompt was called

@@ -72,8 +72,8 @@ async def _run_chat_with_actors(
             callbacks=callbacks or NullProgressCallbacks(),
             ui=actors.user_actor,
             agent_actor=actors.agent_actor,
-            tool_call_actor=actors.tool_call_actor,
-            user_actor=actors.user_actor,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
+            user_actor_uri=actors.user_actor_uri,
         )
 
 

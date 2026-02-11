@@ -174,8 +174,8 @@ async def test_auto_inject_builtin_tools() -> None:
             ui=actors.user_actor,
             compact_conversation_at_tokens=1000,
             agent_actor=actors.agent_actor,
-            tool_call_actor=actors.tool_call_actor,
-            user_actor=actors.user_actor,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
+            user_actor_uri=actors.user_actor_uri,
         )
 
     assert state.output is not None

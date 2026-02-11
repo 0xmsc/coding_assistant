@@ -4,7 +4,7 @@ from coding_assistant.framework.builtin_tools import (
 )
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
-from coding_assistant.framework.execution import AgentActor, ToolCallActor
+from coding_assistant.framework.execution import AgentActor
 from coding_assistant.framework.types import AgentContext, AgentDescription, AgentState, Completer
 from coding_assistant.framework.results import CompactConversationResult, FinishTaskResult
 from coding_assistant.llm.types import ToolResult
@@ -46,8 +46,8 @@ async def run_agent_loop(
     ui: UI,  # Kept for API compatibility.
     compact_conversation_at_tokens: int = 200_000,
     agent_actor: AgentActor,
-    tool_call_actor: ToolCallActor,
-    user_actor: UI,
+    tool_call_actor_uri: str,
+    user_actor_uri: str | None = None,  # Kept for API compatibility.
 ) -> None:
     tools_with_meta = list(ctx.desc.tools)
     if not any(tool.name() == "finish_task" for tool in tools_with_meta):
@@ -61,5 +61,5 @@ async def run_agent_loop(
         progress_callbacks=progress_callbacks,
         completer=completer,
         compact_conversation_at_tokens=compact_conversation_at_tokens,
-        tool_call_actor=tool_call_actor,
+        tool_call_actor_uri=tool_call_actor_uri,
     )

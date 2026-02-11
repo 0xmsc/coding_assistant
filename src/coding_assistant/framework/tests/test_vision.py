@@ -35,8 +35,8 @@ async def test_model_vision_recognizes_car_image() -> None:
             history=history,
             ui=ui,
             agent_actor=actors.agent_actor,
-            tool_call_actor=actors.tool_call_actor,
-            user_actor=actors.user_actor,
+            tool_call_actor_uri=actors.tool_call_actor_uri,
+            user_actor_uri=actors.user_actor_uri,
         )
         result = await tool.execute(
             parameters={

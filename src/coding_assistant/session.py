@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from coding_assistant.config import Config, MCPServerConfig
+from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
@@ -62,6 +63,11 @@ class Session:
         self._llm_actor: LLMActor | None = None
         self._tool_call_actor: ToolCallActor | None = None
         self._user_actor: UI | None = None
+        self._actor_directory: ActorDirectory | None = None
+        self._agent_actor_uri: str | None = None
+        self._llm_actor_uri: str | None = None
+        self._tool_call_actor_uri: str | None = None
+        self._user_actor_uri: str | None = None
 
     @property
     def mcp_servers(self) -> Optional[list[Any]]:
@@ -130,23 +136,45 @@ class Session:
             mcp_servers=self._mcp_servers,
         )
 
-        user_actor = UserActor(self.ui, context_name="Orchestrator")
+        actor_directory = ActorDirectory()
+        agent_actor_uri = "actor://orchestrator/agent"
+        llm_actor_uri = "actor://orchestrator/llm"
+        tool_call_actor_uri = "actor://orchestrator/tool-call"
+        user_actor_uri = "actor://orchestrator/user"
+
+        user_actor = UserActor(self.ui, context_name="Orchestrator", actor_directory=actor_directory)
+
         tool_call_tools = list(self.tools)
         if not any(tool.name() == "compact_conversation" for tool in tool_call_tools):
             tool_call_tools.append(CompactConversationTool())
         tool_call_actor = ToolCallActor(
             tools=tool_call_tools,
-            ui=user_actor,
+            ui=self.ui,
             context_name="Orchestrator",
+            actor_directory=actor_directory,
             progress_callbacks=self.callbacks,
             tool_callbacks=self.tool_callbacks,
         )
-        llm_actor = LLMActor(context_name="Orchestrator")
-        agent_actor = AgentActor(context_name="Orchestrator", llm_gateway=llm_actor)
+        llm_actor = LLMActor(context_name="Orchestrator", actor_directory=actor_directory)
+        agent_actor = AgentActor(
+            actor_directory=actor_directory,
+            self_uri=agent_actor_uri,
+            llm_actor_uri=llm_actor_uri,
+            context_name="Orchestrator",
+        )
+        actor_directory.register(uri=agent_actor_uri, actor=agent_actor)
+        actor_directory.register(uri=llm_actor_uri, actor=llm_actor)
+        actor_directory.register(uri=tool_call_actor_uri, actor=tool_call_actor)
+        actor_directory.register(uri=user_actor_uri, actor=user_actor)
+        self._actor_directory = actor_directory
         self._agent_actor = agent_actor
         self._llm_actor = llm_actor
         self._tool_call_actor = tool_call_actor
         self._user_actor = user_actor
+        self._agent_actor_uri = agent_actor_uri
+        self._llm_actor_uri = llm_actor_uri
+        self._tool_call_actor_uri = tool_call_actor_uri
+        self._user_actor_uri = user_actor_uri
         if isinstance(user_actor, UserActor):
             user_actor.start()
         self._llm_actor.start()
@@ -171,6 +199,20 @@ class Session:
         if self._user_actor and isinstance(self._user_actor, UserActor):
             await self._user_actor.stop()
         self._user_actor = None
+        if self._actor_directory is not None:
+            if self._agent_actor_uri is not None:
+                self._actor_directory.unregister(uri=self._agent_actor_uri)
+            if self._llm_actor_uri is not None:
+                self._actor_directory.unregister(uri=self._llm_actor_uri)
+            if self._tool_call_actor_uri is not None:
+                self._actor_directory.unregister(uri=self._tool_call_actor_uri)
+            if self._user_actor_uri is not None:
+                self._actor_directory.unregister(uri=self._user_actor_uri)
+        self._actor_directory = None
+        self._agent_actor_uri = None
+        self._llm_actor_uri = None
+        self._tool_call_actor_uri = None
+        self._user_actor_uri = None
 
         if self._mcp_manager:
             await self._mcp_manager.shutdown(exc_type=exc_type, exc_val=exc_val, exc_tb=exc_tb)
@@ -179,7 +221,7 @@ class Session:
 
     async def run_chat(self, history: Optional[list[BaseMessage]] = None) -> None:
         chat_history = history or []
-        if self._agent_actor is None or self._tool_call_actor is None or self._user_actor is None:
+        if self._agent_actor is None or self._tool_call_actor_uri is None or self._user_actor_uri is None:
             raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running chat.")
         async with history_manager_scope(context_name="session") as history_manager:
             try:
@@ -194,8 +236,8 @@ class Session:
                     ui=self.ui,
                     context_name="Orchestrator",
                     agent_actor=self._agent_actor,
-                    tool_call_actor=self._tool_call_actor,
-                    user_actor=self._user_actor,
+                    tool_call_actor_uri=self._tool_call_actor_uri,
+                    user_actor_uri=self._user_actor_uri,
                 )
             finally:
                 await history_manager.save_orchestrator_history(
@@ -203,7 +245,7 @@ class Session:
                 )
 
     async def run_agent(self, task: str, history: Optional[list[BaseMessage]] = None) -> Any:
-        if self._agent_actor is None or self._tool_call_actor is None or self._user_actor is None:
+        if self._agent_actor is None or self._tool_call_actor_uri is None:
             raise RuntimeError(
                 "Session actors are not initialized. Use `async with Session(...)` before running agent."
             )
@@ -226,8 +268,8 @@ class Session:
             name="launch_orchestrator_agent",
             completer=openai_complete,
             agent_actor=self._agent_actor,
-            tool_call_actor=self._tool_call_actor,
-            user_actor=self._user_actor,
+            tool_call_actor_uri=self._tool_call_actor_uri,
+            user_actor_uri=self._user_actor_uri,
         )
 
         params = {

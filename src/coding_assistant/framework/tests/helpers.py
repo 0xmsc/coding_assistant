@@ -6,6 +6,7 @@ from typing import Any, AsyncIterator, Iterable, Sequence
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
+from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.framework.history import append_tool_message
 from coding_assistant.framework.actors.common.messages import (
@@ -205,8 +206,19 @@ def append_tool_call_results_to_history(
 
 @asynccontextmanager
 async def agent_actor_scope(*, context_name: str = "test") -> AsyncIterator[AgentActor]:
-    llm_actor = LLMActor(context_name=context_name)
-    actor = AgentActor(context_name=context_name, llm_gateway=llm_actor)
+    actor_directory = ActorDirectory()
+    agent_uri = f"actor://{context_name}/agent"
+    llm_uri = f"actor://{context_name}/llm"
+
+    llm_actor = LLMActor(context_name=context_name, actor_directory=actor_directory)
+    actor = AgentActor(
+        context_name=context_name,
+        actor_directory=actor_directory,
+        self_uri=agent_uri,
+        llm_actor_uri=llm_uri,
+    )
+    actor_directory.register(uri=agent_uri, actor=actor)
+    actor_directory.register(uri=llm_uri, actor=llm_actor)
     llm_actor.start()
     actor.start()
     try:
@@ -214,6 +226,8 @@ async def agent_actor_scope(*, context_name: str = "test") -> AsyncIterator[Agen
     finally:
         await actor.stop()
         await llm_actor.stop()
+        actor_directory.unregister(uri=agent_uri)
+        actor_directory.unregister(uri=llm_uri)
 
 
 @asynccontextmanager
@@ -244,6 +258,11 @@ class ActorBundle:
     agent_actor: AgentActor
     tool_call_actor: ToolCallActor
     user_actor: UI
+    actor_directory: ActorDirectory
+    agent_actor_uri: str
+    llm_actor_uri: str
+    tool_call_actor_uri: str
+    user_actor_uri: str
 
 
 @asynccontextmanager
@@ -255,17 +274,35 @@ async def system_actor_scope_for_tests(
     progress_callbacks: ProgressCallbacks | None = None,
     tool_callbacks: ToolCallbacks | None = None,
 ) -> AsyncIterator[ActorBundle]:
+    actor_directory = ActorDirectory()
+    agent_actor_uri = f"actor://{context_name}/agent"
+    llm_actor_uri = f"actor://{context_name}/llm"
+    tool_call_actor_uri = f"actor://{context_name}/tool-call"
+    user_actor_uri = f"actor://{context_name}/user"
+
     owns_user_actor = not isinstance(ui, ActorUI)
-    user_actor = ui if isinstance(ui, ActorUI) else UserActor(ui, context_name=context_name)
+    user_actor = (
+        ui if isinstance(ui, ActorUI) else UserActor(ui, context_name=context_name, actor_directory=actor_directory)
+    )
     tool_call_actor = ToolCallActor(
         tools=tools,
-        ui=user_actor,
+        ui=ui,
         context_name=context_name,
+        actor_directory=actor_directory,
         progress_callbacks=progress_callbacks or NullProgressCallbacks(),
         tool_callbacks=tool_callbacks or NullToolCallbacks(),
     )
-    llm_actor = LLMActor(context_name=context_name)
-    agent_actor = AgentActor(context_name=context_name, llm_gateway=llm_actor)
+    llm_actor = LLMActor(context_name=context_name, actor_directory=actor_directory)
+    agent_actor = AgentActor(
+        context_name=context_name,
+        actor_directory=actor_directory,
+        self_uri=agent_actor_uri,
+        llm_actor_uri=llm_actor_uri,
+    )
+    actor_directory.register(uri=agent_actor_uri, actor=agent_actor)
+    actor_directory.register(uri=llm_actor_uri, actor=llm_actor)
+    actor_directory.register(uri=tool_call_actor_uri, actor=tool_call_actor)
+    actor_directory.register(uri=user_actor_uri, actor=user_actor)
 
     if owns_user_actor and isinstance(user_actor, ActorUI):
         user_actor.start()
@@ -277,6 +314,11 @@ async def system_actor_scope_for_tests(
             agent_actor=agent_actor,
             tool_call_actor=tool_call_actor,
             user_actor=user_actor,
+            actor_directory=actor_directory,
+            agent_actor_uri=agent_actor_uri,
+            llm_actor_uri=llm_actor_uri,
+            tool_call_actor_uri=tool_call_actor_uri,
+            user_actor_uri=user_actor_uri,
         )
     finally:
         await tool_call_actor.stop()
@@ -284,3 +326,7 @@ async def system_actor_scope_for_tests(
         await llm_actor.stop()
         if owns_user_actor and isinstance(user_actor, ActorUI):
             await user_actor.stop()
+        actor_directory.unregister(uri=agent_actor_uri)
+        actor_directory.unregister(uri=llm_actor_uri)
+        actor_directory.unregister(uri=tool_call_actor_uri)
+        actor_directory.unregister(uri=user_actor_uri)

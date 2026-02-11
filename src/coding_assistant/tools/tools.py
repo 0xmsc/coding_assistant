@@ -25,7 +25,7 @@ from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.ui import DefaultAnswerUI, UI
 
 if TYPE_CHECKING:
-    from coding_assistant.framework.execution import AgentActor, ToolCallActor
+    from coding_assistant.framework.execution import AgentActor
 
 logger = logging.getLogger(__name__)
 
@@ -148,8 +148,8 @@ class AgentTool(Tool):
         history: Sequence[BaseMessage] | None = None,
         completer: Completer | None = None,
         agent_actor: "AgentActor",
-        tool_call_actor: "ToolCallActor",
-        user_actor: "UI",
+        tool_call_actor_uri: str,
+        user_actor_uri: str | None = None,
     ) -> None:
         super().__init__()
         self._model = model
@@ -164,14 +164,12 @@ class AgentTool(Tool):
         self._history = history
         self._completer = completer or openai_complete
         self._agent_actor = agent_actor
-        self._tool_call_actor = tool_call_actor
-        self._user_actor = user_actor
+        self._tool_call_actor_uri = tool_call_actor_uri
+        self._user_actor_uri = user_actor_uri
         self.history: list[BaseMessage] = []
         self.summary: str = ""
-        if self._agent_actor is None or self._tool_call_actor is None or self._user_actor is None:
-            raise RuntimeError(
-                "AgentTool requires actor-backed dependencies: agent_actor, tool_call_actor, and user_actor."
-            )
+        if self._agent_actor is None or self._tool_call_actor_uri is None:
+            raise RuntimeError("AgentTool requires actor-backed dependencies: agent_actor and tool_call_actor_uri.")
 
     def name(self) -> str:
         return self._name
@@ -214,8 +212,8 @@ class AgentTool(Tool):
                     tool_callbacks=self._tool_callbacks,
                     completer=self._completer,
                     agent_actor=self._agent_actor,
-                    tool_call_actor=self._tool_call_actor,
-                    user_actor=self._user_actor,
+                    tool_call_actor_uri=self._tool_call_actor_uri,
+                    user_actor_uri=self._user_actor_uri,
                 ),
                 *self._tools,
             ],
@@ -232,8 +230,8 @@ class AgentTool(Tool):
                 completer=self._completer,
                 ui=self._ui,
                 agent_actor=self._agent_actor,
-                tool_call_actor=self._tool_call_actor,
-                user_actor=self._user_actor,
+                tool_call_actor_uri=self._tool_call_actor_uri,
+                user_actor_uri=self._user_actor_uri,
             )
             assert state.output is not None, "Agent did not produce output"
             self.summary = state.output.summary
