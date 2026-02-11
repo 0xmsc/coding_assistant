@@ -17,8 +17,6 @@ from coding_assistant.framework.actors.common.messages import (
     ChatPromptInput,
     ClearHistoryRequested,
     CompactionRequested,
-    ConfigureLLMRuntimeRequest,
-    ConfigureToolSetRequest,
     HandleToolCallsRequest,
     HandleToolCallsResponse,
     HelpRequested,
@@ -111,7 +109,7 @@ class AgentActor:
     def __init__(
         self,
         *,
-        llm_gateway: MessageSink[LLMCompleteStepRequest | ConfigureLLMRuntimeRequest],
+        llm_gateway: MessageSink[LLMCompleteStepRequest],
         context_name: str = "agent",
     ) -> None:
         self._actor: Actor[_AgentMessage] = Actor(name=f"{context_name}.agent-loop", handler=self._handle_message)
@@ -207,7 +205,7 @@ class AgentActor:
         progress_callbacks: ProgressCallbacks,
         completer: Completer,
         compact_conversation_at_tokens: int,
-        tool_call_actor: MessageSink[HandleToolCallsRequest | CancelToolCallsRequest | ConfigureToolSetRequest],
+        tool_call_actor: MessageSink[HandleToolCallsRequest | CancelToolCallsRequest],
     ) -> None:
         self.start()
         self._tool_call_sink = tool_call_actor
@@ -241,7 +239,7 @@ class AgentActor:
         completer: Completer,
         context_name: str,
         user_actor: UI,
-        tool_call_actor: MessageSink[HandleToolCallsRequest | CancelToolCallsRequest | ConfigureToolSetRequest],
+        tool_call_actor: MessageSink[HandleToolCallsRequest | CancelToolCallsRequest],
     ) -> None:
         self.start()
         if not hasattr(user_actor, "send_message"):
@@ -405,14 +403,13 @@ class AgentActor:
         fut: asyncio.Future[tuple[AssistantMessage, Usage | None]] = loop.create_future()
         self._pending_llm[request_id] = fut
         await self._llm_gateway.send_message(
-            ConfigureLLMRuntimeRequest(completer=completer, progress_callbacks=progress_callbacks)
-        )
-        await self._llm_gateway.send_message(
             LLMCompleteStepRequest(
                 request_id=request_id,
                 history=tuple(history),
                 model=model,
                 tools=tools,
+                completer=completer,
+                progress_callbacks=progress_callbacks,
                 reply_to=self,
             )
         )
@@ -422,6 +419,7 @@ class AgentActor:
         self,
         *,
         assistant_message: AssistantMessage,
+        tools: Sequence[Tool],
     ) -> HandleToolCallsResponse:
         if self._tool_call_sink is None:
             raise RuntimeError("AgentActor is missing ToolCallActor runtime dependency.")
@@ -434,6 +432,7 @@ class AgentActor:
                 request_id=request_id,
                 message=assistant_message,
                 reply_to=self,
+                tools=tuple(tools),
             )
         )
         try:
@@ -558,7 +557,9 @@ class AgentActor:
             )
 
             if getattr(assistant_message, "tool_calls", []):
-                tool_call_response = await self._request_tool_calls(assistant_message=assistant_message)
+                tool_call_response = await self._request_tool_calls(
+                    assistant_message=assistant_message, tools=message.tools
+                )
                 for item in tool_call_response.results:
                     result_summary = self.handle_tool_result_agent(
                         item.result,
@@ -739,7 +740,8 @@ class AgentActor:
 
                     if getattr(assistant_message, "tool_calls", []):
                         handle_tool_calls_task = loop.create_task(
-                            self._request_tool_calls(assistant_message=assistant_message), name="tool_calls"
+                            self._request_tool_calls(assistant_message=assistant_message, tools=tools),
+                            name="tool_calls",
                         )
                         interrupt_controller.register_task("tool_calls", handle_tool_calls_task)
                         tool_call_response = await handle_tool_calls_task

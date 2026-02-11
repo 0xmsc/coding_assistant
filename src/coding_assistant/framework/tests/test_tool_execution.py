@@ -5,6 +5,7 @@ import pytest
 
 
 from coding_assistant.framework.callbacks import ToolCallbacks
+from coding_assistant.framework.actors.common.messages import HandleToolCallsRequest, HandleToolCallsResponse
 from coding_assistant.framework.agent import _handle_finish_task_result
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -200,6 +201,72 @@ class ParallelSlowTool(Tool):
         await asyncio.sleep(self._delay)
         self._events.append(("end", self._name, time.monotonic()))
         return TextResult(content=f"done: {self._name}")
+
+
+@pytest.mark.asyncio
+async def test_tool_call_actor_uses_request_scoped_tools() -> None:
+    class EchoTool(Tool):
+        def __init__(self, value: str, delay: float = 0.0) -> None:
+            self._value = value
+            self._delay = delay
+
+        def name(self) -> str:
+            return "echo"
+
+        def description(self) -> str:
+            return "Echoes a fixed value"
+
+        def parameters(self) -> dict[str, Any]:
+            return {}
+
+        async def execute(self, parameters: dict[str, Any]) -> TextResult:
+            if self._delay > 0:
+                await asyncio.sleep(self._delay)
+            return TextResult(content=self._value)
+
+    message = AssistantMessage(tool_calls=[ToolCall(id="x", function=FunctionCall(name="echo", arguments="{}"))])
+
+    async with tool_call_actor_scope(tools=[], ui=make_ui_mock(), context_name="test") as actor:
+        loop = asyncio.get_running_loop()
+        future_a: asyncio.Future[HandleToolCallsResponse] = loop.create_future()
+        future_b: asyncio.Future[HandleToolCallsResponse] = loop.create_future()
+
+        class ReplySinkA:
+            async def send_message(self, response: HandleToolCallsResponse) -> None:
+                future_a.set_result(response)
+
+        class ReplySinkB:
+            async def send_message(self, response: HandleToolCallsResponse) -> None:
+                future_b.set_result(response)
+
+        await asyncio.gather(
+            actor.send_message(
+                HandleToolCallsRequest(
+                    request_id="request-a",
+                    message=message,
+                    reply_to=ReplySinkA(),
+                    tools=(EchoTool("from-a", delay=0.01),),
+                )
+            ),
+            actor.send_message(
+                HandleToolCallsRequest(
+                    request_id="request-b",
+                    message=message,
+                    reply_to=ReplySinkB(),
+                    tools=(EchoTool("from-b"),),
+                )
+            ),
+        )
+
+        response_a = await future_a
+        response_b = await future_b
+
+    assert len(response_a.results) == 1
+    assert len(response_b.results) == 1
+    assert isinstance(response_a.results[0].result, TextResult)
+    assert isinstance(response_b.results[0].result, TextResult)
+    assert response_a.results[0].result.content == "from-a"
+    assert response_b.results[0].result.content == "from-b"
 
 
 @pytest.mark.asyncio

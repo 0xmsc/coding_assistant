@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 class _ToolCallRequest:
     request_id: str
     tool_call: ToolCall
+    tools: tuple[Tool, ...]
 
 
 @dataclass(slots=True)
@@ -55,22 +56,25 @@ class ToolExecutor:
                 future.set_exception(RuntimeError("ToolExecutor stopped before reply."))
         self._pending.clear()
 
-    def set_tools(self, tools: Sequence[Tool]) -> None:
-        self.tools = list(tools)
-
-    async def submit(self, tool_call: ToolCall) -> asyncio.Task[ToolResult]:
+    async def submit(self, tool_call: ToolCall, *, tools: Sequence[Tool] | None = None) -> asyncio.Task[ToolResult]:
         request_id = uuid4().hex
         loop = asyncio.get_running_loop()
         future: asyncio.Future[asyncio.Task[ToolResult]] = loop.create_future()
         self._pending[request_id] = future
-        await self._actor.send(_ToolCallRequest(request_id=request_id, tool_call=tool_call))
+        await self._actor.send(
+            _ToolCallRequest(
+                request_id=request_id,
+                tool_call=tool_call,
+                tools=tuple(tools) if tools is not None else tuple(self.tools),
+            )
+        )
         return await future
 
     async def _handle_message(self, message: "_ToolMessage") -> None:
         if isinstance(message, _ToolCallRequest):
             try:
                 task = asyncio.create_task(
-                    self._execute_tool_call(message.tool_call),
+                    self._execute_tool_call(message.tool_call, message.tools),
                     name=f"{message.tool_call.function.name} ({message.tool_call.id})",
                 )
                 await self._actor.send(_ToolCallSpawned(request_id=message.request_id, task=task))
@@ -91,7 +95,7 @@ class ToolExecutor:
             return None
         raise RuntimeError(f"Unknown tool executor message: {message!r}")
 
-    async def _execute_tool_call(self, tool_call: ToolCall) -> ToolResult:
+    async def _execute_tool_call(self, tool_call: ToolCall, tools: Sequence[Tool]) -> ToolResult:
         function_name = tool_call.function.name
         if not function_name:
             raise RuntimeError(f"Tool call {tool_call.id} is missing function name.")
@@ -127,7 +131,9 @@ class ToolExecutor:
                 function_call_result = callback_result
             else:
                 function_call_result = await self._execute_tool_by_name(
-                    function_name=function_name, function_args=function_args
+                    function_name=function_name,
+                    function_args=function_args,
+                    tools=tools,
                 )
         except Exception as e:
             function_call_result = TextResult(content=f"Error executing tool: {e}")
@@ -144,8 +150,10 @@ class ToolExecutor:
 
         return function_call_result
 
-    async def _execute_tool_by_name(self, *, function_name: str, function_args: dict[str, Any]) -> ToolResult:
-        for tool in self.tools:
+    async def _execute_tool_by_name(
+        self, *, function_name: str, function_args: dict[str, Any], tools: Sequence[Tool]
+    ) -> ToolResult:
+        for tool in tools:
             if tool.name() == function_name:
                 return await tool.execute(function_args)
         raise ValueError(f"Tool {function_name} not found in agent tools.")
