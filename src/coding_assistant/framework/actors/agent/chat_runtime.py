@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING
 
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
-from coding_assistant.framework.actors.common.messages import ConfigureToolSetRequest
 from coding_assistant.framework.types import Completer
 from coding_assistant.llm.types import (
     BaseMessage,
@@ -34,7 +33,6 @@ async def run_chat_loop(
     tools_with_meta = list(tools)
     if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
         tools_with_meta.append(CompactConversationTool())
-    await tool_call_actor.send_message(ConfigureToolSetRequest(tools=tuple(tools_with_meta)))
 
     await agent_actor.run_chat_loop(
         history=history,

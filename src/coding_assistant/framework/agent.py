@@ -2,7 +2,6 @@ from coding_assistant.framework.builtin_tools import (
     CompactConversationTool,
     FinishTaskTool,
 )
-from coding_assistant.framework.actors.common.messages import ConfigureToolSetRequest
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
 from coding_assistant.framework.execution import AgentActor, ToolCallActor
@@ -55,7 +54,6 @@ async def run_agent_loop(
         tools_with_meta.append(FinishTaskTool())
     if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
         tools_with_meta.append(CompactConversationTool())
-    await tool_call_actor.send_message(ConfigureToolSetRequest(tools=tuple(tools_with_meta)))
 
     await agent_actor.run_agent_loop(
         ctx,

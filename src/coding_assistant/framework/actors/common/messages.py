@@ -22,13 +22,9 @@ class LLMCompleteStepRequest:
     history: tuple[BaseMessage, ...]
     model: str
     tools: Sequence[Tool]
-    reply_to: MessageSink["LLMCompleteStepResponse"]
-
-
-@dataclass(slots=True)
-class ConfigureLLMRuntimeRequest:
     completer: "Completer"
     progress_callbacks: "ProgressCallbacks"
+    reply_to: MessageSink["LLMCompleteStepResponse"]
 
 
 @dataclass(slots=True)
@@ -72,11 +68,7 @@ class HandleToolCallsRequest:
     request_id: str
     message: AssistantMessage
     reply_to: MessageSink["HandleToolCallsResponse"]
-
-
-@dataclass(slots=True)
-class ConfigureToolSetRequest:
-    tools: tuple[Tool, ...]
+    tools: tuple[Tool, ...] | None = None
 
 
 @dataclass(slots=True)

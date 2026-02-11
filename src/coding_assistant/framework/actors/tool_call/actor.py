@@ -9,7 +9,6 @@ from typing import Any
 from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.framework.actors.common.messages import (
     CancelToolCallsRequest,
-    ConfigureToolSetRequest,
     HandleToolCallsRequest,
     HandleToolCallsResponse,
     ToolCallExecutionResult,
@@ -44,7 +43,7 @@ class ToolCallActor:
             ui=ui,
             context_name=context_name,
         )
-        self._actor: Actor[HandleToolCallsRequest | CancelToolCallsRequest | ConfigureToolSetRequest] = Actor(
+        self._actor: Actor[HandleToolCallsRequest | CancelToolCallsRequest] = Actor(
             name=f"{context_name}.tool-calls", handler=self._handle_message
         )
         self._inflight_tasks_by_request: dict[str, set[asyncio.Task[ToolResult]]] = {}
@@ -70,18 +69,11 @@ class ToolCallActor:
         await self._executor.stop()
         self._started = False
 
-    async def send_message(
-        self, message: HandleToolCallsRequest | CancelToolCallsRequest | ConfigureToolSetRequest
-    ) -> None:
+    async def send_message(self, message: HandleToolCallsRequest | CancelToolCallsRequest) -> None:
         self.start()
         await self._actor.send(message)
 
-    async def _handle_message(
-        self, message: HandleToolCallsRequest | CancelToolCallsRequest | ConfigureToolSetRequest
-    ) -> None:
-        if isinstance(message, ConfigureToolSetRequest):
-            self._executor.set_tools(message.tools)
-            return None
+    async def _handle_message(self, message: HandleToolCallsRequest | CancelToolCallsRequest) -> None:
         if isinstance(message, CancelToolCallsRequest):
             request_task = self._inflight_requests.pop(message.request_id, None)
             if request_task is not None:
@@ -101,7 +93,11 @@ class ToolCallActor:
 
         async def _run_request() -> None:
             try:
-                results, cancelled = await self._handle_tool_calls(message.request_id, message.message)
+                results, cancelled = await self._handle_tool_calls(
+                    message.request_id,
+                    message.message,
+                    tools=message.tools,
+                )
                 await message.reply_to.send_message(
                     HandleToolCallsResponse(request_id=message.request_id, results=results, cancelled=cancelled)
                 )
@@ -124,6 +120,7 @@ class ToolCallActor:
         self,
         request_id: str,
         message: AssistantMessage,
+        tools: tuple[Tool, ...] | None,
         on_result: Callable[[ToolCallExecutionResult], None] | None = None,
     ) -> tuple[list[ToolCallExecutionResult], bool]:
         tool_calls = message.tool_calls
@@ -131,8 +128,9 @@ class ToolCallActor:
             return [], False
 
         tasks_with_calls: dict[asyncio.Task[ToolResult], Any] = {}
+        effective_tools = tools if tools is not None else tuple(self._executor.tools)
         for tool_call in tool_calls:
-            task = await self._executor.submit(tool_call)
+            task = await self._executor.submit(tool_call, tools=effective_tools)
             tasks_with_calls[task] = tool_call
         self._inflight_tasks_by_request[request_id] = set(tasks_with_calls.keys())
 
