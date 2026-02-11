@@ -4,8 +4,8 @@ import json
 import pytest
 
 from coding_assistant.llm.types import NullProgressCallbacks
+from coding_assistant.framework.actors.agent.actor import AgentActor
 from coding_assistant.framework.history import append_assistant_message
-from coding_assistant.framework.agent import _handle_compact_conversation_result, _handle_finish_task_result
 from coding_assistant.llm.types import AssistantMessage, ToolResult, UserMessage, message_to_dict
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
@@ -53,7 +53,9 @@ async def test_compact_conversation_resets_history() -> None:
 
     def handle_tool_result(result: ToolResult) -> str:
         if isinstance(result, CompactConversationResult):
-            return _handle_compact_conversation_result(result, desc=desc, state=state, progress_callbacks=callbacks)
+            return AgentActor.handle_compact_conversation_result(
+                result, desc=desc, state=state, progress_callbacks=callbacks
+            )
         return str(result)
 
     async with tool_call_actor_scope(
@@ -108,7 +110,7 @@ async def test_compact_conversation_resets_history() -> None:
 
     def handle_tool_result_2(result: ToolResult) -> str:
         if isinstance(result, FinishTaskResult):
-            return _handle_finish_task_result(result, state=state)
+            return AgentActor.handle_finish_task_result(result, state=state)
         if isinstance(result, TextResult):
             return result.content
         return str(result)

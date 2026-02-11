@@ -1,10 +1,12 @@
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any, Sequence, TYPE_CHECKING
+from typing import Any, Sequence
 
 from pydantic import BaseModel, Field
 
+from coding_assistant.framework.actors.agent.actor import AgentActor
+from coding_assistant.framework.builtin_tools import CompactConversationTool, FinishTaskTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import (
     BaseMessage,
@@ -12,7 +14,6 @@ from coding_assistant.llm.types import (
     ProgressCallbacks,
     Tool,
 )
-from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.parameters import Parameter, parameters_from_model
 from coding_assistant.framework.types import (
     AgentContext,
@@ -23,9 +24,6 @@ from coding_assistant.framework.types import (
 from coding_assistant.framework.results import TextResult
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.ui import DefaultAnswerUI, UI
-
-if TYPE_CHECKING:
-    from coding_assistant.framework.execution import AgentActor
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +145,7 @@ class AgentTool(Tool):
         name: str = "launch_agent",
         history: Sequence[BaseMessage] | None = None,
         completer: Completer | None = None,
-        agent_actor: "AgentActor",
+        agent_actor: AgentActor,
         tool_call_actor_uri: str,
         user_actor_uri: str | None = None,
     ) -> None:
@@ -220,18 +218,20 @@ class AgentTool(Tool):
         )
         state = AgentState(history=list(self._history) if self._history is not None else [])
         ctx = AgentContext(desc=desc, state=state)
+        tools_with_meta = list(ctx.desc.tools)
+        if not any(tool.name() == "finish_task" for tool in tools_with_meta):
+            tools_with_meta.append(FinishTaskTool())
+        if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
+            tools_with_meta.append(CompactConversationTool())
 
         try:
-            await run_agent_loop(
+            await self._agent_actor.run_agent_loop(
                 ctx,
+                tools=tools_with_meta,
                 progress_callbacks=self._progress_callbacks,
-                tool_callbacks=self._tool_callbacks,
                 compact_conversation_at_tokens=self._compact_conversation_at_tokens,
                 completer=self._completer,
-                ui=self._ui,
-                agent_actor=self._agent_actor,
                 tool_call_actor_uri=self._tool_call_actor_uri,
-                user_actor_uri=self._user_actor_uri,
             )
             assert state.output is not None, "Agent did not produce output"
             self.summary = state.output.summary

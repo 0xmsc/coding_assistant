@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import pytest
 
 from coding_assistant.framework.actors.common.messages import LLMCompleteStepRequest, LLMCompleteStepResponse
-from coding_assistant.framework.execution import LLMActor
+from coding_assistant.framework.actors.llm.actor import LLMActor
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
