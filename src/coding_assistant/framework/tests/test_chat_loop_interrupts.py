@@ -74,7 +74,7 @@ async def _run_chat_with_actors(
         ui=ui,
         context_name=context_name,
     ) as actors:
-        await actors.agent_actor.run_chat_loop(
+        await actors.chat_actor.run_chat_loop(
             history=history,
             model=model,
             tools=tools_with_meta,

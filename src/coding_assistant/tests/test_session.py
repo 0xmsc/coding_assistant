@@ -98,8 +98,8 @@ async def test_session_run_chat(session_args: dict[str, Any]) -> None:
     mock_tool = MagicMock(spec=Tool)
     session.tools = [mock_tool]
     session.instructions = "test instructions"
-    session._agent_actor = MagicMock()
-    session._agent_actor.run_chat_loop = AsyncMock()
+    session._chat_actor = MagicMock()
+    session._chat_actor.run_chat_loop = AsyncMock()
     session._tool_call_actor = MagicMock()
     session._tool_call_actor_uri = "actor://test/tool-call"
     session._user_actor = MagicMock(spec=UI)
@@ -119,7 +119,7 @@ async def test_session_run_chat(session_args: dict[str, Any]) -> None:
 
         await session.run_chat(history=[])
 
-        session._agent_actor.run_chat_loop.assert_called_once()
+        session._chat_actor.run_chat_loop.assert_called_once()
         mock_history_manager.save_orchestrator_history.assert_called_once_with(
             working_directory=session.working_directory, history=[]
         )

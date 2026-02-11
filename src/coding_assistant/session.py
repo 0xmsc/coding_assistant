@@ -5,6 +5,7 @@ from typing import Any, Optional
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.actors.agent.actor import AgentActor
+from coding_assistant.framework.actors.chat.actor import ChatActor
 from coding_assistant.framework.actors.llm.actor import LLMActor
 from coding_assistant.framework.actors.tool_call.actor import ToolCallActor
 from coding_assistant.framework.builtin_tools import CompactConversationTool
@@ -63,9 +64,11 @@ class Session:
         self._agent_actor: AgentActor | None = None
         self._llm_actor: LLMActor | None = None
         self._tool_call_actor: ToolCallActor | None = None
+        self._chat_actor: ChatActor | None = None
         self._user_actor: UI | None = None
         self._actor_directory: ActorDirectory | None = None
         self._agent_actor_uri: str | None = None
+        self._chat_actor_uri: str | None = None
         self._llm_actor_uri: str | None = None
         self._tool_call_actor_uri: str | None = None
         self._user_actor_uri: str | None = None
@@ -139,6 +142,7 @@ class Session:
 
         actor_directory = ActorDirectory()
         agent_actor_uri = "actor://orchestrator/agent"
+        chat_actor_uri = "actor://orchestrator/chat"
         llm_actor_uri = "actor://orchestrator/llm"
         tool_call_actor_uri = "actor://orchestrator/tool-call"
         user_actor_uri = "actor://orchestrator/user"
@@ -157,6 +161,12 @@ class Session:
             tool_callbacks=self.tool_callbacks,
         )
         llm_actor = LLMActor(context_name="Orchestrator", actor_directory=actor_directory)
+        chat_actor = ChatActor(
+            actor_directory=actor_directory,
+            self_uri=chat_actor_uri,
+            llm_actor_uri=llm_actor_uri,
+            context_name="Orchestrator",
+        )
         agent_actor = AgentActor(
             actor_directory=actor_directory,
             self_uri=agent_actor_uri,
@@ -164,15 +174,18 @@ class Session:
             context_name="Orchestrator",
         )
         actor_directory.register(uri=agent_actor_uri, actor=agent_actor)
+        actor_directory.register(uri=chat_actor_uri, actor=chat_actor)
         actor_directory.register(uri=llm_actor_uri, actor=llm_actor)
         actor_directory.register(uri=tool_call_actor_uri, actor=tool_call_actor)
         actor_directory.register(uri=user_actor_uri, actor=user_actor)
         self._actor_directory = actor_directory
         self._agent_actor = agent_actor
+        self._chat_actor = chat_actor
         self._llm_actor = llm_actor
         self._tool_call_actor = tool_call_actor
         self._user_actor = user_actor
         self._agent_actor_uri = agent_actor_uri
+        self._chat_actor_uri = chat_actor_uri
         self._llm_actor_uri = llm_actor_uri
         self._tool_call_actor_uri = tool_call_actor_uri
         self._user_actor_uri = user_actor_uri
@@ -181,6 +194,7 @@ class Session:
         self._llm_actor.start()
         self._tool_call_actor.start()
         self._agent_actor.start()
+        self._chat_actor.start()
 
         self.callbacks.on_status_message("Session initialized.", level=StatusLevel.SUCCESS)
         self.callbacks.on_status_message(f"Using model {self.config.model}.", level=StatusLevel.SUCCESS)
@@ -191,6 +205,9 @@ class Session:
         if self._tool_call_actor:
             await self._tool_call_actor.stop()
             self._tool_call_actor = None
+        if self._chat_actor:
+            await self._chat_actor.stop()
+            self._chat_actor = None
         if self._agent_actor:
             await self._agent_actor.stop()
             self._agent_actor = None
@@ -203,6 +220,8 @@ class Session:
         if self._actor_directory is not None:
             if self._agent_actor_uri is not None:
                 self._actor_directory.unregister(uri=self._agent_actor_uri)
+            if self._chat_actor_uri is not None:
+                self._actor_directory.unregister(uri=self._chat_actor_uri)
             if self._llm_actor_uri is not None:
                 self._actor_directory.unregister(uri=self._llm_actor_uri)
             if self._tool_call_actor_uri is not None:
@@ -211,6 +230,7 @@ class Session:
                 self._actor_directory.unregister(uri=self._user_actor_uri)
         self._actor_directory = None
         self._agent_actor_uri = None
+        self._chat_actor_uri = None
         self._llm_actor_uri = None
         self._tool_call_actor_uri = None
         self._user_actor_uri = None
@@ -222,14 +242,14 @@ class Session:
 
     async def run_chat(self, history: Optional[list[BaseMessage]] = None) -> None:
         chat_history = history or []
-        if self._agent_actor is None or self._tool_call_actor_uri is None or self._user_actor_uri is None:
+        if self._chat_actor is None or self._tool_call_actor_uri is None or self._user_actor_uri is None:
             raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running chat.")
         tools_with_meta = list(self.tools)
         if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
             tools_with_meta.append(CompactConversationTool())
         async with history_manager_scope(context_name="session") as history_manager:
             try:
-                await self._agent_actor.run_chat_loop(
+                await self._chat_actor.run_chat_loop(
                     history=chat_history,
                     model=self.config.model,
                     tools=tools_with_meta,

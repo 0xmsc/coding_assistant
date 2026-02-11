@@ -58,7 +58,7 @@ async def test_system_actor_chat_loop_executes_tool_then_exits() -> None:
         context_name="test",
         progress_callbacks=callbacks,
     ) as actors:
-        await actors.agent_actor.run_chat_loop(
+        await actors.chat_actor.run_chat_loop(
             history=history,
             model=model,
             tools=[echo_tool],
