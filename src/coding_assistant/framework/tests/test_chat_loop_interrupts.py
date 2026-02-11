@@ -6,9 +6,8 @@ import signal
 import pytest
 from unittest.mock import patch
 
-from coding_assistant.framework.actors.agent.chat_runtime import run_chat_loop
 from coding_assistant.framework.interrupts import InterruptController
-from coding_assistant.llm.types import UserMessage, BaseMessage, Tool
+from coding_assistant.llm.types import NullProgressCallbacks, UserMessage, BaseMessage, Tool
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FunctionCall,
@@ -75,15 +74,14 @@ async def _run_chat_with_actors(
         ui=ui,
         context_name=context_name,
     ) as actors:
-        await run_chat_loop(
+        await actors.agent_actor.run_chat_loop(
             history=history,
             model=model,
             tools=tools_with_meta,
             instructions=instructions,
             completer=completer,
-            ui=actors.user_actor,
+            callbacks=NullProgressCallbacks(),
             context_name=context_name,
-            agent_actor=actors.agent_actor,
             tool_call_actor_uri=actors.tool_call_actor_uri,
             user_actor_uri=actors.user_actor_uri,
         )

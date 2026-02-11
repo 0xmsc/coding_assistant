@@ -14,7 +14,9 @@ from coding_assistant.framework.actors.common.messages import (
     HandleToolCallsResponse,
     ToolCallExecutionResult,
 )
-from coding_assistant.framework.execution import AgentActor, LLMActor, ToolCallActor
+from coding_assistant.framework.actors.agent.actor import AgentActor
+from coding_assistant.framework.actors.llm.actor import LLMActor
+from coding_assistant.framework.actors.tool_call.actor import ToolCallActor
 from coding_assistant.framework.parameters import Parameter
 from coding_assistant.framework.results import TextResult
 from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext

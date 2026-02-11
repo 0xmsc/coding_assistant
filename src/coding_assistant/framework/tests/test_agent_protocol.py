@@ -3,7 +3,6 @@ import pytest
 from unittest.mock import Mock
 
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
-from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     agent_actor_scope,
@@ -168,14 +167,13 @@ async def test_auto_inject_builtin_tools() -> None:
     if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
         tools_with_meta.append(CompactConversation())
     async with system_actor_scope_for_tests(tools=tools_with_meta, ui=ui, context_name=ctx.desc.name) as actors:
-        await run_agent_loop(
+        await actors.agent_actor.run_agent_loop(
             ctx,
+            tools=tools_with_meta,
+            progress_callbacks=NullProgressCallbacks(),
             completer=completer,
-            ui=actors.user_actor,
             compact_conversation_at_tokens=1000,
-            agent_actor=actors.agent_actor,
             tool_call_actor_uri=actors.tool_call_actor_uri,
-            user_actor_uri=actors.user_actor_uri,
         )
 
     assert state.output is not None

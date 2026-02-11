@@ -4,11 +4,12 @@ from typing import Any, Optional
 
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.actor_directory import ActorDirectory
+from coding_assistant.framework.actors.agent.actor import AgentActor
+from coding_assistant.framework.actors.llm.actor import LLMActor
+from coding_assistant.framework.actors.tool_call.actor import ToolCallActor
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
-from coding_assistant.framework.actors.agent.chat_runtime import run_chat_loop
-from coding_assistant.framework.execution import AgentActor, LLMActor, ToolCallActor
 from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.history_manager import history_manager_scope
 from coding_assistant.instructions import get_instructions
@@ -223,19 +224,19 @@ class Session:
         chat_history = history or []
         if self._agent_actor is None or self._tool_call_actor_uri is None or self._user_actor_uri is None:
             raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running chat.")
+        tools_with_meta = list(self.tools)
+        if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
+            tools_with_meta.append(CompactConversationTool())
         async with history_manager_scope(context_name="session") as history_manager:
             try:
-                await run_chat_loop(
+                await self._agent_actor.run_chat_loop(
                     history=chat_history,
                     model=self.config.model,
-                    tools=self.tools,
+                    tools=tools_with_meta,
                     instructions=self.instructions,
                     callbacks=self.callbacks,
-                    tool_callbacks=self.tool_callbacks,
                     completer=openai_complete,
-                    ui=self.ui,
                     context_name="Orchestrator",
-                    agent_actor=self._agent_actor,
                     tool_call_actor_uri=self._tool_call_actor_uri,
                     user_actor_uri=self._user_actor_uri,
                 )

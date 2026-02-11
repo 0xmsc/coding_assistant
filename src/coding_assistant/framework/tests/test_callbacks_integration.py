@@ -4,7 +4,6 @@ from unittest.mock import Mock
 
 import pytest
 
-from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     make_test_agent,
@@ -45,15 +44,13 @@ async def test_agent_loop_runs_successfully() -> None:
         context_name=desc.name,
         progress_callbacks=callbacks,
     ) as actors:
-        await run_agent_loop(
+        await actors.agent_actor.run_agent_loop(
             AgentContext(desc=desc, state=state),
+            tools=desc.tools,
             progress_callbacks=callbacks,
             compact_conversation_at_tokens=200_000,
             completer=completer,
-            ui=actors.user_actor,
-            agent_actor=actors.agent_actor,
             tool_call_actor_uri=actors.tool_call_actor_uri,
-            user_actor_uri=actors.user_actor_uri,
         )
 
     assert state.output is not None
@@ -75,15 +72,13 @@ async def test_on_tool_message_called_with_arguments_and_result() -> None:
         context_name=desc.name,
         progress_callbacks=callbacks,
     ) as actors:
-        await run_agent_loop(
+        await actors.agent_actor.run_agent_loop(
             AgentContext(desc=desc, state=state),
+            tools=desc.tools,
             progress_callbacks=callbacks,
             compact_conversation_at_tokens=200_000,
             completer=completer,
-            ui=actors.user_actor,
-            agent_actor=actors.agent_actor,
             tool_call_actor_uri=actors.tool_call_actor_uri,
-            user_actor_uri=actors.user_actor_uri,
         )
 
     found = False

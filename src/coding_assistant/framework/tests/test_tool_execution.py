@@ -5,8 +5,8 @@ import pytest
 
 
 from coding_assistant.framework.callbacks import ToolCallbacks
+from coding_assistant.framework.actors.agent.actor import AgentActor
 from coding_assistant.framework.actors.common.messages import HandleToolCallsRequest, HandleToolCallsResponse
-from coding_assistant.framework.agent import _handle_finish_task_result
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -446,7 +446,7 @@ async def test_before_tool_execution_can_return_finish_task_result() -> None:
 
     def handle_tool_result(result: ToolResult) -> str:
         if isinstance(result, FinishTaskResult):
-            return _handle_finish_task_result(result, state=state)
+            return AgentActor.handle_finish_task_result(result, state=state)
         if isinstance(result, TextResult):
             return result.content
         return f"Tool produced result of type {type(result).__name__}"

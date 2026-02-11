@@ -3,7 +3,6 @@ import json
 
 import pytest
 
-from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     FunctionCall,
@@ -57,15 +56,13 @@ async def _run_agent_with_actors(
         context_name=ctx.desc.name,
         progress_callbacks=callbacks,
     ) as actors:
-        await run_agent_loop(
+        await actors.agent_actor.run_agent_loop(
             ctx,
+            tools=tools_with_meta,
             compact_conversation_at_tokens=compact_conversation_at_tokens,
-            completer=completer,
-            ui=actors.user_actor,
             progress_callbacks=callbacks,
-            agent_actor=actors.agent_actor,
+            completer=completer,
             tool_call_actor_uri=actors.tool_call_actor_uri,
-            user_actor_uri=actors.user_actor_uri,
         )
 
 
