@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from coding_assistant.framework.actors.common.contracts import MessageSink
 from coding_assistant.framework.types import AgentContext, Completer
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -24,8 +23,7 @@ class LLMCompleteStepRequest:
     tools: Sequence[Tool]
     completer: "Completer"
     progress_callbacks: "ProgressCallbacks"
-    reply_to: MessageSink["LLMCompleteStepResponse"] | None = None
-    reply_to_uri: str | None = None
+    reply_to_uri: str
 
 
 @dataclass(slots=True)
@@ -42,15 +40,25 @@ class RunAgentRequest:
     ctx: AgentContext
     tools: Sequence[Tool]
     compact_conversation_at_tokens: int
+    progress_callbacks: "ProgressCallbacks"
+    completer: "Completer"
+    tool_call_actor_uri: str
+    reply_to_uri: str | None = None
 
 
 @dataclass(slots=True)
 class RunChatRequest:
     request_id: str
+    history: list[BaseMessage]
     model: str
     tools: tuple[Tool, ...]
     instructions: str | None
     context_name: str
+    callbacks: "ProgressCallbacks"
+    completer: "Completer"
+    user_actor_uri: str
+    tool_call_actor_uri: str
+    reply_to_uri: str | None = None
 
 
 @dataclass(slots=True)
@@ -68,8 +76,7 @@ class RunFailed:
 class HandleToolCallsRequest:
     request_id: str
     message: AssistantMessage
-    reply_to: MessageSink["HandleToolCallsResponse"] | None = None
-    reply_to_uri: str | None = None
+    reply_to_uri: str
     tools: tuple[Tool, ...] | None = None
 
 
@@ -100,7 +107,7 @@ class AskRequest:
     request_id: str
     prompt_text: str
     default: str | None
-    reply_to: MessageSink["AskResponse"]
+    reply_to_uri: str
 
 
 @dataclass(slots=True)
@@ -114,7 +121,7 @@ class AskResponse:
 class ConfirmRequest:
     request_id: str
     prompt_text: str
-    reply_to: MessageSink["ConfirmResponse"]
+    reply_to_uri: str
 
 
 @dataclass(slots=True)
@@ -174,15 +181,14 @@ ChatPromptInput: TypeAlias = (
 class AgentYieldedToUser:
     request_id: str
     words: list[str] | None
-    reply_to: MessageSink[ChatPromptInput] | None = None
-    reply_to_uri: str | None = None
+    reply_to_uri: str
 
 
 @dataclass(slots=True)
 class PromptRequest:
     request_id: str
     words: list[str] | None
-    reply_to: MessageSink["PromptResponse"]
+    reply_to_uri: str
     parse_chat_intent: bool = False
 
 

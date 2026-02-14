@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
-from coding_assistant.framework.tests.helpers import system_actor_scope_for_tests
+from coding_assistant.framework.tests.helpers import run_chat_via_messages, system_actor_scope_for_tests
 from coding_assistant.llm.types import NullProgressCallbacks
 from coding_assistant.llm.types import BaseMessage, Tool, UserMessage
 
@@ -27,7 +27,8 @@ async def test_run_chat_loop_raises_keyboard_interrupt_at_prompt() -> None:
 
     with pytest.raises(KeyboardInterrupt):
         async with system_actor_scope_for_tests(tools=tools_with_meta, ui=ui, context_name="test") as actors:
-            await actors.chat_actor.run_chat_loop(
+            await run_chat_via_messages(
+                actors,
                 history=history,
                 model=model,
                 tools=tools_with_meta,
@@ -35,8 +36,6 @@ async def test_run_chat_loop_raises_keyboard_interrupt_at_prompt() -> None:
                 completer=AsyncMock(),
                 callbacks=NullProgressCallbacks(),
                 context_name="test",
-                tool_call_actor_uri=actors.tool_call_actor_uri,
-                user_actor_uri=actors.user_actor_uri,
             )
 
     # Verify prompt was called

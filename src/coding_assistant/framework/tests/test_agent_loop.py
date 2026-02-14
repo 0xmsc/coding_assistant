@@ -10,6 +10,7 @@ from coding_assistant.framework.tests.helpers import (
     ToolCall,
     make_test_agent,
     make_ui_mock,
+    run_agent_via_messages,
     system_actor_scope_for_tests,
 )
 from coding_assistant.framework.types import AgentContext, AgentOutput
@@ -56,13 +57,13 @@ async def _run_agent_with_actors(
         context_name=ctx.desc.name,
         progress_callbacks=callbacks,
     ) as actors:
-        await actors.agent_actor.run_agent_loop(
-            ctx,
+        await run_agent_via_messages(
+            actors,
+            ctx=ctx,
             tools=tools_with_meta,
             compact_conversation_at_tokens=compact_conversation_at_tokens,
             progress_callbacks=callbacks,
             completer=completer,
-            tool_call_actor_uri=actors.tool_call_actor_uri,
         )
 
 

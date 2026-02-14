@@ -14,6 +14,7 @@ from coding_assistant.framework.tests.helpers import (
     FakeMessage,
     ToolCall,
     make_ui_mock,
+    run_chat_via_messages,
     system_actor_scope_for_tests,
 )
 from coding_assistant.framework.results import TextResult
@@ -74,7 +75,8 @@ async def _run_chat_with_actors(
         ui=ui,
         context_name=context_name,
     ) as actors:
-        await actors.chat_actor.run_chat_loop(
+        await run_chat_via_messages(
+            actors,
             history=history,
             model=model,
             tools=tools_with_meta,
@@ -82,8 +84,6 @@ async def _run_chat_with_actors(
             completer=completer,
             callbacks=NullProgressCallbacks(),
             context_name=context_name,
-            tool_call_actor_uri=actors.tool_call_actor_uri,
-            user_actor_uri=actors.user_actor_uri,
         )
 
 

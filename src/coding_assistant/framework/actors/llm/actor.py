@@ -56,11 +56,6 @@ class LLMActor:
         return None
 
     async def _send_response(self, request: LLMCompleteStepRequest, response: LLMCompleteStepResponse) -> None:
-        if request.reply_to_uri is not None:
-            if self._actor_directory is None:
-                raise RuntimeError("LLMActor cannot send by URI without actor directory.")
-            await self._actor_directory.send_message(uri=request.reply_to_uri, message=response)
-            return
-        if request.reply_to is None:
-            raise RuntimeError("LLMCompleteStepRequest is missing reply target.")
-        await request.reply_to.send_message(response)
+        if self._actor_directory is None:
+            raise RuntimeError("LLMActor cannot send by URI without actor directory.")
+        await self._actor_directory.send_message(uri=request.reply_to_uri, message=response)

@@ -230,21 +230,30 @@ async def test_tool_call_actor_uses_request_scoped_tools() -> None:
         loop = asyncio.get_running_loop()
         future_a: asyncio.Future[HandleToolCallsResponse] = loop.create_future()
         future_b: asyncio.Future[HandleToolCallsResponse] = loop.create_future()
+        assert actor._actor_directory is not None  # pyright: ignore[reportPrivateUsage]
 
-        class ReplySinkA:
+        class ReplyActorA:
             async def send_message(self, response: HandleToolCallsResponse) -> None:
                 future_a.set_result(response)
 
-        class ReplySinkB:
+        class ReplyActorB:
             async def send_message(self, response: HandleToolCallsResponse) -> None:
                 future_b.set_result(response)
 
+        actor._actor_directory.register(  # pyright: ignore[reportPrivateUsage]
+            uri="actor://test/reply/request-a",
+            actor=ReplyActorA(),
+        )
+        actor._actor_directory.register(  # pyright: ignore[reportPrivateUsage]
+            uri="actor://test/reply/request-b",
+            actor=ReplyActorB(),
+        )
         await asyncio.gather(
             actor.send_message(
                 HandleToolCallsRequest(
                     request_id="request-a",
                     message=message,
-                    reply_to=ReplySinkA(),
+                    reply_to_uri="actor://test/reply/request-a",
                     tools=(EchoTool("from-a", delay=0.01),),
                 )
             ),
@@ -252,7 +261,7 @@ async def test_tool_call_actor_uses_request_scoped_tools() -> None:
                 HandleToolCallsRequest(
                     request_id="request-b",
                     message=message,
-                    reply_to=ReplySinkB(),
+                    reply_to_uri="actor://test/reply/request-b",
                     tools=(EchoTool("from-b"),),
                 )
             ),
@@ -260,6 +269,8 @@ async def test_tool_call_actor_uses_request_scoped_tools() -> None:
 
         response_a = await future_a
         response_b = await future_b
+        actor._actor_directory.unregister(uri="actor://test/reply/request-a")  # pyright: ignore[reportPrivateUsage]
+        actor._actor_directory.unregister(uri="actor://test/reply/request-b")  # pyright: ignore[reportPrivateUsage]
 
     assert len(response_a.results) == 1
     assert len(response_b.results) == 1

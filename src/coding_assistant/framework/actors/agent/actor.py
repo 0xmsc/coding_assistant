@@ -194,6 +194,10 @@ class AgentActor:
                 ctx=ctx,
                 tools=tools,
                 compact_conversation_at_tokens=compact_conversation_at_tokens,
+                progress_callbacks=progress_callbacks,
+                completer=completer,
+                tool_call_actor_uri=tool_call_actor_uri,
+                reply_to_uri=self._self_uri,
             )
         )
         await fut
@@ -269,18 +273,33 @@ class AgentActor:
 
     async def _run_agent_loop_request(self, message: RunAgentRequest) -> None:
         runtime = self._run_agent_runtime.pop(message.request_id, None)
+        progress_callbacks: ProgressCallbacks
+        completer: Completer
         if runtime is None:
-            await self.send_message(
-                RunFailed(request_id=message.request_id, error=RuntimeError("Missing agent runtime config."))
-            )
-            return
-        progress_callbacks, completer = runtime
+            progress_callbacks = message.progress_callbacks
+            completer = message.completer
+        else:
+            progress_callbacks, completer = runtime
+        self._tool_call_actor_uri = message.tool_call_actor_uri
         try:
             await self._run_agent_loop_impl(message, progress_callbacks=progress_callbacks, completer=completer)
         except BaseException as exc:
-            await self.send_message(RunFailed(request_id=message.request_id, error=exc))
+            state_id = id(message.ctx.state)
+            message.ctx.state.history = list(self._agent_histories.get(state_id, message.ctx.state.history))
+            await self._send_run_response(
+                request=message,
+                message=RunFailed(request_id=message.request_id, error=exc),
+            )
             return
-        await self.send_message(RunCompleted(request_id=message.request_id))
+        state_id = id(message.ctx.state)
+        message.ctx.state.history = list(self._agent_histories.get(state_id, message.ctx.state.history))
+        await self._send_run_response(request=message, message=RunCompleted(request_id=message.request_id))
+
+    async def _send_run_response(self, *, request: RunAgentRequest, message: RunCompleted | RunFailed) -> None:
+        if request.reply_to_uri is None:
+            await self.send_message(message)
+            return
+        await self._actor_directory.send_message(uri=request.reply_to_uri, message=message)
 
     async def _request_llm(
         self,

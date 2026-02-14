@@ -29,7 +29,8 @@ async def test_orchestrator_tool() -> None:
             tools=[],
             history=None,
             ui=ui,
-            agent_actor=actors.agent_actor,
+            actor_directory=actors.actor_directory,
+            agent_actor_uri=actors.agent_actor_uri,
             tool_call_actor_uri=actors.tool_call_actor_uri,
             user_actor_uri=actors.user_actor_uri,
         )
@@ -51,7 +52,8 @@ async def test_orchestrator_tool_resume() -> None:
             tools=[],
             history=None,
             ui=ui,
-            agent_actor=actors.agent_actor,
+            actor_directory=actors.actor_directory,
+            agent_actor_uri=actors.agent_actor_uri,
             tool_call_actor_uri=actors.tool_call_actor_uri,
             user_actor_uri=actors.user_actor_uri,
         )
@@ -67,7 +69,8 @@ async def test_orchestrator_tool_resume() -> None:
             tools=[],
             history=first.history,
             ui=ui,
-            agent_actor=actors.agent_actor,
+            actor_directory=actors.actor_directory,
+            agent_actor_uri=actors.agent_actor_uri,
             tool_call_actor_uri=actors.tool_call_actor_uri,
             user_actor_uri=actors.user_actor_uri,
         )
@@ -91,7 +94,8 @@ async def test_orchestrator_tool_instructions() -> None:
             tools=[],
             history=None,
             ui=ui,
-            agent_actor=actors.agent_actor,
+            actor_directory=actors.actor_directory,
+            agent_actor_uri=actors.agent_actor_uri,
             tool_call_actor_uri=actors.tool_call_actor_uri,
             user_actor_uri=actors.user_actor_uri,
         )

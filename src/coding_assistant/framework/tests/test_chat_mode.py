@@ -17,6 +17,7 @@ from coding_assistant.framework.tests.helpers import (
     FunctionCall,
     ToolCall,
     make_ui_mock,
+    run_chat_via_messages,
     system_actor_scope_for_tests,
 )
 from coding_assistant.framework.builtin_tools import CompactConversationTool as CompactConversation
@@ -61,7 +62,8 @@ async def _run_chat_with_actors(
         context_name=context_name,
         progress_callbacks=callbacks,
     ) as actors:
-        await actors.chat_actor.run_chat_loop(
+        await run_chat_via_messages(
+            actors,
             history=history,
             model=model,
             tools=tools_with_meta,
@@ -69,8 +71,6 @@ async def _run_chat_with_actors(
             context_name=context_name,
             completer=completer,
             callbacks=callbacks or NullProgressCallbacks(),
-            tool_call_actor_uri=actors.tool_call_actor_uri,
-            user_actor_uri=actors.user_actor_uri,
         )
 
 
