@@ -13,7 +13,14 @@ from coding_assistant.framework.actors.common.reply_waiters import register_run_
 from coding_assistant.framework.actors.tool_call.executor import ToolExecutor
 from coding_assistant.framework.builtin_tools import CompactConversationTool, FinishTaskTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
-from coding_assistant.llm.types import BaseMessage, FunctionCall, NullProgressCallbacks, ProgressCallbacks, Tool, ToolCall
+from coding_assistant.llm.types import (
+    BaseMessage,
+    FunctionCall,
+    NullProgressCallbacks,
+    ProgressCallbacks,
+    Tool,
+    ToolCall,
+)
 from coding_assistant.framework.parameters import Parameter, parameters_from_model
 from coding_assistant.framework.types import (
     AgentContext,
