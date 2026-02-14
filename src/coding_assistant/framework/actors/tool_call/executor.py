@@ -42,6 +42,11 @@ class _ExecuteToolRequest:
 
 
 @dataclass(slots=True)
+class _CancelExecuteToolRequest:
+    request_id: str
+
+
+@dataclass(slots=True)
 class _ExecuteToolResponse:
     request_id: str
     result: ToolResult | None
@@ -74,9 +79,10 @@ class _ToolExecuteReplyWaiter:
 class _ToolCapabilityActor:
     def __init__(self, *, name: str, tool: Tool, actor_directory: ActorDirectory) -> None:
         self._tool = tool
-        self._actor = Actor[_ExecuteToolRequest](name=name, handler=self._handle_message)
+        self._actor = Actor[_ExecuteToolRequest | _CancelExecuteToolRequest](name=name, handler=self._handle_message)
         self._actor_directory = actor_directory
         self._started = False
+        self._inflight: dict[str, asyncio.Task[None]] = {}
 
     def start(self) -> None:
         if self._started:
@@ -87,20 +93,38 @@ class _ToolCapabilityActor:
     async def stop(self) -> None:
         if not self._started:
             return
+        for task in list(self._inflight.values()):
+            task.cancel()
+        if self._inflight:
+            await asyncio.gather(*list(self._inflight.values()), return_exceptions=True)
+            self._inflight.clear()
         await self._actor.stop()
         self._started = False
 
-    async def send_message(self, message: _ExecuteToolRequest) -> None:
+    async def send_message(self, message: _ExecuteToolRequest | _CancelExecuteToolRequest) -> None:
         self.start()
         await self._actor.send(message)
 
-    async def _handle_message(self, message: _ExecuteToolRequest) -> None:
-        try:
-            result = await self._tool.execute(message.function_args)
-            response = _ExecuteToolResponse(request_id=message.request_id, result=result)
-        except BaseException as exc:
-            response = _ExecuteToolResponse(request_id=message.request_id, result=None, error=exc)
-        await self._actor_directory.send_message(uri=message.reply_to_uri, message=response)
+    async def _handle_message(self, message: _ExecuteToolRequest | _CancelExecuteToolRequest) -> None:
+        if isinstance(message, _CancelExecuteToolRequest):
+            task = self._inflight.pop(message.request_id, None)
+            if task is not None:
+                task.cancel()
+            return None
+
+        async def _run_execute() -> None:
+            try:
+                result = await self._tool.execute(message.function_args)
+                response = _ExecuteToolResponse(request_id=message.request_id, result=result)
+            except BaseException as exc:
+                response = _ExecuteToolResponse(request_id=message.request_id, result=None, error=exc)
+            finally:
+                self._inflight.pop(message.request_id, None)
+            await self._actor_directory.send_message(uri=message.reply_to_uri, message=response)
+
+        task = asyncio.create_task(_run_execute(), name=f"tool-cap:{message.request_id}")
+        self._inflight[message.request_id] = task
+        return None
 
 
 @dataclass(slots=True)
@@ -271,6 +295,16 @@ class ToolExecutor:
                 ),
             )
             return await future
+        except asyncio.CancelledError:
+            await self._tool_capability_directory.send_message(
+                uri=capability_uri,
+                message=_CancelExecuteToolRequest(request_id=request_id),
+            )
+            try:
+                await asyncio.shield(future)
+            except BaseException:
+                pass
+            raise
         finally:
             self._tool_capability_directory.unregister(uri=reply_uri)
 

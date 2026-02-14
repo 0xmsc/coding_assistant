@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from coding_assistant.framework.types import AgentContext, Completer
+from coding_assistant.framework.types import AgentContext, AgentOutput, Completer
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -64,6 +64,8 @@ class RunChatRequest:
 @dataclass(slots=True)
 class RunCompleted:
     request_id: str
+    history: tuple[BaseMessage, ...] | None = None
+    agent_output: AgentOutput | None = None
 
 
 @dataclass(slots=True)

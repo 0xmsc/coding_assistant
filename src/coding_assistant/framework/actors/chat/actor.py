@@ -146,7 +146,7 @@ class ChatActor:
         self.start()
         self._user_actor_uri = user_actor_uri
         self._tool_call_actor_uri = tool_call_actor_uri
-        self._chat_history = history
+        self._chat_history = list(history)
 
         request_id = self._next_id()
         loop = asyncio.get_running_loop()
@@ -248,16 +248,23 @@ class ChatActor:
             completer = runtime.completer
         self._user_actor_uri = message.user_actor_uri
         self._tool_call_actor_uri = message.tool_call_actor_uri
-        self._chat_history = message.history
+        self._chat_history = list(message.history)
         try:
             await self._run_chat_loop_impl(message, callbacks=callbacks, completer=completer)
         except BaseException as exc:
+            message.history.clear()
+            message.history.extend(self._chat_history)
             await self._send_run_response(
                 request=message,
                 message=RunFailed(request_id=message.request_id, error=exc),
             )
             return
-        await self._send_run_response(request=message, message=RunCompleted(request_id=message.request_id))
+        message.history.clear()
+        message.history.extend(self._chat_history)
+        await self._send_run_response(
+            request=message,
+            message=RunCompleted(request_id=message.request_id, history=tuple(self._chat_history)),
+        )
 
     async def _send_run_response(self, *, request: RunChatRequest, message: RunCompleted | RunFailed) -> None:
         if request.reply_to_uri is None:

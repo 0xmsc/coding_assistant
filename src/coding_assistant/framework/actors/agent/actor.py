@@ -292,8 +292,16 @@ class AgentActor:
             )
             return
         state_id = id(message.ctx.state)
-        message.ctx.state.history = list(self._agent_histories.get(state_id, message.ctx.state.history))
-        await self._send_run_response(request=message, message=RunCompleted(request_id=message.request_id))
+        final_history = tuple(self._agent_histories.get(state_id, message.ctx.state.history))
+        message.ctx.state.history = list(final_history)
+        await self._send_run_response(
+            request=message,
+            message=RunCompleted(
+                request_id=message.request_id,
+                history=final_history,
+                agent_output=message.ctx.state.output,
+            ),
+        )
 
     async def _send_run_response(self, *, request: RunAgentRequest, message: RunCompleted | RunFailed) -> None:
         if request.reply_to_uri is None:

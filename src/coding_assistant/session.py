@@ -9,7 +9,11 @@ from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.actors.agent.actor import AgentActor
 from coding_assistant.framework.actors.chat.actor import ChatActor
 from coding_assistant.framework.actors.common.messages import RunAgentRequest, RunChatRequest
-from coding_assistant.framework.actors.common.reply_waiters import register_run_reply_waiter
+from coding_assistant.framework.actors.common.messages import RunCompleted
+from coding_assistant.framework.actors.common.reply_waiters import (
+    register_run_payload_reply_waiter,
+    register_run_reply_waiter,
+)
 from coding_assistant.framework.actors.llm.actor import LLMActor
 from coding_assistant.framework.actors.system.wiring import (
     OrchestratorActors,
@@ -202,7 +206,7 @@ class Session:
         self.callbacks.on_status_message("Session closed.", level=StatusLevel.INFO)
 
     async def run_chat(self, history: Optional[list[BaseMessage]] = None) -> None:
-        chat_history = history or []
+        chat_history = list(history) if history is not None else []
         if (
             self._actor_directory is None
             or self._chat_actor_uri is None
@@ -216,7 +220,7 @@ class Session:
         async with history_manager_scope(context_name="session") as history_manager:
             request_id = uuid4().hex
             reply_uri = f"actor://session/chat-reply/{request_id}"
-            completion_future = self._register_run_reply(request_id=request_id, reply_uri=reply_uri)
+            completion_future = self._register_run_payload_reply(request_id=request_id, reply_uri=reply_uri)
             try:
                 await self._actor_directory.send_message(
                     uri=self._chat_actor_uri,
@@ -234,11 +238,16 @@ class Session:
                         reply_to_uri=reply_uri,
                     ),
                 )
-                await completion_future
+                completion = await completion_future
             finally:
                 self._actor_directory.unregister(uri=reply_uri)
+                final_history = (
+                    list(completion.history)
+                    if "completion" in locals() and completion.history is not None
+                    else chat_history
+                )
                 await history_manager.save_orchestrator_history(
-                    working_directory=self.working_directory, history=chat_history
+                    working_directory=self.working_directory, history=final_history
                 )
 
     async def run_agent(self, task: str, history: Optional[list[BaseMessage]] = None) -> Any:
@@ -303,7 +312,7 @@ class Session:
             try:
                 request_id = uuid4().hex
                 reply_uri = f"actor://session/agent-reply/{request_id}"
-                completion_future = self._register_run_reply(request_id=request_id, reply_uri=reply_uri)
+                completion_future = self._register_run_payload_reply(request_id=request_id, reply_uri=reply_uri)
                 try:
                     await self._actor_directory.send_message(
                         uri=self._agent_actor_uri,
@@ -318,21 +327,32 @@ class Session:
                             reply_to_uri=reply_uri,
                         ),
                     )
-                    await completion_future
+                    completion = await completion_future
                 finally:
                     self._actor_directory.unregister(uri=reply_uri)
 
-                if state.output is None:
+                final_output = completion.agent_output or state.output
+                if final_output is None:
                     raise RuntimeError("Agent did not produce output.")
-                result = TextResult(content=state.output.result)
+                result = TextResult(content=final_output.result)
                 self.callbacks.on_status_message(f"Task completed: {result.content}", level=StatusLevel.SUCCESS)
                 return result
             finally:
+                final_history = (
+                    list(completion.history)
+                    if "completion" in locals() and completion.history is not None
+                    else state.history
+                )
                 await history_manager.save_orchestrator_history(
-                    working_directory=self.working_directory, history=state.history
+                    working_directory=self.working_directory, history=final_history
                 )
 
     def _register_run_reply(self, *, request_id: str, reply_uri: str) -> "asyncio.Future[None]":
         if self._actor_directory is None:
             raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running.")
         return register_run_reply_waiter(self._actor_directory, request_id=request_id, reply_uri=reply_uri)
+
+    def _register_run_payload_reply(self, *, request_id: str, reply_uri: str) -> "asyncio.Future[RunCompleted]":
+        if self._actor_directory is None:
+            raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running.")
+        return register_run_payload_reply_waiter(self._actor_directory, request_id=request_id, reply_uri=reply_uri)
