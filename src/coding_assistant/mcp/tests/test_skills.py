@@ -65,11 +65,12 @@ def test_parse_skill_file_missing_fields(tmp_path: Any) -> None:
 def test_load_builtin_skills() -> None:
     skills = load_builtin_skills()
 
-    # We should have at least the develop skill we just added
+    # Built-ins are repository-driven; assert generic invariants.
     assert len(skills) >= 1
 
-    names = {s.name for s in skills}
-    assert "develop" in names
+    assert all(s.name for s in skills)
+    assert all(s.description for s in skills)
+    assert all("SKILL.md" in s.resources for s in skills)
 
 
 def test_create_skills_server(tmp_path: Any) -> None:
@@ -83,7 +84,8 @@ def test_create_skills_server(tmp_path: Any) -> None:
 
     server, instr = create_skills_server(skills_directories=[cli_skills_dir])
 
-    assert "develop" in instr
+    for builtin in load_builtin_skills():
+        assert builtin.name in instr
     assert "my_cli_skill" in instr
     assert "skills_list_resources" in instr
     assert "skills_read" in instr
@@ -120,14 +122,15 @@ async def test_skills_tools(tmp_path: Any) -> None:
 
 
 def test_builtin_skills_parsing_content() -> None:
-    # Verify that the placeholder skill has the expected structure
+    # Verify built-in skills are parseable from their own SKILL.md file.
     skills = load_builtin_skills()
-    general_skill = next(s for s in skills if s.name == "develop")
+    skill = skills[0]
+    assert "SKILL.md" in skill.resources
 
-    assert "General principles" in general_skill.description
+    skill_file = skill.root / "SKILL.md"
+    content = skill_file.read_text()
+    parsed = parse_skill_file(content, str(skill_file), skill.root)
 
-    # Verify it has the moved content
-    assert "SKILL.md" in general_skill.resources
-    content = (general_skill.root / "SKILL.md").read_text()
-    assert "## Core Principles" in content
-    assert "## File Operations" in content
+    assert parsed is not None
+    assert parsed.name == skill.name
+    assert parsed.description == skill.description
