@@ -26,6 +26,7 @@ from coding_assistant.framework.actors.common.messages import (
     UserInputFailed,
     UserTextSubmitted,
 )
+from coding_assistant.framework.actors.common.reply_waiters import RunReplyWaiter, register_run_reply_waiter
 
 __all__ = [
     "MessageSink",
@@ -54,4 +55,6 @@ __all__ = [
     "RunChatRequest",
     "RunCompleted",
     "RunFailed",
+    "RunReplyWaiter",
+    "register_run_reply_waiter",
 ]

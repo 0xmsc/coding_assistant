@@ -14,10 +14,9 @@ from coding_assistant.framework.actors.common.messages import (
     HandleToolCallsResponse,
     RunAgentRequest,
     RunChatRequest,
-    RunCompleted,
-    RunFailed,
     ToolCallExecutionResult,
 )
+from coding_assistant.framework.actors.common.reply_waiters import register_run_reply_waiter
 from coding_assistant.framework.actors.agent.actor import AgentActor
 from coding_assistant.framework.actors.chat.actor import ChatActor
 from coding_assistant.framework.actors.llm.actor import LLMActor
@@ -283,27 +282,6 @@ class ActorBundle:
     user_actor_uri: str
 
 
-@dataclass(slots=True)
-class _RunReplyActor:
-    request_id: str
-    future: asyncio.Future[None]
-
-    async def send_message(self, message: object) -> None:
-        if isinstance(message, RunCompleted):
-            if message.request_id != self.request_id:
-                self.future.set_exception(RuntimeError(f"Mismatched run response id: {message.request_id}"))
-                return
-            self.future.set_result(None)
-            return
-        if isinstance(message, RunFailed):
-            if message.request_id != self.request_id:
-                self.future.set_exception(RuntimeError(f"Mismatched run response id: {message.request_id}"))
-                return
-            self.future.set_exception(message.error)
-            return
-        self.future.set_exception(RuntimeError(f"Unexpected run response type: {type(message).__name__}"))
-
-
 async def run_chat_via_messages(
     actors: ActorBundle,
     *,
@@ -317,8 +295,7 @@ async def run_chat_via_messages(
 ) -> None:
     request_id = uuid4().hex
     reply_uri = f"actor://test/reply/chat/{request_id}"
-    future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-    actors.actor_directory.register(uri=reply_uri, actor=_RunReplyActor(request_id=request_id, future=future))
+    future = register_run_reply_waiter(actors.actor_directory, request_id=request_id, reply_uri=reply_uri)
     try:
         await actors.actor_directory.send_message(
             uri=actors.chat_actor_uri,
@@ -352,8 +329,7 @@ async def run_agent_via_messages(
 ) -> None:
     request_id = uuid4().hex
     reply_uri = f"actor://test/reply/agent/{request_id}"
-    future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-    actors.actor_directory.register(uri=reply_uri, actor=_RunReplyActor(request_id=request_id, future=future))
+    future = register_run_reply_waiter(actors.actor_directory, request_id=request_id, reply_uri=reply_uri)
     try:
         await actors.actor_directory.send_message(
             uri=actors.agent_actor_uri,
