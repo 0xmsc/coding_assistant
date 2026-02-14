@@ -179,11 +179,6 @@ class ToolCallActor:
         return execution_results, any_cancelled
 
     async def _send_response(self, request: HandleToolCallsRequest, response: HandleToolCallsResponse) -> None:
-        if request.reply_to_uri is not None:
-            if self._actor_directory is None:
-                raise RuntimeError("ToolCallActor cannot send by URI without actor directory.")
-            await self._actor_directory.send_message(uri=request.reply_to_uri, message=response)
-            return
-        if request.reply_to is None:
-            raise RuntimeError("HandleToolCallsRequest is missing reply target.")
-        await request.reply_to.send_message(response)
+        if self._actor_directory is None:
+            raise RuntimeError("ToolCallActor cannot send by URI without actor directory.")
+        await self._actor_directory.send_message(uri=request.reply_to_uri, message=response)

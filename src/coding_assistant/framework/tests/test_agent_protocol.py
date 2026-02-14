@@ -10,6 +10,7 @@ from coding_assistant.framework.tests.helpers import (
     execute_tool_calls_via_messages,
     make_test_agent,
     make_ui_mock,
+    run_agent_via_messages,
     system_actor_scope_for_tests,
     tool_call_actor_scope,
 )
@@ -167,13 +168,13 @@ async def test_auto_inject_builtin_tools() -> None:
     if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
         tools_with_meta.append(CompactConversation())
     async with system_actor_scope_for_tests(tools=tools_with_meta, ui=ui, context_name=ctx.desc.name) as actors:
-        await actors.agent_actor.run_agent_loop(
-            ctx,
+        await run_agent_via_messages(
+            actors,
+            ctx=ctx,
             tools=tools_with_meta,
             progress_callbacks=NullProgressCallbacks(),
             completer=completer,
             compact_conversation_at_tokens=1000,
-            tool_call_actor_uri=actors.tool_call_actor_uri,
         )
 
     assert state.output is not None

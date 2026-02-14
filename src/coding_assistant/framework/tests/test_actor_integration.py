@@ -12,6 +12,8 @@ from coding_assistant.framework.tests.helpers import (
     ToolCall,
     make_test_agent,
     make_ui_mock,
+    run_agent_via_messages,
+    run_chat_via_messages,
     system_actor_scope_for_tests,
 )
 from coding_assistant.framework.types import AgentContext
@@ -58,7 +60,8 @@ async def test_system_actor_chat_loop_executes_tool_then_exits() -> None:
         context_name="test",
         progress_callbacks=callbacks,
     ) as actors:
-        await actors.chat_actor.run_chat_loop(
+        await run_chat_via_messages(
+            actors,
             history=history,
             model=model,
             tools=[echo_tool],
@@ -66,8 +69,6 @@ async def test_system_actor_chat_loop_executes_tool_then_exits() -> None:
             callbacks=callbacks,
             completer=completer,
             context_name="test",
-            user_actor_uri=actors.user_actor_uri,
-            tool_call_actor_uri=actors.tool_call_actor_uri,
         )
 
     assert echo_tool.called_with == {"text": "hi"}
@@ -88,13 +89,13 @@ async def test_system_actor_agent_loop_finishes() -> None:
         context_name=desc.name,
         progress_callbacks=callbacks,
     ) as actors:
-        await actors.agent_actor.run_agent_loop(
-            AgentContext(desc=desc, state=state),
+        await run_agent_via_messages(
+            actors,
+            ctx=AgentContext(desc=desc, state=state),
             tools=desc.tools,
             progress_callbacks=callbacks,
             completer=completer,
             compact_conversation_at_tokens=200_000,
-            tool_call_actor_uri=actors.tool_call_actor_uri,
         )
     assert state.output is not None
     assert state.output.result == "ok"
@@ -109,7 +110,8 @@ def test_agent_tool_requires_actor_dependencies() -> None:
             enable_ask_user=False,
             tools=[],
             ui=NullUI(),
-            agent_actor=None,  # type: ignore[arg-type]
+            actor_directory=None,  # type: ignore[arg-type]
+            agent_actor_uri=None,  # type: ignore[arg-type]
             tool_call_actor_uri=None,  # type: ignore[arg-type]
             user_actor_uri=None,
         )

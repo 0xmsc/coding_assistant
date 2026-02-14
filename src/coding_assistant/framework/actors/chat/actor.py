@@ -156,10 +156,16 @@ class ChatActor:
         await self.send_message(
             RunChatRequest(
                 request_id=request_id,
+                history=history,
                 model=model,
                 tools=tuple(tools),
                 instructions=instructions,
                 context_name=context_name,
+                callbacks=callbacks,
+                completer=completer,
+                user_actor_uri=user_actor_uri,
+                tool_call_actor_uri=tool_call_actor_uri,
+                reply_to_uri=self._self_uri,
             )
         )
         await fut
@@ -232,17 +238,32 @@ class ChatActor:
 
     async def _run_chat_loop_request(self, message: RunChatRequest) -> None:
         runtime = self._run_chat_runtime.pop(message.request_id, None)
+        callbacks: ProgressCallbacks
+        completer: Completer
         if runtime is None:
-            await self.send_message(
-                RunFailed(request_id=message.request_id, error=RuntimeError("Missing chat runtime config."))
+            callbacks = message.callbacks
+            completer = message.completer
+        else:
+            callbacks = runtime.callbacks
+            completer = runtime.completer
+        self._user_actor_uri = message.user_actor_uri
+        self._tool_call_actor_uri = message.tool_call_actor_uri
+        self._chat_history = message.history
+        try:
+            await self._run_chat_loop_impl(message, callbacks=callbacks, completer=completer)
+        except BaseException as exc:
+            await self._send_run_response(
+                request=message,
+                message=RunFailed(request_id=message.request_id, error=exc),
             )
             return
-        try:
-            await self._run_chat_loop_impl(message, callbacks=runtime.callbacks, completer=runtime.completer)
-        except BaseException as exc:
-            await self.send_message(RunFailed(request_id=message.request_id, error=exc))
+        await self._send_run_response(request=message, message=RunCompleted(request_id=message.request_id))
+
+    async def _send_run_response(self, *, request: RunChatRequest, message: RunCompleted | RunFailed) -> None:
+        if request.reply_to_uri is None:
+            await self.send_message(message)
             return
-        await self.send_message(RunCompleted(request_id=message.request_id))
+        await self._actor_directory.send_message(uri=request.reply_to_uri, message=message)
 
     async def _request_llm(
         self,

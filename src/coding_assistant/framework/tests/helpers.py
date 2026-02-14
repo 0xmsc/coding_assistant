@@ -12,6 +12,10 @@ from coding_assistant.framework.history import append_tool_message
 from coding_assistant.framework.actors.common.messages import (
     HandleToolCallsRequest,
     HandleToolCallsResponse,
+    RunAgentRequest,
+    RunChatRequest,
+    RunCompleted,
+    RunFailed,
     ToolCallExecutionResult,
 )
 from coding_assistant.framework.actors.agent.actor import AgentActor
@@ -20,7 +24,7 @@ from coding_assistant.framework.actors.llm.actor import LLMActor
 from coding_assistant.framework.actors.tool_call.actor import ToolCallActor
 from coding_assistant.framework.parameters import Parameter
 from coding_assistant.framework.results import TextResult
-from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext
+from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext, Completer
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -160,23 +164,30 @@ async def execute_tool_calls_via_messages(
 ) -> HandleToolCallsResponse:
     request_id = uuid4().hex
     future: asyncio.Future[HandleToolCallsResponse] = asyncio.get_running_loop().create_future()
+    if actor._actor_directory is None:  # pyright: ignore[reportPrivateUsage]
+        raise RuntimeError("ToolCallActor test helper requires actor_directory.")
+    reply_uri = f"actor://test/reply/tool-calls/{request_id}"
 
     @dataclass(slots=True)
-    class _ReplySink:
+    class _ReplyActor:
         async def send_message(self, response: HandleToolCallsResponse) -> None:
             if response.request_id != request_id:
                 future.set_exception(RuntimeError(f"Mismatched tool response id: {response.request_id}"))
                 return
             future.set_result(response)
 
-    await actor.send_message(
-        HandleToolCallsRequest(
-            request_id=request_id,
-            message=message,
-            reply_to=_ReplySink(),
+    actor._actor_directory.register(uri=reply_uri, actor=_ReplyActor())  # pyright: ignore[reportPrivateUsage]
+    try:
+        await actor.send_message(
+            HandleToolCallsRequest(
+                request_id=request_id,
+                message=message,
+                reply_to_uri=reply_uri,
+            )
         )
-    )
-    return await future
+        return await future
+    finally:
+        actor._actor_directory.unregister(uri=reply_uri)  # pyright: ignore[reportPrivateUsage]
 
 
 def append_tool_call_results_to_history(
@@ -242,10 +253,12 @@ async def tool_call_actor_scope(
     progress_callbacks: ProgressCallbacks | None = None,
     tool_callbacks: ToolCallbacks | None = None,
 ) -> AsyncIterator[ToolCallActor]:
+    actor_directory = ActorDirectory()
     actor = ToolCallActor(
         tools=tools,
         ui=ui,
         context_name=context_name,
+        actor_directory=actor_directory,
         progress_callbacks=progress_callbacks or NullProgressCallbacks(),
         tool_callbacks=tool_callbacks or NullToolCallbacks(),
     )
@@ -268,6 +281,96 @@ class ActorBundle:
     llm_actor_uri: str
     tool_call_actor_uri: str
     user_actor_uri: str
+
+
+@dataclass(slots=True)
+class _RunReplyActor:
+    request_id: str
+    future: asyncio.Future[None]
+
+    async def send_message(self, message: object) -> None:
+        if isinstance(message, RunCompleted):
+            if message.request_id != self.request_id:
+                self.future.set_exception(RuntimeError(f"Mismatched run response id: {message.request_id}"))
+                return
+            self.future.set_result(None)
+            return
+        if isinstance(message, RunFailed):
+            if message.request_id != self.request_id:
+                self.future.set_exception(RuntimeError(f"Mismatched run response id: {message.request_id}"))
+                return
+            self.future.set_exception(message.error)
+            return
+        self.future.set_exception(RuntimeError(f"Unexpected run response type: {type(message).__name__}"))
+
+
+async def run_chat_via_messages(
+    actors: ActorBundle,
+    *,
+    history: list[BaseMessage],
+    model: str,
+    tools: Sequence[Tool],
+    instructions: str | None,
+    callbacks: ProgressCallbacks,
+    completer: Any,
+    context_name: str,
+) -> None:
+    request_id = uuid4().hex
+    reply_uri = f"actor://test/reply/chat/{request_id}"
+    future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+    actors.actor_directory.register(uri=reply_uri, actor=_RunReplyActor(request_id=request_id, future=future))
+    try:
+        await actors.actor_directory.send_message(
+            uri=actors.chat_actor_uri,
+            message=RunChatRequest(
+                request_id=request_id,
+                history=history,
+                model=model,
+                tools=tuple(tools),
+                instructions=instructions,
+                context_name=context_name,
+                callbacks=callbacks,
+                completer=completer,
+                user_actor_uri=actors.user_actor_uri,
+                tool_call_actor_uri=actors.tool_call_actor_uri,
+                reply_to_uri=reply_uri,
+            ),
+        )
+        await future
+    finally:
+        actors.actor_directory.unregister(uri=reply_uri)
+
+
+async def run_agent_via_messages(
+    actors: ActorBundle,
+    *,
+    ctx: AgentContext,
+    tools: Sequence[Tool],
+    progress_callbacks: ProgressCallbacks,
+    completer: Completer,
+    compact_conversation_at_tokens: int,
+) -> None:
+    request_id = uuid4().hex
+    reply_uri = f"actor://test/reply/agent/{request_id}"
+    future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+    actors.actor_directory.register(uri=reply_uri, actor=_RunReplyActor(request_id=request_id, future=future))
+    try:
+        await actors.actor_directory.send_message(
+            uri=actors.agent_actor_uri,
+            message=RunAgentRequest(
+                request_id=request_id,
+                ctx=ctx,
+                tools=tools,
+                compact_conversation_at_tokens=compact_conversation_at_tokens,
+                progress_callbacks=progress_callbacks,
+                completer=completer,
+                tool_call_actor_uri=actors.tool_call_actor_uri,
+                reply_to_uri=reply_uri,
+            ),
+        )
+        await future
+    finally:
+        actors.actor_directory.unregister(uri=reply_uri)
 
 
 @asynccontextmanager

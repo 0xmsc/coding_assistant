@@ -1,11 +1,14 @@
 import logging
+import asyncio
 from pathlib import Path
 from typing import Any, Optional
+from uuid import uuid4
 
 from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.actors.agent.actor import AgentActor
 from coding_assistant.framework.actors.chat.actor import ChatActor
+from coding_assistant.framework.actors.common.messages import RunChatRequest, RunCompleted, RunFailed
 from coding_assistant.framework.actors.llm.actor import LLMActor
 from coding_assistant.framework.actors.tool_call.actor import ToolCallActor
 from coding_assistant.framework.builtin_tools import CompactConversationTool
@@ -242,31 +245,46 @@ class Session:
 
     async def run_chat(self, history: Optional[list[BaseMessage]] = None) -> None:
         chat_history = history or []
-        if self._chat_actor is None or self._tool_call_actor_uri is None or self._user_actor_uri is None:
+        if (
+            self._actor_directory is None
+            or self._chat_actor_uri is None
+            or self._tool_call_actor_uri is None
+            or self._user_actor_uri is None
+        ):
             raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running chat.")
         tools_with_meta = list(self.tools)
         if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
             tools_with_meta.append(CompactConversationTool())
         async with history_manager_scope(context_name="session") as history_manager:
+            request_id = uuid4().hex
+            reply_uri = f"actor://session/chat-reply/{request_id}"
+            completion_future = self._register_run_reply(request_id=request_id, reply_uri=reply_uri)
             try:
-                await self._chat_actor.run_chat_loop(
-                    history=chat_history,
-                    model=self.config.model,
-                    tools=tools_with_meta,
-                    instructions=self.instructions,
-                    callbacks=self.callbacks,
-                    completer=openai_complete,
-                    context_name="Orchestrator",
-                    tool_call_actor_uri=self._tool_call_actor_uri,
-                    user_actor_uri=self._user_actor_uri,
+                await self._actor_directory.send_message(
+                    uri=self._chat_actor_uri,
+                    message=RunChatRequest(
+                        request_id=request_id,
+                        history=chat_history,
+                        model=self.config.model,
+                        tools=tuple(tools_with_meta),
+                        instructions=self.instructions,
+                        context_name="Orchestrator",
+                        callbacks=self.callbacks,
+                        completer=openai_complete,
+                        user_actor_uri=self._user_actor_uri,
+                        tool_call_actor_uri=self._tool_call_actor_uri,
+                        reply_to_uri=reply_uri,
+                    ),
                 )
+                await completion_future
             finally:
+                self._actor_directory.unregister(uri=reply_uri)
                 await history_manager.save_orchestrator_history(
                     working_directory=self.working_directory, history=chat_history
                 )
 
     async def run_agent(self, task: str, history: Optional[list[BaseMessage]] = None) -> Any:
-        if self._agent_actor is None or self._tool_call_actor_uri is None:
+        if self._actor_directory is None or self._agent_actor_uri is None or self._tool_call_actor_uri is None:
             raise RuntimeError(
                 "Session actors are not initialized. Use `async with Session(...)` before running agent."
             )
@@ -288,7 +306,8 @@ class Session:
             tool_callbacks=self.tool_callbacks,
             name="launch_orchestrator_agent",
             completer=openai_complete,
-            agent_actor=self._agent_actor,
+            actor_directory=self._actor_directory,
+            agent_actor_uri=self._agent_actor_uri,
             tool_call_actor_uri=self._tool_call_actor_uri,
             user_actor_uri=self._user_actor_uri,
         )
@@ -308,3 +327,33 @@ class Session:
                 await history_manager.save_orchestrator_history(
                     working_directory=self.working_directory, history=tool.history
                 )
+
+    def _register_run_reply(self, *, request_id: str, reply_uri: str) -> "asyncio.Future[None]":
+        if self._actor_directory is None:
+            raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running.")
+
+        completion_future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        reply_actor = _RunReplyActor(request_id=request_id, future=completion_future)
+        self._actor_directory.register(uri=reply_uri, actor=reply_actor)
+        return completion_future
+
+
+class _RunReplyActor:
+    def __init__(self, *, request_id: str, future: "asyncio.Future[None]") -> None:
+        self._request_id = request_id
+        self._future = future
+
+    async def send_message(self, message: object) -> None:
+        if isinstance(message, RunCompleted):
+            if message.request_id != self._request_id:
+                self._future.set_exception(RuntimeError(f"Mismatched run response id: {message.request_id}"))
+                return
+            self._future.set_result(None)
+            return
+        if isinstance(message, RunFailed):
+            if message.request_id != self._request_id:
+                self._future.set_exception(RuntimeError(f"Mismatched run response id: {message.request_id}"))
+                return
+            self._future.set_exception(message.error)
+            return
+        self._future.set_exception(RuntimeError(f"Unexpected run response type: {type(message).__name__}"))

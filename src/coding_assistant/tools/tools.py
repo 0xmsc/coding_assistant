@@ -1,11 +1,14 @@
+import asyncio
 import logging
 import tempfile
 from pathlib import Path
 from typing import Any, Sequence
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.framework.actors.agent.actor import AgentActor
+from coding_assistant.framework.actor_directory import ActorDirectory
+from coding_assistant.framework.actors.common.messages import RunAgentRequest, RunCompleted, RunFailed
 from coding_assistant.framework.builtin_tools import CompactConversationTool, FinishTaskTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import (
@@ -145,7 +148,8 @@ class AgentTool(Tool):
         name: str = "launch_agent",
         history: Sequence[BaseMessage] | None = None,
         completer: Completer | None = None,
-        agent_actor: AgentActor,
+        actor_directory: ActorDirectory,
+        agent_actor_uri: str,
         tool_call_actor_uri: str,
         user_actor_uri: str | None = None,
     ) -> None:
@@ -161,13 +165,16 @@ class AgentTool(Tool):
         self._name = name
         self._history = history
         self._completer = completer or openai_complete
-        self._agent_actor = agent_actor
+        self._actor_directory = actor_directory
+        self._agent_actor_uri = agent_actor_uri
         self._tool_call_actor_uri = tool_call_actor_uri
         self._user_actor_uri = user_actor_uri
         self.history: list[BaseMessage] = []
         self.summary: str = ""
-        if self._agent_actor is None or self._tool_call_actor_uri is None:
-            raise RuntimeError("AgentTool requires actor-backed dependencies: agent_actor and tool_call_actor_uri.")
+        if self._actor_directory is None or self._agent_actor_uri is None or self._tool_call_actor_uri is None:
+            raise RuntimeError(
+                "AgentTool requires actor-backed dependencies: actor_directory, agent_actor_uri, and tool_call_actor_uri."
+            )
 
     def name(self) -> str:
         return self._name
@@ -209,7 +216,8 @@ class AgentTool(Tool):
                     progress_callbacks=NullProgressCallbacks(),
                     tool_callbacks=self._tool_callbacks,
                     completer=self._completer,
-                    agent_actor=self._agent_actor,
+                    actor_directory=self._actor_directory,
+                    agent_actor_uri=self._agent_actor_uri,
                     tool_call_actor_uri=self._tool_call_actor_uri,
                     user_actor_uri=self._user_actor_uri,
                 ),
@@ -225,16 +233,55 @@ class AgentTool(Tool):
             tools_with_meta.append(CompactConversationTool())
 
         try:
-            await self._agent_actor.run_agent_loop(
-                ctx,
-                tools=tools_with_meta,
-                progress_callbacks=self._progress_callbacks,
-                compact_conversation_at_tokens=self._compact_conversation_at_tokens,
-                completer=self._completer,
-                tool_call_actor_uri=self._tool_call_actor_uri,
-            )
+            request_id = uuid4().hex
+            reply_uri = f"actor://tool/{self._name}/reply/{request_id}"
+            run_future = self._create_run_future(request_id=request_id)
+            self._actor_directory.register(uri=reply_uri, actor=run_future)
+            try:
+                await self._actor_directory.send_message(
+                    uri=self._agent_actor_uri,
+                    message=RunAgentRequest(
+                        request_id=request_id,
+                        ctx=ctx,
+                        tools=tools_with_meta,
+                        compact_conversation_at_tokens=self._compact_conversation_at_tokens,
+                        progress_callbacks=self._progress_callbacks,
+                        completer=self._completer,
+                        tool_call_actor_uri=self._tool_call_actor_uri,
+                        reply_to_uri=reply_uri,
+                    ),
+                )
+                await run_future.future
+            finally:
+                self._actor_directory.unregister(uri=reply_uri)
+
             assert state.output is not None, "Agent did not produce output"
             self.summary = state.output.summary
             return TextResult(content=state.output.result)
         finally:
             self.history = state.history
+
+    @staticmethod
+    def _create_run_future(request_id: str) -> "_RunReplyActor":
+        return _RunReplyActor(request_id=request_id)
+
+
+class _RunReplyActor:
+    def __init__(self, *, request_id: str) -> None:
+        self._request_id = request_id
+        self.future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+
+    async def send_message(self, message: object) -> None:
+        if isinstance(message, RunCompleted):
+            if message.request_id != self._request_id:
+                self.future.set_exception(RuntimeError(f"Mismatched run response id: {message.request_id}"))
+                return
+            self.future.set_result(None)
+            return
+        if isinstance(message, RunFailed):
+            if message.request_id != self._request_id:
+                self.future.set_exception(RuntimeError(f"Mismatched run response id: {message.request_id}"))
+                return
+            self.future.set_exception(message.error)
+            return
+        self.future.set_exception(RuntimeError(f"Unexpected run response type: {type(message).__name__}"))

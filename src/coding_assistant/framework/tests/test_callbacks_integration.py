@@ -8,6 +8,7 @@ from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     make_test_agent,
     make_ui_mock,
+    run_agent_via_messages,
     system_actor_scope_for_tests,
 )
 from coding_assistant.llm.types import AssistantMessage, ToolCall, FunctionCall, ToolMessage, Tool
@@ -44,13 +45,13 @@ async def test_agent_loop_runs_successfully() -> None:
         context_name=desc.name,
         progress_callbacks=callbacks,
     ) as actors:
-        await actors.agent_actor.run_agent_loop(
-            AgentContext(desc=desc, state=state),
+        await run_agent_via_messages(
+            actors,
+            ctx=AgentContext(desc=desc, state=state),
             tools=desc.tools,
             progress_callbacks=callbacks,
             compact_conversation_at_tokens=200_000,
             completer=completer,
-            tool_call_actor_uri=actors.tool_call_actor_uri,
         )
 
     assert state.output is not None
@@ -72,13 +73,13 @@ async def test_on_tool_message_called_with_arguments_and_result() -> None:
         context_name=desc.name,
         progress_callbacks=callbacks,
     ) as actors:
-        await actors.agent_actor.run_agent_loop(
-            AgentContext(desc=desc, state=state),
+        await run_agent_via_messages(
+            actors,
+            ctx=AgentContext(desc=desc, state=state),
             tools=desc.tools,
             progress_callbacks=callbacks,
             compact_conversation_at_tokens=200_000,
             completer=completer,
-            tool_call_actor_uri=actors.tool_call_actor_uri,
         )
 
     found = False

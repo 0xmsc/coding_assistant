@@ -53,7 +53,7 @@ ResponseT = TypeVar("ResponseT")
 
 
 @dataclass(slots=True)
-class _LocalReplySink(Generic[ResponseT]):
+class _LocalReplyActor(Generic[ResponseT]):
     future: asyncio.Future[ResponseT]
     extractor: Callable[[object], ResponseT | BaseException]
 
@@ -72,7 +72,8 @@ class ActorUI(UI):
     def __init__(self, ui: UI, *, context_name: str = "ui", actor_directory: ActorDirectory | None = None) -> None:
         self._ui = ui
         self._actor: Actor[_UIMessage] = Actor(name=f"{context_name}.ui", handler=self._handle_message)
-        self._actor_directory = actor_directory
+        self._actor_directory = actor_directory or ActorDirectory()
+        self._context_name = context_name
         self._started = False
 
     def start(self) -> None:
@@ -89,38 +90,58 @@ class ActorUI(UI):
 
     async def ask(self, prompt_text: str, default: str | None = None) -> str:
         request_id = uuid4().hex
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[str] = loop.create_future()
-        sink = _LocalReplySink[str](
-            future=future,
+        return await self._request_response(
+            request_id=request_id,
+            message_factory=lambda reply_to_uri: AskRequest(
+                request_id=request_id,
+                prompt_text=prompt_text,
+                default=default,
+                reply_to_uri=reply_to_uri,
+            ),
             extractor=lambda msg: self._extract_ask_response(msg, request_id),
         )
-        await self.send_message(
-            AskRequest(request_id=request_id, prompt_text=prompt_text, default=default, reply_to=sink)
-        )
-        return await future
 
     async def confirm(self, prompt_text: str) -> bool:
         request_id = uuid4().hex
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[bool] = loop.create_future()
-        sink = _LocalReplySink[bool](
-            future=future,
+        return await self._request_response(
+            request_id=request_id,
+            message_factory=lambda reply_to_uri: ConfirmRequest(
+                request_id=request_id,
+                prompt_text=prompt_text,
+                reply_to_uri=reply_to_uri,
+            ),
             extractor=lambda msg: self._extract_confirm_response(msg, request_id),
         )
-        await self.send_message(ConfirmRequest(request_id=request_id, prompt_text=prompt_text, reply_to=sink))
-        return await future
 
     async def prompt(self, words: list[str] | None = None) -> str:
         request_id = uuid4().hex
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[str] = loop.create_future()
-        sink = _LocalReplySink[str](
-            future=future,
+        return await self._request_response(
+            request_id=request_id,
+            message_factory=lambda reply_to_uri: PromptRequest(
+                request_id=request_id,
+                words=words,
+                reply_to_uri=reply_to_uri,
+            ),
             extractor=lambda msg: self._extract_prompt_response(msg, request_id),
         )
-        await self.send_message(PromptRequest(request_id=request_id, words=words, reply_to=sink))
-        return await future
+
+    async def _request_response(
+        self,
+        *,
+        request_id: str,
+        message_factory: Callable[[str], _UIMessage],
+        extractor: Callable[[object], ResponseT | BaseException],
+    ) -> ResponseT:
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[ResponseT] = loop.create_future()
+        reply_actor = _LocalReplyActor[ResponseT](future=future, extractor=extractor)
+        reply_uri = f"actor://{self._context_name}/ui/reply/{request_id}"
+        self._actor_directory.register(uri=reply_uri, actor=reply_actor)
+        try:
+            await self.send_message(message_factory(reply_uri))
+            return await future
+        finally:
+            self._actor_directory.unregister(uri=reply_uri)
 
     async def send_message(self, message: _UIMessage) -> None:
         self.start()
@@ -169,43 +190,35 @@ class ActorUI(UI):
             try:
                 prompt_response = await self._ui.prompt(message.words)
                 prompt_input = _parse_chat_prompt_input(prompt_response)
-                if message.reply_to_uri is not None:
-                    if self._actor_directory is None:
-                        raise RuntimeError("UserActor cannot send by URI without actor directory.")
-                    await self._actor_directory.send_message(uri=message.reply_to_uri, message=prompt_input)
-                elif message.reply_to is not None:
-                    await message.reply_to.send_message(prompt_input)
-                else:
-                    raise RuntimeError("AgentYieldedToUser is missing reply target.")
+                await self._send_reply(uri=message.reply_to_uri, message=prompt_input)
             except BaseException as exc:
                 logger.exception("Failed to handle AgentYieldedToUser message: %s", exc)
-                if message.reply_to_uri is not None:
-                    if self._actor_directory is None:
-                        raise RuntimeError("UserActor cannot send by URI without actor directory.")
-                    await self._actor_directory.send_message(
-                        uri=message.reply_to_uri, message=UserInputFailed(error=exc)
-                    )
-                elif message.reply_to is not None:
-                    await message.reply_to.send_message(UserInputFailed(error=exc))
-                else:
-                    raise RuntimeError("AgentYieldedToUser is missing reply target.")
+                await self._send_reply(uri=message.reply_to_uri, message=UserInputFailed(error=exc))
             return None
         if isinstance(message, AskRequest):
             try:
                 ask_response = await self._ui.ask(message.prompt_text, default=message.default)
-                await message.reply_to.send_message(AskResponse(request_id=message.request_id, value=ask_response))
+                await self._send_reply(
+                    uri=message.reply_to_uri,
+                    message=AskResponse(request_id=message.request_id, value=ask_response),
+                )
             except BaseException as exc:
-                await message.reply_to.send_message(AskResponse(request_id=message.request_id, value=None, error=exc))
+                await self._send_reply(
+                    uri=message.reply_to_uri,
+                    message=AskResponse(request_id=message.request_id, value=None, error=exc),
+                )
             return None
         if isinstance(message, ConfirmRequest):
             try:
                 confirm_response = await self._ui.confirm(message.prompt_text)
-                await message.reply_to.send_message(
-                    ConfirmResponse(request_id=message.request_id, value=confirm_response)
+                await self._send_reply(
+                    uri=message.reply_to_uri,
+                    message=ConfirmResponse(request_id=message.request_id, value=confirm_response),
                 )
             except BaseException as exc:
-                await message.reply_to.send_message(
-                    ConfirmResponse(request_id=message.request_id, value=None, error=exc)
+                await self._send_reply(
+                    uri=message.reply_to_uri,
+                    message=ConfirmResponse(request_id=message.request_id, value=None, error=exc),
                 )
             return None
         if isinstance(message, PromptRequest):
@@ -214,13 +227,20 @@ class ActorUI(UI):
                 prompt_value: str | ChatPromptInput = prompt_response
                 if message.parse_chat_intent:
                     prompt_value = _parse_chat_prompt_input(prompt_response)
-                await message.reply_to.send_message(PromptResponse(request_id=message.request_id, value=prompt_value))
+                await self._send_reply(
+                    uri=message.reply_to_uri,
+                    message=PromptResponse(request_id=message.request_id, value=prompt_value),
+                )
             except BaseException as exc:
-                await message.reply_to.send_message(
-                    PromptResponse(request_id=message.request_id, value=None, error=exc)
+                await self._send_reply(
+                    uri=message.reply_to_uri,
+                    message=PromptResponse(request_id=message.request_id, value=None, error=exc),
                 )
             return None
         raise RuntimeError(f"Unknown UI message: {message!r}")
+
+    async def _send_reply(self, *, uri: str, message: object) -> None:
+        await self._actor_directory.send_message(uri=uri, message=message)
 
 
 class UserActor(ActorUI):

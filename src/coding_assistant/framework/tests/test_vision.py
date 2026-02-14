@@ -34,7 +34,8 @@ async def test_model_vision_recognizes_car_image() -> None:
             tools=[],
             history=history,
             ui=ui,
-            agent_actor=actors.agent_actor,
+            actor_directory=actors.actor_directory,
+            agent_actor_uri=actors.agent_actor_uri,
             tool_call_actor_uri=actors.tool_call_actor_uri,
             user_actor_uri=actors.user_actor_uri,
         )

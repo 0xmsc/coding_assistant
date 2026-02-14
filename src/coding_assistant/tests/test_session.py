@@ -1,4 +1,5 @@
 import pytest
+import asyncio
 from typing import Any
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -98,15 +99,17 @@ async def test_session_run_chat(session_args: dict[str, Any]) -> None:
     mock_tool = MagicMock(spec=Tool)
     session.tools = [mock_tool]
     session.instructions = "test instructions"
-    session._chat_actor = MagicMock()
-    session._chat_actor.run_chat_loop = AsyncMock()
-    session._tool_call_actor = MagicMock()
+    session._actor_directory = MagicMock()
+    session._actor_directory.send_message = AsyncMock()
+    session._chat_actor_uri = "actor://test/chat"
     session._tool_call_actor_uri = "actor://test/tool-call"
     session._user_actor = MagicMock(spec=UI)
     session._user_actor_uri = "actor://test/user"
+    session._actor_directory.unregister = MagicMock()
 
     with (
         patch("coding_assistant.session.history_manager_scope") as mock_history_scope,
+        patch.object(Session, "_register_run_reply") as mock_register_run_reply,
     ):
         mock_history_manager = MagicMock()
         mock_history_manager.save_orchestrator_history = AsyncMock()
@@ -116,10 +119,14 @@ async def test_session_run_chat(session_args: dict[str, Any]) -> None:
             yield mock_history_manager
 
         mock_history_scope.side_effect = history_scope
+        done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        done.set_result(None)
+        mock_register_run_reply.return_value = done
 
         await session.run_chat(history=[])
 
-        session._chat_actor.run_chat_loop.assert_called_once()
+        session._actor_directory.send_message.assert_called_once()
+        session._actor_directory.unregister.assert_called_once()
         mock_history_manager.save_orchestrator_history.assert_called_once_with(
             working_directory=session.working_directory, history=[]
         )
@@ -131,8 +138,8 @@ async def test_session_run_agent(session_args: dict[str, Any]) -> None:
     mock_tool = MagicMock(spec=Tool)
     session.tools = [mock_tool]
     session.instructions = "test instructions"
-    session._agent_actor = MagicMock()
-    session._tool_call_actor = MagicMock()
+    session._actor_directory = MagicMock()
+    session._agent_actor_uri = "actor://test/agent"
     session._tool_call_actor_uri = "actor://test/tool-call"
     session._user_actor = MagicMock(spec=UI)
     session._user_actor_uri = "actor://test/user"
