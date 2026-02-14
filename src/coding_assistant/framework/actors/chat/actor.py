@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
-from dataclasses import dataclass
 from uuid import uuid4
 
 from coding_assistant.framework.actor_directory import ActorDirectory
@@ -25,10 +23,10 @@ from coding_assistant.framework.actors.common.messages import (
     RunCompleted,
     RunFailed,
     SessionExitRequested,
+    ToolCapability,
     UserInputFailed,
     UserTextSubmitted,
 )
-from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.history import (
     append_assistant_message,
     append_tool_message,
@@ -36,13 +34,12 @@ from coding_assistant.framework.history import (
     clear_history,
 )
 from coding_assistant.framework.interrupts import InterruptController
-from coding_assistant.framework.types import Completer
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
+    NullProgressCallbacks,
     ProgressCallbacks,
     StatusLevel,
-    Tool,
     ToolMessage,
     Usage,
     UserMessage,
@@ -54,12 +51,6 @@ _ChatMessage = (
 )
 
 
-@dataclass(slots=True)
-class _RunConfig:
-    callbacks: ProgressCallbacks
-    completer: Completer
-
-
 class ChatActor:
     def __init__(
         self,
@@ -67,12 +58,14 @@ class ChatActor:
         actor_directory: ActorDirectory,
         self_uri: str,
         llm_actor_uri: str,
+        progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
         context_name: str = "chat",
     ) -> None:
         self._actor: Actor[_ChatMessage] = Actor(name=f"{context_name}.chat-loop", handler=self._handle_message)
         self._actor_directory = actor_directory
         self._self_uri = self_uri
         self._llm_actor_uri = llm_actor_uri
+        self._progress_callbacks = progress_callbacks
         self._started = False
         self._inflight: set[asyncio.Task[None]] = set()
 
@@ -85,7 +78,9 @@ class ChatActor:
         self._pending_tool: dict[str, asyncio.Future[HandleToolCallsResponse]] = {}
         self._pending_chat_input: asyncio.Future[ChatPromptInput] | None = None
         self._queued_chat_inputs: list[ChatPromptInput] = []
-        self._run_chat_runtime: dict[str, _RunConfig] = {}
+
+    def set_progress_callbacks(self, callbacks: ProgressCallbacks) -> None:
+        self._progress_callbacks = callbacks
 
     def start(self) -> None:
         if self._started:
@@ -126,7 +121,6 @@ class ChatActor:
             self._pending_chat_input.set_exception(RuntimeError(reason))
         self._pending_chat_input = None
         self._queued_chat_inputs.clear()
-        self._run_chat_runtime.clear()
         self._user_actor_uri = None
         self._tool_call_actor_uri = None
 
@@ -135,10 +129,8 @@ class ChatActor:
         *,
         history: list[BaseMessage],
         model: str,
-        tools: Sequence[Tool],
+        tool_capabilities: tuple[ToolCapability, ...],
         instructions: str | None,
-        callbacks: ProgressCallbacks,
-        completer: Completer,
         context_name: str,
         user_actor_uri: str,
         tool_call_actor_uri: str,
@@ -152,17 +144,14 @@ class ChatActor:
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[object] = loop.create_future()
         self._pending_api[request_id] = fut
-        self._run_chat_runtime[request_id] = _RunConfig(callbacks=callbacks, completer=completer)
         await self.send_message(
             RunChatRequest(
                 request_id=request_id,
                 history=history,
                 model=model,
-                tools=tuple(tools),
+                tool_capabilities=tool_capabilities,
                 instructions=instructions,
                 context_name=context_name,
-                callbacks=callbacks,
-                completer=completer,
                 user_actor_uri=user_actor_uri,
                 tool_call_actor_uri=tool_call_actor_uri,
                 reply_to_uri=self._self_uri,
@@ -237,20 +226,11 @@ class ChatActor:
         raise RuntimeError(f"Unknown chat message: {message!r}")
 
     async def _run_chat_loop_request(self, message: RunChatRequest) -> None:
-        runtime = self._run_chat_runtime.pop(message.request_id, None)
-        callbacks: ProgressCallbacks
-        completer: Completer
-        if runtime is None:
-            callbacks = message.callbacks
-            completer = message.completer
-        else:
-            callbacks = runtime.callbacks
-            completer = runtime.completer
         self._user_actor_uri = message.user_actor_uri
         self._tool_call_actor_uri = message.tool_call_actor_uri
         self._chat_history = list(message.history)
         try:
-            await self._run_chat_loop_impl(message, callbacks=callbacks, completer=completer)
+            await self._run_chat_loop_impl(message)
         except BaseException as exc:
             message.history.clear()
             message.history.extend(self._chat_history)
@@ -277,9 +257,7 @@ class ChatActor:
         *,
         history: list[BaseMessage],
         model: str,
-        tools: Sequence[Tool],
-        progress_callbacks: ProgressCallbacks,
-        completer: Completer,
+        tool_capabilities: tuple[ToolCapability, ...],
     ) -> tuple[AssistantMessage, Usage | None]:
         request_id = self._next_id()
         loop = asyncio.get_running_loop()
@@ -291,9 +269,7 @@ class ChatActor:
                 request_id=request_id,
                 history=tuple(history),
                 model=model,
-                tools=tools,
-                completer=completer,
-                progress_callbacks=progress_callbacks,
+                tool_capabilities=tool_capabilities,
                 reply_to_uri=self._self_uri,
             ),
         )
@@ -303,7 +279,7 @@ class ChatActor:
         self,
         *,
         assistant_message: AssistantMessage,
-        tools: Sequence[Tool],
+        tool_capabilities: tuple[ToolCapability, ...],
     ) -> HandleToolCallsResponse:
         if self._tool_call_actor_uri is None:
             raise RuntimeError("ChatActor is missing ToolCallActor runtime dependency.")
@@ -317,7 +293,7 @@ class ChatActor:
                 request_id=request_id,
                 message=assistant_message,
                 reply_to_uri=self._self_uri,
-                tools=tuple(tools),
+                tool_capabilities=tool_capabilities,
             ),
         )
         try:
@@ -353,16 +329,15 @@ class ChatActor:
         )
         return await fut
 
-    async def _run_chat_loop_impl(
-        self, message: RunChatRequest, *, callbacks: ProgressCallbacks, completer: Completer
-    ) -> None:
+    async def _run_chat_loop_impl(self, message: RunChatRequest) -> None:
         if self._user_actor_uri is None:
             raise RuntimeError("ChatActor is missing UserActor runtime dependency.")
         if self._tool_call_actor_uri is None:
             raise RuntimeError("ChatActor is missing ToolCallActor runtime dependency.")
-        tools = list(message.tools)
-        if not any(tool.name() == "compact_conversation" for tool in tools):
-            tools.append(CompactConversationTool())
+        callbacks = self._progress_callbacks
+        tool_capabilities = message.tool_capabilities
+        if not any(item.name == "compact_conversation" for item in tool_capabilities):
+            raise RuntimeError("ChatActor requires compact_conversation tool capability.")
 
         if self._chat_history:
             for entry in self._chat_history:
@@ -462,9 +437,7 @@ class ChatActor:
                         self._request_llm(
                             history=self._chat_history,
                             model=message.model,
-                            tools=tools,
-                            progress_callbacks=callbacks,
-                            completer=completer,
+                            tool_capabilities=tool_capabilities,
                         ),
                         name="do_single_step",
                     )
@@ -483,7 +456,9 @@ class ChatActor:
 
                     if getattr(assistant_message, "tool_calls", []):
                         handle_tool_calls_task = loop.create_task(
-                            self._request_tool_calls(assistant_message=assistant_message, tools=tools),
+                            self._request_tool_calls(
+                                assistant_message=assistant_message, tool_capabilities=tool_capabilities
+                            ),
                             name="tool_calls",
                         )
                         interrupt_controller.register_task("tool_calls", handle_tool_calls_task)

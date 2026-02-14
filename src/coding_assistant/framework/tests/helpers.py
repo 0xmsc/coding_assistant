@@ -8,12 +8,14 @@ from uuid import uuid4
 
 from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
+from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.history import append_tool_message
 from coding_assistant.framework.actors.common.messages import (
     HandleToolCallsRequest,
     HandleToolCallsResponse,
     RunAgentRequest,
     RunChatRequest,
+    ToolCapability,
     ToolCallExecutionResult,
 )
 from coding_assistant.framework.actors.common.reply_waiters import register_run_reply_waiter
@@ -21,6 +23,7 @@ from coding_assistant.framework.actors.agent.actor import AgentActor
 from coding_assistant.framework.actors.chat.actor import ChatActor
 from coding_assistant.framework.actors.llm.actor import LLMActor
 from coding_assistant.framework.actors.tool_call.actor import ToolCallActor
+from coding_assistant.framework.actors.tool_call.capabilities import ToolCapabilityActor, register_tool_capabilities
 from coding_assistant.framework.parameters import Parameter
 from coding_assistant.framework.results import TextResult
 from coding_assistant.framework.types import AgentDescription, AgentState, AgentContext, Completer
@@ -218,12 +221,22 @@ def append_tool_call_results_to_history(
 
 
 @asynccontextmanager
-async def agent_actor_scope(*, context_name: str = "test") -> AsyncIterator[AgentActor]:
+async def agent_actor_scope(
+    *,
+    context_name: str = "test",
+    completer: Completer | None = None,
+    progress_callbacks: ProgressCallbacks | None = None,
+) -> AsyncIterator[AgentActor]:
     actor_directory = ActorDirectory()
     agent_uri = f"actor://{context_name}/agent"
     llm_uri = f"actor://{context_name}/llm"
 
-    llm_actor = LLMActor(context_name=context_name, actor_directory=actor_directory)
+    llm_actor = LLMActor(
+        completer=completer or FakeCompleter([]),
+        progress_callbacks=progress_callbacks or NullProgressCallbacks(),
+        context_name=context_name,
+        actor_directory=actor_directory,
+    )
     actor = AgentActor(
         context_name=context_name,
         actor_directory=actor_directory,
@@ -253,8 +266,14 @@ async def tool_call_actor_scope(
     tool_callbacks: ToolCallbacks | None = None,
 ) -> AsyncIterator[ToolCallActor]:
     actor_directory = ActorDirectory()
+    capabilities, capability_actors = register_tool_capabilities(
+        actor_directory=actor_directory,
+        tools=tuple(tools),
+        context_name=context_name,
+        uri_prefix=f"actor://{context_name}/tool-capability",
+    )
     actor = ToolCallActor(
-        tools=tools,
+        default_tool_capabilities=capabilities,
         ui=ui,
         context_name=context_name,
         actor_directory=actor_directory,
@@ -266,15 +285,22 @@ async def tool_call_actor_scope(
         yield actor
     finally:
         await actor.stop()
+        for capability_actor in capability_actors:
+            await capability_actor.stop()
+        for capability in capabilities:
+            actor_directory.unregister(uri=capability.uri)
 
 
 @dataclass(slots=True)
 class ActorBundle:
     agent_actor: AgentActor
     chat_actor: ChatActor
+    llm_actor: LLMActor
     tool_call_actor: ToolCallActor
     user_actor: UI
     actor_directory: ActorDirectory
+    tool_capabilities: tuple[ToolCapability, ...]
+    tool_capability_actors: tuple[ToolCapabilityActor, ...]
     agent_actor_uri: str
     chat_actor_uri: str
     llm_actor_uri: str
@@ -293,9 +319,20 @@ async def run_chat_via_messages(
     completer: Any,
     context_name: str,
 ) -> None:
+    actors.llm_actor.configure_runtime(completer=completer, progress_callbacks=callbacks)
+    actors.chat_actor.set_progress_callbacks(callbacks)
+    tools_with_meta = list(tools)
+    if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
+        tools_with_meta.append(CompactConversationTool())
     request_id = uuid4().hex
     reply_uri = f"actor://test/reply/chat/{request_id}"
     future = register_run_reply_waiter(actors.actor_directory, request_id=request_id, reply_uri=reply_uri)
+    runtime_capabilities, runtime_actors = register_tool_capabilities(
+        actor_directory=actors.actor_directory,
+        tools=tuple(tools_with_meta),
+        context_name=context_name,
+        uri_prefix=f"actor://{context_name}/runtime-chat-capability",
+    )
     try:
         await actors.actor_directory.send_message(
             uri=actors.chat_actor_uri,
@@ -303,11 +340,9 @@ async def run_chat_via_messages(
                 request_id=request_id,
                 history=history,
                 model=model,
-                tools=tuple(tools),
+                tool_capabilities=runtime_capabilities,
                 instructions=instructions,
                 context_name=context_name,
-                callbacks=callbacks,
-                completer=completer,
                 user_actor_uri=actors.user_actor_uri,
                 tool_call_actor_uri=actors.tool_call_actor_uri,
                 reply_to_uri=reply_uri,
@@ -315,6 +350,10 @@ async def run_chat_via_messages(
         )
         await future
     finally:
+        for capability_actor in runtime_actors:
+            await capability_actor.stop()
+        for capability in runtime_capabilities:
+            actors.actor_directory.unregister(uri=capability.uri)
         actors.actor_directory.unregister(uri=reply_uri)
 
 
@@ -327,25 +366,35 @@ async def run_agent_via_messages(
     completer: Completer,
     compact_conversation_at_tokens: int,
 ) -> None:
+    actors.llm_actor.configure_runtime(completer=completer, progress_callbacks=progress_callbacks)
+    actors.agent_actor.set_progress_callbacks(progress_callbacks)
     request_id = uuid4().hex
     reply_uri = f"actor://test/reply/agent/{request_id}"
     future = register_run_reply_waiter(actors.actor_directory, request_id=request_id, reply_uri=reply_uri)
+    runtime_capabilities, runtime_actors = register_tool_capabilities(
+        actor_directory=actors.actor_directory,
+        tools=tuple(tools),
+        context_name=ctx.desc.name,
+        uri_prefix=f"actor://{ctx.desc.name}/runtime-agent-capability",
+    )
     try:
         await actors.actor_directory.send_message(
             uri=actors.agent_actor_uri,
             message=RunAgentRequest(
                 request_id=request_id,
                 ctx=ctx,
-                tools=tools,
+                tool_capabilities=runtime_capabilities,
                 compact_conversation_at_tokens=compact_conversation_at_tokens,
-                progress_callbacks=progress_callbacks,
-                completer=completer,
                 tool_call_actor_uri=actors.tool_call_actor_uri,
                 reply_to_uri=reply_uri,
             ),
         )
         await future
     finally:
+        for capability_actor in runtime_actors:
+            await capability_actor.stop()
+        for capability in runtime_capabilities:
+            actors.actor_directory.unregister(uri=capability.uri)
         actors.actor_directory.unregister(uri=reply_uri)
 
 
@@ -369,26 +418,39 @@ async def system_actor_scope_for_tests(
     user_actor = (
         ui if isinstance(ui, ActorUI) else UserActor(ui, context_name=context_name, actor_directory=actor_directory)
     )
+    registered_capabilities, registered_capability_actors = register_tool_capabilities(
+        actor_directory=actor_directory,
+        tools=tuple(tools),
+        context_name=context_name,
+        uri_prefix=f"actor://{context_name}/tool-capability",
+    )
     tool_call_actor = ToolCallActor(
-        tools=tools,
+        default_tool_capabilities=registered_capabilities,
         ui=ui,
         context_name=context_name,
         actor_directory=actor_directory,
         progress_callbacks=progress_callbacks or NullProgressCallbacks(),
         tool_callbacks=tool_callbacks or NullToolCallbacks(),
     )
-    llm_actor = LLMActor(context_name=context_name, actor_directory=actor_directory)
+    llm_actor = LLMActor(
+        completer=FakeCompleter([]),  # overwritten via configure_runtime in run helpers
+        progress_callbacks=progress_callbacks or NullProgressCallbacks(),
+        context_name=context_name,
+        actor_directory=actor_directory,
+    )
     chat_actor = ChatActor(
         context_name=context_name,
         actor_directory=actor_directory,
         self_uri=chat_actor_uri,
         llm_actor_uri=llm_actor_uri,
+        progress_callbacks=progress_callbacks or NullProgressCallbacks(),
     )
     agent_actor = AgentActor(
         context_name=context_name,
         actor_directory=actor_directory,
         self_uri=agent_actor_uri,
         llm_actor_uri=llm_actor_uri,
+        progress_callbacks=progress_callbacks or NullProgressCallbacks(),
     )
     actor_directory.register(uri=agent_actor_uri, actor=agent_actor)
     actor_directory.register(uri=chat_actor_uri, actor=chat_actor)
@@ -406,9 +468,12 @@ async def system_actor_scope_for_tests(
         yield ActorBundle(
             agent_actor=agent_actor,
             chat_actor=chat_actor,
+            llm_actor=llm_actor,
             tool_call_actor=tool_call_actor,
             user_actor=user_actor,
             actor_directory=actor_directory,
+            tool_capabilities=registered_capabilities,
+            tool_capability_actors=registered_capability_actors,
             agent_actor_uri=agent_actor_uri,
             chat_actor_uri=chat_actor_uri,
             llm_actor_uri=llm_actor_uri,
@@ -420,6 +485,10 @@ async def system_actor_scope_for_tests(
         await tool_call_actor.stop()
         await agent_actor.stop()
         await llm_actor.stop()
+        for capability_actor in registered_capability_actors:
+            await capability_actor.stop()
+        for capability in registered_capabilities:
+            actor_directory.unregister(uri=capability.uri)
         if owns_user_actor and isinstance(user_actor, ActorUI):
             await user_actor.stop()
         actor_directory.unregister(uri=agent_actor_uri)

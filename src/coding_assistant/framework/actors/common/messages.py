@@ -1,18 +1,23 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from coding_assistant.framework.types import AgentContext, AgentOutput, Completer
+from coding_assistant.framework.types import AgentContext, AgentOutput
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
-    ProgressCallbacks,
-    Tool,
     ToolResult,
     Usage,
 )
+
+
+@dataclass(slots=True)
+class ToolCapability:
+    name: str
+    uri: str
+    description: str
+    parameters: dict[str, object]
 
 
 @dataclass(slots=True)
@@ -20,9 +25,7 @@ class LLMCompleteStepRequest:
     request_id: str
     history: tuple[BaseMessage, ...]
     model: str
-    tools: Sequence[Tool]
-    completer: "Completer"
-    progress_callbacks: "ProgressCallbacks"
+    tool_capabilities: tuple[ToolCapability, ...]
     reply_to_uri: str
 
 
@@ -38,10 +41,8 @@ class LLMCompleteStepResponse:
 class RunAgentRequest:
     request_id: str
     ctx: AgentContext
-    tools: Sequence[Tool]
+    tool_capabilities: tuple[ToolCapability, ...]
     compact_conversation_at_tokens: int
-    progress_callbacks: "ProgressCallbacks"
-    completer: "Completer"
     tool_call_actor_uri: str
     reply_to_uri: str | None = None
 
@@ -51,11 +52,9 @@ class RunChatRequest:
     request_id: str
     history: list[BaseMessage]
     model: str
-    tools: tuple[Tool, ...]
+    tool_capabilities: tuple[ToolCapability, ...]
     instructions: str | None
     context_name: str
-    callbacks: "ProgressCallbacks"
-    completer: "Completer"
     user_actor_uri: str
     tool_call_actor_uri: str
     reply_to_uri: str | None = None
@@ -79,7 +78,7 @@ class HandleToolCallsRequest:
     request_id: str
     message: AssistantMessage
     reply_to_uri: str
-    tools: tuple[Tool, ...] | None = None
+    tool_capabilities: tuple[ToolCapability, ...] | None = None
 
 
 @dataclass(slots=True)

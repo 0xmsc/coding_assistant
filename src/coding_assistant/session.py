@@ -8,7 +8,7 @@ from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.actors.agent.actor import AgentActor
 from coding_assistant.framework.actors.chat.actor import ChatActor
-from coding_assistant.framework.actors.common.messages import RunAgentRequest, RunChatRequest
+from coding_assistant.framework.actors.common.messages import RunAgentRequest, RunChatRequest, ToolCapability
 from coding_assistant.framework.actors.common.messages import RunCompleted
 from coding_assistant.framework.actors.common.reply_waiters import (
     register_run_payload_reply_waiter,
@@ -21,8 +21,9 @@ from coding_assistant.framework.actors.system.wiring import (
     shutdown_orchestrator_actors,
     start_orchestrator_actors,
 )
+from coding_assistant.framework.actors.tool_call.capabilities import ToolCapabilityActor, register_tool_capabilities
 from coding_assistant.framework.actors.tool_call.actor import ToolCallActor
-from coding_assistant.framework.builtin_tools import CompactConversationTool
+from coding_assistant.framework.builtin_tools import FinishTaskTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.framework.parameters import Parameter, parameters_from_model
 from coding_assistant.framework.results import TextResult
@@ -90,6 +91,7 @@ class Session:
         self._llm_actor_uri: str | None = None
         self._tool_call_actor_uri: str | None = None
         self._user_actor_uri: str | None = None
+        self._tool_capabilities: tuple[ToolCapability, ...] = tuple()
 
     @property
     def mcp_servers(self) -> Optional[list[Any]]:
@@ -163,6 +165,7 @@ class Session:
             tools=self.tools,
             callbacks=self.callbacks,
             tool_callbacks=self.tool_callbacks,
+            completer=openai_complete,
             context_name="Orchestrator",
         )
         self._orchestrator_actors = orchestrator_actors
@@ -177,6 +180,7 @@ class Session:
         self._llm_actor_uri = orchestrator_actors.llm_actor_uri
         self._tool_call_actor_uri = orchestrator_actors.tool_call_actor_uri
         self._user_actor_uri = orchestrator_actors.user_actor_uri
+        self._tool_capabilities = orchestrator_actors.tool_capabilities
         start_orchestrator_actors(orchestrator_actors)
 
         self.callbacks.on_status_message("Session initialized.", level=StatusLevel.SUCCESS)
@@ -199,6 +203,7 @@ class Session:
         self._llm_actor_uri = None
         self._tool_call_actor_uri = None
         self._user_actor_uri = None
+        self._tool_capabilities = tuple()
 
         if self._mcp_manager:
             await self._mcp_manager.shutdown(exc_type=exc_type, exc_val=exc_val, exc_tb=exc_tb)
@@ -214,9 +219,6 @@ class Session:
             or self._user_actor_uri is None
         ):
             raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running chat.")
-        tools_with_meta = list(self.tools)
-        if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
-            tools_with_meta.append(CompactConversationTool())
         async with history_manager_scope(context_name="session") as history_manager:
             request_id = uuid4().hex
             reply_uri = f"actor://session/chat-reply/{request_id}"
@@ -228,11 +230,9 @@ class Session:
                         request_id=request_id,
                         history=chat_history,
                         model=self.config.model,
-                        tools=tuple(tools_with_meta),
+                        tool_capabilities=self._tool_capabilities,
                         instructions=self.instructions,
                         context_name="Orchestrator",
-                        callbacks=self.callbacks,
-                        completer=openai_complete,
                         user_actor_uri=self._user_actor_uri,
                         tool_call_actor_uri=self._tool_call_actor_uri,
                         reply_to_uri=reply_uri,
@@ -304,48 +304,65 @@ class Session:
             tools=[launch_agent_tool, *agent_mode_tools],
         )
         state = AgentState(history=list(history) if history is not None else [])
-        tools_with_meta = list(desc.tools)
-        if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
-            tools_with_meta.append(CompactConversationTool())
+        runtime_tools = (
+            launch_agent_tool,
+            AskClientTool(ui=ui),
+            FinishTaskTool(),
+        )
+        runtime_tool_capabilities: tuple[ToolCapability, ...] = tuple()
+        runtime_tool_actors: tuple[ToolCapabilityActor, ...] = tuple()
+        if self._actor_directory is not None:
+            runtime_tool_capabilities, runtime_tool_actors = register_tool_capabilities(
+                actor_directory=self._actor_directory,
+                tools=runtime_tools,
+                context_name="session",
+                uri_prefix="actor://session/runtime-tool-capability",
+            )
+        effective_capabilities = (*runtime_tool_capabilities, *self._tool_capabilities)
 
-        async with history_manager_scope(context_name="session") as history_manager:
-            try:
-                request_id = uuid4().hex
-                reply_uri = f"actor://session/agent-reply/{request_id}"
-                completion_future = self._register_run_payload_reply(request_id=request_id, reply_uri=reply_uri)
+        try:
+            async with history_manager_scope(context_name="session") as history_manager:
                 try:
-                    await self._actor_directory.send_message(
-                        uri=self._agent_actor_uri,
-                        message=RunAgentRequest(
-                            request_id=request_id,
-                            ctx=AgentContext(desc=desc, state=state),
-                            tools=tuple(tools_with_meta),
-                            compact_conversation_at_tokens=self.config.compact_conversation_at_tokens,
-                            progress_callbacks=self.callbacks,
-                            completer=openai_complete,
-                            tool_call_actor_uri=self._tool_call_actor_uri,
-                            reply_to_uri=reply_uri,
-                        ),
-                    )
-                    completion = await completion_future
-                finally:
-                    self._actor_directory.unregister(uri=reply_uri)
+                    request_id = uuid4().hex
+                    reply_uri = f"actor://session/agent-reply/{request_id}"
+                    completion_future = self._register_run_payload_reply(request_id=request_id, reply_uri=reply_uri)
+                    try:
+                        await self._actor_directory.send_message(
+                            uri=self._agent_actor_uri,
+                            message=RunAgentRequest(
+                                request_id=request_id,
+                                ctx=AgentContext(desc=desc, state=state),
+                                tool_capabilities=tuple(effective_capabilities),
+                                compact_conversation_at_tokens=self.config.compact_conversation_at_tokens,
+                                tool_call_actor_uri=self._tool_call_actor_uri,
+                                reply_to_uri=reply_uri,
+                            ),
+                        )
+                        completion = await completion_future
+                    finally:
+                        self._actor_directory.unregister(uri=reply_uri)
 
-                final_output = completion.agent_output or state.output
-                if final_output is None:
-                    raise RuntimeError("Agent did not produce output.")
-                result = TextResult(content=final_output.result)
-                self.callbacks.on_status_message(f"Task completed: {result.content}", level=StatusLevel.SUCCESS)
-                return result
-            finally:
-                final_history = (
-                    list(completion.history)
-                    if "completion" in locals() and completion.history is not None
-                    else state.history
-                )
-                await history_manager.save_orchestrator_history(
-                    working_directory=self.working_directory, history=final_history
-                )
+                    final_output = completion.agent_output or state.output
+                    if final_output is None:
+                        raise RuntimeError("Agent did not produce output.")
+                    result = TextResult(content=final_output.result)
+                    self.callbacks.on_status_message(f"Task completed: {result.content}", level=StatusLevel.SUCCESS)
+                    return result
+                finally:
+                    final_history = (
+                        list(completion.history)
+                        if "completion" in locals() and completion.history is not None
+                        else state.history
+                    )
+                    await history_manager.save_orchestrator_history(
+                        working_directory=self.working_directory, history=final_history
+                    )
+        finally:
+            for capability_actor in runtime_tool_actors:
+                await capability_actor.stop()
+            if self._actor_directory is not None:
+                for capability in runtime_tool_capabilities:
+                    self._actor_directory.unregister(uri=capability.uri)
 
     def _register_run_reply(self, *, request_id: str, reply_uri: str) -> "asyncio.Future[None]":
         if self._actor_directory is None:

@@ -179,7 +179,7 @@ async def test_unknown_tool_error_then_finish(monkeypatch: Any) -> None:
             "tool_call_id": "1",
             "role": "tool",
             "name": "unknown.tool",
-            "content": "Error executing tool: Tool unknown.tool not found in agent tools.",
+            "content": "Error executing tool: Tool unknown.tool not found in available tool capabilities.",
         },
         {
             "role": "assistant",
