@@ -1,5 +1,6 @@
 import logging
 import tempfile
+import json
 from pathlib import Path
 from typing import Any, Sequence
 from uuid import uuid4
@@ -9,14 +10,10 @@ from pydantic import BaseModel, Field
 from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.actors.common.messages import RunAgentRequest
 from coding_assistant.framework.actors.common.reply_waiters import register_run_reply_waiter
+from coding_assistant.framework.actors.tool_call.executor import ToolExecutor
 from coding_assistant.framework.builtin_tools import CompactConversationTool, FinishTaskTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
-from coding_assistant.llm.types import (
-    BaseMessage,
-    NullProgressCallbacks,
-    ProgressCallbacks,
-    Tool,
-)
+from coding_assistant.llm.types import BaseMessage, FunctionCall, NullProgressCallbacks, ProgressCallbacks, Tool, ToolCall
 from coding_assistant.framework.parameters import Parameter, parameters_from_model
 from coding_assistant.framework.types import (
     AgentContext,
@@ -109,10 +106,29 @@ class RedirectToolCallTool(Tool):
             return TextResult(content=f"Error: Tool '{tool_name}' not found or cannot be redirected.")
 
         try:
-            result = await target_tool.execute(tool_args)
+            executor = ToolExecutor(
+                tools=tuple(self._tools),
+                progress_callbacks=NullProgressCallbacks(),
+                tool_callbacks=NullToolCallbacks(),
+                ui=DefaultAnswerUI(),
+                context_name="redirect_tool_call",
+            )
+            executor.start()
+            try:
+                tool_call = ToolCall(
+                    id=uuid4().hex,
+                    function=FunctionCall(name=tool_name, arguments=json.dumps(tool_args)),
+                )
+                task = await executor.submit(tool_call, tools=tuple(self._tools))
+                result = await task
+            finally:
+                await executor.stop()
 
             if not isinstance(result, TextResult):
                 return TextResult(content=f"Error: Tool '{tool_name}' did not return a TextResult.")
+            if result.content.startswith("Error executing tool: "):
+                tool_error = result.content.replace("Error executing tool: ", "", 1)
+                return TextResult(content=f"Error executing tool '{tool_name}': {tool_error}")
 
             content = result.content
 
