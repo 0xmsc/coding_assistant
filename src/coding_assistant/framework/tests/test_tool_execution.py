@@ -7,6 +7,7 @@ import pytest
 from coding_assistant.framework.callbacks import ToolCallbacks
 from coding_assistant.framework.actors.agent.actor import AgentActor
 from coding_assistant.framework.actors.common.messages import HandleToolCallsRequest, HandleToolCallsResponse
+from coding_assistant.framework.actors.tool_call.capabilities import register_tool_capabilities
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -93,7 +94,7 @@ async def test_tool_execution_success_and_missing_tool() -> None:
         assert history[-1] == ToolMessage(
             tool_call_id="2",
             name="missing",
-            content="Error executing tool: Tool missing not found in agent tools.",
+            content="Error executing tool: Tool missing not found in available tool capabilities.",
         )
 
 
@@ -248,13 +249,25 @@ async def test_tool_call_actor_uses_request_scoped_tools() -> None:
             uri="actor://test/reply/request-b",
             actor=ReplyActorB(),
         )
+        caps_a, actors_a = register_tool_capabilities(
+            actor_directory=actor._actor_directory,  # pyright: ignore[reportPrivateUsage]
+            tools=(EchoTool("from-a", delay=0.01),),
+            context_name="test-a",
+            uri_prefix="actor://test-a/capability",
+        )
+        caps_b, actors_b = register_tool_capabilities(
+            actor_directory=actor._actor_directory,  # pyright: ignore[reportPrivateUsage]
+            tools=(EchoTool("from-b"),),
+            context_name="test-b",
+            uri_prefix="actor://test-b/capability",
+        )
         await asyncio.gather(
             actor.send_message(
                 HandleToolCallsRequest(
                     request_id="request-a",
                     message=message,
                     reply_to_uri="actor://test/reply/request-a",
-                    tools=(EchoTool("from-a", delay=0.01),),
+                    tool_capabilities=caps_a,
                 )
             ),
             actor.send_message(
@@ -262,7 +275,7 @@ async def test_tool_call_actor_uses_request_scoped_tools() -> None:
                     request_id="request-b",
                     message=message,
                     reply_to_uri="actor://test/reply/request-b",
-                    tools=(EchoTool("from-b"),),
+                    tool_capabilities=caps_b,
                 )
             ),
         )
@@ -271,6 +284,10 @@ async def test_tool_call_actor_uses_request_scoped_tools() -> None:
         response_b = await future_b
         actor._actor_directory.unregister(uri="actor://test/reply/request-a")  # pyright: ignore[reportPrivateUsage]
         actor._actor_directory.unregister(uri="actor://test/reply/request-b")  # pyright: ignore[reportPrivateUsage]
+        for cap_actor in (*actors_a, *actors_b):
+            await cap_actor.stop()
+        for capability in (*caps_a, *caps_b):
+            actor._actor_directory.unregister(uri=capability.uri)  # pyright: ignore[reportPrivateUsage]
 
     assert len(response_a.results) == 1
     assert len(response_b.results) == 1

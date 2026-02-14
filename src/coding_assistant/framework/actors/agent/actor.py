@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -17,6 +16,7 @@ from coding_assistant.framework.actors.common.messages import (
     RunAgentRequest,
     RunCompleted,
     RunFailed,
+    ToolCapability,
 )
 from coding_assistant.framework.history import (
     append_assistant_message,
@@ -25,12 +25,12 @@ from coding_assistant.framework.history import (
     clear_history,
 )
 from coding_assistant.framework.results import CompactConversationResult, FinishTaskResult, TextResult
-from coding_assistant.framework.types import AgentContext, AgentDescription, AgentOutput, AgentState, Completer
+from coding_assistant.framework.types import AgentContext, AgentDescription, AgentOutput, AgentState
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
+    NullProgressCallbacks,
     ProgressCallbacks,
-    Tool,
     ToolMessage,
     ToolResult,
     Usage,
@@ -43,9 +43,7 @@ class _DoSingleStep:
     request_id: str
     history: list[BaseMessage]
     model: str
-    tools: Sequence[Tool]
-    progress_callbacks: ProgressCallbacks
-    completer: Completer
+    tool_capabilities: tuple[ToolCapability, ...]
     context_name: str
 
 
@@ -88,12 +86,14 @@ class AgentActor:
         actor_directory: ActorDirectory,
         self_uri: str,
         llm_actor_uri: str,
+        progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
         context_name: str = "agent",
     ) -> None:
         self._actor: Actor[_AgentMessage] = Actor(name=f"{context_name}.agent-loop", handler=self._handle_message)
         self._actor_directory = actor_directory
         self._self_uri = self_uri
         self._llm_actor_uri = llm_actor_uri
+        self._progress_callbacks = progress_callbacks
         self._started = False
         self._agent_histories: dict[int, list[BaseMessage]] = {}
         self._inflight: set[asyncio.Task[None]] = set()
@@ -103,7 +103,9 @@ class AgentActor:
         self._pending_api: dict[str, asyncio.Future[object]] = {}
         self._pending_llm: dict[str, asyncio.Future[tuple[AssistantMessage, Usage | None]]] = {}
         self._pending_tool: dict[str, asyncio.Future[HandleToolCallsResponse]] = {}
-        self._run_agent_runtime: dict[str, tuple[ProgressCallbacks, Completer]] = {}
+
+    def set_progress_callbacks(self, callbacks: ProgressCallbacks) -> None:
+        self._progress_callbacks = callbacks
 
     def start(self) -> None:
         if self._started:
@@ -136,7 +138,6 @@ class AgentActor:
                 if not fut.done():
                     fut.set_exception(RuntimeError(reason))
             mapping.clear()
-        self._run_agent_runtime.clear()
         self._tool_call_actor_uri = None
 
     async def do_single_step(
@@ -144,9 +145,7 @@ class AgentActor:
         *,
         history: list[BaseMessage],
         model: str,
-        tools: Sequence[Tool],
-        progress_callbacks: ProgressCallbacks,
-        completer: Completer,
+        tool_capabilities: tuple[ToolCapability, ...],
         context_name: str,
     ) -> tuple[AssistantMessage, Usage | None]:
         self.start()
@@ -159,9 +158,7 @@ class AgentActor:
                 request_id=request_id,
                 history=history,
                 model=model,
-                tools=tools,
-                progress_callbacks=progress_callbacks,
-                completer=completer,
+                tool_capabilities=tool_capabilities,
                 context_name=context_name,
             )
         )
@@ -172,9 +169,7 @@ class AgentActor:
         self,
         ctx: AgentContext,
         *,
-        tools: Sequence[Tool],
-        progress_callbacks: ProgressCallbacks,
-        completer: Completer,
+        tool_capabilities: tuple[ToolCapability, ...],
         compact_conversation_at_tokens: int,
         tool_call_actor_uri: str,
     ) -> None:
@@ -187,15 +182,12 @@ class AgentActor:
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[object] = loop.create_future()
         self._pending_api[request_id] = fut
-        self._run_agent_runtime[request_id] = (progress_callbacks, completer)
         await self.send_message(
             RunAgentRequest(
                 request_id=request_id,
                 ctx=ctx,
-                tools=tools,
+                tool_capabilities=tool_capabilities,
                 compact_conversation_at_tokens=compact_conversation_at_tokens,
-                progress_callbacks=progress_callbacks,
-                completer=completer,
                 tool_call_actor_uri=tool_call_actor_uri,
                 reply_to_uri=self._self_uri,
             )
@@ -262,9 +254,7 @@ class AgentActor:
             result = await self._request_llm(
                 history=message.history,
                 model=message.model,
-                tools=message.tools,
-                progress_callbacks=message.progress_callbacks,
-                completer=message.completer,
+                tool_capabilities=message.tool_capabilities,
             )
         except BaseException as exc:
             fut.set_exception(exc)
@@ -272,17 +262,9 @@ class AgentActor:
             fut.set_result(result)
 
     async def _run_agent_loop_request(self, message: RunAgentRequest) -> None:
-        runtime = self._run_agent_runtime.pop(message.request_id, None)
-        progress_callbacks: ProgressCallbacks
-        completer: Completer
-        if runtime is None:
-            progress_callbacks = message.progress_callbacks
-            completer = message.completer
-        else:
-            progress_callbacks, completer = runtime
         self._tool_call_actor_uri = message.tool_call_actor_uri
         try:
-            await self._run_agent_loop_impl(message, progress_callbacks=progress_callbacks, completer=completer)
+            await self._run_agent_loop_impl(message)
         except BaseException as exc:
             state_id = id(message.ctx.state)
             message.ctx.state.history = list(self._agent_histories.get(state_id, message.ctx.state.history))
@@ -314,9 +296,7 @@ class AgentActor:
         *,
         history: list[BaseMessage],
         model: str,
-        tools: Sequence[Tool],
-        progress_callbacks: ProgressCallbacks,
-        completer: Completer,
+        tool_capabilities: tuple[ToolCapability, ...],
     ) -> tuple[AssistantMessage, Usage | None]:
         request_id = self._next_id()
         loop = asyncio.get_running_loop()
@@ -328,9 +308,7 @@ class AgentActor:
                 request_id=request_id,
                 history=tuple(history),
                 model=model,
-                tools=tools,
-                completer=completer,
-                progress_callbacks=progress_callbacks,
+                tool_capabilities=tool_capabilities,
                 reply_to_uri=self._self_uri,
             ),
         )
@@ -340,7 +318,7 @@ class AgentActor:
         self,
         *,
         assistant_message: AssistantMessage,
-        tools: Sequence[Tool],
+        tool_capabilities: tuple[ToolCapability, ...],
     ) -> HandleToolCallsResponse:
         if self._tool_call_actor_uri is None:
             raise RuntimeError("AgentActor is missing ToolCallActor runtime dependency.")
@@ -354,7 +332,7 @@ class AgentActor:
                 request_id=request_id,
                 message=assistant_message,
                 reply_to_uri=self._self_uri,
-                tools=tuple(tools),
+                tool_capabilities=tool_capabilities,
             ),
         )
         try:
@@ -427,11 +405,10 @@ class AgentActor:
             return result.content
         return f"Tool produced result of type {type(result).__name__}"
 
-    async def _run_agent_loop_impl(
-        self, message: RunAgentRequest, *, progress_callbacks: ProgressCallbacks, completer: Completer
-    ) -> None:
+    async def _run_agent_loop_impl(self, message: RunAgentRequest) -> None:
         if self._tool_call_actor_uri is None:
             raise RuntimeError("AgentActor is missing ToolCallActor runtime dependency.")
+        progress_callbacks = self._progress_callbacks
         ctx = message.ctx
         desc = ctx.desc
         state = ctx.state
@@ -456,9 +433,7 @@ class AgentActor:
             assistant_message, usage = await self._request_llm(
                 history=history,
                 model=desc.model,
-                tools=message.tools,
-                progress_callbacks=progress_callbacks,
-                completer=completer,
+                tool_capabilities=message.tool_capabilities,
             )
 
             append_assistant_message(
@@ -470,7 +445,7 @@ class AgentActor:
 
             if getattr(assistant_message, "tool_calls", []):
                 tool_call_response = await self._request_tool_calls(
-                    assistant_message=assistant_message, tools=message.tools
+                    assistant_message=assistant_message, tool_capabilities=message.tool_capabilities
                 )
                 for item in tool_call_response.results:
                     result_summary = self.handle_tool_result_agent(

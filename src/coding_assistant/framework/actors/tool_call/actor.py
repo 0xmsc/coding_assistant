@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from json import JSONDecodeError
 from typing import Any
 
@@ -12,6 +12,7 @@ from coding_assistant.framework.actors.common.messages import (
     CancelToolCallsRequest,
     HandleToolCallsRequest,
     HandleToolCallsResponse,
+    ToolCapability,
     ToolCallExecutionResult,
 )
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
@@ -21,7 +22,6 @@ from coding_assistant.llm.types import (
     AssistantMessage,
     NullProgressCallbacks,
     ProgressCallbacks,
-    Tool,
     ToolResult,
 )
 from coding_assistant.ui import UI
@@ -31,15 +31,18 @@ class ToolCallActor:
     def __init__(
         self,
         *,
-        tools: Sequence[Tool],
+        default_tool_capabilities: tuple[ToolCapability, ...],
         ui: UI,
         context_name: str,
         actor_directory: ActorDirectory | None = None,
         progress_callbacks: ProgressCallbacks = NullProgressCallbacks(),
         tool_callbacks: ToolCallbacks = NullToolCallbacks(),
     ) -> None:
+        if actor_directory is None:
+            raise RuntimeError("ToolCallActor requires an actor directory for URI capability routing.")
         self._executor = ToolExecutor(
-            tools=tools,
+            actor_directory=actor_directory,
+            default_tool_capabilities=default_tool_capabilities,
             progress_callbacks=progress_callbacks,
             tool_callbacks=tool_callbacks,
             ui=ui,
@@ -100,7 +103,7 @@ class ToolCallActor:
                 results, cancelled = await self._handle_tool_calls(
                     message.request_id,
                     message.message,
-                    tools=message.tools,
+                    tool_capabilities=message.tool_capabilities,
                 )
                 await self._send_response(
                     message,
@@ -125,7 +128,7 @@ class ToolCallActor:
         self,
         request_id: str,
         message: AssistantMessage,
-        tools: tuple[Tool, ...] | None,
+        tool_capabilities: tuple[ToolCapability, ...] | None,
         on_result: Callable[[ToolCallExecutionResult], None] | None = None,
     ) -> tuple[list[ToolCallExecutionResult], bool]:
         tool_calls = message.tool_calls
@@ -133,9 +136,11 @@ class ToolCallActor:
             return [], False
 
         tasks_with_calls: dict[asyncio.Task[ToolResult], Any] = {}
-        effective_tools = tools if tools is not None else tuple(self._executor.tools)
+        effective_capabilities = (
+            tool_capabilities if tool_capabilities is not None else self._executor.default_tool_capabilities
+        )
         for tool_call in tool_calls:
-            task = await self._executor.submit(tool_call, tools=effective_tools)
+            task = await self._executor.submit(tool_call, tool_capabilities=effective_capabilities)
             tasks_with_calls[task] = tool_call
         self._inflight_tasks_by_request[request_id] = set(tasks_with_calls.keys())
 

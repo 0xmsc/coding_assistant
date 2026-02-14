@@ -1,8 +1,8 @@
 from typing import Any
 import pytest
-from unittest.mock import Mock
 
-from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
+from coding_assistant.llm.types import NullProgressCallbacks
+from coding_assistant.framework.actors.common.messages import ToolCapability
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     agent_actor_scope,
@@ -37,6 +37,18 @@ class DummyTool(Tool):
 
     async def execute(self, parameters: dict[str, Any]) -> ToolResult:
         return TextResult(content="ok")
+
+
+def _capabilities_from_tools(tools: list[Tool]) -> tuple[ToolCapability, ...]:
+    return tuple(
+        ToolCapability(
+            name=tool.name(),
+            uri=f"actor://test/capability/{tool.name()}",
+            description=tool.description(),
+            parameters=tool.parameters(),
+        )
+        for tool in tools
+    )
 
 
 @pytest.mark.asyncio
@@ -88,15 +100,15 @@ async def test_reasoning_is_forwarded_and_not_stored() -> None:
         tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[UserMessage(content="start")]
     )
 
-    callbacks = Mock(spec=ProgressCallbacks)
-
-    async with agent_actor_scope(context_name=desc.name) as agent_actor:
+    async with agent_actor_scope(
+        context_name=desc.name,
+        completer=completer,
+        progress_callbacks=NullProgressCallbacks(),
+    ) as agent_actor:
         _, _ = await agent_actor.do_single_step(
             history=state.history,
             model=desc.model,
-            tools=desc.tools,
-            progress_callbacks=callbacks,
-            completer=completer,
+            tool_capabilities=_capabilities_from_tools(desc.tools),
             context_name=desc.name,
         )
 
@@ -156,12 +168,14 @@ async def test_auto_inject_builtin_tools() -> None:
 async def test_requires_non_empty_history() -> None:
     desc, state = make_test_agent(tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[])
     with pytest.raises(RuntimeError, match="History is required in order to run a step."):
-        async with agent_actor_scope(context_name=desc.name) as agent_actor:
+        async with agent_actor_scope(
+            context_name=desc.name,
+            completer=FakeCompleter([AssistantMessage(content="hi")]),
+            progress_callbacks=NullProgressCallbacks(),
+        ) as agent_actor:
             await agent_actor.do_single_step(
                 history=state.history,
                 model=desc.model,
-                tools=desc.tools,
-                completer=FakeCompleter([AssistantMessage(content="hi")]),
+                tool_capabilities=_capabilities_from_tools(desc.tools),
                 context_name=desc.name,
-                progress_callbacks=NullProgressCallbacks(),
             )
