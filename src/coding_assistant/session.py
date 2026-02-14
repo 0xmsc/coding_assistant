@@ -8,7 +8,7 @@ from coding_assistant.config import Config, MCPServerConfig
 from coding_assistant.framework.actor_directory import ActorDirectory
 from coding_assistant.framework.actors.agent.actor import AgentActor
 from coding_assistant.framework.actors.chat.actor import ChatActor
-from coding_assistant.framework.actors.common.messages import RunChatRequest
+from coding_assistant.framework.actors.common.messages import RunAgentRequest, RunChatRequest
 from coding_assistant.framework.actors.common.reply_waiters import register_run_reply_waiter
 from coding_assistant.framework.actors.llm.actor import LLMActor
 from coding_assistant.framework.actors.system.wiring import (
@@ -20,6 +20,9 @@ from coding_assistant.framework.actors.system.wiring import (
 from coding_assistant.framework.actors.tool_call.actor import ToolCallActor
 from coding_assistant.framework.builtin_tools import CompactConversationTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
+from coding_assistant.framework.parameters import Parameter, parameters_from_model
+from coding_assistant.framework.results import TextResult
+from coding_assistant.framework.types import AgentContext, AgentDescription, AgentState
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
 from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.history_manager import history_manager_scope
@@ -27,7 +30,7 @@ from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tools.mcp_manager import MCPServerManager
-from coding_assistant.tools.tools import AgentTool, AskClientTool, RedirectToolCallTool
+from coding_assistant.tools.tools import AgentTool, AskClientTool, LaunchAgentSchema, RedirectToolCallTool
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
@@ -239,7 +242,12 @@ class Session:
                 )
 
     async def run_agent(self, task: str, history: Optional[list[BaseMessage]] = None) -> Any:
-        if self._actor_directory is None or self._agent_actor_uri is None or self._tool_call_actor_uri is None:
+        if (
+            self._actor_directory is None
+            or self._agent_actor_uri is None
+            or self._tool_call_actor_uri is None
+            or self._user_actor_uri is None
+        ):
             raise RuntimeError(
                 "Session actors are not initialized. Use `async with Session(...)` before running agent."
             )
@@ -249,7 +257,7 @@ class Session:
             *self.tools,
         ]
 
-        tool = AgentTool(
+        launch_agent_tool = AgentTool(
             model=self.config.model,
             expert_model=self.config.expert_model,
             compact_conversation_at_tokens=self.config.compact_conversation_at_tokens,
@@ -266,21 +274,62 @@ class Session:
             tool_call_actor_uri=self._tool_call_actor_uri,
             user_actor_uri=self._user_actor_uri,
         )
-
-        params = {
-            "task": task,
-            "instructions": self.instructions,
-            "expert_knowledge": True,
-        }
+        validated = LaunchAgentSchema.model_validate(
+            {
+                "task": task,
+                "instructions": self.instructions,
+                "expert_knowledge": True,
+            }
+        )
+        desc = AgentDescription(
+            name="Agent",
+            model=self.config.expert_model,
+            parameters=[
+                Parameter(
+                    name="description",
+                    description="The description of the agent's work and capabilities.",
+                    value=launch_agent_tool.description(),
+                ),
+                *parameters_from_model(validated),
+            ],
+            tools=[launch_agent_tool, *agent_mode_tools],
+        )
+        state = AgentState(history=list(history) if history is not None else [])
+        tools_with_meta = list(desc.tools)
+        if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
+            tools_with_meta.append(CompactConversationTool())
 
         async with history_manager_scope(context_name="session") as history_manager:
             try:
-                result = await tool.execute(params)
+                request_id = uuid4().hex
+                reply_uri = f"actor://session/agent-reply/{request_id}"
+                completion_future = self._register_run_reply(request_id=request_id, reply_uri=reply_uri)
+                try:
+                    await self._actor_directory.send_message(
+                        uri=self._agent_actor_uri,
+                        message=RunAgentRequest(
+                            request_id=request_id,
+                            ctx=AgentContext(desc=desc, state=state),
+                            tools=tuple(tools_with_meta),
+                            compact_conversation_at_tokens=self.config.compact_conversation_at_tokens,
+                            progress_callbacks=self.callbacks,
+                            completer=openai_complete,
+                            tool_call_actor_uri=self._tool_call_actor_uri,
+                            reply_to_uri=reply_uri,
+                        ),
+                    )
+                    await completion_future
+                finally:
+                    self._actor_directory.unregister(uri=reply_uri)
+
+                if state.output is None:
+                    raise RuntimeError("Agent did not produce output.")
+                result = TextResult(content=state.output.result)
                 self.callbacks.on_status_message(f"Task completed: {result.content}", level=StatusLevel.SUCCESS)
                 return result
             finally:
                 await history_manager.save_orchestrator_history(
-                    working_directory=self.working_directory, history=tool.history
+                    working_directory=self.working_directory, history=state.history
                 )
 
     def _register_run_reply(self, *, request_id: str, reply_uri: str) -> "asyncio.Future[None]":
