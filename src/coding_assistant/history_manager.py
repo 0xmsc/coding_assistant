@@ -5,34 +5,32 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator, Sequence
-from uuid import uuid4
 
 from coding_assistant.framework.actor_runtime import Actor
 from coding_assistant.history import save_orchestrator_history
 from coding_assistant.llm.types import BaseMessage
 
 
+class HistoryManager:
+    async def save_orchestrator_history(self, *, working_directory: Path, history: Sequence[BaseMessage]) -> None:
+        save_orchestrator_history(working_directory, history)
+
+
 @dataclass(slots=True)
 class _SaveOrchestratorHistoryRequest:
-    request_id: str
     working_directory: Path
     history: Sequence[BaseMessage]
+    future: asyncio.Future[None]
 
 
-@dataclass(slots=True)
-class _SaveOrchestratorHistoryDone:
-    request_id: str
-    error: BaseException | None = None
+_Message = _SaveOrchestratorHistoryRequest
 
 
-_Message = _SaveOrchestratorHistoryRequest | _SaveOrchestratorHistoryDone
-
-
-class HistoryManager:
+class HistoryManagerActor:
     def __init__(self, *, context_name: str = "history") -> None:
         self._actor: Actor[_Message] = Actor(name=f"{context_name}.history", handler=self._handle_message)
+        self._manager = HistoryManager()
         self._started = False
-        self._pending: dict[str, asyncio.Future[None]] = {}
 
     def start(self) -> None:
         if self._started:
@@ -44,51 +42,40 @@ class HistoryManager:
         if not self._started:
             return
         await self._actor.stop()
-        for future in self._pending.values():
-            if not future.done():
-                future.set_exception(RuntimeError("HistoryManager stopped before reply."))
-        self._pending.clear()
         self._started = False
 
     async def save_orchestrator_history(self, *, working_directory: Path, history: Sequence[BaseMessage]) -> None:
         self.start()
-        request_id = uuid4().hex
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[None] = loop.create_future()
-        self._pending[request_id] = future
+        future = asyncio.get_running_loop().create_future()
         await self._actor.send(
             _SaveOrchestratorHistoryRequest(
-                request_id=request_id,
                 working_directory=working_directory,
                 history=history,
+                future=future,
             )
         )
         await future
 
     async def _handle_message(self, message: _Message) -> None:
         if isinstance(message, _SaveOrchestratorHistoryRequest):
-            error: BaseException | None = None
             try:
-                save_orchestrator_history(message.working_directory, message.history)
+                await self._manager.save_orchestrator_history(
+                    working_directory=message.working_directory,
+                    history=message.history,
+                )
             except BaseException as exc:
-                error = exc
-            await self._actor.send(_SaveOrchestratorHistoryDone(request_id=message.request_id, error=error))
+                if not message.future.done():
+                    message.future.set_exception(exc)
+                return None
+            if not message.future.done():
+                message.future.set_result(None)
             return None
-        if isinstance(message, _SaveOrchestratorHistoryDone):
-            future = self._pending.pop(message.request_id, None)
-            if future is None:
-                raise RuntimeError(f"Unknown history response id: {message.request_id}")
-            if message.error is not None:
-                future.set_exception(message.error)
-            else:
-                future.set_result(None)
-            return None
-        raise RuntimeError(f"Unknown history manager message: {message!r}")
+        raise RuntimeError(f"Unknown history manager actor message: {message!r}")
 
 
 @asynccontextmanager
-async def history_manager_scope(*, context_name: str) -> AsyncIterator[HistoryManager]:
-    manager = HistoryManager(context_name=context_name)
+async def history_manager_scope(*, context_name: str) -> AsyncIterator[HistoryManagerActor]:
+    manager = HistoryManagerActor(context_name=context_name)
     manager.start()
     try:
         yield manager

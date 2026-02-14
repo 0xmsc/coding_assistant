@@ -34,7 +34,7 @@ from coding_assistant.history_manager import history_manager_scope
 from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.sandbox import sandbox
-from coding_assistant.tools.mcp_manager import MCPServerManager
+from coding_assistant.tools.mcp_manager import MCPServerManagerActor
 from coding_assistant.tools.tools import AgentTool, AskClientTool, LaunchAgentSchema, RedirectToolCallTool
 from coding_assistant.ui import UI
 
@@ -77,7 +77,7 @@ class Session:
 
         self.tools: list[Tool] = []
         self.instructions: str = ""
-        self._mcp_manager: Optional[MCPServerManager] = None
+        self._mcp_manager: Optional[MCPServerManagerActor] = None
         self._mcp_servers: Optional[list[Any]] = None
         self._agent_actor: AgentActor | None = None
         self._llm_actor: LLMActor | None = None
@@ -142,7 +142,7 @@ class Session:
         all_configs = [*self.mcp_server_configs, default_config]
 
         # MCP Servers setup
-        self._mcp_manager = MCPServerManager(context_name="session")
+        self._mcp_manager = MCPServerManagerActor(context_name="session")
         self._mcp_manager.start()
         bundle = await self._mcp_manager.initialize(
             config_servers=all_configs, working_directory=self.working_directory

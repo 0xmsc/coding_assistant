@@ -6,13 +6,13 @@ import pytest
 from coding_assistant.config import MCPServerConfig
 from coding_assistant.llm.types import Tool
 from coding_assistant.tools.mcp import MCPServer
-from coding_assistant.tools.mcp_manager import MCPServerManager
+from coding_assistant.tools.mcp_manager import MCPServerManager, MCPServerManagerActor
 
 
 @pytest.mark.asyncio
-async def test_mcp_manager_initialize_and_shutdown() -> None:
+async def test_mcp_manager_actor_initialize_and_shutdown() -> None:
     config = [MCPServerConfig(name="test", command="cmd", args=[])]
-    manager = MCPServerManager(context_name="test")
+    manager = MCPServerManagerActor(context_name="test")
     mock_cm = AsyncMock()
     mock_server = MagicMock(spec=MCPServer)
     mock_cm.__aenter__.return_value = [mock_server]
@@ -35,9 +35,9 @@ async def test_mcp_manager_initialize_and_shutdown() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mcp_manager_cleanup_on_initialize_error() -> None:
+async def test_mcp_manager_actor_cleanup_on_initialize_error() -> None:
     config = [MCPServerConfig(name="test", command="cmd", args=[])]
-    manager = MCPServerManager(context_name="test")
+    manager = MCPServerManagerActor(context_name="test")
     mock_cm = AsyncMock()
     mock_cm.__aenter__.return_value = [MagicMock(spec=MCPServer)]
 
@@ -53,3 +53,25 @@ async def test_mcp_manager_cleanup_on_initialize_error() -> None:
             await manager.initialize(config_servers=config, working_directory=Path("/tmp"))
 
         mock_cm.__aexit__.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_plain_mcp_manager_rejects_double_initialize() -> None:
+    config = [MCPServerConfig(name="test", command="cmd", args=[])]
+    manager = MCPServerManager()
+    mock_cm = AsyncMock()
+    mock_cm.__aenter__.return_value = [MagicMock(spec=MCPServer)]
+
+    with (
+        patch("coding_assistant.tools.mcp_manager.get_mcp_servers_from_config") as mock_get_mcp,
+        patch("coding_assistant.tools.mcp_manager.get_mcp_wrapped_tools", new_callable=AsyncMock) as mock_get_tools,
+    ):
+        mock_get_mcp.return_value = mock_cm
+        mock_tool = MagicMock(spec=Tool)
+        mock_get_tools.return_value = [mock_tool]
+
+        bundle = await manager.initialize(config_servers=config, working_directory=Path("/tmp"))
+        assert bundle.tools == [mock_tool]
+
+        with pytest.raises(RuntimeError, match="already initialized"):
+            await manager.initialize(config_servers=config, working_directory=Path("/tmp"))
