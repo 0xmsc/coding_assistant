@@ -21,6 +21,10 @@ from coding_assistant.history import (
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
 from coding_assistant.tools.mcp import print_mcp_tools
 
+import uvicorn
+from coding_assistant.api.server import create_app
+from coding_assistant.sandbox import sandbox
+from coding_assistant.api.manager import SessionManager
 from coding_assistant.session import Session
 from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 
@@ -28,8 +32,8 @@ logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
 
 
-def setup_logging() -> None:
-    """Setup logging to file only."""
+def setup_logging(api_mode: bool = False) -> None:
+    """Setup logging to file only. Redirect all logs to stderr in API mode."""
     log_file = get_log_file()
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.INFO)
@@ -44,6 +48,13 @@ def setup_logging() -> None:
         root_logger.removeHandler(handler)
 
     root_logger.addHandler(file_handler)
+
+    if api_mode:
+        # In API mode, we also log to stderr so the process is observable without file access
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        root_logger.addHandler(stream_handler)
+
     root_logger.setLevel(logging.INFO)
 
     # Set 'coding_assistant' logger to INFO
@@ -160,6 +171,25 @@ def parse_args() -> argparse.Namespace:
         help="Paths to directories containing Agent Skills (with SKILL.md files).",
     )
 
+    # API Mode
+    parser.add_argument(
+        "--api",
+        action="store_true",
+        help="Start the coding assistant as a headless API server.",
+    )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="0.0.0.0",
+        help="The host to bind the API server to.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="The port to bind the API server to.",
+    )
+
     return parser.parse_args()
 
 
@@ -179,6 +209,24 @@ async def _main(args: argparse.Namespace) -> None:
     config = create_config_from_args(args)
     working_directory = Path(os.getcwd())
     coding_assistant_root = Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
+
+    if args.sandbox:
+        readable = [Path(p).resolve() for p in args.readable_sandbox_directories]
+        readable.extend([Path(d).resolve() for d in args.skills_directories])
+        readable.append(coding_assistant_root)
+
+        writable = [Path(p).resolve() for p in args.writable_sandbox_directories]
+        writable.append(working_directory)
+
+        sandbox(readable_paths=readable, writable_paths=writable, include_defaults=True)
+
+    if args.api:
+        manager = SessionManager(config=config, coding_assistant_root=coding_assistant_root)
+        app = create_app(manager)
+        uv_config = uvicorn.Config(app, host=args.host, port=args.port, log_level="info", access_log=False)
+        server = uvicorn.Server(uv_config)
+        await server.serve()
+        return
 
     if args.resume_file:
         if not args.resume_file.exists():
@@ -213,9 +261,6 @@ async def _main(args: argparse.Namespace) -> None:
         mcp_server_configs=mcp_server_configs,
         skills_directories=args.skills_directories,
         mcp_env=args.mcp_env,
-        sandbox_enabled=args.sandbox,
-        readable_sandbox_directories=[Path(d).resolve() for d in args.readable_sandbox_directories],
-        writable_sandbox_directories=[Path(d).resolve() for d in args.writable_sandbox_directories],
         user_instructions=args.instructions,
     )
 
@@ -242,7 +287,7 @@ async def _main(args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
-    setup_logging()
+    setup_logging(api_mode=args.api)
 
     if args.trace:
         enable_tracing(get_default_trace_dir())

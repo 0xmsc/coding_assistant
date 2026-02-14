@@ -62,7 +62,6 @@ async def test_session_context_manager(session_args: dict[str, Any]) -> None:
     session = Session(**session_args)
 
     with (
-        patch("coding_assistant.session.sandbox") as mock_sandbox,
         patch("coding_assistant.session.get_mcp_servers_from_config") as mock_get_mcp,
         patch("coding_assistant.session.get_mcp_wrapped_tools", new_callable=AsyncMock) as mock_get_tools,
         patch("coding_assistant.session.get_instructions") as mock_get_instructions,
@@ -82,7 +81,6 @@ async def test_session_context_manager(session_args: dict[str, Any]) -> None:
             assert isinstance(session.tools[1], RedirectToolCallTool)
             assert session.instructions == "test instructions"
             assert session.mcp_servers == ["mock_server"]
-            mock_sandbox.assert_called_once()
             mock_get_mcp.assert_called_once()
 
         # Verify exit calls
