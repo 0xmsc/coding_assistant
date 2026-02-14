@@ -70,7 +70,7 @@ async def test_session_context_manager(session_args: dict[str, Any]) -> None:
 
     with (
         patch("coding_assistant.session.sandbox") as mock_sandbox,
-        patch("coding_assistant.session.MCPServerManager") as mock_manager_class,
+        patch("coding_assistant.session.MCPServerManagerActor") as mock_manager_class,
         patch("coding_assistant.session.get_instructions") as mock_get_instructions,
     ):
         mock_manager = mock_manager_class.return_value
