@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import tempfile
 from pathlib import Path
@@ -8,7 +7,8 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from coding_assistant.framework.actor_directory import ActorDirectory
-from coding_assistant.framework.actors.common.messages import RunAgentRequest, RunCompleted, RunFailed
+from coding_assistant.framework.actors.common.messages import RunAgentRequest
+from coding_assistant.framework.actors.common.reply_waiters import register_run_reply_waiter
 from coding_assistant.framework.builtin_tools import CompactConversationTool, FinishTaskTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import (
@@ -235,8 +235,11 @@ class AgentTool(Tool):
         try:
             request_id = uuid4().hex
             reply_uri = f"actor://tool/{self._name}/reply/{request_id}"
-            run_future = self._create_run_future(request_id=request_id)
-            self._actor_directory.register(uri=reply_uri, actor=run_future)
+            run_future = register_run_reply_waiter(
+                self._actor_directory,
+                request_id=request_id,
+                reply_uri=reply_uri,
+            )
             try:
                 await self._actor_directory.send_message(
                     uri=self._agent_actor_uri,
@@ -251,7 +254,7 @@ class AgentTool(Tool):
                         reply_to_uri=reply_uri,
                     ),
                 )
-                await run_future.future
+                await run_future
             finally:
                 self._actor_directory.unregister(uri=reply_uri)
 
@@ -260,28 +263,3 @@ class AgentTool(Tool):
             return TextResult(content=state.output.result)
         finally:
             self.history = state.history
-
-    @staticmethod
-    def _create_run_future(request_id: str) -> "_RunReplyActor":
-        return _RunReplyActor(request_id=request_id)
-
-
-class _RunReplyActor:
-    def __init__(self, *, request_id: str) -> None:
-        self._request_id = request_id
-        self.future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-
-    async def send_message(self, message: object) -> None:
-        if isinstance(message, RunCompleted):
-            if message.request_id != self._request_id:
-                self.future.set_exception(RuntimeError(f"Mismatched run response id: {message.request_id}"))
-                return
-            self.future.set_result(None)
-            return
-        if isinstance(message, RunFailed):
-            if message.request_id != self._request_id:
-                self.future.set_exception(RuntimeError(f"Mismatched run response id: {message.request_id}"))
-                return
-            self.future.set_exception(message.error)
-            return
-        self.future.set_exception(RuntimeError(f"Unexpected run response type: {type(message).__name__}"))

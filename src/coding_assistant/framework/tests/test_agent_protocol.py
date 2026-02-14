@@ -6,13 +6,10 @@ from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks
 from coding_assistant.framework.tests.helpers import (
     FakeCompleter,
     agent_actor_scope,
-    append_tool_call_results_to_history,
-    execute_tool_calls_via_messages,
     make_test_agent,
     make_ui_mock,
     run_agent_via_messages,
     system_actor_scope_for_tests,
-    tool_call_actor_scope,
 )
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -25,7 +22,6 @@ from coding_assistant.llm.types import (
 )
 from coding_assistant.framework.types import AgentContext
 from coding_assistant.framework.results import TextResult
-from coding_assistant.framework.history import append_assistant_message
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 
@@ -48,61 +44,36 @@ async def test_do_single_step_adds_shorten_prompt_on_token_threshold() -> None:
     # Make the assistant respond with a tool call so the "no tool calls" warning is not added
     tool_call = ToolCall(id="call_1", function=FunctionCall(name="dummy", arguments="{}"))
     fake_message = AssistantMessage(content=("h" * 2000), tool_calls=[tool_call])
-    completer = FakeCompleter([fake_message])
+    finish_call = ToolCall(
+        id="finish_1",
+        function=FunctionCall(name="finish_task", arguments='{"result": "ok", "summary": "done"}'),
+    )
+    completer = FakeCompleter([fake_message, AssistantMessage(tool_calls=[finish_call])])
 
     desc, state = make_test_agent(
         tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[UserMessage(content="start")]
     )
+    ctx = AgentContext(desc=desc, state=state)
 
-    async with agent_actor_scope(context_name=desc.name) as agent_actor:
-        msg, usage = await agent_actor.do_single_step(
-            history=state.history,
-            model=desc.model,
+    async with system_actor_scope_for_tests(tools=desc.tools, ui=make_ui_mock(), context_name=desc.name) as actors:
+        await run_agent_via_messages(
+            actors,
+            ctx=ctx,
             tools=desc.tools,
             completer=completer,
-            context_name=desc.name,
             progress_callbacks=NullProgressCallbacks(),
+            compact_conversation_at_tokens=1000,
         )
 
-    assert msg.content == fake_message.content
-
-    append_assistant_message(state.history, context_name=desc.name, message=msg)
-
-    # Simulate loop behavior: execute tools and then append shorten prompt due to tokens
-    async with tool_call_actor_scope(tools=desc.tools, ui=make_ui_mock(), context_name=desc.name) as actor:
-        response = await execute_tool_calls_via_messages(actor, message=msg)
-        append_tool_call_results_to_history(
-            history=state.history,
-            execution_results=response.results,
-            context_name=desc.name,
-            progress_callbacks=NullProgressCallbacks(),
-        )
-    if usage is not None and usage.tokens > 1000:
-        state.history.append(
-            UserMessage(
-                content=(
-                    "Your conversation history has grown too large. "
-                    "Please summarize it by using the `compact_conversation` tool."
-                )
-            )
-        )
-
-    expected_history = [
-        UserMessage(content="start"),
-        AssistantMessage(
-            content=fake_message.content,
-            tool_calls=[ToolCall(id="call_1", function=FunctionCall(name="dummy", arguments="{}"))],
-        ),
-        ToolMessage(tool_call_id="call_1", name="dummy", content="ok"),
-        UserMessage(
-            content=(
-                "Your conversation history has grown too large. "
-                "Please summarize it by using the `compact_conversation` tool."
-            )
-        ),
-    ]
-
-    assert state.history == expected_history
+    assert state.output is not None
+    assert state.output.result == "ok"
+    assert any(isinstance(entry, ToolMessage) and entry.tool_call_id == "call_1" for entry in state.history)
+    assert any(
+        isinstance(entry, UserMessage)
+        and isinstance(entry.content, str)
+        and "Your conversation history has grown too large." in entry.content
+        for entry in state.history
+    )
 
 
 @pytest.mark.asyncio
