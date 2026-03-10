@@ -1,11 +1,18 @@
 import pytest
 from typing import Any
 from pathlib import Path
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 from coding_assistant.session import Session
 from coding_assistant.config import Config
+from coding_assistant.framework.actor_directory import ActorDirectory
+from coding_assistant.framework.actors.common.messages import RunAgentRequest, RunChatRequest, RunCompleted
 from coding_assistant.framework.callbacks import ToolCallbacks
-from coding_assistant.llm.types import StatusLevel, ProgressCallbacks, Tool
+from coding_assistant.framework.types import AgentOutput
+from coding_assistant.llm.types import StatusLevel, ProgressCallbacks, Tool, ToolResult
+from coding_assistant.tools.mcp import MCPServer
+from coding_assistant.tools.mcp_manager import MCPServerBundle
 from coding_assistant.tools.tools import RedirectToolCallTool
 from coding_assistant.ui import UI
 
@@ -63,16 +70,14 @@ async def test_session_context_manager(session_args: dict[str, Any]) -> None:
 
     with (
         patch("coding_assistant.session.sandbox") as mock_sandbox,
-        patch("coding_assistant.session.get_mcp_servers_from_config") as mock_get_mcp,
-        patch("coding_assistant.session.get_mcp_wrapped_tools", new_callable=AsyncMock) as mock_get_tools,
+        patch("coding_assistant.session.MCPServerManagerActor") as mock_manager_class,
         patch("coding_assistant.session.get_instructions") as mock_get_instructions,
     ):
-        # Setup mocks
-        mock_mcp_cm = AsyncMock()
-        mock_mcp_cm.__aenter__.return_value = ["mock_server"]
-        mock_get_mcp.return_value = mock_mcp_cm
+        mock_manager = mock_manager_class.return_value
         mock_tool = MagicMock(spec=Tool)
-        mock_get_tools.return_value = [mock_tool]
+        mock_server = MagicMock(spec=MCPServer)
+        mock_manager.initialize = AsyncMock(return_value=MCPServerBundle(servers=[mock_server], tools=[mock_tool]))
+        mock_manager.shutdown = AsyncMock()
         mock_get_instructions.return_value = "test instructions"
 
         async with session:
@@ -81,49 +86,139 @@ async def test_session_context_manager(session_args: dict[str, Any]) -> None:
             # The second tool should be RedirectToolCallTool
             assert isinstance(session.tools[1], RedirectToolCallTool)
             assert session.instructions == "test instructions"
-            assert session.mcp_servers == ["mock_server"]
+            assert session.mcp_servers == [mock_server]
             mock_sandbox.assert_called_once()
-            mock_get_mcp.assert_called_once()
+            mock_manager.start.assert_called_once()
 
         # Verify exit calls
-        mock_mcp_cm.__aexit__.assert_called_once()
+        mock_manager.shutdown.assert_called_once()
         session_args["callbacks"].on_status_message.assert_any_call("Session closed.", level=StatusLevel.INFO)
 
 
 @pytest.mark.asyncio
 async def test_session_run_chat(session_args: dict[str, Any]) -> None:
+    class _NoopTool(Tool):
+        def name(self) -> str:
+            return "noop"
+
+        def description(self) -> str:
+            return "noop"
+
+        def parameters(self) -> dict[str, Any]:
+            return {}
+
+        async def execute(self, parameters: dict[str, Any]) -> ToolResult:
+            raise RuntimeError("not expected")
+
+    class _ChatActor:
+        def __init__(self, actor_directory: ActorDirectory) -> None:
+            self.actor_directory = actor_directory
+            self.received: RunChatRequest | None = None
+
+        async def send_message(self, message: object) -> None:
+            assert isinstance(message, RunChatRequest)
+            self.received = message
+            await self.actor_directory.send_message(
+                uri=message.reply_to_uri or "",
+                message=RunCompleted(request_id=message.request_id),
+            )
+
     session = Session(**session_args)
-    mock_tool = MagicMock(spec=Tool)
-    session.tools = [mock_tool]
+    actor_directory = ActorDirectory()
+    chat_uri = "actor://test/chat"
+    chat_actor = _ChatActor(actor_directory)
+    actor_directory.register(uri=chat_uri, actor=chat_actor)
+    session.tools = [_NoopTool()]
     session.instructions = "test instructions"
+    session._actor_directory = actor_directory
+    session._chat_actor_uri = chat_uri
+    session._tool_call_actor_uri = "actor://test/tool-call"
+    session._user_actor = MagicMock(spec=UI)
+    session._user_actor_uri = "actor://test/user"
+    history: list[Any] = []
 
-    with (
-        patch("coding_assistant.session.run_chat_loop", new_callable=AsyncMock) as mock_chat_loop,
-        patch("coding_assistant.session.save_orchestrator_history") as mock_save,
-    ):
-        await session.run_chat(history=[])
+    with patch("coding_assistant.session.history_manager_scope") as mock_history_scope:
+        mock_history_manager = MagicMock()
+        mock_history_manager.save_orchestrator_history = AsyncMock()
 
-        mock_chat_loop.assert_called_once()
-        mock_save.assert_called_once_with(session.working_directory, [])
+        @asynccontextmanager
+        async def history_scope(*, context_name: str) -> AsyncIterator[MagicMock]:
+            yield mock_history_manager
+
+        mock_history_scope.side_effect = history_scope
+
+        await session.run_chat(history=history)
+
+        assert chat_actor.received is not None
+        assert chat_actor.received.reply_to_uri is not None
+        assert chat_actor.received.tool_call_actor_uri == session._tool_call_actor_uri
+        assert chat_actor.received.user_actor_uri == session._user_actor_uri
+        assert chat_actor.received.instructions == "test instructions"
+        mock_history_manager.save_orchestrator_history.assert_called_once_with(
+            working_directory=session.working_directory, history=history
+        )
 
 
 @pytest.mark.asyncio
 async def test_session_run_agent(session_args: dict[str, Any]) -> None:
-    session = Session(**session_args)
-    mock_tool = MagicMock(spec=Tool)
-    session.tools = [mock_tool]
-    session.instructions = "test instructions"
+    class _NoopTool(Tool):
+        def name(self) -> str:
+            return "noop"
 
-    with (
-        patch("coding_assistant.session.AgentTool") as mock_agent_tool_class,
-        patch("coding_assistant.session.save_orchestrator_history") as mock_save,
-    ):
-        mock_tool_instance = mock_agent_tool_class.return_value
-        mock_tool_instance.execute = AsyncMock(return_value=MagicMock(content="result"))
-        mock_tool_instance.history = ["msg1"]
+        def description(self) -> str:
+            return "noop"
+
+        def parameters(self) -> dict[str, Any]:
+            return {}
+
+        async def execute(self, parameters: dict[str, Any]) -> ToolResult:
+            raise RuntimeError("not expected")
+
+    class _AgentActor:
+        def __init__(self, actor_directory: ActorDirectory) -> None:
+            self.actor_directory = actor_directory
+            self.received: RunAgentRequest | None = None
+
+        async def send_message(self, message: object) -> None:
+            assert isinstance(message, RunAgentRequest)
+            self.received = message
+            message.ctx.state.output = AgentOutput(result="result", summary="summary")
+            await self.actor_directory.send_message(
+                uri=message.reply_to_uri or "",
+                message=RunCompleted(request_id=message.request_id),
+            )
+
+    session = Session(**session_args)
+    actor_directory = ActorDirectory()
+    agent_uri = "actor://test/agent"
+    agent_actor = _AgentActor(actor_directory)
+    actor_directory.register(uri=agent_uri, actor=agent_actor)
+    session.tools = [_NoopTool()]
+    session.instructions = "test instructions"
+    session._actor_directory = actor_directory
+    session._agent_actor_uri = agent_uri
+    session._tool_call_actor_uri = "actor://test/tool-call"
+    session._user_actor = MagicMock(spec=UI)
+    session._user_actor_uri = "actor://test/user"
+
+    with patch("coding_assistant.session.history_manager_scope") as mock_history_scope:
+        mock_history_manager = MagicMock()
+        mock_history_manager.save_orchestrator_history = AsyncMock()
+
+        @asynccontextmanager
+        async def history_scope(*, context_name: str) -> AsyncIterator[MagicMock]:
+            yield mock_history_manager
+
+        mock_history_scope.side_effect = history_scope
 
         result = await session.run_agent(task="test task")
 
         assert result.content == "result"
-        mock_tool_instance.execute.assert_called_once()
-        mock_save.assert_called_once_with(session.working_directory, ["msg1"])
+        assert agent_actor.received is not None
+        assert agent_actor.received.reply_to_uri is not None
+        assert agent_actor.received.tool_call_actor_uri == session._tool_call_actor_uri
+        saved_history = mock_history_manager.save_orchestrator_history.call_args.kwargs["history"]
+        assert isinstance(saved_history, list)
+        mock_history_manager.save_orchestrator_history.assert_called_once_with(
+            working_directory=session.working_directory, history=saved_history
+        )

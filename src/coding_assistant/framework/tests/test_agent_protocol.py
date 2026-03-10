@@ -1,11 +1,16 @@
 from typing import Any
 import pytest
-from unittest.mock import Mock
 
-from coding_assistant.llm.types import ProgressCallbacks
-from coding_assistant.framework.execution import do_single_step, handle_tool_calls
-from coding_assistant.framework.agent import run_agent_loop
-from coding_assistant.framework.tests.helpers import FakeCompleter, make_test_agent, make_ui_mock
+from coding_assistant.llm.types import NullProgressCallbacks
+from coding_assistant.framework.actors.common.messages import ToolCapability
+from coding_assistant.framework.tests.helpers import (
+    FakeCompleter,
+    agent_actor_scope,
+    make_test_agent,
+    make_ui_mock,
+    run_agent_via_messages,
+    system_actor_scope_for_tests,
+)
 from coding_assistant.llm.types import (
     AssistantMessage,
     FunctionCall,
@@ -17,7 +22,6 @@ from coding_assistant.llm.types import (
 )
 from coding_assistant.framework.types import AgentContext
 from coding_assistant.framework.results import TextResult
-from coding_assistant.framework.history import append_assistant_message
 from coding_assistant.framework.builtin_tools import FinishTaskTool, CompactConversationTool as CompactConversation
 
 
@@ -35,53 +39,53 @@ class DummyTool(Tool):
         return TextResult(content="ok")
 
 
+def _capabilities_from_tools(tools: list[Tool]) -> tuple[ToolCapability, ...]:
+    return tuple(
+        ToolCapability(
+            name=tool.name(),
+            uri=f"actor://test/capability/{tool.name()}",
+            description=tool.description(),
+            parameters=tool.parameters(),
+        )
+        for tool in tools
+    )
+
+
 @pytest.mark.asyncio
 async def test_do_single_step_adds_shorten_prompt_on_token_threshold() -> None:
     # Make the assistant respond with a tool call so the "no tool calls" warning is not added
     tool_call = ToolCall(id="call_1", function=FunctionCall(name="dummy", arguments="{}"))
     fake_message = AssistantMessage(content=("h" * 2000), tool_calls=[tool_call])
-    completer = FakeCompleter([fake_message])
+    finish_call = ToolCall(
+        id="finish_1",
+        function=FunctionCall(name="finish_task", arguments='{"result": "ok", "summary": "done"}'),
+    )
+    completer = FakeCompleter([fake_message, AssistantMessage(tool_calls=[finish_call])])
 
     desc, state = make_test_agent(
         tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[UserMessage(content="start")]
     )
+    ctx = AgentContext(desc=desc, state=state)
 
-    msg, usage = await do_single_step(
-        history=state.history, model=desc.model, tools=desc.tools, completer=completer, context_name=desc.name
-    )
-
-    assert msg.content == fake_message.content
-
-    append_assistant_message(state.history, context_name=desc.name, message=msg)
-
-    # Simulate loop behavior: execute tools and then append shorten prompt due to tokens
-    await handle_tool_calls(msg, history=state.history, tools=desc.tools, ui=make_ui_mock(), context_name=desc.name)
-    if usage is not None and usage.tokens > 1000:
-        state.history.append(
-            UserMessage(
-                content=(
-                    "Your conversation history has grown too large. "
-                    "Please summarize it by using the `compact_conversation` tool."
-                )
-            )
+    async with system_actor_scope_for_tests(tools=desc.tools, ui=make_ui_mock(), context_name=desc.name) as actors:
+        await run_agent_via_messages(
+            actors,
+            ctx=ctx,
+            tools=desc.tools,
+            completer=completer,
+            progress_callbacks=NullProgressCallbacks(),
+            compact_conversation_at_tokens=1000,
         )
 
-    expected_history = [
-        UserMessage(content="start"),
-        AssistantMessage(
-            content=fake_message.content,
-            tool_calls=[ToolCall(id="call_1", function=FunctionCall(name="dummy", arguments="{}"))],
-        ),
-        ToolMessage(tool_call_id="call_1", name="dummy", content="ok"),
-        UserMessage(
-            content=(
-                "Your conversation history has grown too large. "
-                "Please summarize it by using the `compact_conversation` tool."
-            )
-        ),
-    ]
-
-    assert state.history == expected_history
+    assert state.output is not None
+    assert state.output.result == "ok"
+    assert any(isinstance(entry, ToolMessage) and entry.tool_call_id == "call_1" for entry in state.history)
+    assert any(
+        isinstance(entry, UserMessage)
+        and isinstance(entry.content, str)
+        and "Your conversation history has grown too large." in entry.content
+        for entry in state.history
+    )
 
 
 @pytest.mark.asyncio
@@ -96,16 +100,17 @@ async def test_reasoning_is_forwarded_and_not_stored() -> None:
         tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[UserMessage(content="start")]
     )
 
-    callbacks = Mock(spec=ProgressCallbacks)
-
-    _, _ = await do_single_step(
-        history=state.history,
-        model=desc.model,
-        tools=desc.tools,
-        progress_callbacks=callbacks,
-        completer=completer,
+    async with agent_actor_scope(
         context_name=desc.name,
-    )
+        completer=completer,
+        progress_callbacks=NullProgressCallbacks(),
+    ) as agent_actor:
+        _, _ = await agent_actor.do_single_step(
+            history=state.history,
+            model=desc.model,
+            tool_capabilities=_capabilities_from_tools(desc.tools),
+            context_name=desc.name,
+        )
 
     # Assert reasoning is not stored in history anywhere
     for entry in state.history:
@@ -139,7 +144,21 @@ async def test_auto_inject_builtin_tools() -> None:
         ]
     )
 
-    await run_agent_loop(ctx, completer=completer, ui=make_ui_mock(), compact_conversation_at_tokens=1000)
+    ui = make_ui_mock()
+    tools_with_meta = list(ctx.desc.tools)
+    if not any(tool.name() == "finish_task" for tool in tools_with_meta):
+        tools_with_meta.append(FinishTaskTool())
+    if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
+        tools_with_meta.append(CompactConversation())
+    async with system_actor_scope_for_tests(tools=tools_with_meta, ui=ui, context_name=ctx.desc.name) as actors:
+        await run_agent_via_messages(
+            actors,
+            ctx=ctx,
+            tools=tools_with_meta,
+            progress_callbacks=NullProgressCallbacks(),
+            completer=completer,
+            compact_conversation_at_tokens=1000,
+        )
 
     assert state.output is not None
     assert state.output.result == "ok"
@@ -149,10 +168,14 @@ async def test_auto_inject_builtin_tools() -> None:
 async def test_requires_non_empty_history() -> None:
     desc, state = make_test_agent(tools=[DummyTool(), FinishTaskTool(), CompactConversation()], history=[])
     with pytest.raises(RuntimeError, match="History is required in order to run a step."):
-        await do_single_step(
-            history=state.history,
-            model=desc.model,
-            tools=desc.tools,
-            completer=FakeCompleter([AssistantMessage(content="hi")]),
+        async with agent_actor_scope(
             context_name=desc.name,
-        )
+            completer=FakeCompleter([AssistantMessage(content="hi")]),
+            progress_callbacks=NullProgressCallbacks(),
+        ) as agent_actor:
+            await agent_actor.do_single_step(
+                history=state.history,
+                model=desc.model,
+                tool_capabilities=_capabilities_from_tools(desc.tools),
+                context_name=desc.name,
+            )

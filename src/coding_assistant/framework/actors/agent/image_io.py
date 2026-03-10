@@ -17,7 +17,7 @@ async def get_image(path_or_url: str) -> str:
     Returns:
         Data URI (str) of the converted image.
     """
-    MAX_DIMENSION = 1024
+    max_dimension = 1024
 
     is_url = urlparse(path_or_url).scheme in ("http", "https")
 
@@ -28,21 +28,18 @@ async def get_image(path_or_url: str) -> str:
             content = response.content
     else:
         path = pathlib.Path(path_or_url)
-        # Expand ~ in the path
         path = path.expanduser()
         if not path.exists():
             raise FileNotFoundError(f"File not found: {path}")
         with open(path, "rb") as f:
             content = f.read()
 
-    # Convert to JPEG and downscale if needed
     with Image.open(io.BytesIO(content)) as img:
-        # Convert to RGB (remove alpha)
         if img.mode in ("RGBA", "LA", "P"):
             img = img.convert("RGB")  # type: ignore
         width, height = img.size
-        if width > MAX_DIMENSION or height > MAX_DIMENSION:
-            ratio = MAX_DIMENSION / max(width, height)
+        if width > max_dimension or height > max_dimension:
+            ratio = max_dimension / max(width, height)
             new_size = (int(width * ratio), int(height * ratio))
             img = img.resize(new_size, Image.LANCZOS)  # type: ignore
         output = io.BytesIO()
@@ -51,5 +48,4 @@ async def get_image(path_or_url: str) -> str:
 
     mime_type = "image/jpeg"
     encoded_string = base64.b64encode(content).decode("ascii")
-    data_uri = f"data:{mime_type};base64,{encoded_string}"
-    return data_uri
+    return f"data:{mime_type};base64,{encoded_string}"

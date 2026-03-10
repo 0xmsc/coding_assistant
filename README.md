@@ -14,6 +14,19 @@ Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automa
 - Chat mode enabled by default for interactive conversations
 - Configurable via CLI flags (models, plan mode, instructions, etc.)
 
+## Actor Architecture
+
+- Session startup creates and owns long-lived actors (`AgentActor`, `ToolCallActor`, `UserActor`).
+- Actor communication is message-driven through `framework/actors/common/messages.py`.
+- Chat handoff uses explicit messages (`AgentYieldedToUser` + typed user intent messages).
+- Tool-call execution uses actor messages and structured results (no callback side channels).
+- Main actor module layout:
+  - `framework/actors/agent/*`
+  - `framework/actors/tool_call/*`
+  - `framework/actors/llm/*`
+  - `framework/actors/user/*`
+  - `framework/actors/common/*`
+
 ## Requirements
 
 - Python 3.12+

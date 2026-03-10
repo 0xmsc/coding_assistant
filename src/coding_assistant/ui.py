@@ -1,7 +1,6 @@
 import logging
 import re
 from abc import ABC, abstractmethod
-
 from typing import Iterable
 
 from prompt_toolkit import PromptSession
@@ -95,3 +94,18 @@ class NullUI(UI):
 
     async def prompt(self, words: list[str] | None = None) -> str:
         raise RuntimeError("No UI available")
+
+
+# Compatibility re-exports for actor-backed UI wrappers.
+from coding_assistant.framework.actors.user.actor import ActorUI, UserActor, ui_actor_scope  # noqa: E402
+
+__all__ = [
+    "UI",
+    "SlashCompleter",
+    "PromptToolkitUI",
+    "DefaultAnswerUI",
+    "NullUI",
+    "ActorUI",
+    "UserActor",
+    "ui_actor_scope",
+]

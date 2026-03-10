@@ -1,18 +1,27 @@
 import logging
 import tempfile
+import json
 from pathlib import Path
 from typing import Any, Sequence
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from coding_assistant.framework.actor_directory import ActorDirectory
+from coding_assistant.framework.actors.common.messages import RunAgentRequest, ToolCapability
+from coding_assistant.framework.actors.common.reply_waiters import register_run_reply_waiter
+from coding_assistant.framework.actors.tool_call.capabilities import ToolCapabilityActor, register_tool_capabilities
+from coding_assistant.framework.actors.tool_call.executor import ToolExecutor
+from coding_assistant.framework.builtin_tools import CompactConversationTool, FinishTaskTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
 from coding_assistant.llm.types import (
     BaseMessage,
+    FunctionCall,
     NullProgressCallbacks,
     ProgressCallbacks,
     Tool,
+    ToolCall,
 )
-from coding_assistant.framework.agent import run_agent_loop
 from coding_assistant.framework.parameters import Parameter, parameters_from_model
 from coding_assistant.framework.types import (
     AgentContext,
@@ -100,15 +109,45 @@ class RedirectToolCallTool(Tool):
         if tool_name == self.name():
             return TextResult(content="Error: Cannot call redirect_tool_call recursively.")
 
-        target_tool = next((t for t in self._tools if t.name() == tool_name), None)
-        if not target_tool:
+        if not any(t.name() == tool_name for t in self._tools):
             return TextResult(content=f"Error: Tool '{tool_name}' not found or cannot be redirected.")
 
         try:
-            result = await target_tool.execute(tool_args)
+            actor_directory = ActorDirectory()
+            capabilities, capability_actors = register_tool_capabilities(
+                actor_directory=actor_directory,
+                tools=tuple(self._tools),
+                context_name="redirect_tool_call",
+                uri_prefix="actor://redirect/tool-capability",
+            )
+            executor = ToolExecutor(
+                actor_directory=actor_directory,
+                default_tool_capabilities=capabilities,
+                progress_callbacks=NullProgressCallbacks(),
+                tool_callbacks=NullToolCallbacks(),
+                ui=DefaultAnswerUI(),
+                context_name="redirect_tool_call",
+            )
+            executor.start()
+            try:
+                tool_call = ToolCall(
+                    id=uuid4().hex,
+                    function=FunctionCall(name=tool_name, arguments=json.dumps(tool_args)),
+                )
+                task = await executor.submit(tool_call, tool_capabilities=capabilities)
+                result = await task
+            finally:
+                await executor.stop()
+                for capability_actor in capability_actors:
+                    await capability_actor.stop()
+                for capability in capabilities:
+                    actor_directory.unregister(uri=capability.uri)
 
             if not isinstance(result, TextResult):
                 return TextResult(content=f"Error: Tool '{tool_name}' did not return a TextResult.")
+            if result.content.startswith("Error executing tool: "):
+                tool_error = result.content.replace("Error executing tool: ", "", 1)
+                return TextResult(content=f"Error executing tool '{tool_name}': {tool_error}")
 
             content = result.content
 
@@ -144,6 +183,10 @@ class AgentTool(Tool):
         name: str = "launch_agent",
         history: Sequence[BaseMessage] | None = None,
         completer: Completer | None = None,
+        actor_directory: ActorDirectory,
+        agent_actor_uri: str,
+        tool_call_actor_uri: str,
+        user_actor_uri: str | None = None,
     ) -> None:
         super().__init__()
         self._model = model
@@ -157,8 +200,16 @@ class AgentTool(Tool):
         self._name = name
         self._history = history
         self._completer = completer or openai_complete
+        self._actor_directory = actor_directory
+        self._agent_actor_uri = agent_actor_uri
+        self._tool_call_actor_uri = tool_call_actor_uri
+        self._user_actor_uri = user_actor_uri
         self.history: list[BaseMessage] = []
         self.summary: str = ""
+        if self._actor_directory is None or self._agent_actor_uri is None or self._tool_call_actor_uri is None:
+            raise RuntimeError(
+                "AgentTool requires actor-backed dependencies: actor_directory, agent_actor_uri, and tool_call_actor_uri."
+            )
 
     def name(self) -> str:
         return self._name
@@ -200,22 +251,58 @@ class AgentTool(Tool):
                     progress_callbacks=NullProgressCallbacks(),
                     tool_callbacks=self._tool_callbacks,
                     completer=self._completer,
+                    actor_directory=self._actor_directory,
+                    agent_actor_uri=self._agent_actor_uri,
+                    tool_call_actor_uri=self._tool_call_actor_uri,
+                    user_actor_uri=self._user_actor_uri,
                 ),
                 *self._tools,
             ],
         )
         state = AgentState(history=list(self._history) if self._history is not None else [])
         ctx = AgentContext(desc=desc, state=state)
+        tools_with_meta = list(ctx.desc.tools)
+        if not any(tool.name() == "finish_task" for tool in tools_with_meta):
+            tools_with_meta.append(FinishTaskTool())
+        if not any(tool.name() == "compact_conversation" for tool in tools_with_meta):
+            tools_with_meta.append(CompactConversationTool())
+        runtime_tool_capabilities: tuple[ToolCapability, ...] = tuple()
+        runtime_tool_actors: tuple[ToolCapabilityActor, ...] = tuple()
+        runtime_tool_capabilities, runtime_tool_actors = register_tool_capabilities(
+            actor_directory=self._actor_directory,
+            tools=tuple(tools_with_meta),
+            context_name=self._name,
+            uri_prefix=f"actor://tool/{self._name}/runtime-capability",
+        )
 
         try:
-            await run_agent_loop(
-                ctx,
-                progress_callbacks=self._progress_callbacks,
-                tool_callbacks=self._tool_callbacks,
-                compact_conversation_at_tokens=self._compact_conversation_at_tokens,
-                completer=self._completer,
-                ui=self._ui,
+            request_id = uuid4().hex
+            reply_uri = f"actor://tool/{self._name}/reply/{request_id}"
+            run_future = register_run_reply_waiter(
+                self._actor_directory,
+                request_id=request_id,
+                reply_uri=reply_uri,
             )
+            try:
+                await self._actor_directory.send_message(
+                    uri=self._agent_actor_uri,
+                    message=RunAgentRequest(
+                        request_id=request_id,
+                        ctx=ctx,
+                        tool_capabilities=runtime_tool_capabilities,
+                        compact_conversation_at_tokens=self._compact_conversation_at_tokens,
+                        tool_call_actor_uri=self._tool_call_actor_uri,
+                        reply_to_uri=reply_uri,
+                    ),
+                )
+                await run_future
+            finally:
+                self._actor_directory.unregister(uri=reply_uri)
+                for capability_actor in runtime_tool_actors:
+                    await capability_actor.stop()
+                for capability in runtime_tool_capabilities:
+                    self._actor_directory.unregister(uri=capability.uri)
+
             assert state.output is not None, "Agent did not produce output"
             self.summary = state.output.summary
             return TextResult(content=state.output.result)

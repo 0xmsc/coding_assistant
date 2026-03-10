@@ -1,18 +1,41 @@
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Optional
+from uuid import uuid4
 
 from coding_assistant.config import Config, MCPServerConfig
+from coding_assistant.framework.actor_directory import ActorDirectory
+from coding_assistant.framework.actors.agent.actor import AgentActor
+from coding_assistant.framework.actors.chat.actor import ChatActor
+from coding_assistant.framework.actors.common.messages import RunAgentRequest, RunChatRequest, ToolCapability
+from coding_assistant.framework.actors.common.messages import RunCompleted
+from coding_assistant.framework.actors.common.reply_waiters import (
+    register_run_payload_reply_waiter,
+    register_run_reply_waiter,
+)
+from coding_assistant.framework.actors.llm.actor import LLMActor
+from coding_assistant.framework.actors.system.wiring import (
+    OrchestratorActors,
+    build_orchestrator_actors,
+    shutdown_orchestrator_actors,
+    start_orchestrator_actors,
+)
+from coding_assistant.framework.actors.tool_call.capabilities import ToolCapabilityActor, register_tool_capabilities
+from coding_assistant.framework.actors.tool_call.actor import ToolCallActor
+from coding_assistant.framework.builtin_tools import FinishTaskTool
 from coding_assistant.framework.callbacks import NullToolCallbacks, ToolCallbacks
+from coding_assistant.framework.parameters import Parameter, parameters_from_model
+from coding_assistant.framework.results import TextResult
+from coding_assistant.framework.types import AgentContext, AgentDescription, AgentState
 from coding_assistant.llm.types import NullProgressCallbacks, ProgressCallbacks, StatusLevel
-from coding_assistant.framework.chat import run_chat_loop
 from coding_assistant.llm.types import BaseMessage, Tool
-from coding_assistant.history import save_orchestrator_history
+from coding_assistant.history_manager import history_manager_scope
 from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.sandbox import sandbox
-from coding_assistant.tools.mcp import get_mcp_servers_from_config, get_mcp_wrapped_tools
-from coding_assistant.tools.tools import AgentTool, AskClientTool, RedirectToolCallTool
+from coding_assistant.tools.mcp_manager import MCPServerManagerActor
+from coding_assistant.tools.tools import AgentTool, AskClientTool, LaunchAgentSchema, RedirectToolCallTool
 from coding_assistant.ui import UI
 
 logger = logging.getLogger(__name__)
@@ -54,8 +77,21 @@ class Session:
 
         self.tools: list[Tool] = []
         self.instructions: str = ""
-        self._mcp_servers_cm: Optional[Any] = None
+        self._mcp_manager: Optional[MCPServerManagerActor] = None
         self._mcp_servers: Optional[list[Any]] = None
+        self._agent_actor: AgentActor | None = None
+        self._llm_actor: LLMActor | None = None
+        self._tool_call_actor: ToolCallActor | None = None
+        self._chat_actor: ChatActor | None = None
+        self._user_actor: UI | None = None
+        self._actor_directory: ActorDirectory | None = None
+        self._orchestrator_actors: OrchestratorActors | None = None
+        self._agent_actor_uri: str | None = None
+        self._chat_actor_uri: str | None = None
+        self._llm_actor_uri: str | None = None
+        self._tool_call_actor_uri: str | None = None
+        self._user_actor_uri: str | None = None
+        self._tool_capabilities: tuple[ToolCapability, ...] = tuple()
 
     @property
     def mcp_servers(self) -> Optional[list[Any]]:
@@ -106,12 +142,13 @@ class Session:
         all_configs = [*self.mcp_server_configs, default_config]
 
         # MCP Servers setup
-        self._mcp_servers_cm = get_mcp_servers_from_config(all_configs, working_directory=self.working_directory)
-        assert self._mcp_servers_cm is not None
-        self._mcp_servers = await self._mcp_servers_cm.__aenter__()
-
-        assert self._mcp_servers is not None
-        self.tools = await get_mcp_wrapped_tools(self._mcp_servers)
+        self._mcp_manager = MCPServerManagerActor(context_name="session")
+        self._mcp_manager.start()
+        bundle = await self._mcp_manager.initialize(
+            config_servers=all_configs, working_directory=self.working_directory
+        )
+        self._mcp_servers = bundle.servers
+        self.tools = bundle.tools
 
         # Meta tools
         self.tools.append(RedirectToolCallTool(tools=self.tools))
@@ -123,41 +160,113 @@ class Session:
             mcp_servers=self._mcp_servers,
         )
 
+        orchestrator_actors = build_orchestrator_actors(
+            ui=self.ui,
+            tools=self.tools,
+            callbacks=self.callbacks,
+            tool_callbacks=self.tool_callbacks,
+            completer=openai_complete,
+            context_name="Orchestrator",
+        )
+        self._orchestrator_actors = orchestrator_actors
+        self._actor_directory = orchestrator_actors.actor_directory
+        self._agent_actor = orchestrator_actors.agent_actor
+        self._chat_actor = orchestrator_actors.chat_actor
+        self._llm_actor = orchestrator_actors.llm_actor
+        self._tool_call_actor = orchestrator_actors.tool_call_actor
+        self._user_actor = orchestrator_actors.user_actor
+        self._agent_actor_uri = orchestrator_actors.agent_actor_uri
+        self._chat_actor_uri = orchestrator_actors.chat_actor_uri
+        self._llm_actor_uri = orchestrator_actors.llm_actor_uri
+        self._tool_call_actor_uri = orchestrator_actors.tool_call_actor_uri
+        self._user_actor_uri = orchestrator_actors.user_actor_uri
+        self._tool_capabilities = orchestrator_actors.tool_capabilities
+        start_orchestrator_actors(orchestrator_actors)
+
         self.callbacks.on_status_message("Session initialized.", level=StatusLevel.SUCCESS)
         self.callbacks.on_status_message(f"Using model {self.config.model}.", level=StatusLevel.SUCCESS)
 
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if self._mcp_servers_cm:
-            await self._mcp_servers_cm.__aexit__(exc_type, exc_val, exc_tb)
+        if self._orchestrator_actors is not None:
+            await shutdown_orchestrator_actors(self._orchestrator_actors)
+            self._orchestrator_actors = None
+        self._agent_actor = None
+        self._chat_actor = None
+        self._llm_actor = None
+        self._tool_call_actor = None
+        self._user_actor = None
+        self._actor_directory = None
+        self._agent_actor_uri = None
+        self._chat_actor_uri = None
+        self._llm_actor_uri = None
+        self._tool_call_actor_uri = None
+        self._user_actor_uri = None
+        self._tool_capabilities = tuple()
+
+        if self._mcp_manager:
+            await self._mcp_manager.shutdown(exc_type=exc_type, exc_val=exc_val, exc_tb=exc_tb)
 
         self.callbacks.on_status_message("Session closed.", level=StatusLevel.INFO)
 
     async def run_chat(self, history: Optional[list[BaseMessage]] = None) -> None:
-        chat_history = history or []
-        try:
-            await run_chat_loop(
-                history=chat_history,
-                model=self.config.model,
-                tools=self.tools,
-                instructions=self.instructions,
-                callbacks=self.callbacks,
-                tool_callbacks=self.tool_callbacks,
-                completer=openai_complete,
-                ui=self.ui,
-                context_name="Orchestrator",
-            )
-        finally:
-            save_orchestrator_history(self.working_directory, chat_history)
+        chat_history = list(history) if history is not None else []
+        if (
+            self._actor_directory is None
+            or self._chat_actor_uri is None
+            or self._tool_call_actor_uri is None
+            or self._user_actor_uri is None
+        ):
+            raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running chat.")
+        async with history_manager_scope(context_name="session") as history_manager:
+            request_id = uuid4().hex
+            reply_uri = f"actor://session/chat-reply/{request_id}"
+            completion_future = self._register_run_payload_reply(request_id=request_id, reply_uri=reply_uri)
+            try:
+                await self._actor_directory.send_message(
+                    uri=self._chat_actor_uri,
+                    message=RunChatRequest(
+                        request_id=request_id,
+                        history=chat_history,
+                        model=self.config.model,
+                        tool_capabilities=self._tool_capabilities,
+                        instructions=self.instructions,
+                        context_name="Orchestrator",
+                        user_actor_uri=self._user_actor_uri,
+                        tool_call_actor_uri=self._tool_call_actor_uri,
+                        reply_to_uri=reply_uri,
+                    ),
+                )
+                completion = await completion_future
+            finally:
+                self._actor_directory.unregister(uri=reply_uri)
+                final_history = (
+                    list(completion.history)
+                    if "completion" in locals() and completion.history is not None
+                    else chat_history
+                )
+                await history_manager.save_orchestrator_history(
+                    working_directory=self.working_directory, history=final_history
+                )
 
     async def run_agent(self, task: str, history: Optional[list[BaseMessage]] = None) -> Any:
+        if (
+            self._actor_directory is None
+            or self._agent_actor_uri is None
+            or self._tool_call_actor_uri is None
+            or self._user_actor_uri is None
+        ):
+            raise RuntimeError(
+                "Session actors are not initialized. Use `async with Session(...)` before running agent."
+            )
+        ui = self._user_actor if self._user_actor else self.ui
         agent_mode_tools = [
-            AskClientTool(ui=self.ui),
+            AskClientTool(ui=ui),
             *self.tools,
         ]
 
-        tool = AgentTool(
+        launch_agent_tool = AgentTool(
             model=self.config.model,
             expert_model=self.config.expert_model,
             compact_conversation_at_tokens=self.config.compact_conversation_at_tokens,
@@ -165,21 +274,102 @@ class Session:
             tools=agent_mode_tools,
             history=history,
             progress_callbacks=self.callbacks,
-            ui=self.ui,
+            ui=ui,
             tool_callbacks=self.tool_callbacks,
             name="launch_orchestrator_agent",
             completer=openai_complete,
+            actor_directory=self._actor_directory,
+            agent_actor_uri=self._agent_actor_uri,
+            tool_call_actor_uri=self._tool_call_actor_uri,
+            user_actor_uri=self._user_actor_uri,
         )
-
-        params = {
-            "task": task,
-            "instructions": self.instructions,
-            "expert_knowledge": True,
-        }
+        validated = LaunchAgentSchema.model_validate(
+            {
+                "task": task,
+                "instructions": self.instructions,
+                "expert_knowledge": True,
+            }
+        )
+        desc = AgentDescription(
+            name="Agent",
+            model=self.config.expert_model,
+            parameters=[
+                Parameter(
+                    name="description",
+                    description="The description of the agent's work and capabilities.",
+                    value=launch_agent_tool.description(),
+                ),
+                *parameters_from_model(validated),
+            ],
+            tools=[launch_agent_tool, *agent_mode_tools],
+        )
+        state = AgentState(history=list(history) if history is not None else [])
+        runtime_tools = (
+            launch_agent_tool,
+            AskClientTool(ui=ui),
+            FinishTaskTool(),
+        )
+        runtime_tool_capabilities: tuple[ToolCapability, ...] = tuple()
+        runtime_tool_actors: tuple[ToolCapabilityActor, ...] = tuple()
+        if self._actor_directory is not None:
+            runtime_tool_capabilities, runtime_tool_actors = register_tool_capabilities(
+                actor_directory=self._actor_directory,
+                tools=runtime_tools,
+                context_name="session",
+                uri_prefix="actor://session/runtime-tool-capability",
+            )
+        effective_capabilities = (*runtime_tool_capabilities, *self._tool_capabilities)
 
         try:
-            result = await tool.execute(params)
-            self.callbacks.on_status_message(f"Task completed: {result.content}", level=StatusLevel.SUCCESS)
-            return result
+            async with history_manager_scope(context_name="session") as history_manager:
+                try:
+                    request_id = uuid4().hex
+                    reply_uri = f"actor://session/agent-reply/{request_id}"
+                    completion_future = self._register_run_payload_reply(request_id=request_id, reply_uri=reply_uri)
+                    try:
+                        await self._actor_directory.send_message(
+                            uri=self._agent_actor_uri,
+                            message=RunAgentRequest(
+                                request_id=request_id,
+                                ctx=AgentContext(desc=desc, state=state),
+                                tool_capabilities=tuple(effective_capabilities),
+                                compact_conversation_at_tokens=self.config.compact_conversation_at_tokens,
+                                tool_call_actor_uri=self._tool_call_actor_uri,
+                                reply_to_uri=reply_uri,
+                            ),
+                        )
+                        completion = await completion_future
+                    finally:
+                        self._actor_directory.unregister(uri=reply_uri)
+
+                    final_output = completion.agent_output or state.output
+                    if final_output is None:
+                        raise RuntimeError("Agent did not produce output.")
+                    result = TextResult(content=final_output.result)
+                    self.callbacks.on_status_message(f"Task completed: {result.content}", level=StatusLevel.SUCCESS)
+                    return result
+                finally:
+                    final_history = (
+                        list(completion.history)
+                        if "completion" in locals() and completion.history is not None
+                        else state.history
+                    )
+                    await history_manager.save_orchestrator_history(
+                        working_directory=self.working_directory, history=final_history
+                    )
         finally:
-            save_orchestrator_history(self.working_directory, tool.history)
+            for capability_actor in runtime_tool_actors:
+                await capability_actor.stop()
+            if self._actor_directory is not None:
+                for capability in runtime_tool_capabilities:
+                    self._actor_directory.unregister(uri=capability.uri)
+
+    def _register_run_reply(self, *, request_id: str, reply_uri: str) -> "asyncio.Future[None]":
+        if self._actor_directory is None:
+            raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running.")
+        return register_run_reply_waiter(self._actor_directory, request_id=request_id, reply_uri=reply_uri)
+
+    def _register_run_payload_reply(self, *, request_id: str, reply_uri: str) -> "asyncio.Future[RunCompleted]":
+        if self._actor_directory is None:
+            raise RuntimeError("Session actors are not initialized. Use `async with Session(...)` before running.")
+        return register_run_payload_reply_waiter(self._actor_directory, request_id=request_id, reply_uri=reply_uri)

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 from PIL import Image
 
-from coding_assistant.framework.image import get_image
+from coding_assistant.framework.actors.agent.image_io import get_image
 
 
 @pytest.fixture
@@ -72,7 +72,7 @@ async def test_get_image_url_success(small_image: bytes) -> None:
     mock_response.content = small_image
     mock_response.headers = {"content-type": "image/jpeg"}
 
-    with patch("coding_assistant.framework.image.httpx.AsyncClient") as mock_client:
+    with patch("coding_assistant.framework.actors.agent.image_io.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
         data_uri = await get_image("https://example.com/image.jpg")
@@ -83,7 +83,7 @@ async def test_get_image_url_success(small_image: bytes) -> None:
 @pytest.mark.asyncio
 async def test_get_image_url_failure() -> None:
     """URL that returns an error."""
-    with patch("coding_assistant.framework.image.httpx.AsyncClient") as mock_client:
+    with patch("coding_assistant.framework.actors.agent.image_io.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(side_effect=Exception("Network error"))
 
         with pytest.raises(Exception, match="Network error"):
