@@ -1,28 +1,14 @@
 import asyncio
 import logging
-import os
-import importlib.resources
 import argparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 
 import debugpy
-from rich import print as rich_print
-from rich.markdown import Markdown
-from rich.panel import Panel
 
+from coding_assistant.adapters.cli import run_cli
 from coding_assistant.paths import get_log_file
-from coding_assistant.callbacks import ConfirmationToolCallbacks, DenseProgressCallbacks
-from coding_assistant.config import Config, MCPServerConfig
-from coding_assistant.history import (
-    get_latest_orchestrator_history_file,
-    load_orchestrator_history,
-)
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
-from coding_assistant.tools.mcp import print_mcp_tools
-
-from coding_assistant.session import Session
-from coding_assistant.ui import PromptToolkitUI, DefaultAnswerUI
 
 logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
@@ -163,79 +149,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def create_config_from_args(args: argparse.Namespace) -> Config:
-    return Config(
-        model=args.model,
-        expert_model=args.expert_model or args.model,
-        compact_conversation_at_tokens=args.compact_conversation_at_tokens,
-        enable_chat_mode=args.task is None,
-        enable_ask_user=args.ask_user,
-    )
-
-
 async def _main(args: argparse.Namespace) -> None:
     logger.info(f"Starting Coding Assistant with arguments {args}")
-
-    config = create_config_from_args(args)
-    working_directory = Path(os.getcwd())
-    coding_assistant_root = Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
-
-    if args.resume_file:
-        if not args.resume_file.exists():
-            raise FileNotFoundError(f"Resume file {args.resume_file} does not exist.")
-        resume_history = load_orchestrator_history(args.resume_file)
-    elif args.resume:
-        latest_history_file = get_latest_orchestrator_history_file(working_directory)
-        if not latest_history_file:
-            raise FileNotFoundError(
-                f"No latest orchestrator history file found in {working_directory}/.coding_assistant/history."
-            )
-        resume_history = load_orchestrator_history(latest_history_file)
-    else:
-        resume_history = None
-
-    mcp_server_configs = [MCPServerConfig.model_validate_json(mcp_config_json) for mcp_config_json in args.mcp_servers]
-
-    ui = PromptToolkitUI() if (args.task is None or config.enable_ask_user) else DefaultAnswerUI()
-    progress_callbacks = DenseProgressCallbacks(print_reasoning=args.print_reasoning)
-    tool_callbacks = ConfirmationToolCallbacks(
-        tool_confirmation_patterns=args.tool_confirmation_patterns,
-        shell_confirmation_patterns=args.shell_confirmation_patterns,
-    )
-
-    session = Session(
-        config=config,
-        ui=ui,
-        callbacks=progress_callbacks,
-        tool_callbacks=tool_callbacks,
-        working_directory=working_directory,
-        coding_assistant_root=coding_assistant_root,
-        mcp_server_configs=mcp_server_configs,
-        skills_directories=args.skills_directories,
-        mcp_env=args.mcp_env,
-        sandbox_enabled=args.sandbox,
-        readable_sandbox_directories=[Path(d).resolve() for d in args.readable_sandbox_directories],
-        writable_sandbox_directories=[Path(d).resolve() for d in args.writable_sandbox_directories],
-        user_instructions=args.instructions,
-    )
-
     try:
-        async with session:
-            if args.print_mcp_tools:
-                assert session.mcp_servers is not None
-                await print_mcp_tools(session.mcp_servers)
-                return
-
-            if args.print_instructions:
-                rich_print(Panel(Markdown(session.instructions), title="Instructions"))
-                return
-
-            history = resume_history if resume_history is not None else []
-            if config.enable_chat_mode:
-                await session.run_chat(history=history)
-            else:
-                result = await session.run_agent(task=args.task, history=history)
-                print(f"🎉 Final Result\n\nResult:\n\n{result.content}")
+        await run_cli(args)
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
 
