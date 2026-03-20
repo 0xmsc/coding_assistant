@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any
+
 from coding_assistant.llm.types import ToolResult
 
 
@@ -13,8 +14,6 @@ class TextResult(ToolResult):
 
 @dataclass
 class FinishTaskResult(ToolResult):
-    """Signals that the agent's task is complete."""
-
     result: str
     summary: str
 
@@ -24,8 +23,6 @@ class FinishTaskResult(ToolResult):
 
 @dataclass
 class CompactConversationResult(ToolResult):
-    """Signals that the conversation history should be summarized."""
-
     summary: str
 
     def to_dict(self) -> dict[str, Any]:

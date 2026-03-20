@@ -8,8 +8,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any, AsyncIterator, Literal, cast
 
 from coding_assistant.config import MCPServerConfig
-from coding_assistant.framework.history import clear_history
-from coding_assistant.framework.results import CompactConversationResult, FinishTaskResult, TextResult
 from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.llm.types import AssistantMessage, BaseMessage, Tool, ToolMessage, UserMessage
@@ -31,7 +29,9 @@ from coding_assistant.runtime.events import (
     SessionEvent,
     WaitingForUserEvent,
 )
+from coding_assistant.runtime.history import clear_history
 from coding_assistant.runtime.persistence import HistoryStore
+from coding_assistant.tool_results import CompactConversationResult, FinishTaskResult, TextResult
 from coding_assistant.tools.mcp import MCPServer, get_mcp_servers_from_config, get_mcp_wrapped_tools
 from coding_assistant.tools.tools import LaunchAgentSchema, RedirectToolCallTool
 

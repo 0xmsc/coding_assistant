@@ -12,7 +12,6 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.padding import Padding
 
-from coding_assistant.framework.callbacks import ToolCallbacks
 from coding_assistant.llm.types import (
     AssistantMessage,
     ProgressCallbacks,
@@ -22,12 +21,38 @@ from coding_assistant.llm.types import (
     ToolResult,
     UserMessage,
 )
-from coding_assistant.framework.results import TextResult
+from coding_assistant.tool_results import TextResult
 
 console = Console()
 print = console.print
 
 logger = logging.getLogger(__name__)
+
+
+class ToolCallbacks:
+    async def before_tool_execution(
+        self,
+        context_name: str,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+        *,
+        ui: Any,
+    ) -> Optional[ToolResult]:
+        raise NotImplementedError
+
+
+class NullToolCallbacks(ToolCallbacks):
+    async def before_tool_execution(
+        self,
+        context_name: str,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+        *,
+        ui: Any,
+    ) -> Optional[ToolResult]:
+        return None
 
 
 class SpecialToolParameterConfig(TypedDict):

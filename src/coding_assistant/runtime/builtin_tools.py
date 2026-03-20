@@ -1,7 +1,9 @@
 from typing import Any
+
 from pydantic import BaseModel, Field
+
 from coding_assistant.llm.types import Tool
-from coding_assistant.framework.results import FinishTaskResult, CompactConversationResult
+from coding_assistant.tool_results import CompactConversationResult, FinishTaskResult
 
 
 class FinishTaskSchema(BaseModel):
@@ -39,7 +41,7 @@ class CompactConversationTool(Tool):
         return "compact_conversation"
 
     def description(self) -> str:
-        return "Give the framework a summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. Additionally, you should include the next steps you had planned. When the user tells you to call this tool, you must do so immediately! This can also be called when you have reached a milestone and you think that the context you've gathered so far will not be relevant anymore going forward."
+        return "Give the runtime a summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. Additionally, you should include the next steps you had planned. When the user tells you to call this tool, you must do so immediately! This can also be called when you have reached a milestone and you think that the context you've gathered so far will not be relevant anymore going forward."
 
     def parameters(self) -> dict[str, Any]:
         return CompactConversationSchema.model_json_schema()

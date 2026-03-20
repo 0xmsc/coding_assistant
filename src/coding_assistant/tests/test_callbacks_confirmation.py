@@ -5,8 +5,43 @@ from coding_assistant.callbacks import (
     confirm_shell_if_needed,
     ConfirmationToolCallbacks,
 )
-from coding_assistant.framework.results import TextResult
-from coding_assistant.framework.tests.helpers import make_ui_mock
+from coding_assistant.tool_results import TextResult
+from unittest.mock import AsyncMock, Mock
+
+
+def make_ui_mock(
+    *,
+    ask_sequence: list[tuple[str, str]] | None = None,
+    confirm_sequence: list[tuple[str, bool]] | None = None,
+) -> Mock:
+    ui = Mock()
+
+    ask_seq = list(ask_sequence) if ask_sequence is not None else None
+    confirm_seq = list(confirm_sequence) if confirm_sequence is not None else None
+
+    async def _ask(prompt_text: str, default: str | None = None) -> str:
+        assert ask_seq is not None, "UI.ask was called but no ask_sequence was provided"
+        assert len(ask_seq) > 0, "UI.ask was called more times than expected"
+        expected_prompt, value = ask_seq.pop(0)
+        assert prompt_text == expected_prompt, f"Unexpected ask prompt. Expected: {expected_prompt}, got: {prompt_text}"
+        return value
+
+    async def _confirm(prompt_text: str) -> bool:
+        assert confirm_seq is not None, "UI.confirm was called but no confirm_sequence was provided"
+        assert len(confirm_seq) > 0, "UI.confirm was called more times than expected"
+        expected_prompt, value = confirm_seq.pop(0)
+        assert prompt_text == expected_prompt, (
+            f"Unexpected confirm prompt. Expected: {expected_prompt}, got: {prompt_text}"
+        )
+        return bool(value)
+
+    async def _prompt(words: list[str] | None = None) -> str:
+        return await _ask("> ", None)
+
+    ui.ask = AsyncMock(side_effect=_ask)
+    ui.confirm = AsyncMock(side_effect=_confirm)
+    ui.prompt = AsyncMock(side_effect=_prompt)
+    return ui
 
 
 @pytest.mark.asyncio

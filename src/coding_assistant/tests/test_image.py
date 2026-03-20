@@ -1,53 +1,46 @@
-import io
 import base64
+import io
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from PIL import Image
 
-from coding_assistant.framework.image import get_image
+from coding_assistant.image import get_image
 
 
 @pytest.fixture
 def small_image() -> bytes:
-    """Create a small test image (100x100)."""
-    img = Image.new("RGB", (100, 100), color="red")
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG")
-    return buf.getvalue()
+    image = Image.new("RGB", (100, 100), color="red")
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    return buffer.getvalue()
 
 
 @pytest.fixture
 def large_image() -> bytes:
-    """Create a large test image (3000x2000)."""
-    img = Image.new("RGB", (3000, 2000), color="blue")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return buf.getvalue()
+    image = Image.new("RGB", (3000, 2000), color="blue")
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 @pytest.mark.asyncio
 async def test_get_image_local_small(small_image: bytes, tmp_path: Path) -> None:
-    """Local image that does not need downsampling."""
     file_path = tmp_path / "small.jpg"
     file_path.write_bytes(small_image)
 
     data_uri = await get_image(str(file_path))
 
     assert data_uri.startswith("data:image/jpeg;base64,")
-    assert data_uri.startswith("data:image/jpeg;base64,")
-    # Ensure the image is still roughly the same size (maybe compressed)
     decoded = base64.b64decode(data_uri.split(",")[1])
-    with Image.open(io.BytesIO(decoded)) as img:
-        # Should still be ~100x100 (maybe slightly different due to JPEG)
-        assert img.size[0] <= 1024 and img.size[1] <= 1024
+    with Image.open(io.BytesIO(decoded)) as image:
+        assert image.size[0] <= 1024 and image.size[1] <= 1024
 
 
 @pytest.mark.asyncio
 async def test_get_image_local_large_downscaled(large_image: bytes, tmp_path: Path) -> None:
-    """Large local image that should be downsampled to max 1024px."""
     file_path = tmp_path / "large.png"
     file_path.write_bytes(large_image)
 
@@ -55,24 +48,18 @@ async def test_get_image_local_large_downscaled(large_image: bytes, tmp_path: Pa
 
     assert data_uri.startswith("data:image/jpeg;base64,")
     decoded = base64.b64decode(data_uri.split(",")[1])
-    with Image.open(io.BytesIO(decoded)) as img:
-        # Should be downsampled to max 1024px (aspect ratio preserved)
-        max_dim = max(img.size)
-        assert max_dim <= 1024
-        # Aspect ratio should be 3000/2000 = 1.5
-        ratio = img.size[0] / img.size[1]
-        assert abs(ratio - 1.5) < 0.01
+    with Image.open(io.BytesIO(decoded)) as image:
+        assert max(image.size) <= 1024
+        assert abs((image.size[0] / image.size[1]) - 1.5) < 0.01
 
 
 @pytest.mark.asyncio
 async def test_get_image_url_success(small_image: bytes) -> None:
-    """URL that returns an image."""
-    # Mock httpx.AsyncClient
     mock_response = MagicMock()
     mock_response.content = small_image
     mock_response.headers = {"content-type": "image/jpeg"}
 
-    with patch("coding_assistant.framework.image.httpx.AsyncClient") as mock_client:
+    with patch("coding_assistant.image.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
 
         data_uri = await get_image("https://example.com/image.jpg")
@@ -82,8 +69,7 @@ async def test_get_image_url_success(small_image: bytes) -> None:
 
 @pytest.mark.asyncio
 async def test_get_image_url_failure() -> None:
-    """URL that returns an error."""
-    with patch("coding_assistant.framework.image.httpx.AsyncClient") as mock_client:
+    with patch("coding_assistant.image.httpx.AsyncClient") as mock_client:
         mock_client.return_value.__aenter__.return_value.get = AsyncMock(side_effect=Exception("Network error"))
 
         with pytest.raises(Exception, match="Network error"):
@@ -92,14 +78,12 @@ async def test_get_image_url_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_get_image_nonexistent_file() -> None:
-    """Non-existent local file."""
     with pytest.raises(FileNotFoundError, match="File not found"):
         await get_image("/tmp/nonexistent_image_12345.jpg")
 
 
 @pytest.mark.asyncio
 async def test_get_image_invalid_image(tmp_path: Path) -> None:
-    """Invalid image file (not a valid image)."""
     file_path = tmp_path / "invalid.txt"
     file_path.write_text("This is not an image")
 
@@ -109,30 +93,24 @@ async def test_get_image_invalid_image(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_get_image_png_to_jpeg(tmp_path: Path) -> None:
-    """PNG image should be converted to JPEG."""
-    img = Image.new("RGBA", (200, 200), color=(255, 0, 0, 128))  # Red with alpha
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    image = Image.new("RGBA", (200, 200), color=(255, 0, 0, 128))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
     file_path = tmp_path / "alpha.png"
-    file_path.write_bytes(buf.getvalue())
+    file_path.write_bytes(buffer.getvalue())
 
     data_uri = await get_image(str(file_path))
     assert data_uri.startswith("data:image/jpeg;base64,")
     decoded = base64.b64decode(data_uri.split(",")[1])
     with Image.open(io.BytesIO(decoded)) as result:
-        # Should be RGB, not RGBA
         assert result.mode == "RGB"
         assert result.size == (200, 200)
 
 
 @pytest.mark.asyncio
 async def test_get_image_tilde_expansion(small_image: bytes, tmp_path: Path, monkeypatch: Any) -> None:
-    """Test that ~ is expanded to home directory."""
-    # Set HOME to a temporary directory
     monkeypatch.setenv("HOME", str(tmp_path))
-    # Create a file under the fake home directory
     home_file = tmp_path / "test.jpg"
     home_file.write_bytes(small_image)
-    # Use tilde path
     data_uri = await get_image("~/test.jpg")
     assert data_uri.startswith("data:image/jpeg;base64,")

@@ -1,8 +1,9 @@
 from typing import Any
+
 import pytest
 from pydantic import BaseModel, Field, ValidationError
 
-from coding_assistant.framework.parameters import parameters_from_model, format_parameters
+from coding_assistant.parameters import format_parameters, parameters_from_model
 
 
 class ExampleSchema(BaseModel):
@@ -13,19 +14,18 @@ class ExampleSchema(BaseModel):
 
 
 def test_parameters_from_model_basic_and_optional_skip() -> None:
-    model = ExampleSchema(name="Alice", active=True)  # age omitted, hobbies default empty
+    model = ExampleSchema(name="Alice", active=True)
     params = parameters_from_model(model)
-    names = [p.name for p in params]
-    assert names == ["name", "hobbies", "active"]  # age skipped; hobbies present (empty list[Any] -> should it appear?)
-    # Empty list[Any] should render to empty string list[Any]? We currently render it as "" (join of empty). Accept that.
-    hobbies_param = next(p for p in params if p.name == "hobbies")
-    assert hobbies_param.value == ""  # join of []
+    names = [parameter.name for parameter in params]
+    assert names == ["name", "hobbies", "active"]
+    hobbies_param = next(parameter for parameter in params if parameter.name == "hobbies")
+    assert hobbies_param.value == ""
 
 
 def test_parameters_from_model_list_rendering() -> None:
     model = ExampleSchema(name="Alice", active=False, hobbies=["reading", "- preformatted"])
     params = parameters_from_model(model)
-    hobbies_value = next(p for p in params if p.name == "hobbies").value
+    hobbies_value = next(parameter for parameter in params if parameter.name == "hobbies").value
     assert hobbies_value.splitlines() == ["- reading", "- preformatted"]
 
 
@@ -39,7 +39,6 @@ def test_parameters_from_model_unsupported_type() -> None:
 
 
 def test_parameters_from_model_validation_error() -> None:
-    # Missing required field 'name'
     with pytest.raises(ValidationError):
         ExampleSchema(active=True)  # type: ignore
 

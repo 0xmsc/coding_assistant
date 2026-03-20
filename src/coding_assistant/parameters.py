@@ -7,28 +7,12 @@ from pydantic import BaseModel
 
 @dataclass
 class Parameter:
-    """Simple serialisable representation of a validated parameter.
-
-    We intentionally keep this a lightweight dataclass rather than re-using the
-    underlying Pydantic model instance so that the rest of the agent code stays
-    decoupled from Pydantic specifics (and to keep prompts clean / explicit).
-    """
-
     name: str
     description: str
     value: str
 
 
 def parameters_from_model(model: BaseModel) -> list[Parameter]:
-    """Create a list of Parameter objects from a validated Pydantic model instance.
-
-    Rules:
-    - Skip fields whose value is ``None``
-    - Lists are rendered as bullet lists (``- item``) preserving existing ``- `` prefix.
-    - Primitive values (str / int / float / bool) are stringified.
-    - Any other value types raise a RuntimeError
-    """
-
     params: list[Parameter] = []
     data = model.model_dump()
     for name, field in model.__class__.model_fields.items():
@@ -45,7 +29,7 @@ def parameters_from_model(model: BaseModel) -> list[Parameter]:
                     lines = item_str.splitlines()
                     first = lines[0]
                     first_bulleted = first if first.startswith("- ") else f"- {first}"
-                    continuation = [f"  {ln}" for ln in lines[1:]]
+                    continuation = [f"  {line}" for line in lines[1:]]
                     rendered_items.append(
                         "\n".join([first_bulleted, *continuation]) if continuation else first_bulleted
                     )
@@ -72,7 +56,7 @@ def parameters_from_model(model: BaseModel) -> list[Parameter]:
 
 
 def format_parameters(parameters: list[Parameter]) -> str:
-    PARAMETER_TEMPLATE = """
+    parameter_template = """
 - Name: {name}
   - Description: {description}
   - Value: {value}
@@ -85,7 +69,7 @@ def format_parameters(parameters: list[Parameter]) -> str:
         else:
             value_str = " " + value_str
         parts.append(
-            PARAMETER_TEMPLATE.format(
+            parameter_template.format(
                 name=parameter.name,
                 description=parameter.description,
                 value=value_str,

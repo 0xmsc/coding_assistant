@@ -4,7 +4,6 @@ import json
 from json import JSONDecodeError
 from typing import Any
 
-from coding_assistant.framework.builtin_tools import CompactConversationTool, FinishTaskTool
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -14,6 +13,7 @@ from coding_assistant.llm.types import (
     ToolCall,
     ToolResult,
 )
+from coding_assistant.runtime.builtin_tools import CompactConversationTool, FinishTaskTool
 from coding_assistant.runtime.events import AssistantDeltaEvent
 
 

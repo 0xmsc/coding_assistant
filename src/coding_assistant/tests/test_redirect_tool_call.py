@@ -2,8 +2,8 @@ import pytest
 import tempfile
 from pathlib import Path
 from typing import Any
-from coding_assistant.framework.results import TextResult
 from coding_assistant.llm.types import Tool, ToolResult
+from coding_assistant.tool_results import TextResult
 from coding_assistant.tools.tools import RedirectToolCallTool
 from dataclasses import dataclass
 
