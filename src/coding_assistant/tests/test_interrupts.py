@@ -4,10 +4,7 @@ import signal
 
 import pytest
 
-from coding_assistant.framework.interrupts import (
-    InterruptController,
-    ToolCallCancellationManager,
-)
+from coding_assistant.interrupts import InterruptController, ToolCallCancellationManager
 
 
 def test_interrupt_controller_catches_sigint() -> None:
@@ -21,13 +18,11 @@ def test_interrupt_controller_catches_sigint() -> None:
 
 
 def test_interrupt_controller_handles_multiple_sigints() -> None:
-    """Test that multiple SIGINTs are handled without exiting."""
     loop = asyncio.new_event_loop()
     try:
         with InterruptController(loop) as controller:
             for _ in range(6):
                 os.kill(os.getpid(), signal.SIGINT)
-        # Should have tracked all interrupts
         assert controller.was_interrupted
         assert controller._was_interrupted == 6
     finally:
@@ -51,7 +46,6 @@ async def test_tool_call_cancellation_manager_cancel_all() -> None:
         await task
 
     assert task.cancelled()
-    # The done callback should have removed it from the set
     assert len(manager._tasks) == 0
 
 

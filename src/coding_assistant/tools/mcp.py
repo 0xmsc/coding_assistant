@@ -12,8 +12,8 @@ from rich.pretty import Pretty
 from rich.table import Table
 
 from coding_assistant.llm.types import Tool
-from coding_assistant.framework.results import TextResult
 from coding_assistant.config import MCPServerConfig
+from coding_assistant.tool_results import TextResult
 
 logger = logging.getLogger(__name__)
 

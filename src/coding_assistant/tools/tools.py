@@ -5,8 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.framework.results import TextResult
 from coding_assistant.llm.types import Tool
+from coding_assistant.tool_results import TextResult
 
 logger = logging.getLogger(__name__)
 

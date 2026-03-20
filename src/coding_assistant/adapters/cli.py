@@ -11,7 +11,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from coding_assistant.config import MCPServerConfig
-from coding_assistant.framework.image import get_image
+from coding_assistant.image import get_image
 from coding_assistant.runtime import (
     AssistantDeltaEvent,
     AssistantMessageEvent,
