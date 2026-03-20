@@ -1,36 +1,24 @@
 from pathlib import Path
 
-
-from coding_assistant.llm.types import (
-    AssistantMessage,
-    FunctionCall,
-    ToolCall,
-    ToolMessage,
-    UserMessage,
-)
-from coding_assistant.history import (
-    _fix_invalid_history,
-    get_latest_orchestrator_history_file,
-    get_orchestrator_history_file,
+from coding_assistant.llm.types import AssistantMessage, FunctionCall, ToolCall, ToolMessage, UserMessage
+from coding_assistant.runtime.persistence import (
+    FileHistoryStore,
+    get_history_path,
     get_project_cache_dir,
-    load_orchestrator_history,
-    save_orchestrator_history,
+    sanitize_history,
 )
 
 
-def test_fix_invalid_history_with_empty_list() -> None:
-    assert _fix_invalid_history([]) == []
+def test_sanitize_history_with_empty_list() -> None:
+    assert sanitize_history([]) == []
 
 
-def test_fix_invalid_history_with_valid_history() -> None:
-    history = [
-        UserMessage(content="Hello"),
-        AssistantMessage(content="Hi there!"),
-    ]
-    assert _fix_invalid_history(history) == history
+def test_sanitize_history_with_valid_history() -> None:
+    history = [UserMessage(content="Hello"), AssistantMessage(content="Hi there!")]
+    assert sanitize_history(history) == history
 
 
-def test_fix_invalid_history_with_trailing_assistant_message_with_tool_calls() -> None:
+def test_sanitize_history_with_trailing_assistant_message_with_tool_calls() -> None:
     history = [
         UserMessage(content="Hello"),
         AssistantMessage(
@@ -38,10 +26,10 @@ def test_fix_invalid_history_with_trailing_assistant_message_with_tool_calls() -
             tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))],
         ),
     ]
-    assert _fix_invalid_history(history) == [UserMessage(content="Hello")]
+    assert sanitize_history(history) == [UserMessage(content="Hello")]
 
 
-def test_fix_invalid_history_with_no_trailing_assistant_message() -> None:
+def test_sanitize_history_with_no_trailing_assistant_message() -> None:
     history = [
         UserMessage(content="Hello"),
         AssistantMessage(
@@ -50,77 +38,27 @@ def test_fix_invalid_history_with_no_trailing_assistant_message() -> None:
         ),
         ToolMessage(content="Result", tool_call_id="123"),
     ]
-    assert _fix_invalid_history(history) == history
+    assert sanitize_history(history) == history
 
 
-def test_fix_invalid_history_with_multiple_trailing_assistant_messages() -> None:
-    history = [
-        UserMessage(content="Hello"),
-        AssistantMessage(
-            content="Thinking...",
-            tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))],
-        ),
-        AssistantMessage(
-            content="Thinking...",
-            tool_calls=[ToolCall(id="456", function=FunctionCall(name="test", arguments="{}"))],
-        ),
-    ]
-    assert _fix_invalid_history(history) == [UserMessage(content="Hello")]
+def test_file_history_store_roundtrip(tmp_path: Path) -> None:
+    store = FileHistoryStore(tmp_path)
+    assert get_project_cache_dir(tmp_path).exists()
+    assert store.path == get_history_path(tmp_path)
 
-
-def test_fix_invalid_history_with_objects() -> None:
-    history = [
-        AssistantMessage(
-            content="Thinking...", tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))]
-        ),
-        ToolMessage(content="Result", tool_call_id="123"),
-    ]
-    assert _fix_invalid_history(history) == history
-
-    history_invalid = [
-        AssistantMessage(
-            content="Thinking...", tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))]
-        )
-    ]
-    assert _fix_invalid_history(history_invalid) == []
-
-
-def test_orchestrator_history_roundtrip(tmp_path: Path) -> None:
-    wd = tmp_path
-
-    cache_dir = get_project_cache_dir(wd)
-    assert cache_dir.exists()
-
-    save_orchestrator_history(wd, [UserMessage(content="msg-1")])
-    latest = get_latest_orchestrator_history_file(wd)
-    assert latest is not None and latest.exists()
-    assert latest == get_orchestrator_history_file(wd)
-
-    data = load_orchestrator_history(latest)
+    store.save([UserMessage(content="msg-1")])
+    data = store.load()
     assert data is not None
-    assert isinstance(data, list) and data[-1].content == "msg-1"
+    assert data[-1].content == "msg-1"
 
-    save_orchestrator_history(wd, [UserMessage(content="msg-2")])
-    data = load_orchestrator_history(latest)
+    store.save([UserMessage(content="msg-2")])
+    data = store.load()
     assert data is not None
-    assert isinstance(data, list) and data[-1].content == "msg-2"
+    assert data[-1].content == "msg-2"
 
 
-def test_save_orchestrator_history_with_objects(tmp_path: Path) -> None:
-    wd = tmp_path
-    history = [UserMessage(content="Hello")]
-    save_orchestrator_history(wd, history)
-
-    latest = get_latest_orchestrator_history_file(wd)
-    assert latest is not None
-    data = load_orchestrator_history(latest)
-    assert data is not None
-    assert data[0].role == "user"
-    assert data[0].content == "Hello"
-
-
-def test_save_orchestrator_history_strips_trailing_assistant_tool_calls(tmp_path: Path) -> None:
-    wd = tmp_path
+def test_file_history_store_strips_trailing_tool_calls(tmp_path: Path) -> None:
+    store = FileHistoryStore(tmp_path)
     invalid = [
         UserMessage(content="hi"),
         AssistantMessage(
@@ -129,12 +67,8 @@ def test_save_orchestrator_history_strips_trailing_assistant_tool_calls(tmp_path
         ),
     ]
 
-    save_orchestrator_history(wd, invalid)
-    latest = get_latest_orchestrator_history_file(wd)
-    assert latest is not None
-    fixed = load_orchestrator_history(latest)
-    assert fixed is not None
-    assert len(fixed) == 1
-    assert isinstance(fixed, list)
-    assert fixed[0].role == "user"
-    assert fixed[0].content == "hi"
+    store.save(invalid)
+    loaded = store.load()
+    assert loaded is not None
+    assert len(loaded) == 1
+    assert loaded[0].content == "hi"

@@ -58,6 +58,42 @@ Show available options:
 coding-assistant --help
 ```
 
+## Embedding
+
+The runtime can be embedded directly from Python without importing terminal UI code.
+
+```python
+import asyncio
+from pathlib import Path
+
+from coding_assistant import AssistantSession, SessionOptions
+
+
+async def main() -> None:
+    options = SessionOptions(
+        model="openai/gpt-5-mini",
+        expert_model="openai/gpt-5-mini",
+        working_directory=Path.cwd(),
+    )
+
+    async with AssistantSession(options=options) as session:
+        await session.start(mode="chat")
+
+        async for event in session.events():
+            if event.type == "waiting_for_user":
+                await session.send_user_message("Say hello in one sentence.")
+            elif event.type == "assistant_delta":
+                print(event.delta, end="", flush=True)
+            elif event.type == "assistant_message":
+                print()
+                break
+
+
+asyncio.run(main())
+```
+
+For agent mode, start the session with `mode="agent"` and pass `task="..."`.
+
 ### Advanced Examples
 
 You can invoke the CLI with additional MCP servers (stdio or SSE/remote). The built-in `coding_assistant.mcp` is included by default.
