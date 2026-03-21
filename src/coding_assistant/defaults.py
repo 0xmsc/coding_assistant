@@ -10,14 +10,14 @@ from coding_assistant.config import MCPServerConfig
 from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.mcp import __name__ as mcp_package_name
-from coding_assistant.runner import AgentRunner
+from coding_assistant.runner import ManagedSession
 from coding_assistant.runtime import FileHistoryStore, SessionOptions
 from coding_assistant.tool_policy import ToolPolicy
 from coding_assistant.tools.mcp import MCPServer, get_mcp_servers_from_config, get_mcp_wrapped_tools
 
 
 @dataclass(slots=True)
-class DefaultRunnerConfig:
+class DefaultSessionConfig:
     working_directory: Path
     mcp_server_configs: tuple[MCPServerConfig, ...] = ()
     skills_directories: tuple[str, ...] = ()
@@ -27,8 +27,8 @@ class DefaultRunnerConfig:
 
 
 @dataclass(slots=True)
-class DefaultRunnerBundle:
-    runner: AgentRunner
+class DefaultSessionBundle:
+    session: ManagedSession
     mcp_servers: list[MCPServer]
     history_store: FileHistoryStore
 
@@ -53,15 +53,15 @@ def get_default_mcp_server_config(
 
 
 @asynccontextmanager
-async def create_default_runner(
+async def create_default_session(
     *,
     model: str,
     expert_model: str | None,
     runtime_options: SessionOptions,
-    config: DefaultRunnerConfig,
+    config: DefaultSessionConfig,
     tool_policy: ToolPolicy | None = None,
     completer: Any = openai_complete,
-) -> AsyncIterator[DefaultRunnerBundle]:
+) -> AsyncIterator[DefaultSessionBundle]:
     root = config.coding_assistant_root or Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
     history_store = FileHistoryStore(config.working_directory)
     server_configs = (
@@ -76,7 +76,7 @@ async def create_default_runner(
             user_instructions=list(config.user_instructions),
             mcp_servers=servers,
         )
-        runner = AgentRunner(
+        session = ManagedSession(
             instructions=instructions,
             tools=tools,
             model=model,
@@ -86,9 +86,9 @@ async def create_default_runner(
             history_store=history_store,
             tool_policy=tool_policy,
         )
-        async with runner:
-            yield DefaultRunnerBundle(
-                runner=runner,
+        async with session:
+            yield DefaultSessionBundle(
+                session=session,
                 mcp_servers=servers,
                 history_store=history_store,
             )

@@ -10,9 +10,7 @@ from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
-    Tool,
     ToolCall,
-    ToolDefinition,
     ToolMessage,
     ToolResult,
     UserMessage,
@@ -20,24 +18,21 @@ from coding_assistant.llm.types import (
 from coding_assistant.runtime.engine import (
     RuntimeProgressCallbacks,
     complete_single_step,
-    ensure_builtin_tools,
-    execute_tool_call,
     normalize_tool_result,
     parse_tool_call_arguments,
 )
 from coding_assistant.runtime.events import (
     AssistantMessageEvent,
     CancelledEvent,
+    CompletedEvent,
     FailedEvent,
-    FinishedEvent,
+    InputRequestedEvent,
     SessionEvent,
     ToolCallRequestedEvent,
-    WaitingForUserEvent,
 )
 from coding_assistant.runtime.history import clear_history
 from coding_assistant.runtime.persistence import HistoryStore
 from coding_assistant.runtime.tool_spec import ToolSpec
-from coding_assistant.tool_results import CompactConversationResult, FinishTaskResult
 
 
 _QUEUE_SENTINEL = object()
@@ -115,7 +110,7 @@ class AssistantSession:
         if self._should_wait_for_user():
             self._waiting_for_user = True
             self._persist_history()
-            self._emit(WaitingForUserEvent())
+            self._emit(InputRequestedEvent())
             return
 
         self._waiting_for_user = False
@@ -132,22 +127,16 @@ class AssistantSession:
         self._append_user_message(UserMessage(content=content))
         self._run_task = asyncio.create_task(self._run_loop(), name="assistant-session-run")
 
-    async def submit_tool_result(self, tool_call_id: str, result: ToolResult | str) -> None:
+    async def submit_tool_result(self, tool_call_id: str, result: ToolResult | str, *, resume: bool = True) -> None:
         self._ensure_entered()
         if self._terminal:
             raise RuntimeError("Session is already terminal.")
 
         pending = self._require_pending_tool_call(tool_call_id)
         content = result if isinstance(result, str) else normalize_tool_result(result)
-        self._append_tool_message(
-            ToolMessage(
-                tool_call_id=pending.tool_call.id,
-                name=pending.tool_call.function.name,
-                content=content,
-            )
-        )
-        self._pending_external_tool_call = None
-        self._run_task = asyncio.create_task(self._run_loop(), name="assistant-session-run")
+        self._record_tool_result(pending, content)
+        if resume:
+            self._run_task = asyncio.create_task(self._run_loop(), name="assistant-session-run")
 
     async def submit_tool_error(self, tool_call_id: str, error: str) -> None:
         self._ensure_entered()
@@ -155,15 +144,36 @@ class AssistantSession:
             raise RuntimeError("Session is already terminal.")
 
         pending = self._require_pending_tool_call(tool_call_id)
-        self._append_tool_message(
-            ToolMessage(
-                tool_call_id=pending.tool_call.id,
-                name=pending.tool_call.function.name,
-                content=f"Error executing tool: {error}",
+        self._record_tool_result(pending, f"Error executing tool: {error}")
+        self._run_task = asyncio.create_task(self._run_loop(), name="assistant-session-run")
+
+    async def complete(self, *, result: str, summary: str) -> None:
+        self._ensure_entered()
+        if self._terminal:
+            raise RuntimeError("Session is already terminal.")
+        if self._active_model is None:
+            raise RuntimeError("Session has not been started.")
+
+        self._waiting_for_user = False
+        self._pending_external_tool_call = None
+        self._pending_tool_calls.clear()
+        self._terminal = True
+        self._persist_history()
+        self._emit(CompletedEvent(result=result, summary=summary))
+
+    def compact_history(self, summary: str) -> None:
+        self._ensure_entered()
+        if self._terminal:
+            raise RuntimeError("Session is already terminal.")
+        if not self._history:
+            raise RuntimeError("Session has no history to compact.")
+
+        clear_history(self._history)
+        self._append_user_message(
+            UserMessage(
+                content=(f"A summary of your conversation until now:\n\n{summary}\n\nPlease continue your work.")
             )
         )
-        self._pending_external_tool_call = None
-        self._run_task = asyncio.create_task(self._run_loop(), name="assistant-session-run")
 
     async def cancel(self) -> None:
         if self._terminal:
@@ -202,13 +212,10 @@ class AssistantSession:
 
     def _validate_tool_names(self) -> None:
         names: set[str] = set()
-        reserved_names = {"finish_task", "compact_conversation"}
         for tool in self._tools:
             name = tool.name()
             if name in names:
                 raise ValueError(f"Duplicate tool name: {name}")
-            if name in reserved_names:
-                raise ValueError(f"Tool name '{name}' is reserved by the runtime.")
             names.add(name)
 
     def _require_pending_tool_call(self, tool_call_id: str) -> _PendingToolCall:
@@ -231,6 +238,16 @@ class AssistantSession:
     def _append_tool_message(self, message: ToolMessage) -> None:
         self._history.append(message)
 
+    def _record_tool_result(self, pending: _PendingToolCall, content: str) -> None:
+        self._append_tool_message(
+            ToolMessage(
+                tool_call_id=pending.tool_call.id,
+                name=pending.tool_call.function.name,
+                content=content,
+            )
+        )
+        self._pending_external_tool_call = None
+
     def _persist_history(self) -> None:
         if self._history_store is not None:
             self._history_store.save(self._history)
@@ -247,12 +264,6 @@ class AssistantSession:
         last_message = self._history[-1]
         return last_message.role not in {"user", "tool"}
 
-    def _build_builtin_tools(self) -> list[Tool]:
-        return cast(list[Tool], ensure_builtin_tools(tools=[]))
-
-    def _build_tool_definitions(self) -> list[ToolDefinition]:
-        return [*self._tools, *self._build_builtin_tools()]
-
     async def _run_loop(self) -> None:
         try:
             while True:
@@ -263,13 +274,12 @@ class AssistantSession:
                 if terminal or self._pending_external_tool_call is not None:
                     return
 
-                tool_definitions = self._build_tool_definitions()
                 progress_callbacks = RuntimeProgressCallbacks(self._emit)
                 assert self._active_model is not None
                 message, usage = await complete_single_step(
                     history=self._history,
                     model=self._active_model,
-                    tools=tool_definitions,
+                    tools=self._tools,
                     progress_callbacks=progress_callbacks,
                     completer=self._completer,
                 )
@@ -284,13 +294,16 @@ class AssistantSession:
                 else:
                     self._waiting_for_user = True
                     self._persist_history()
-                    self._emit(WaitingForUserEvent())
+                    self._emit(InputRequestedEvent())
                     return
 
                 if usage is not None and usage.tokens > self.options.compact_conversation_at_tokens:
                     self._append_user_message(
                         UserMessage(
-                            content="Your conversation history has grown too large. Compact it immediately by using the `compact_conversation` tool."
+                            content=(
+                                "Your conversation history has grown too large. Compact the conversation immediately "
+                                "using the appropriate available tool."
+                            )
                         )
                     )
         except asyncio.CancelledError:
@@ -331,80 +344,8 @@ class AssistantSession:
     async def _drain_pending_tool_calls(self) -> bool:
         while self._pending_tool_calls:
             pending = self._pending_tool_calls.popleft()
-            function_name = pending.tool_call.function.name
-            if self._is_builtin_tool(function_name):
-                terminal = await self._execute_builtin_tool(pending)
-                if terminal:
-                    self._pending_tool_calls.clear()
-                    return True
-                continue
-
             self._pending_external_tool_call = pending
             self._emit(ToolCallRequestedEvent(tool_call=pending.tool_call, arguments=pending.arguments))
             return False
 
-        return False
-
-    def _is_builtin_tool(self, function_name: str) -> bool:
-        return function_name in {tool.name() for tool in self._build_builtin_tools()}
-
-    async def _execute_builtin_tool(self, pending: _PendingToolCall) -> bool:
-        function_name = pending.tool_call.function.name
-        try:
-            result = await execute_tool_call(
-                function_name=function_name,
-                function_args=pending.arguments,
-                tools=self._build_builtin_tools(),
-            )
-        except Exception as exc:
-            self._append_tool_message(
-                ToolMessage(
-                    tool_call_id=pending.tool_call.id,
-                    name=function_name,
-                    content=f"Error executing tool: {exc}",
-                )
-            )
-            return False
-
-        return self._apply_builtin_tool_result(
-            tool_call=pending.tool_call,
-            function_name=function_name,
-            result=result,
-        )
-
-    def _apply_builtin_tool_result(self, *, tool_call: ToolCall, function_name: str, result: ToolResult) -> bool:
-        if isinstance(result, FinishTaskResult):
-            self._append_tool_message(
-                ToolMessage(
-                    tool_call_id=tool_call.id,
-                    name=function_name,
-                    content="Task finished.",
-                )
-            )
-            self._terminal = True
-            self._persist_history()
-            self._emit(FinishedEvent(result=result.result, summary=result.summary))
-            return True
-
-        if isinstance(result, CompactConversationResult):
-            clear_history(self._history)
-            self._append_user_message(
-                UserMessage(
-                    content=(
-                        "A summary of your conversation with the client until now:\n\n"
-                        f"{result.summary}\n\nPlease continue your work."
-                    )
-                )
-            )
-            tool_summary = "Conversation compacted and history reset."
-        else:
-            tool_summary = normalize_tool_result(result)
-
-        self._append_tool_message(
-            ToolMessage(
-                tool_call_id=tool_call.id,
-                name=function_name,
-                content=tool_summary,
-            )
-        )
         return False
