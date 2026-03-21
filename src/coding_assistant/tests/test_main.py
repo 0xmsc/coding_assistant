@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from coding_assistant.adapters.cli import build_default_runner_config, build_session_options
+from coding_assistant.adapters.cli import build_default_runner_config, build_runtime_options
 from coding_assistant.main import main, parse_args
 
 
@@ -30,16 +30,12 @@ def test_parse_args_with_multiple_flags() -> None:
         assert args.ask_user is False
 
 
-def test_build_session_options_from_args() -> None:
+def test_build_runtime_options_from_args() -> None:
     args = type("MockArgs", (), {})()
-    args.model = "gpt-4"
-    args.expert_model = "gpt-4.1"
     args.compact_conversation_at_tokens = 123
 
-    options = build_session_options(args)
+    options = build_runtime_options(args)
 
-    assert options.model == "gpt-4"
-    assert options.expert_model == "gpt-4.1"
     assert options.compact_conversation_at_tokens == 123
 
 

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Literal
 
 from coding_assistant.llm.openai import complete as openai_complete
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, Tool
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, SystemMessage, Tool, UserMessage
 from coding_assistant.runtime import (
     AssistantMessageEvent,
     AssistantSession,
@@ -19,10 +19,34 @@ from coding_assistant.runtime import (
     WaitingForUserEvent,
 )
 from coding_assistant.runtime.persistence import HistoryStore
-from coding_assistant.runtime.session import SessionMode
 from coding_assistant.tool_policy import NullToolPolicy, ToolPolicy
 from coding_assistant.tool_results import TextResult
 from coding_assistant.tools.managed import LaunchAgentSchema, LaunchAgentTool, RedirectToolCallTool
+
+
+CHAT_SYSTEM_PROMPT_TEMPLATE = """
+## General
+
+- You are an agent.
+- You are in chat mode.
+  - Use tools only when they materially advance the work.
+  - When you want the user to reply, write a normal assistant message without tool calls.
+
+{instructions_section}
+""".strip()
+
+
+AGENT_SYSTEM_PROMPT_TEMPLATE = """
+## General
+
+- You are an agent.
+- You are working in agent mode.
+  - Use tools when they materially advance the work.
+  - When you are done, call the `finish_task` tool.
+  - When you need more information, write a normal assistant message without tool calls.
+
+{instructions_section}
+""".strip()
 
 
 class AgentRunner:
@@ -31,7 +55,9 @@ class AgentRunner:
         *,
         instructions: str,
         tools: list[Tool],
-        options: SessionOptions,
+        model: str,
+        expert_model: str | None = None,
+        runtime_options: SessionOptions | None = None,
         completer: Any = openai_complete,
         history_store: HistoryStore | None = None,
         tool_policy: ToolPolicy | None = None,
@@ -41,7 +67,9 @@ class AgentRunner:
         self._instructions = instructions
         self._base_tools = list(tools)
         self._tool_policy = tool_policy or NullToolPolicy()
-        self._options = options
+        self._model = model
+        self._expert_model = expert_model
+        self._runtime_options = runtime_options or SessionOptions()
         self._completer = completer
         self._history_store = history_store
         self._tools = self._build_tools(
@@ -50,16 +78,15 @@ class AgentRunner:
         )
         self._tools_by_name = {tool.name(): tool for tool in self._tools}
         self._session = AssistantSession(
-            instructions=instructions,
             tools=[ToolSpec.from_definition(tool) for tool in self._tools],
-            options=options,
+            options=self._runtime_options,
             completer=completer,
             history_store=history_store,
         )
 
     @property
     def instructions(self) -> str:
-        return self._session.instructions
+        return self._instructions
 
     @property
     def history(self) -> list[Any]:
@@ -75,18 +102,22 @@ class AgentRunner:
     async def start(
         self,
         *,
-        mode: SessionMode,
+        mode: Literal["chat", "agent"],
         task: str | None = None,
         history: list[BaseMessage] | None = None,
         instructions: str | None = None,
         model: str | None = None,
     ) -> None:
-        await self._session.start(
+        resolved_model = model or self._resolve_model(mode=mode)
+        start_history = self._build_start_history(
             mode=mode,
             task=task,
             history=history,
             instructions=instructions,
-            model=model,
+        )
+        await self._session.start(
+            history=start_history,
+            model=resolved_model,
         )
 
     async def send_user_message(self, content: str | list[dict[str, Any]]) -> None:
@@ -154,11 +185,13 @@ class AgentRunner:
         await self._session.submit_tool_result(event.tool_call.id, result)
 
     async def _run_child_agent(self, request: LaunchAgentSchema) -> TextResult:
-        model = self._options.resolved_expert_model() if request.expert_knowledge else self._options.model
+        model = self._resolve_expert_model() if request.expert_knowledge else self._model
         child = AgentRunner(
             instructions=self._instructions,
             tools=self._base_tools,
-            options=replace(self._options),
+            model=self._model,
+            expert_model=self._expert_model,
+            runtime_options=replace(self._runtime_options),
             completer=self._completer,
             history_store=None,
             tool_policy=self._tool_policy,
@@ -205,3 +238,60 @@ class AgentRunner:
         if not parts:
             return None
         return "\n\n".join(parts)
+
+    def _resolve_model(self, *, mode: Literal["chat", "agent"]) -> str:
+        if mode == "agent":
+            return self._resolve_expert_model()
+        return self._model
+
+    def _resolve_expert_model(self) -> str:
+        return self._expert_model or self._model
+
+    def _build_start_history(
+        self,
+        *,
+        mode: Literal["chat", "agent"],
+        task: str | None,
+        history: list[BaseMessage] | None,
+        instructions: str | None,
+    ) -> list[BaseMessage]:
+        if mode == "agent" and not task:
+            raise ValueError("Agent mode requires a task.")
+
+        start_history = list(history or [])
+        if not start_history:
+            start_history.append(
+                SystemMessage(
+                    content=self._build_system_prompt(
+                        mode=mode,
+                        instructions=self._merge_instructions(extra_instructions=instructions),
+                    )
+                )
+            )
+        elif instructions and instructions.strip():
+            start_history.append(SystemMessage(content=self._format_run_instructions(instructions)))
+
+        if mode == "agent":
+            assert task is not None
+            start_history.append(UserMessage(content=task))
+
+        return start_history
+
+    def _merge_instructions(self, *, extra_instructions: str | None) -> str:
+        if not extra_instructions or not extra_instructions.strip():
+            return self._instructions
+        return f"{self._instructions}\n\n# Run-specific instructions\n\n{extra_instructions.strip()}"
+
+    def _build_system_prompt(self, *, mode: Literal["chat", "agent"], instructions: str) -> str:
+        template = CHAT_SYSTEM_PROMPT_TEMPLATE if mode == "chat" else AGENT_SYSTEM_PROMPT_TEMPLATE
+        return template.format(instructions_section=_render_instructions_section(instructions))
+
+    def _format_run_instructions(self, instructions: str) -> str:
+        return f"# Run-specific instructions\n\n{instructions.strip()}"
+
+
+def _render_instructions_section(instructions: str) -> str:
+    cleaned = instructions.strip()
+    if not cleaned:
+        return ""
+    return f"## Instructions\n\n{cleaned}"

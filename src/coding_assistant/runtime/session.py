@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Literal, cast
+from typing import Any, AsyncIterator, cast
 
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.llm.types import (
@@ -19,8 +20,6 @@ from coding_assistant.llm.types import (
 from coding_assistant.runtime.engine import (
     RuntimeProgressCallbacks,
     complete_single_step,
-    create_agent_start_message,
-    create_chat_start_message,
     ensure_builtin_tools,
     execute_tool_call,
     normalize_tool_result,
@@ -41,18 +40,12 @@ from coding_assistant.runtime.tool_spec import ToolSpec
 from coding_assistant.tool_results import CompactConversationResult, FinishTaskResult
 
 
-SessionMode = Literal["chat", "agent"]
 _QUEUE_SENTINEL = object()
 
 
 @dataclass(slots=True)
 class SessionOptions:
-    model: str
-    expert_model: str | None = None
     compact_conversation_at_tokens: int = 200_000
-
-    def resolved_expert_model(self) -> str:
-        return self.expert_model or self.model
 
 
 @dataclass(slots=True)
@@ -65,20 +58,17 @@ class AssistantSession:
     def __init__(
         self,
         *,
-        instructions: str,
         tools: list[ToolSpec],
-        options: SessionOptions,
+        options: SessionOptions | None = None,
         completer: Any = openai_complete,
         history_store: HistoryStore | None = None,
     ) -> None:
-        self._instructions = instructions
         self._tools = list(tools)
-        self.options = options
+        self.options = options or SessionOptions()
         self._completer = completer
         self._history_store = history_store
         self._event_queue: asyncio.Queue[SessionEvent | object] = asyncio.Queue()
         self._history: list[BaseMessage] = []
-        self._mode: SessionMode | None = None
         self._active_model: str | None = None
         self._waiting_for_user = False
         self._entered = False
@@ -87,10 +77,6 @@ class AssistantSession:
         self._pending_tool_calls: deque[_PendingToolCall] = deque()
         self._pending_external_tool_call: _PendingToolCall | None = None
         self._validate_tool_names()
-
-    @property
-    def instructions(self) -> str:
-        return self._instructions
 
     @property
     def history(self) -> list[BaseMessage]:
@@ -112,27 +98,21 @@ class AssistantSession:
     async def start(
         self,
         *,
-        mode: SessionMode,
-        task: str | None = None,
-        history: list[BaseMessage] | None = None,
-        instructions: str | None = None,
-        model: str | None = None,
+        history: Sequence[BaseMessage],
+        model: str,
     ) -> None:
         self._ensure_entered()
         if self._run_task is not None or self._pending_external_tool_call is not None:
             raise RuntimeError("Session is already running.")
-        if self._mode is not None:
+        if self._active_model is not None:
             raise RuntimeError("Session has already been started.")
-        if mode == "agent" and not task:
-            raise ValueError("Agent mode requires a task.")
 
-        self._history = list(history or [])
-        self._mode = mode
-        self._active_model = model or (self.options.resolved_expert_model() if mode == "agent" else self.options.model)
-        start_message = self._create_start_message(mode=mode, task=task, extra_instructions=instructions)
-        self._append_user_message(UserMessage(content=start_message))
+        self._history = list(history)
+        if not self._history:
+            raise ValueError("Session start requires a non-empty history.")
 
-        if mode == "chat":
+        self._active_model = model
+        if self._should_wait_for_user():
             self._waiting_for_user = True
             self._persist_history()
             self._emit(WaitingForUserEvent())
@@ -200,7 +180,7 @@ class AssistantSession:
                     self._mark_cancelled()
             return
 
-        if self._mode is not None or self._pending_external_tool_call is not None:
+        if self._active_model is not None or self._pending_external_tool_call is not None:
             self._mark_cancelled()
 
     async def next_event(self) -> SessionEvent:
@@ -263,23 +243,12 @@ class AssistantSession:
         self._persist_history()
         self._emit(CancelledEvent())
 
-    def _create_start_message(self, *, mode: SessionMode, task: str | None, extra_instructions: str | None) -> str:
-        instructions = self.instructions
-        if extra_instructions and extra_instructions.strip():
-            instructions = f"{instructions}\n\n# Run-specific instructions\n\n{extra_instructions.strip()}"
-        if mode == "chat":
-            return create_chat_start_message(instructions)
-        assert task is not None
-        return create_agent_start_message(task=task, instructions=instructions)
+    def _should_wait_for_user(self) -> bool:
+        last_message = self._history[-1]
+        return last_message.role not in {"user", "tool"}
 
     def _build_builtin_tools(self) -> list[Tool]:
-        return cast(
-            list[Tool],
-            ensure_builtin_tools(
-                tools=[],
-                include_finish_tool=self._mode == "agent",
-            ),
-        )
+        return cast(list[Tool], ensure_builtin_tools(tools=[]))
 
     def _build_tool_definitions(self) -> list[ToolDefinition]:
         return [*self._tools, *self._build_builtin_tools()]

@@ -78,10 +78,8 @@ class EventRenderer:
         self._streaming = False
 
 
-def build_session_options(args: Namespace) -> SessionOptions:
+def build_runtime_options(args: Namespace) -> SessionOptions:
     return SessionOptions(
-        model=args.model,
-        expert_model=args.expert_model,
         compact_conversation_at_tokens=args.compact_conversation_at_tokens,
     )
 
@@ -101,7 +99,7 @@ def build_default_runner_config(args: Namespace) -> DefaultRunnerConfig:
 
 
 async def run_cli(args: Namespace) -> None:
-    options = build_session_options(args)
+    runtime_options = build_runtime_options(args)
     config = build_default_runner_config(args)
 
     if args.sandbox:
@@ -123,7 +121,13 @@ async def run_cli(args: Namespace) -> None:
     else:
         tool_policy = NullToolPolicy()
 
-    async with create_default_runner(options=options, config=config, tool_policy=tool_policy) as bundle:
+    async with create_default_runner(
+        model=args.model,
+        expert_model=args.expert_model,
+        runtime_options=runtime_options,
+        config=config,
+        tool_policy=tool_policy,
+    ) as bundle:
         runner = bundle.runner
         if args.print_mcp_tools:
             await print_mcp_tools(bundle.mcp_servers)
