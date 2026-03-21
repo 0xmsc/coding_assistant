@@ -134,12 +134,6 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--print-reasoning",
-        action=BooleanOptionalAction,
-        default=True,
-        help="Print reasoning chunks from the model.",
-    )
-    parser.add_argument(
         "--skills-directories",
         nargs="*",
         default=[],
