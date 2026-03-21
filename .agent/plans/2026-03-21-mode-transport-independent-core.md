@@ -119,7 +119,7 @@ The final names should reflect the new architecture rather than the current tran
 - [x] Replace `start(mode=..., task=..., instructions=...)` with a mode-free API based on explicit history/transcript input.
 - [x] Remove `SessionMode` from the core runtime public surface.
 - [x] Remove `expert_model` from `SessionOptions`; keep only runtime-level tuning in the core.
-- [x] Keep finish/compaction as temporary runtime-owned control points for now so the mode-free core can land cleanly before managed-tool migration.
+- [x] Add explicit core control points for completion and transcript compaction so managed tool handling can move out of the runtime loop cleanly.
 
 Verification:
 
@@ -140,9 +140,9 @@ Verification:
 
 ### Milestone 3 / PR 3: Move Managed Tool Semantics to the Wrapper
 
-- [ ] Make `finish_task`, sub-agent launch, and other product-shaped tools wrapper-managed rather than runtime-managed.
-- [ ] Let the wrapper translate those managed tool calls into runtime control actions or terminal outcomes.
-- [ ] Keep the core tool protocol generic: request, allow/deny/execute outside, submit result back.
+- [x] Make `finish_task`, sub-agent launch, and other product-shaped tools wrapper-managed rather than runtime-managed.
+- [x] Let the wrapper translate those managed tool calls into runtime control actions or terminal outcomes.
+- [x] Keep the core tool protocol generic: request, allow/deny/execute outside, submit result back.
 
 Verification:
 
@@ -151,10 +151,10 @@ Verification:
 
 ### Milestone 4 / PR 4: Rebuild the Wrapper Around the New Core
 
-- [ ] Make the wrapper own chat-mode startup behavior.
-- [ ] Make the wrapper own agent-mode task framing and model choice.
-- [ ] Keep sub-agent orchestration in the wrapper layer only.
-- [ ] Preserve current CLI-visible behavior through wrapper logic rather than runtime branching.
+- [x] Make the wrapper own chat-mode startup behavior.
+- [x] Make the wrapper own agent-mode task framing and model choice.
+- [x] Keep sub-agent orchestration in the wrapper layer only.
+- [x] Preserve current CLI-visible behavior through wrapper logic rather than runtime branching.
 
 Verification:
 
@@ -163,12 +163,12 @@ Verification:
 
 ### Milestone 5 / PR 5: Tighten Adapter Boundaries and Tests
 
-- [ ] Keep CLI and websocket mapping code outside `runtime/`.
-- [ ] Rewrite runtime tests around explicit transcripts and generic tool-call events.
-- [ ] Rewrite wrapper tests around chat/agent semantics and managed tools.
-- [ ] Remove legacy tests or helpers that still assume mode-aware runtime behavior.
-- [ ] Apply the agreed naming cleanup so core, wrapper, and adapter names read consistently.
-- [ ] Make tests use the simplest applicable public API by default:
+- [x] Keep CLI and websocket mapping code outside `runtime/`.
+- [x] Rewrite runtime tests around explicit transcripts and generic tool-call events.
+- [x] Rewrite wrapper tests around chat/agent semantics and managed tools.
+- [x] Remove legacy tests or helpers that still assume mode-aware runtime behavior.
+- [x] Apply the agreed naming cleanup so core, wrapper, and adapter names read consistently.
+- [x] Make tests use the simplest applicable public API by default:
   - runtime tests should prefer `coding_assistant.runtime` public types
   - managed-wrapper tests should prefer the wrapper public API
   - package-level embedding tests should prefer `from coding_assistant import ...`
@@ -184,10 +184,10 @@ Verification:
 
 ## Risks
 
-- The biggest design risk is managed completion semantics: once `finish_task` leaves the core, the runtime needs a clean generic way to transition to `FinishedEvent` without reintroducing product naming.
-- A second risk is keeping too much convenience in `AssistantSession.start(...)`; if it still synthesizes product prompts, the old coupling will remain.
-- A third risk is allowing wrapper concerns to leak back through reserved tool names or mode-shaped helper functions inside `runtime/`.
+- The remaining risk is whether the wrapper naming should also be reflected in module/file names, not just class names.
+- A second risk is the still-generic `summary` payload on `CompletedEvent`; if the embedding API grows, that terminal payload may need a more neutral shape.
+- A third risk is allowing future wrapper concerns to leak back into `runtime/` through convenience helpers rather than explicit adapter code.
 
 ## Recommended Next Milestone
 
-- [ ] Continue with Milestone 3: move `finish_task` and `compact_conversation` out of the core runtime and let the wrapper translate those tool calls into runtime control actions.
+- [x] The current plan scope is implemented. Further cleanup, if desired, should be planned as a new follow-up rather than extending this file ad hoc.

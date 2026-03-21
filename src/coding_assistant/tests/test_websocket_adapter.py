@@ -6,10 +6,10 @@ from coding_assistant.runtime import (
     AssistantDeltaEvent,
     AssistantMessageEvent,
     CancelledEvent,
+    CompletedEvent,
     FailedEvent,
-    FinishedEvent,
+    InputRequestedEvent,
     ToolCallRequestedEvent,
-    WaitingForUserEvent,
 )
 
 
@@ -29,9 +29,9 @@ def test_session_event_to_json() -> None:
         "tool_call": ToolCall(id="1", function=FunctionCall(name="mock_tool", arguments="{}")),
         "arguments": {},
     }
-    assert session_event_to_json(WaitingForUserEvent()) == {"type": "waiting_for_user"}
-    assert session_event_to_json(FinishedEvent(result="done", summary="sum")) == {
-        "type": "finished",
+    assert session_event_to_json(InputRequestedEvent()) == {"type": "input_requested"}
+    assert session_event_to_json(CompletedEvent(result="done", summary="sum")) == {
+        "type": "completed",
         "result": "done",
         "summary": "sum",
     }

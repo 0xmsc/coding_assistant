@@ -10,22 +10,11 @@ from coding_assistant.llm.types import (
     BaseMessage,
     NullProgressCallbacks,
     ProgressCallbacks,
-    Tool,
     ToolDefinition,
     ToolCall,
     ToolResult,
 )
-from coding_assistant.runtime.builtin_tools import CompactConversationTool, FinishTaskTool
 from coding_assistant.runtime.events import AssistantDeltaEvent
-
-
-def ensure_builtin_tools(*, tools: Sequence[ToolDefinition]) -> list[ToolDefinition]:
-    result = list(tools)
-    if not any(tool.name() == "finish_task" for tool in result):
-        result.append(FinishTaskTool())
-    if not any(tool.name() == "compact_conversation" for tool in result):
-        result.append(CompactConversationTool())
-    return result
 
 
 class RuntimeProgressCallbacks(NullProgressCallbacks):
@@ -34,13 +23,6 @@ class RuntimeProgressCallbacks(NullProgressCallbacks):
 
     def on_content_chunk(self, chunk: str) -> None:
         self._emit(AssistantDeltaEvent(delta=chunk))
-
-
-async def execute_tool_call(*, function_name: str, function_args: dict[str, Any], tools: list[Tool]) -> ToolResult:
-    for tool in tools:
-        if tool.name() == function_name:
-            return await tool.execute(function_args)
-    raise ValueError(f"Tool {function_name} not found in session tools.")
 
 
 def parse_tool_call_arguments(tool_call: ToolCall) -> tuple[dict[str, Any] | None, str | None]:

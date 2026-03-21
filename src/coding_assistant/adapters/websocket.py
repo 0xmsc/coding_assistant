@@ -7,11 +7,11 @@ from coding_assistant.runtime import (
     AssistantDeltaEvent,
     AssistantMessageEvent,
     CancelledEvent,
+    CompletedEvent,
     FailedEvent,
-    FinishedEvent,
+    InputRequestedEvent,
     SessionEvent,
     ToolCallRequestedEvent,
-    WaitingForUserEvent,
 )
 
 
@@ -35,9 +35,9 @@ def session_event_to_json(event: SessionEvent) -> dict[str, Any]:
             "tool_call": event.tool_call,
             "arguments": event.arguments,
         }
-    if isinstance(event, WaitingForUserEvent):
+    if isinstance(event, InputRequestedEvent):
         return {"type": event.type}
-    if isinstance(event, FinishedEvent):
+    if isinstance(event, CompletedEvent):
         return {"type": event.type, "result": event.result, "summary": event.summary}
     if isinstance(event, FailedEvent):
         return {"type": event.type, "error": event.error}
