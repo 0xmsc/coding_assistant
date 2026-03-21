@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
+from coding_assistant import AgentRunner, SessionOptions
 from coding_assistant.llm.types import AssistantMessage, Completion, FunctionCall, Tool, ToolCall, Usage
-from coding_assistant.runner import AgentRunner
-from coding_assistant.runtime import AssistantMessageEvent, FinishedEvent, SessionOptions, WaitingForUserEvent
+from coding_assistant.runtime import AssistantMessageEvent, FinishedEvent, WaitingForUserEvent
 from coding_assistant.tool_policy import ToolPolicy
 from coding_assistant.tool_results import TextResult
 
@@ -62,7 +62,7 @@ class DenyPolicy(ToolPolicy):
 
 
 def make_options() -> SessionOptions:
-    return SessionOptions(model="test-model", expert_model="test-expert-model")
+    return SessionOptions(compact_conversation_at_tokens=200_000)
 
 
 @pytest.mark.asyncio
@@ -79,7 +79,9 @@ async def test_runner_executes_tool_requests_internally() -> None:
     runner = AgentRunner(
         instructions="# Instructions\n\nTest instructions",
         tools=[tool],
-        options=make_options(),
+        model="test-model",
+        expert_model="test-expert-model",
+        runtime_options=make_options(),
         completer=ScriptedCompleter(
             [
                 AssistantMessage(tool_calls=[external_call]),
@@ -124,7 +126,9 @@ async def test_runner_launch_agent_stays_internal() -> None:
     runner = AgentRunner(
         instructions="# Instructions\n\nTest instructions",
         tools=[],
-        options=make_options(),
+        model="test-model",
+        expert_model="test-expert-model",
+        runtime_options=make_options(),
         completer=ScriptedCompleter(
             [
                 AssistantMessage(tool_calls=[launch_call]),
@@ -160,7 +164,9 @@ async def test_runner_sub_agent_waiting_becomes_tool_result() -> None:
     runner = AgentRunner(
         instructions="# Instructions\n\nTest instructions",
         tools=[],
-        options=make_options(),
+        model="test-model",
+        expert_model="test-expert-model",
+        runtime_options=make_options(),
         completer=ScriptedCompleter(
             [
                 AssistantMessage(tool_calls=[launch_call]),
@@ -199,7 +205,9 @@ async def test_runner_policy_can_deny_tool_execution() -> None:
     runner = AgentRunner(
         instructions="# Instructions\n\nTest instructions",
         tools=[tool],
-        options=make_options(),
+        model="test-model",
+        expert_model="test-expert-model",
+        runtime_options=make_options(),
         completer=ScriptedCompleter(
             [
                 AssistantMessage(tool_calls=[external_call]),

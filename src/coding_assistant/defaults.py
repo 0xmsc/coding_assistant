@@ -55,7 +55,9 @@ def get_default_mcp_server_config(
 @asynccontextmanager
 async def create_default_runner(
     *,
-    options: SessionOptions,
+    model: str,
+    expert_model: str | None,
+    runtime_options: SessionOptions,
     config: DefaultRunnerConfig,
     tool_policy: ToolPolicy | None = None,
     completer: Any = openai_complete,
@@ -77,7 +79,9 @@ async def create_default_runner(
         runner = AgentRunner(
             instructions=instructions,
             tools=tools,
-            options=options,
+            model=model,
+            expert_model=expert_model,
+            runtime_options=runtime_options,
             completer=completer,
             history_store=history_store,
             tool_policy=tool_policy,

@@ -19,56 +19,9 @@ from coding_assistant.runtime.builtin_tools import CompactConversationTool, Fini
 from coding_assistant.runtime.events import AssistantDeltaEvent
 
 
-CHAT_START_MESSAGE_TEMPLATE = """
-## General
-
-- You are an agent.
-- You are in chat mode.
-  - Use tools only when they materially advance the work.
-  - When you want the user to reply, write a normal assistant message without tool calls.
-
-{instructions_section}
-""".strip()
-
-
-AGENT_START_MESSAGE_TEMPLATE = """
-## General
-
-- You are an agent.
-- You are working in agent mode.
-  - Use tools when they materially advance the work.
-  - When you are done, call the `finish_task` tool.
-  - When you need more information, write a normal assistant message without tool calls.
-
-## Task
-
-{task}
-
-{instructions_section}
-""".strip()
-
-
-def create_chat_start_message(instructions: str) -> str:
-    return CHAT_START_MESSAGE_TEMPLATE.format(instructions_section=_render_instructions_section(instructions))
-
-
-def create_agent_start_message(*, task: str, instructions: str) -> str:
-    return AGENT_START_MESSAGE_TEMPLATE.format(
-        task=task,
-        instructions_section=_render_instructions_section(instructions),
-    )
-
-
-def _render_instructions_section(instructions: str) -> str:
-    cleaned = instructions.strip()
-    if not cleaned:
-        return ""
-    return f"## Instructions\n\n{cleaned}"
-
-
-def ensure_builtin_tools(*, tools: Sequence[ToolDefinition], include_finish_tool: bool) -> list[ToolDefinition]:
+def ensure_builtin_tools(*, tools: Sequence[ToolDefinition]) -> list[ToolDefinition]:
     result = list(tools)
-    if include_finish_tool and not any(tool.name() == "finish_task" for tool in result):
+    if not any(tool.name() == "finish_task" for tool in result):
         result.append(FinishTaskTool())
     if not any(tool.name() == "compact_conversation" for tool in result):
         result.append(CompactConversationTool())

@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from coding_assistant import AssistantSession as RootAssistantSession, SessionOptions as RootSessionOptions, ToolSpec
-from coding_assistant.llm.types import AssistantMessage, Completion, FunctionCall, ToolCall, Usage
+from coding_assistant.llm.types import AssistantMessage, Completion, FunctionCall, SystemMessage, ToolCall, Usage
 from coding_assistant.runtime import (
     AssistantDeltaEvent,
     AssistantMessageEvent,
@@ -45,11 +45,7 @@ class ScriptedCompleter:
 
 
 def make_options() -> SessionOptions:
-    return SessionOptions(
-        model="test-model",
-        expert_model="test-expert-model",
-        compact_conversation_at_tokens=200_000,
-    )
+    return SessionOptions(compact_conversation_at_tokens=200_000)
 
 
 def make_external_tool_spec(name: str = "mock_tool") -> ToolSpec:
@@ -60,38 +56,40 @@ def make_external_tool_spec(name: str = "mock_tool") -> ToolSpec:
     )
 
 
+def make_system_history() -> list[SystemMessage]:
+    return [SystemMessage(content="# Instructions\n\nTest instructions")]
+
+
 def test_root_package_exports_runtime_types() -> None:
     assert RootAssistantSession is AssistantSession
     assert RootSessionOptions is SessionOptions
 
 
 @pytest.mark.asyncio
-async def test_chat_start_emits_waiting_for_user() -> None:
+async def test_start_without_pending_model_turn_emits_waiting_for_user() -> None:
     session = AssistantSession(
-        instructions="# Instructions\n\nTest instructions",
         tools=[],
         options=make_options(),
     )
 
     async with session:
-        await session.start(mode="chat")
+        await session.start(history=make_system_history(), model="test-model")
         event = await session.next_event()
         assert isinstance(event, WaitingForUserEvent)
-        assert session.history[-1].role == "user"
+        assert session.history[-1].role == "system"
 
 
 @pytest.mark.asyncio
-async def test_chat_reply_emits_delta_message_and_waiting() -> None:
+async def test_user_reply_emits_delta_message_and_waiting() -> None:
     completer = ScriptedCompleter([AssistantMessage(content="Hello from the assistant")])
     session = AssistantSession(
-        instructions="# Instructions\n\nTest instructions",
         tools=[],
         options=make_options(),
         completer=completer,
     )
 
     async with session:
-        await session.start(mode="chat")
+        await session.start(history=make_system_history(), model="test-model")
         waiting = await session.next_event()
         assert isinstance(waiting, WaitingForUserEvent)
 
@@ -105,7 +103,16 @@ async def test_chat_reply_emits_delta_message_and_waiting() -> None:
         assert isinstance(event2, AssistantMessageEvent)
         assert event2.message.content == "Hello from the assistant"
         assert isinstance(event3, WaitingForUserEvent)
-        assert [message.role for message in session.history] == ["user", "user", "assistant"]
+        assert [message.role for message in session.history] == ["system", "user", "assistant"]
+
+
+@pytest.mark.asyncio
+async def test_session_requires_non_empty_history() -> None:
+    session = AssistantSession(tools=[], options=make_options())
+
+    async with session:
+        with pytest.raises(ValueError, match="non-empty history"):
+            await session.start(history=[], model="test-model")
 
 
 @pytest.mark.asyncio
@@ -125,14 +132,17 @@ async def test_external_tool_call_emits_request_and_accepts_result() -> None:
         ]
     )
     session = AssistantSession(
-        instructions="# Instructions\n\nTest instructions",
         tools=[make_external_tool_spec()],
         options=make_options(),
         completer=completer,
     )
 
     async with session:
-        await session.start(mode="agent", task="Finish the task")
+        await session.start(history=make_system_history(), model="test-model")
+        waiting = await session.next_event()
+        assert isinstance(waiting, WaitingForUserEvent)
+
+        await session.send_user_message("Finish the task")
         event1 = await session.next_event()
         event2 = await session.next_event()
 
@@ -165,14 +175,15 @@ async def test_submit_tool_error_resumes_model_loop() -> None:
         ]
     )
     session = AssistantSession(
-        instructions="# Instructions\n\nTest instructions",
         tools=[make_external_tool_spec()],
         options=make_options(),
         completer=completer,
     )
 
     async with session:
-        await session.start(mode="agent", task="Handle an error")
+        await session.start(history=make_system_history(), model="test-model")
+        await session.next_event()
+        await session.send_user_message("Handle an error")
         await session.next_event()
         event2 = await session.next_event()
         assert isinstance(event2, ToolCallRequestedEvent)
@@ -192,21 +203,22 @@ async def test_submit_tool_error_resumes_model_loop() -> None:
 
 
 @pytest.mark.asyncio
-async def test_agent_finish_emits_finished_event() -> None:
+async def test_finish_tool_emits_finished_event() -> None:
     finish_call = ToolCall(
         id="finish-1",
         function=FunctionCall(name="finish_task", arguments=json.dumps({"result": "done", "summary": "all set"})),
     )
     completer = ScriptedCompleter([AssistantMessage(tool_calls=[finish_call])])
     session = AssistantSession(
-        instructions="# Instructions\n\nTest instructions",
         tools=[],
         options=make_options(),
         completer=completer,
     )
 
     async with session:
-        await session.start(mode="agent", task="Finish the task")
+        await session.start(history=make_system_history(), model="test-model")
+        await session.next_event()
+        await session.send_user_message("Finish the task")
         event1 = await session.next_event()
         event2 = await session.next_event()
 
@@ -225,14 +237,15 @@ async def test_cancel_pending_tool_request_emits_cancelled_event() -> None:
     )
     completer = ScriptedCompleter([AssistantMessage(tool_calls=[external_call])])
     session = AssistantSession(
-        instructions="# Instructions\n\nTest instructions",
         tools=[make_external_tool_spec()],
         options=make_options(),
         completer=completer,
     )
 
     async with session:
-        await session.start(mode="agent", task="Wait on a tool")
+        await session.start(history=make_system_history(), model="test-model")
+        await session.next_event()
+        await session.send_user_message("Wait on a tool")
         await session.next_event()
         event2 = await session.next_event()
         assert isinstance(event2, ToolCallRequestedEvent)
@@ -247,7 +260,6 @@ async def test_session_persists_history_via_history_store(tmp_path: Path) -> Non
     history_store = FileHistoryStore(tmp_path)
     completer = ScriptedCompleter([AssistantMessage(content="Hello from the assistant")])
     session = AssistantSession(
-        instructions="# Instructions\n\nTest instructions",
         tools=[],
         options=make_options(),
         completer=completer,
@@ -255,7 +267,7 @@ async def test_session_persists_history_via_history_store(tmp_path: Path) -> Non
     )
 
     async with session:
-        await session.start(mode="chat")
+        await session.start(history=make_system_history(), model="test-model")
         await session.next_event()
         await session.send_user_message("Hi")
         await session.next_event()
@@ -271,14 +283,15 @@ async def test_session_persists_history_via_history_store(tmp_path: Path) -> Non
 async def test_failure_emits_failed_event() -> None:
     completer = ScriptedCompleter([RuntimeError("boom")])
     session = AssistantSession(
-        instructions="# Instructions\n\nTest instructions",
         tools=[],
         options=make_options(),
         completer=completer,
     )
 
     async with session:
-        await session.start(mode="agent", task="Fail")
+        await session.start(history=make_system_history(), model="test-model")
+        await session.next_event()
+        await session.send_user_message("Fail")
         event = await session.next_event()
         assert isinstance(event, FailedEvent)
         assert event.error == "boom"
