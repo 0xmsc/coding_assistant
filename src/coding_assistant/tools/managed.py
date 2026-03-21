@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel, Field
 
@@ -33,6 +35,27 @@ class LaunchAgentSchema(BaseModel):
     )
 
 
+class LaunchAgentTool(Tool):
+    def __init__(self, *, execute_child: Callable[[LaunchAgentSchema], Awaitable[TextResult]]) -> None:
+        self._execute_child = execute_child
+
+    def name(self) -> str:
+        return "launch_agent"
+
+    def description(self) -> str:
+        return (
+            "Launch a sub-agent to work on a well-scoped task. "
+            "If the sub-agent cannot proceed, it will report what information is missing."
+        )
+
+    def parameters(self) -> dict[str, Any]:
+        return LaunchAgentSchema.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> TextResult:
+        validated = LaunchAgentSchema.model_validate(parameters)
+        return await self._execute_child(validated)
+
+
 class RedirectToolCallSchema(BaseModel):
     tool_name: str = Field(description="The name of the tool to call.")
     tool_args: dict[str, Any] = Field(description="The arguments to pass to the tool.")
@@ -43,8 +66,7 @@ class RedirectToolCallSchema(BaseModel):
 
 
 class RedirectToolCallTool(Tool):
-    def __init__(self, *, tools: list[Tool]):
-        super().__init__()
+    def __init__(self, *, tools: list[Tool]) -> None:
         self._tools = tools
 
     def name(self) -> str:

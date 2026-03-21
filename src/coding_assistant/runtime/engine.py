@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from json import JSONDecodeError
+from collections.abc import Sequence
 from typing import Any
 
 from coding_assistant.llm.types import (
@@ -10,6 +11,7 @@ from coding_assistant.llm.types import (
     NullProgressCallbacks,
     ProgressCallbacks,
     Tool,
+    ToolDefinition,
     ToolCall,
     ToolResult,
 )
@@ -64,7 +66,7 @@ def _render_instructions_section(instructions: str) -> str:
     return f"## Instructions\n\n{cleaned}"
 
 
-def ensure_builtin_tools(*, tools: list[Tool], include_finish_tool: bool) -> list[Tool]:
+def ensure_builtin_tools(*, tools: Sequence[ToolDefinition], include_finish_tool: bool) -> list[ToolDefinition]:
     result = list(tools)
     if include_finish_tool and not any(tool.name() == "finish_task" for tool in result):
         result.append(FinishTaskTool())
@@ -110,7 +112,7 @@ async def complete_single_step(
     *,
     history: list[BaseMessage],
     model: str,
-    tools: list[Tool],
+    tools: Sequence[ToolDefinition],
     progress_callbacks: ProgressCallbacks,
     completer: Any,
 ) -> tuple[AssistantMessage, Any]:

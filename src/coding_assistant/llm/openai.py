@@ -20,7 +20,7 @@ from coding_assistant.llm.types import (
     BaseMessage,
     ProgressCallbacks,
     StatusLevel,
-    Tool,
+    ToolDefinition,
     ToolCall,
     FunctionCall,
     AssistantMessage,
@@ -144,7 +144,7 @@ def _prepare_messages(messages: Sequence[BaseMessage]) -> list[dict[str, Any]]:
 
 async def _try_completion(
     messages: Sequence[BaseMessage],
-    tools: Sequence[Tool],
+    tools: Sequence[ToolDefinition],
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
@@ -221,7 +221,7 @@ async def _try_completion(
 
 async def _try_completion_with_retry(
     messages: Sequence[BaseMessage],
-    tools: Sequence[Tool],
+    tools: Sequence[ToolDefinition],
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
@@ -266,7 +266,7 @@ async def complete(
     messages: Sequence[BaseMessage],
     *,
     model: str,
-    tools: Sequence[Tool],
+    tools: Sequence[ToolDefinition],
     callbacks: ProgressCallbacks,
 ) -> Completion:
     try:

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 from coding_assistant.llm.types import Tool, ToolResult
 from coding_assistant.tool_results import TextResult
-from coding_assistant.tools.tools import RedirectToolCallTool
+from coding_assistant.tools.managed import RedirectToolCallTool
 from dataclasses import dataclass
 
 
