@@ -1,18 +1,19 @@
 # Coding Assistant
 
-Coding Assistant is a Python-based, agent-orchestrated CLI that helps you automate and streamline coding tasks. It can plan, launch sub-agents, use MCP tools (filesystem, web fetch/search, Context7, Tavily, etc.), run inside a sandbox, and keep resumable history.
+Coding Assistant is a Python-based, agent-orchestrated CLI and embeddable library for coding workflows. It can plan, launch sub-agents, use MCP tools (filesystem, web fetch/search, Context7, Tavily, etc.), run inside a sandbox, and keep resumable history.
 
 ## Key Features
 
-- Orchestrator agent that delegates to sub-agents and tools
+- Low-level `AssistantSession` runtime with explicit events and commands
+- Managed `AgentRunner` wrapper that executes tools and sub-agents
 - Resumable sessions and conversation summaries stored per-project
 - Built-in MCP server with shell, Python, filesystem, and TODO tools
 - Support for external MCP servers (filesystem, fetch, Context7, Tavily, etc.)
 - Landlock-based filesystem sandbox with readable/writable allowlists
-- Prompt-toolkit powered TUI with dense and regular output modes
+- Prompt-toolkit powered interactive CLI
 - Shell/tool confirmation patterns to guard dangerous operations
 - Chat mode enabled by default for interactive conversations
-- Configurable via CLI flags (models, plan mode, instructions, etc.)
+- Configurable via CLI flags (models, instructions, sandbox, MCP, etc.)
 
 ## Requirements
 
@@ -60,28 +61,43 @@ coding-assistant --help
 
 ## Embedding
 
-The runtime can be embedded directly from Python without importing terminal UI code.
+The project now has two Python surfaces:
+
+- `AssistantSession`: low-level runtime. It emits `tool_call_requested` and expects the host to submit tool results.
+- `AgentRunner`: managed wrapper. It handles tool execution for you.
+
+### Low-Level Runtime
 
 ```python
 import asyncio
-from pathlib import Path
 
-from coding_assistant import AssistantSession, SessionOptions
+from coding_assistant import AssistantSession, SessionOptions, ToolSpec
 
 
 async def main() -> None:
-    options = SessionOptions(
-        model="openai/gpt-5-mini",
-        expert_model="openai/gpt-5-mini",
-        working_directory=Path.cwd(),
+    session = AssistantSession(
+        instructions="You are a helpful coding agent.",
+        tools=[
+            ToolSpec(
+                name="lookup_docs",
+                description="Look up project documentation.",
+                parameters={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+            )
+        ],
+        options=SessionOptions(
+            model="openai/gpt-5-mini",
+            expert_model="openai/gpt-5-mini",
+        ),
     )
 
-    async with AssistantSession(options=options) as session:
+    async with session:
         await session.start(mode="chat")
 
         async for event in session.events():
             if event.type == "waiting_for_user":
                 await session.send_user_message("Say hello in one sentence.")
+            elif event.type == "tool_call_requested":
+                await session.submit_tool_result(event.tool_call.id, "Documentation lookup result.")
             elif event.type == "assistant_delta":
                 print(event.delta, end="", flush=True)
             elif event.type == "assistant_message":
@@ -92,7 +108,9 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-For agent mode, start the session with `mode="agent"` and pass `task="..."`.
+### Managed Runner
+
+Use `AgentRunner` when you already have executable tool objects and want a higher-level embedding surface.
 
 ### Advanced Examples
 
@@ -125,7 +143,6 @@ Notes:
 - `--wait-for-debugger` Wait for a debugger (debugpy) to attach on port 1234.
 - `--ask-user` / `--no-ask-user` Enable/disable asking the user for input in agent mode (default: **enabled**).
 - `--skills-directories` Paths to directories containing Agent Skills (with SKILL.md files).
-- `--print-reasoning` / `--no-print-reasoning` Print reasoning chunks from the model (default: **enabled**).
 
 Note: Chat mode is enabled by default when no `--task` is provided.
 

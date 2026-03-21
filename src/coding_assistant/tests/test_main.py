@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from coding_assistant.adapters.cli import build_session_options
+from coding_assistant.adapters.cli import build_default_runner_config, build_session_options
 from coding_assistant.main import main, parse_args
 
 
@@ -30,23 +30,33 @@ def test_parse_args_with_multiple_flags() -> None:
         assert args.ask_user is False
 
 
-def test_build_session_options_from_args(tmp_path: Any) -> None:
+def test_build_session_options_from_args() -> None:
     args = type("MockArgs", (), {})()
     args.model = "gpt-4"
     args.expert_model = "gpt-4.1"
     args.compact_conversation_at_tokens = 123
+
+    options = build_session_options(args)
+
+    assert options.model == "gpt-4"
+    assert options.expert_model == "gpt-4.1"
+    assert options.compact_conversation_at_tokens == 123
+
+
+def test_build_default_runner_config_from_args(tmp_path: Any) -> None:
+    args = type("MockArgs", (), {})()
     args.mcp_servers = []
     args.skills_directories = []
     args.mcp_env = []
     args.instructions = []
 
     with patch("coding_assistant.adapters.cli.os.getcwd", return_value=str(tmp_path)):
-        options = build_session_options(args)
+        config = build_default_runner_config(args)
 
-    assert options.model == "gpt-4"
-    assert options.expert_model == "gpt-4.1"
-    assert options.compact_conversation_at_tokens == 123
-    assert options.working_directory == tmp_path
+    assert config.working_directory == tmp_path
+    assert config.skills_directories == ()
+    assert config.mcp_env == ()
+    assert config.user_instructions == ()
 
 
 @patch("coding_assistant.main.run_cli")

@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
-from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from typing import Any
 
 import pytest
 
-from coding_assistant import AssistantSession as RootAssistantSession, SessionOptions as RootSessionOptions
+from coding_assistant import AssistantSession as RootAssistantSession, SessionOptions as RootSessionOptions, ToolSpec
 from coding_assistant.llm.types import AssistantMessage, Completion, FunctionCall, ToolCall, Usage
 from coding_assistant.runtime import (
     AssistantDeltaEvent,
@@ -19,6 +17,7 @@ from coding_assistant.runtime import (
     FileHistoryStore,
     FinishedEvent,
     SessionOptions,
+    ToolCallRequestedEvent,
     WaitingForUserEvent,
 )
 
@@ -45,43 +44,20 @@ class ScriptedCompleter:
         return Completion(message=action, usage=Usage(tokens=10, cost=0.0))
 
 
-def make_options(tmp_path: Path, *, history_store: FileHistoryStore | None = None) -> SessionOptions:
+def make_options() -> SessionOptions:
     return SessionOptions(
         model="test-model",
         expert_model="test-expert-model",
         compact_conversation_at_tokens=200_000,
-        working_directory=tmp_path,
-        mcp_server_configs=(),
-        history_store=history_store,
     )
 
 
-@pytest.fixture
-def mocked_runtime_services() -> Any:
-    with (
-        patch("coding_assistant.runtime.session.get_mcp_servers_from_config") as mock_get_mcp,
-        patch("coding_assistant.runtime.session.get_mcp_wrapped_tools", new_callable=AsyncMock) as mock_get_tools,
-        patch("coding_assistant.runtime.session.get_instructions") as mock_get_instructions,
-    ):
-        mock_cm = AsyncMock()
-        mock_cm.__aenter__.return_value = ["mock-server"]
-        mock_get_mcp.return_value = mock_cm
-        mock_get_tools.return_value = []
-        mock_get_instructions.return_value = "# Instructions\n\nTest instructions"
-        yield {
-            "get_mcp": mock_get_mcp,
-            "get_tools": mock_get_tools,
-            "get_instructions": mock_get_instructions,
-            "cm": mock_cm,
-        }
-
-
-def test_get_default_mcp_server_config() -> None:
-    config = AssistantSession.get_default_mcp_server_config(Path("/root"), ["skills"], env=["OPENAI_API_KEY"])
-    assert config.name == "coding_assistant.mcp"
-    assert "--skills-directories" in config.args
-    assert "skills" in config.args
-    assert config.env == ["OPENAI_API_KEY"]
+def make_external_tool_spec(name: str = "mock_tool") -> ToolSpec:
+    return ToolSpec(
+        name=name,
+        description="Mock external tool",
+        parameters={"type": "object", "properties": {}, "additionalProperties": False},
+    )
 
 
 def test_root_package_exports_runtime_types() -> None:
@@ -90,19 +66,12 @@ def test_root_package_exports_runtime_types() -> None:
 
 
 @pytest.mark.asyncio
-async def test_session_context_manager_initializes_shared_state(tmp_path: Path, mocked_runtime_services: Any) -> None:
-    session = AssistantSession(options=make_options(tmp_path))
-
-    async with session:
-        assert session.instructions == "# Instructions\n\nTest instructions"
-        assert cast(list[Any], session.mcp_servers) == ["mock-server"]
-
-    mocked_runtime_services["cm"].__aexit__.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_chat_start_emits_waiting_for_user(tmp_path: Path, mocked_runtime_services: Any) -> None:
-    session = AssistantSession(options=make_options(tmp_path))
+async def test_chat_start_emits_waiting_for_user() -> None:
+    session = AssistantSession(
+        instructions="# Instructions\n\nTest instructions",
+        tools=[],
+        options=make_options(),
+    )
 
     async with session:
         await session.start(mode="chat")
@@ -112,9 +81,14 @@ async def test_chat_start_emits_waiting_for_user(tmp_path: Path, mocked_runtime_
 
 
 @pytest.mark.asyncio
-async def test_chat_reply_emits_delta_message_and_waiting(tmp_path: Path, mocked_runtime_services: Any) -> None:
+async def test_chat_reply_emits_delta_message_and_waiting() -> None:
     completer = ScriptedCompleter([AssistantMessage(content="Hello from the assistant")])
-    session = AssistantSession(options=make_options(tmp_path), completer=completer)
+    session = AssistantSession(
+        instructions="# Instructions\n\nTest instructions",
+        tools=[],
+        options=make_options(),
+        completer=completer,
+    )
 
     async with session:
         await session.start(mode="chat")
@@ -135,13 +109,101 @@ async def test_chat_reply_emits_delta_message_and_waiting(tmp_path: Path, mocked
 
 
 @pytest.mark.asyncio
-async def test_agent_finish_emits_finished_event(tmp_path: Path, mocked_runtime_services: Any) -> None:
+async def test_external_tool_call_emits_request_and_accepts_result() -> None:
+    external_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="mock_tool", arguments=json.dumps({})),
+    )
+    finish_call = ToolCall(
+        id="finish-1",
+        function=FunctionCall(name="finish_task", arguments=json.dumps({"result": "done", "summary": "all set"})),
+    )
+    completer = ScriptedCompleter(
+        [
+            AssistantMessage(tool_calls=[external_call]),
+            AssistantMessage(tool_calls=[finish_call]),
+        ]
+    )
+    session = AssistantSession(
+        instructions="# Instructions\n\nTest instructions",
+        tools=[make_external_tool_spec()],
+        options=make_options(),
+        completer=completer,
+    )
+
+    async with session:
+        await session.start(mode="agent", task="Finish the task")
+        event1 = await session.next_event()
+        event2 = await session.next_event()
+
+        assert isinstance(event1, AssistantMessageEvent)
+        assert isinstance(event2, ToolCallRequestedEvent)
+        assert event2.tool_call.id == "call-1"
+        assert event2.tool_call.function.name == "mock_tool"
+        assert event2.arguments == {}
+
+        await session.submit_tool_result("call-1", "external result")
+        event3 = await session.next_event()
+        event4 = await session.next_event()
+
+        assert isinstance(event3, AssistantMessageEvent)
+        assert isinstance(event4, FinishedEvent)
+        tool_messages = [message for message in session.history if message.role == "tool"]
+        assert tool_messages[0].content == "external result"
+
+
+@pytest.mark.asyncio
+async def test_submit_tool_error_resumes_model_loop() -> None:
+    external_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="mock_tool", arguments=json.dumps({})),
+    )
+    completer = ScriptedCompleter(
+        [
+            AssistantMessage(tool_calls=[external_call]),
+            AssistantMessage(content="Need more input"),
+        ]
+    )
+    session = AssistantSession(
+        instructions="# Instructions\n\nTest instructions",
+        tools=[make_external_tool_spec()],
+        options=make_options(),
+        completer=completer,
+    )
+
+    async with session:
+        await session.start(mode="agent", task="Handle an error")
+        await session.next_event()
+        event2 = await session.next_event()
+        assert isinstance(event2, ToolCallRequestedEvent)
+
+        await session.submit_tool_error("call-1", "boom")
+        event3 = await session.next_event()
+        event4 = await session.next_event()
+        event5 = await session.next_event()
+
+        assert isinstance(event3, AssistantDeltaEvent)
+        assert event3.delta == "Need more input"
+        assert isinstance(event4, AssistantMessageEvent)
+        assert event4.message.content == "Need more input"
+        assert isinstance(event5, WaitingForUserEvent)
+        tool_messages = [message for message in session.history if message.role == "tool"]
+        assert tool_messages[0].content == "Error executing tool: boom"
+
+
+@pytest.mark.asyncio
+async def test_agent_finish_emits_finished_event() -> None:
     finish_call = ToolCall(
         id="finish-1",
         function=FunctionCall(name="finish_task", arguments=json.dumps({"result": "done", "summary": "all set"})),
     )
     completer = ScriptedCompleter([AssistantMessage(tool_calls=[finish_call])])
-    session = AssistantSession(options=make_options(tmp_path), completer=completer)
+    session = AssistantSession(
+        instructions="# Instructions\n\nTest instructions",
+        tools=[],
+        options=make_options(),
+        completer=completer,
+    )
 
     async with session:
         await session.start(mode="agent", task="Finish the task")
@@ -156,107 +218,64 @@ async def test_agent_finish_emits_finished_event(tmp_path: Path, mocked_runtime_
 
 
 @pytest.mark.asyncio
-async def test_sub_agent_completion_stays_internal_to_parent(tmp_path: Path, mocked_runtime_services: Any) -> None:
-    launch_call = ToolCall(
-        id="launch-1",
-        function=FunctionCall(
-            name="launch_agent",
-            arguments=json.dumps({"task": "Child task", "expert_knowledge": False}),
-        ),
+async def test_cancel_pending_tool_request_emits_cancelled_event() -> None:
+    external_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="mock_tool", arguments=json.dumps({})),
     )
-    child_finish_call = ToolCall(
-        id="child-finish",
-        function=FunctionCall(name="finish_task", arguments=json.dumps({"result": "child result", "summary": "child"})),
+    completer = ScriptedCompleter([AssistantMessage(tool_calls=[external_call])])
+    session = AssistantSession(
+        instructions="# Instructions\n\nTest instructions",
+        tools=[make_external_tool_spec()],
+        options=make_options(),
+        completer=completer,
     )
-    parent_finish_call = ToolCall(
-        id="parent-finish",
-        function=FunctionCall(
-            name="finish_task", arguments=json.dumps({"result": "parent result", "summary": "parent"})
-        ),
-    )
-    completer = ScriptedCompleter(
-        [
-            AssistantMessage(tool_calls=[launch_call]),
-            AssistantMessage(tool_calls=[child_finish_call]),
-            AssistantMessage(tool_calls=[parent_finish_call]),
-        ]
-    )
-    session = AssistantSession(options=make_options(tmp_path), completer=completer)
 
     async with session:
-        await session.start(mode="agent", task="Parent task")
-        event1 = await session.next_event()
-        event2 = await session.next_event()
-        event3 = await session.next_event()
-
-        assert isinstance(event1, AssistantMessageEvent)
-        assert isinstance(event2, AssistantMessageEvent)
-        assert isinstance(event3, FinishedEvent)
-        tool_messages = [message for message in session.history if message.role == "tool"]
-        assert len(tool_messages) == 2
-        assert tool_messages[0].content == "child result"
-
-
-@pytest.mark.asyncio
-async def test_sub_agent_waiting_is_converted_into_parent_tool_result(
-    tmp_path: Path, mocked_runtime_services: Any
-) -> None:
-    launch_call = ToolCall(
-        id="launch-1",
-        function=FunctionCall(
-            name="launch_agent",
-            arguments=json.dumps({"task": "Child task", "expert_knowledge": False}),
-        ),
-    )
-    parent_reply = AssistantMessage(content="What is the missing detail?")
-    completer = ScriptedCompleter(
-        [
-            AssistantMessage(tool_calls=[launch_call]),
-            AssistantMessage(content="I need one more detail"),
-            parent_reply,
-        ]
-    )
-    session = AssistantSession(options=make_options(tmp_path), completer=completer)
-
-    async with session:
-        await session.start(mode="agent", task="Parent task")
+        await session.start(mode="agent", task="Wait on a tool")
         await session.next_event()
         event2 = await session.next_event()
-        event3 = await session.next_event()
-        waiting = await session.next_event()
+        assert isinstance(event2, ToolCallRequestedEvent)
 
-        assert isinstance(event2, AssistantDeltaEvent)
-        assert event2.delta == "What is the missing detail?"
-        assert isinstance(event3, AssistantMessageEvent)
-        assert event3.message.content == "What is the missing detail?"
-        assert isinstance(waiting, WaitingForUserEvent)
-        tool_messages = [message for message in session.history if message.role == "tool"]
-        assert isinstance(tool_messages[0].content, str)
-        assert tool_messages[0].content.startswith("Sub-agent needs more information:")
+        await session.cancel()
+        event3 = await session.next_event()
+        assert isinstance(event3, CancelledEvent)
 
 
 @pytest.mark.asyncio
-async def test_cancel_emits_cancelled_event(tmp_path: Path, mocked_runtime_services: Any) -> None:
-    completer = ScriptedCompleter([AssistantMessage(content="never returned")])
-    gate = asyncio.Event()
-
-    async def before_completion() -> None:
-        await gate.wait()
-
-    completer.before_completion = before_completion
-    session = AssistantSession(options=make_options(tmp_path), completer=completer)
+async def test_session_persists_history_via_history_store(tmp_path: Path) -> None:
+    history_store = FileHistoryStore(tmp_path)
+    completer = ScriptedCompleter([AssistantMessage(content="Hello from the assistant")])
+    session = AssistantSession(
+        instructions="# Instructions\n\nTest instructions",
+        tools=[],
+        options=make_options(),
+        completer=completer,
+        history_store=history_store,
+    )
 
     async with session:
-        await session.start(mode="agent", task="Long running")
-        await session.cancel()
-        event = await session.next_event()
-        assert isinstance(event, CancelledEvent)
+        await session.start(mode="chat")
+        await session.next_event()
+        await session.send_user_message("Hi")
+        await session.next_event()
+        await session.next_event()
+        await session.next_event()
+
+    loaded = history_store.load()
+    assert loaded is not None
+    assert loaded[-1].role == "assistant"
 
 
 @pytest.mark.asyncio
-async def test_failure_emits_failed_event(tmp_path: Path, mocked_runtime_services: Any) -> None:
+async def test_failure_emits_failed_event() -> None:
     completer = ScriptedCompleter([RuntimeError("boom")])
-    session = AssistantSession(options=make_options(tmp_path), completer=completer)
+    session = AssistantSession(
+        instructions="# Instructions\n\nTest instructions",
+        tools=[],
+        options=make_options(),
+        completer=completer,
+    )
 
     async with session:
         await session.start(mode="agent", task="Fail")

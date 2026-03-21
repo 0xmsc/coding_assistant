@@ -1,6 +1,6 @@
 from typing import Any
 from collections.abc import Sequence
-from coding_assistant.llm.types import Tool
+from coding_assistant.llm.types import ToolDefinition
 
 
 def fix_input_schema(input_schema: dict[str, Any]) -> None:
@@ -16,7 +16,7 @@ def fix_input_schema(input_schema: dict[str, Any]) -> None:
             prop.pop("format", None)
 
 
-async def get_tools(tools: Sequence[Tool]) -> list[dict[str, Any]]:
+async def get_tools(tools: Sequence[ToolDefinition]) -> list[dict[str, Any]]:
     """Convert Tool instances to LiteLLM format."""
     result: list[dict[str, Any]] = []
     for tool in tools:
