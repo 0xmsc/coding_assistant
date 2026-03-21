@@ -26,15 +26,15 @@ class ToolCallRequestedEvent:
 
 
 @dataclass(frozen=True, kw_only=True)
-class WaitingForUserEvent:
-    type: Literal["waiting_for_user"] = "waiting_for_user"
+class InputRequestedEvent:
+    type: Literal["input_requested"] = "input_requested"
 
 
 @dataclass(frozen=True, kw_only=True)
-class FinishedEvent:
+class CompletedEvent:
     result: str
     summary: str
-    type: Literal["finished"] = "finished"
+    type: Literal["completed"] = "completed"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -52,8 +52,8 @@ SessionEvent = (
     AssistantDeltaEvent
     | AssistantMessageEvent
     | ToolCallRequestedEvent
-    | WaitingForUserEvent
-    | FinishedEvent
+    | InputRequestedEvent
+    | CompletedEvent
     | FailedEvent
     | CancelledEvent
 )

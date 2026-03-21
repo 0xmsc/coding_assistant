@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
-from coding_assistant import AgentRunner, SessionOptions
+from coding_assistant import ManagedSession, SessionOptions
 from coding_assistant.llm.types import AssistantMessage, Completion, FunctionCall, Tool, ToolCall, Usage
-from coding_assistant.runtime import AssistantMessageEvent, FinishedEvent, WaitingForUserEvent
+from coding_assistant.runtime import AssistantMessageEvent, CompletedEvent, InputRequestedEvent
 from coding_assistant.tool_policy import ToolPolicy
 from coding_assistant.tool_results import TextResult
 
@@ -76,7 +76,7 @@ async def test_runner_executes_tool_requests_internally() -> None:
         function=FunctionCall(name="finish_task", arguments=json.dumps({"result": "done", "summary": "all set"})),
     )
     tool = MockTool()
-    runner = AgentRunner(
+    runner = ManagedSession(
         instructions="# Instructions\n\nTest instructions",
         tools=[tool],
         model="test-model",
@@ -98,7 +98,7 @@ async def test_runner_executes_tool_requests_internally() -> None:
 
         assert isinstance(event1, AssistantMessageEvent)
         assert isinstance(event2, AssistantMessageEvent)
-        assert isinstance(event3, FinishedEvent)
+        assert isinstance(event3, CompletedEvent)
         assert tool.calls == [{}]
         tool_messages = [message for message in runner.history if message.role == "tool"]
         assert tool_messages[0].content == "tool result"
@@ -123,7 +123,7 @@ async def test_runner_launch_agent_stays_internal() -> None:
             name="finish_task", arguments=json.dumps({"result": "parent result", "summary": "parent"})
         ),
     )
-    runner = AgentRunner(
+    runner = ManagedSession(
         instructions="# Instructions\n\nTest instructions",
         tools=[],
         model="test-model",
@@ -146,7 +146,7 @@ async def test_runner_launch_agent_stays_internal() -> None:
 
         assert isinstance(event1, AssistantMessageEvent)
         assert isinstance(event2, AssistantMessageEvent)
-        assert isinstance(event3, FinishedEvent)
+        assert isinstance(event3, CompletedEvent)
         tool_messages = [message for message in runner.history if message.role == "tool"]
         assert len(tool_messages) == 2
         assert tool_messages[0].content == "child result"
@@ -161,7 +161,7 @@ async def test_runner_sub_agent_waiting_becomes_tool_result() -> None:
             arguments=json.dumps({"task": "Child task", "expert_knowledge": False}),
         ),
     )
-    runner = AgentRunner(
+    runner = ManagedSession(
         instructions="# Instructions\n\nTest instructions",
         tools=[],
         model="test-model",
@@ -186,7 +186,7 @@ async def test_runner_sub_agent_waiting_becomes_tool_result() -> None:
         assert isinstance(event1, AssistantMessageEvent)
         assert event2.type == "assistant_delta"
         assert isinstance(event3, AssistantMessageEvent)
-        assert isinstance(event4, WaitingForUserEvent)
+        assert isinstance(event4, InputRequestedEvent)
         tool_messages = [message for message in runner.history if message.role == "tool"]
         assert tool_messages[0].content.startswith("Sub-agent needs more information:")
 
@@ -202,7 +202,7 @@ async def test_runner_policy_can_deny_tool_execution() -> None:
         function=FunctionCall(name="finish_task", arguments=json.dumps({"result": "done", "summary": "all set"})),
     )
     tool = MockTool()
-    runner = AgentRunner(
+    runner = ManagedSession(
         instructions="# Instructions\n\nTest instructions",
         tools=[tool],
         model="test-model",

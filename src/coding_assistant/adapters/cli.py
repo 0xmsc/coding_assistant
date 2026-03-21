@@ -11,18 +11,18 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from coding_assistant.config import MCPServerConfig
-from coding_assistant.defaults import DefaultRunnerConfig, create_default_runner
+from coding_assistant.defaults import DefaultSessionConfig, create_default_session
 from coding_assistant.image import get_image
-from coding_assistant.runner import AgentRunner
+from coding_assistant.runner import ManagedSession
 from coding_assistant.runtime import (
     AssistantDeltaEvent,
     AssistantMessageEvent,
     CancelledEvent,
+    CompletedEvent,
     FailedEvent,
     FileHistoryStore,
-    FinishedEvent,
+    InputRequestedEvent,
     SessionOptions,
-    WaitingForUserEvent,
 )
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tool_policy import ConfirmationToolPolicy, NullToolPolicy, ToolPolicy
@@ -49,11 +49,11 @@ class EventRenderer:
                 print(event.message.content)
             return
 
-        if isinstance(event, WaitingForUserEvent):
+        if isinstance(event, InputRequestedEvent):
             self._finish_stream()
             return
 
-        if isinstance(event, FinishedEvent):
+        if isinstance(event, CompletedEvent):
             self._finish_stream()
             rich_print(Panel(Markdown(event.result), title="Final Result"))
             return
@@ -84,11 +84,11 @@ def build_runtime_options(args: Namespace) -> SessionOptions:
     )
 
 
-def build_default_runner_config(args: Namespace) -> DefaultRunnerConfig:
+def build_default_session_config(args: Namespace) -> DefaultSessionConfig:
     working_directory = Path(os.getcwd())
     coding_assistant_root = Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
     mcp_server_configs = tuple(MCPServerConfig.model_validate_json(item) for item in args.mcp_servers)
-    return DefaultRunnerConfig(
+    return DefaultSessionConfig(
         working_directory=working_directory,
         mcp_server_configs=mcp_server_configs,
         skills_directories=tuple(args.skills_directories),
@@ -100,7 +100,7 @@ def build_default_runner_config(args: Namespace) -> DefaultRunnerConfig:
 
 async def run_cli(args: Namespace) -> None:
     runtime_options = build_runtime_options(args)
-    config = build_default_runner_config(args)
+    config = build_default_session_config(args)
 
     if args.sandbox:
         _apply_sandbox(args=args, config=config)
@@ -121,20 +121,20 @@ async def run_cli(args: Namespace) -> None:
     else:
         tool_policy = NullToolPolicy()
 
-    async with create_default_runner(
+    async with create_default_session(
         model=args.model,
         expert_model=args.expert_model,
         runtime_options=runtime_options,
         config=config,
         tool_policy=tool_policy,
     ) as bundle:
-        runner = bundle.runner
+        session = bundle.session
         if args.print_mcp_tools:
             await print_mcp_tools(bundle.mcp_servers)
             return
 
         if args.print_instructions:
-            rich_print(Panel(Markdown(runner.instructions), title="Instructions"))
+            rich_print(Panel(Markdown(session.instructions), title="Instructions"))
             return
 
         history = _load_history(
@@ -144,12 +144,12 @@ async def run_cli(args: Namespace) -> None:
         )
 
         if args.task is None:
-            await runner.start(mode="chat", history=history)
-            await _drive_chat(runner=runner, ui=ui)
+            await session.start(mode="chat", history=history)
+            await _drive_chat(session=session, ui=ui)
             return
 
-        await runner.start(mode="agent", task=args.task, history=history)
-        await _drive_agent(runner=runner, ui=ui)
+        await session.start(mode="agent", task=args.task, history=history)
+        await _drive_agent(session=session, ui=ui)
 
 
 def _load_history(
@@ -168,7 +168,7 @@ def _load_history(
     return None
 
 
-def _apply_sandbox(*, args: Namespace, config: DefaultRunnerConfig) -> None:
+def _apply_sandbox(*, args: Namespace, config: DefaultSessionConfig) -> None:
     coding_assistant_root = config.coding_assistant_root
     if coding_assistant_root is None:
         raise RuntimeError("coding_assistant_root must be resolved before sandboxing.")
@@ -182,13 +182,13 @@ def _apply_sandbox(*, args: Namespace, config: DefaultRunnerConfig) -> None:
     sandbox(readable_paths=readable, writable_paths=writable, include_defaults=True)
 
 
-async def _drive_chat(*, runner: AgentRunner, ui: UI) -> None:
+async def _drive_chat(*, session: ManagedSession, ui: UI) -> None:
     renderer = EventRenderer()
     command_names = ["/exit", "/help", "/compact", "/image"]
 
-    async for event in runner.events():
+    async for event in session.events():
         renderer.render(event)
-        if not isinstance(event, WaitingForUserEvent):
+        if not isinstance(event, InputRequestedEvent):
             continue
 
         while True:
@@ -200,7 +200,7 @@ async def _drive_chat(*, runner: AgentRunner, ui: UI) -> None:
                 print("Available commands:\n  /exit\n  /help\n  /compact\n  /image <path-or-url>")
                 continue
             if stripped == "/compact":
-                await runner.send_user_message(
+                await session.send_user_message(
                     "Immediately compact our conversation so far by using the `compact_conversation` tool."
                 )
                 break
@@ -211,20 +211,20 @@ async def _drive_chat(*, runner: AgentRunner, ui: UI) -> None:
                     continue
                 data_url = await get_image(parts[1])
                 image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
-                await runner.send_user_message(image_content)
+                await session.send_user_message(image_content)
                 break
 
-            await runner.send_user_message(answer)
+            await session.send_user_message(answer)
             break
 
 
-async def _drive_agent(*, runner: AgentRunner, ui: UI) -> None:
+async def _drive_agent(*, session: ManagedSession, ui: UI) -> None:
     renderer = EventRenderer()
 
-    async for event in runner.events():
+    async for event in session.events():
         renderer.render(event)
-        if isinstance(event, FinishedEvent | FailedEvent | CancelledEvent):
+        if isinstance(event, CompletedEvent | FailedEvent | CancelledEvent):
             return
-        if isinstance(event, WaitingForUserEvent):
+        if isinstance(event, InputRequestedEvent):
             answer = await ui.prompt(words=None)
-            await runner.send_user_message(answer)
+            await session.send_user_message(answer)

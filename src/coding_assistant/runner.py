@@ -10,18 +10,26 @@ from coding_assistant.runtime import (
     AssistantMessageEvent,
     AssistantSession,
     CancelledEvent,
+    CompletedEvent,
     FailedEvent,
-    FinishedEvent,
+    InputRequestedEvent,
     SessionEvent,
     SessionOptions,
     ToolCallRequestedEvent,
     ToolSpec,
-    WaitingForUserEvent,
 )
 from coding_assistant.runtime.persistence import HistoryStore
 from coding_assistant.tool_policy import NullToolPolicy, ToolPolicy
 from coding_assistant.tool_results import TextResult
-from coding_assistant.tools.managed import LaunchAgentSchema, LaunchAgentTool, RedirectToolCallTool
+from coding_assistant.tools.managed import (
+    CompactConversationSchema,
+    CompactConversationTool,
+    FinishTaskSchema,
+    FinishTaskTool,
+    LaunchAgentSchema,
+    LaunchAgentTool,
+    RedirectToolCallTool,
+)
 
 
 CHAT_SYSTEM_PROMPT_TEMPLATE = """
@@ -49,7 +57,7 @@ AGENT_SYSTEM_PROMPT_TEMPLATE = """
 """.strip()
 
 
-class AgentRunner:
+class ManagedSession:
     def __init__(
         self,
         *,
@@ -92,7 +100,7 @@ class AgentRunner:
     def history(self) -> list[Any]:
         return self._session.history
 
-    async def __aenter__(self) -> "AgentRunner":
+    async def __aenter__(self) -> "ManagedSession":
         await self._session.__aenter__()
         return self
 
@@ -142,7 +150,10 @@ class AgentRunner:
             yield event
 
     def _build_tools(self, *, include_launch_agent: bool, include_redirect_tool_call: bool) -> list[Tool]:
-        managed_tools: list[Tool] = []
+        managed_tools: list[Tool] = [
+            FinishTaskTool(),
+            CompactConversationTool(),
+        ]
         if include_launch_agent:
             managed_tools.append(LaunchAgentTool(execute_child=self._run_child_agent))
 
@@ -174,6 +185,18 @@ class AgentRunner:
             await self._session.submit_tool_result(event.tool_call.id, policy_result)
             return
 
+        if tool_name == "finish_task":
+            finish_request = FinishTaskSchema.model_validate(event.arguments)
+            await self._session.submit_tool_result(event.tool_call.id, "Task finished.", resume=False)
+            await self._session.complete(result=finish_request.result, summary=finish_request.summary)
+            return
+
+        if tool_name == "compact_conversation":
+            compact_request = CompactConversationSchema.model_validate(event.arguments)
+            self._session.compact_history(compact_request.summary)
+            await self._session.submit_tool_result(event.tool_call.id, "Conversation compacted and history reset.")
+            return
+
         try:
             result = await tool.execute(event.arguments)
         except asyncio.CancelledError:
@@ -186,7 +209,7 @@ class AgentRunner:
 
     async def _run_child_agent(self, request: LaunchAgentSchema) -> TextResult:
         model = self._resolve_expert_model() if request.expert_knowledge else self._model
-        child = AgentRunner(
+        child = ManagedSession(
             instructions=self._instructions,
             tools=self._base_tools,
             model=self._model,
@@ -210,9 +233,9 @@ class AgentRunner:
                     if isinstance(event, AssistantMessageEvent):
                         last_assistant_message = event.message
                         continue
-                    if isinstance(event, FinishedEvent):
+                    if isinstance(event, CompletedEvent):
                         return TextResult(content=event.result)
-                    if isinstance(event, WaitingForUserEvent):
+                    if isinstance(event, InputRequestedEvent):
                         detail = (
                             last_assistant_message.content
                             if last_assistant_message is not None and isinstance(last_assistant_message.content, str)

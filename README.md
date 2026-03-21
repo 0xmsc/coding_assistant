@@ -5,7 +5,7 @@ Coding Assistant is a Python-based, agent-orchestrated CLI and embeddable librar
 ## Key Features
 
 - Low-level `AssistantSession` runtime with explicit events and commands
-- Managed `AgentRunner` wrapper that executes tools and sub-agents
+- Managed `ManagedSession` wrapper that executes tools and sub-agents
 - Resumable sessions and conversation summaries stored per-project
 - Built-in MCP server with shell, Python, filesystem, and TODO tools
 - Support for external MCP servers (filesystem, fetch, Context7, Tavily, etc.)
@@ -64,7 +64,7 @@ coding-assistant --help
 The project now has two Python surfaces:
 
 - `AssistantSession`: low-level runtime. It emits `tool_call_requested` and expects the host to submit tool results.
-- `AgentRunner`: managed wrapper. It handles tool execution for you.
+- `ManagedSession`: managed wrapper. It handles tool execution for you.
 
 ### Low-Level Runtime
 
@@ -72,11 +72,11 @@ The project now has two Python surfaces:
 import asyncio
 
 from coding_assistant import AssistantSession, SessionOptions, ToolSpec
+from coding_assistant.llm.types import SystemMessage
 
 
 async def main() -> None:
     session = AssistantSession(
-        instructions="You are a helpful coding agent.",
         tools=[
             ToolSpec(
                 name="lookup_docs",
@@ -84,17 +84,17 @@ async def main() -> None:
                 parameters={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
             )
         ],
-        options=SessionOptions(
-            model="openai/gpt-5-mini",
-            expert_model="openai/gpt-5-mini",
-        ),
+        options=SessionOptions(),
     )
 
     async with session:
-        await session.start(mode="chat")
+        await session.start(
+            history=[SystemMessage(content="You are a helpful coding agent.")],
+            model="openai/gpt-5-mini",
+        )
 
         async for event in session.events():
-            if event.type == "waiting_for_user":
+            if event.type == "input_requested":
                 await session.send_user_message("Say hello in one sentence.")
             elif event.type == "tool_call_requested":
                 await session.submit_tool_result(event.tool_call.id, "Documentation lookup result.")
@@ -108,9 +108,9 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-### Managed Runner
+### Managed Session
 
-Use `AgentRunner` when you already have executable tool objects and want a higher-level embedding surface.
+Use `ManagedSession` when you already have executable tool objects and want a higher-level embedding surface.
 
 ### Advanced Examples
 

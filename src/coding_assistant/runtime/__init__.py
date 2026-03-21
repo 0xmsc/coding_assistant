@@ -2,11 +2,11 @@ from coding_assistant.runtime.events import (
     AssistantDeltaEvent,
     AssistantMessageEvent,
     CancelledEvent,
+    CompletedEvent,
     FailedEvent,
-    FinishedEvent,
+    InputRequestedEvent,
     SessionEvent,
     ToolCallRequestedEvent,
-    WaitingForUserEvent,
 )
 from coding_assistant.runtime.persistence import FileHistoryStore, HistoryStore
 from coding_assistant.runtime.session import AssistantSession, SessionOptions
@@ -17,13 +17,13 @@ __all__ = [
     "AssistantMessageEvent",
     "AssistantSession",
     "CancelledEvent",
+    "CompletedEvent",
     "FailedEvent",
     "FileHistoryStore",
-    "FinishedEvent",
     "HistoryStore",
+    "InputRequestedEvent",
     "SessionEvent",
     "SessionOptions",
     "ToolCallRequestedEvent",
     "ToolSpec",
-    "WaitingForUserEvent",
 ]
