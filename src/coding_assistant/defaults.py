@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 from coding_assistant.config import MCPServerConfig
+from coding_assistant.history_store import FileHistoryStore
 from coding_assistant.instructions import get_instructions
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.mcp import __name__ as mcp_package_name
 from coding_assistant.runner import ManagedSession
-from coding_assistant.runtime import FileHistoryStore, SessionOptions
 from coding_assistant.tool_policy import ToolPolicy
 from coding_assistant.tools.mcp import MCPServer, get_mcp_servers_from_config, get_mcp_wrapped_tools
 
@@ -57,7 +57,6 @@ async def create_default_session(
     *,
     model: str,
     expert_model: str | None,
-    runtime_options: SessionOptions,
     config: DefaultSessionConfig,
     tool_policy: ToolPolicy | None = None,
     completer: Any = openai_complete,
@@ -81,7 +80,6 @@ async def create_default_session(
             tools=tools,
             model=model,
             expert_model=expert_model,
-            runtime_options=runtime_options,
             completer=completer,
             history_store=history_store,
             tool_policy=tool_policy,

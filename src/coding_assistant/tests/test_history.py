@@ -1,12 +1,12 @@
 from pathlib import Path
 
-from coding_assistant.llm.types import AssistantMessage, FunctionCall, ToolCall, ToolMessage, UserMessage
-from coding_assistant.runtime.persistence import (
+from coding_assistant.history_store import (
     FileHistoryStore,
     get_history_path,
     get_project_cache_dir,
     sanitize_history,
 )
+from coding_assistant.llm.types import AssistantMessage, FunctionCall, ToolCall, ToolMessage, UserMessage
 
 
 def test_sanitize_history_with_empty_list() -> None:

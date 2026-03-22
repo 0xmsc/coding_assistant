@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from coding_assistant import ManagedSession, SessionOptions
+from coding_assistant import ManagedSession
+from coding_assistant.history_store import FileHistoryStore
 from coding_assistant.llm.types import AssistantMessage, Completion, FunctionCall, Tool, ToolCall, Usage
 from coding_assistant.runtime import AssistantDeltaEvent, AssistantMessageEvent, InputRequestedEvent
 from coding_assistant.tool_policy import ToolPolicy
@@ -61,10 +63,6 @@ class DenyPolicy(ToolPolicy):
         return TextResult(content="Tool execution denied.")
 
 
-def make_options() -> SessionOptions:
-    return SessionOptions(compact_conversation_at_tokens=200_000)
-
-
 @pytest.mark.asyncio
 async def test_runner_executes_tool_requests_internally() -> None:
     external_call = ToolCall(
@@ -77,7 +75,6 @@ async def test_runner_executes_tool_requests_internally() -> None:
         tools=[tool],
         model="test-model",
         expert_model="test-expert-model",
-        runtime_options=make_options(),
         completer=ScriptedCompleter(
             [
                 AssistantMessage(tool_calls=[external_call]),
@@ -118,7 +115,6 @@ async def test_runner_launch_agent_stays_internal() -> None:
         tools=[],
         model="test-model",
         expert_model="test-expert-model",
-        runtime_options=make_options(),
         completer=ScriptedCompleter(
             [
                 AssistantMessage(tool_calls=[launch_call]),
@@ -160,7 +156,6 @@ async def test_runner_sub_agent_waiting_becomes_tool_result() -> None:
         tools=[],
         model="test-model",
         expert_model="test-expert-model",
-        runtime_options=make_options(),
         completer=ScriptedCompleter(
             [
                 AssistantMessage(tool_calls=[launch_call]),
@@ -197,7 +192,6 @@ async def test_runner_policy_can_deny_tool_execution() -> None:
         tools=[tool],
         model="test-model",
         expert_model="test-expert-model",
-        runtime_options=make_options(),
         completer=ScriptedCompleter(
             [
                 AssistantMessage(tool_calls=[external_call]),
@@ -217,3 +211,57 @@ async def test_runner_policy_can_deny_tool_execution() -> None:
         assert tool.calls == []
         tool_messages = [message for message in runner.history if message.role == "tool"]
         assert tool_messages[0].content == "Tool execution denied."
+
+
+@pytest.mark.asyncio
+async def test_runner_compact_conversation_rewrites_history() -> None:
+    compact_call = ToolCall(
+        id="compact-1",
+        function=FunctionCall(name="compact_conversation", arguments=json.dumps({"summary": "Short summary"})),
+    )
+    runner = ManagedSession(
+        instructions="# Instructions\n\nTest instructions",
+        tools=[],
+        model="test-model",
+        expert_model="test-expert-model",
+        completer=ScriptedCompleter(
+            [
+                AssistantMessage(tool_calls=[compact_call]),
+                AssistantMessage(content="done"),
+            ]
+        ),
+    )
+
+    async with runner:
+        await runner.start(initial_user_message="Parent task", use_expert_model=True)
+        await runner.next_event()
+        await runner.next_event()
+        await runner.next_event()
+        await runner.next_event()
+
+        assert [message.role for message in runner.history] == ["system", "user", "tool", "assistant"]
+        assert isinstance(runner.history[1].content, str)
+        assert "Short summary" in runner.history[1].content
+
+
+@pytest.mark.asyncio
+async def test_runner_persists_history_via_history_store(tmp_path: Path) -> None:
+    history_store = FileHistoryStore(tmp_path)
+    runner = ManagedSession(
+        instructions="# Instructions\n\nTest instructions",
+        tools=[],
+        model="test-model",
+        expert_model="test-expert-model",
+        completer=ScriptedCompleter([AssistantMessage(content="Hello from the assistant")]),
+        history_store=history_store,
+    )
+
+    async with runner:
+        await runner.start(initial_user_message="Hi")
+        await runner.next_event()
+        await runner.next_event()
+        await runner.next_event()
+
+    loaded = history_store.load()
+    assert loaded is not None
+    assert loaded[-1].role == "assistant"

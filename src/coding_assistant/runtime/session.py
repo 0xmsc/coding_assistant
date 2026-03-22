@@ -1,27 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
+from json import JSONDecodeError
 from typing import Any, AsyncIterator, cast
 
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
+    NullProgressCallbacks,
+    ToolDefinition,
     ToolCall,
     ToolMessage,
-    ToolResult,
     UserMessage,
 )
-from coding_assistant.runtime.engine import (
-    RuntimeProgressCallbacks,
-    complete_single_step,
-    normalize_tool_result,
-    parse_tool_call_arguments,
-)
 from coding_assistant.runtime.events import (
+    AssistantDeltaEvent,
     AssistantMessageEvent,
     CancelledEvent,
     FailedEvent,
@@ -29,17 +27,9 @@ from coding_assistant.runtime.events import (
     SessionEvent,
     ToolCallRequestedEvent,
 )
-from coding_assistant.runtime.history import clear_history
-from coding_assistant.runtime.persistence import HistoryStore
-from coding_assistant.runtime.tool_spec import ToolSpec
 
 
 _QUEUE_SENTINEL = object()
-
-
-@dataclass(slots=True)
-class SessionOptions:
-    compact_conversation_at_tokens: int = 200_000
 
 
 @dataclass(slots=True)
@@ -48,19 +38,33 @@ class _PendingToolCall:
     arguments: dict[str, Any]
 
 
+class _SessionProgressCallbacks(NullProgressCallbacks):
+    def __init__(self, emit: Any) -> None:
+        self._emit = emit
+
+    def on_content_chunk(self, chunk: str) -> None:
+        self._emit(AssistantDeltaEvent(delta=chunk))
+
+
+def _parse_tool_call_arguments(tool_call: ToolCall) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        parsed = json.loads(tool_call.function.arguments)
+    except JSONDecodeError as exc:
+        return None, f"Error: Tool call arguments `{tool_call.function.arguments}` are not valid JSON: {exc}"
+    if not isinstance(parsed, dict):
+        return None, "Error: Tool call arguments must decode to a JSON object."
+    return parsed, None
+
+
 class AssistantSession:
     def __init__(
         self,
         *,
-        tools: list[ToolSpec],
-        options: SessionOptions | None = None,
+        tools: Sequence[ToolDefinition],
         completer: Any = openai_complete,
-        history_store: HistoryStore | None = None,
     ) -> None:
         self._tools = list(tools)
-        self.options = options or SessionOptions()
         self._completer = completer
-        self._history_store = history_store
         self._event_queue: asyncio.Queue[SessionEvent | object] = asyncio.Queue()
         self._history: list[BaseMessage] = []
         self._active_model: str | None = None
@@ -75,6 +79,14 @@ class AssistantSession:
     @property
     def history(self) -> list[BaseMessage]:
         return list(self._history)
+
+    def replace_history(self, history: Sequence[BaseMessage]) -> None:
+        self._ensure_entered()
+        if self._terminal:
+            raise RuntimeError("Session is already terminal.")
+        if not history:
+            raise ValueError("Replacement history must be non-empty.")
+        self._history = list(history)
 
     async def __aenter__(self) -> "AssistantSession":
         self._entered = True
@@ -108,7 +120,6 @@ class AssistantSession:
         self._active_model = model
         if self._should_wait_for_user():
             self._waiting_for_user = True
-            self._persist_history()
             self._emit(InputRequestedEvent())
             return
 
@@ -126,14 +137,13 @@ class AssistantSession:
         self._append_user_message(UserMessage(content=content))
         self._run_task = asyncio.create_task(self._run_loop(), name="assistant-session-run")
 
-    async def submit_tool_result(self, tool_call_id: str, result: ToolResult | str, *, resume: bool = True) -> None:
+    async def submit_tool_result(self, tool_call_id: str, result: str, *, resume: bool = True) -> None:
         self._ensure_entered()
         if self._terminal:
             raise RuntimeError("Session is already terminal.")
 
         pending = self._require_pending_tool_call(tool_call_id)
-        content = result if isinstance(result, str) else normalize_tool_result(result)
-        self._record_tool_result(pending, content)
+        self._record_tool_result(pending, result)
         if resume:
             self._run_task = asyncio.create_task(self._run_loop(), name="assistant-session-run")
 
@@ -145,20 +155,6 @@ class AssistantSession:
         pending = self._require_pending_tool_call(tool_call_id)
         self._record_tool_result(pending, f"Error executing tool: {error}")
         self._run_task = asyncio.create_task(self._run_loop(), name="assistant-session-run")
-
-    def compact_history(self, summary: str) -> None:
-        self._ensure_entered()
-        if self._terminal:
-            raise RuntimeError("Session is already terminal.")
-        if not self._history:
-            raise RuntimeError("Session has no history to compact.")
-
-        clear_history(self._history)
-        self._append_user_message(
-            UserMessage(
-                content=(f"A summary of your conversation until now:\n\n{summary}\n\nPlease continue your work.")
-            )
-        )
 
     async def cancel(self) -> None:
         if self._terminal:
@@ -233,16 +229,11 @@ class AssistantSession:
         )
         self._pending_external_tool_call = None
 
-    def _persist_history(self) -> None:
-        if self._history_store is not None:
-            self._history_store.save(self._history)
-
     def _mark_cancelled(self) -> None:
         self._waiting_for_user = False
         self._pending_external_tool_call = None
         self._pending_tool_calls.clear()
         self._terminal = True
-        self._persist_history()
         self._emit(CancelledEvent())
 
     def _should_wait_for_user(self) -> bool:
@@ -259,15 +250,15 @@ class AssistantSession:
                 if terminal or self._pending_external_tool_call is not None:
                     return
 
-                progress_callbacks = RuntimeProgressCallbacks(self._emit)
+                progress_callbacks = _SessionProgressCallbacks(self._emit)
                 assert self._active_model is not None
-                message, usage = await complete_single_step(
-                    history=self._history,
+                completion = await self._completer(
+                    self._history,
                     model=self._active_model,
                     tools=self._tools,
-                    progress_callbacks=progress_callbacks,
-                    completer=self._completer,
+                    callbacks=progress_callbacks,
                 )
+                message = completion.message
                 self._append_assistant_message(message)
                 self._emit(AssistantMessageEvent(message=message))
 
@@ -278,26 +269,14 @@ class AssistantSession:
                         return
                 else:
                     self._waiting_for_user = True
-                    self._persist_history()
                     self._emit(InputRequestedEvent())
                     return
-
-                if usage is not None and usage.tokens > self.options.compact_conversation_at_tokens:
-                    self._append_user_message(
-                        UserMessage(
-                            content=(
-                                "Your conversation history has grown too large. Compact the conversation immediately "
-                                "using the appropriate available tool."
-                            )
-                        )
-                    )
         except asyncio.CancelledError:
             if not self._terminal:
                 self._mark_cancelled()
             raise
         except Exception as exc:
             self._terminal = True
-            self._persist_history()
             error = str(exc) or exc.__class__.__name__
             self._emit(FailedEvent(error=error))
         finally:
@@ -312,7 +291,7 @@ class AssistantSession:
             if not function_name:
                 raise RuntimeError(f"Tool call {tool_call.id} is missing function name.")
 
-            arguments, parse_error = parse_tool_call_arguments(tool_call)
+            arguments, parse_error = _parse_tool_call_arguments(tool_call)
             if parse_error is not None:
                 self._append_tool_message(
                     ToolMessage(
