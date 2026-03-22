@@ -18,7 +18,6 @@ from coding_assistant.runtime import (
     AssistantDeltaEvent,
     AssistantMessageEvent,
     CancelledEvent,
-    CompletedEvent,
     FailedEvent,
     FileHistoryStore,
     InputRequestedEvent,
@@ -51,11 +50,6 @@ class EventRenderer:
 
         if isinstance(event, InputRequestedEvent):
             self._finish_stream()
-            return
-
-        if isinstance(event, CompletedEvent):
-            self._finish_stream()
-            rich_print(Panel(Markdown(event.result), title="Final Result"))
             return
 
         if isinstance(event, FailedEvent):
@@ -143,13 +137,12 @@ async def run_cli(args: Namespace) -> None:
             working_directory=config.working_directory,
         )
 
-        if args.task is None:
-            await session.start(mode="chat", history=history)
-            await _drive_chat(session=session, ui=ui)
-            return
-
-        await session.start(mode="agent", task=args.task, history=history)
-        await _drive_agent(session=session, ui=ui)
+        await session.start(
+            history=history,
+            initial_user_message=args.task,
+            use_expert_model=args.task is not None,
+        )
+        await _drive_session(session=session, ui=ui, interactive=args.task is None or args.ask_user)
 
 
 def _load_history(
@@ -182,14 +175,18 @@ def _apply_sandbox(*, args: Namespace, config: DefaultSessionConfig) -> None:
     sandbox(readable_paths=readable, writable_paths=writable, include_defaults=True)
 
 
-async def _drive_chat(*, session: ManagedSession, ui: UI) -> None:
+async def _drive_session(*, session: ManagedSession, ui: UI, interactive: bool) -> None:
     renderer = EventRenderer()
     command_names = ["/exit", "/help", "/compact", "/image"]
 
     async for event in session.events():
         renderer.render(event)
+        if isinstance(event, FailedEvent | CancelledEvent):
+            return
         if not isinstance(event, InputRequestedEvent):
             continue
+        if not interactive:
+            return
 
         while True:
             answer = await ui.prompt(words=command_names)
@@ -216,15 +213,3 @@ async def _drive_chat(*, session: ManagedSession, ui: UI) -> None:
 
             await session.send_user_message(answer)
             break
-
-
-async def _drive_agent(*, session: ManagedSession, ui: UI) -> None:
-    renderer = EventRenderer()
-
-    async for event in session.events():
-        renderer.render(event)
-        if isinstance(event, CompletedEvent | FailedEvent | CancelledEvent):
-            return
-        if isinstance(event, InputRequestedEvent):
-            answer = await ui.prompt(words=None)
-            await session.send_user_message(answer)

@@ -31,13 +31,6 @@ class InputRequestedEvent:
 
 
 @dataclass(frozen=True, kw_only=True)
-class CompletedEvent:
-    result: str
-    summary: str
-    type: Literal["completed"] = "completed"
-
-
-@dataclass(frozen=True, kw_only=True)
 class FailedEvent:
     error: str
     type: Literal["failed"] = "failed"
@@ -53,7 +46,6 @@ SessionEvent = (
     | AssistantMessageEvent
     | ToolCallRequestedEvent
     | InputRequestedEvent
-    | CompletedEvent
     | FailedEvent
     | CancelledEvent
 )

@@ -8,33 +8,9 @@ from typing import Any, Awaitable, Callable
 from pydantic import BaseModel, Field
 
 from coding_assistant.llm.types import Tool
-from coding_assistant.tool_results import CompactConversationResult, FinishTaskResult, TextResult
+from coding_assistant.tool_results import CompactConversationResult, TextResult
 
 logger = logging.getLogger(__name__)
-
-
-class FinishTaskSchema(BaseModel):
-    result: str = Field(
-        description="The result of the work on the task. The work of the agent is evaluated based on this result."
-    )
-    summary: str = Field(
-        description="A concise summary of the conversation the agent and the client had. The summary must be a single paragraph, without line breaks. There should be enough context such that the work could be continued based on this summary. It should be possible to evaluate your result using only your input parameters and this summary.",
-    )
-
-
-class FinishTaskTool(Tool):
-    def name(self) -> str:
-        return "finish_task"
-
-    def description(self) -> str:
-        return "Signals that the assigned task is complete. This tool must be called eventually to terminate the agent's execution loop. This tool shall not be called when there are still open questions for the client."
-
-    def parameters(self) -> dict[str, Any]:
-        return FinishTaskSchema.model_json_schema()
-
-    async def execute(self, parameters: dict[str, Any]) -> FinishTaskResult:
-        validated = FinishTaskSchema.model_validate(parameters)
-        return FinishTaskResult(result=validated.result, summary=validated.summary)
 
 
 class CompactConversationSchema(BaseModel):
@@ -88,7 +64,7 @@ class LaunchAgentTool(Tool):
     def description(self) -> str:
         return (
             "Launch a sub-agent to work on a well-scoped task. "
-            "If the sub-agent cannot proceed, it will report what information is missing."
+            "The sub-agent replies using normal assistant messages, and that reply is returned to the caller."
         )
 
     def parameters(self) -> dict[str, Any]:

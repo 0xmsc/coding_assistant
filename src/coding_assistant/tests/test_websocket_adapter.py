@@ -6,7 +6,6 @@ from coding_assistant.runtime import (
     AssistantDeltaEvent,
     AssistantMessageEvent,
     CancelledEvent,
-    CompletedEvent,
     FailedEvent,
     InputRequestedEvent,
     ToolCallRequestedEvent,
@@ -30,17 +29,23 @@ def test_session_event_to_json() -> None:
         "arguments": {},
     }
     assert session_event_to_json(InputRequestedEvent()) == {"type": "input_requested"}
-    assert session_event_to_json(CompletedEvent(result="done", summary="sum")) == {
-        "type": "completed",
-        "result": "done",
-        "summary": "sum",
-    }
     assert session_event_to_json(FailedEvent(error="boom")) == {"type": "failed", "error": "boom"}
     assert session_event_to_json(CancelledEvent()) == {"type": "cancelled"}
 
 
 def test_websocket_command_from_json() -> None:
-    assert websocket_command_from_json({"type": "start", "mode": "agent", "task": "Do it"}).name == "start"
+    assert websocket_command_from_json(
+        {
+            "type": "start",
+            "initial_user_message": "Do it",
+            "instructions": "Be precise.",
+            "use_expert_model": True,
+        }
+    ).payload == {
+        "initial_user_message": "Do it",
+        "instructions": "Be precise.",
+        "use_expert_model": True,
+    }
     assert websocket_command_from_json({"type": "send_user_message", "content": "hello"}).payload == {
         "content": "hello"
     }

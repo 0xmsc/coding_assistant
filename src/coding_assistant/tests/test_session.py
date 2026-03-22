@@ -13,7 +13,6 @@ from coding_assistant.runtime import (
     AssistantMessageEvent,
     AssistantSession,
     CancelledEvent,
-    CompletedEvent,
     FailedEvent,
     FileHistoryStore,
     InputRequestedEvent,
@@ -203,21 +202,6 @@ async def test_submit_tool_error_resumes_model_loop() -> None:
 
 
 @pytest.mark.asyncio
-async def test_complete_emits_completed_event() -> None:
-    session = AssistantSession(tools=[], options=make_options())
-
-    async with session:
-        await session.start(history=make_system_history(), model="test-model")
-        event1 = await session.next_event()
-        assert isinstance(event1, InputRequestedEvent)
-
-        await session.complete(result="done", summary="all set")
-        event2 = await session.next_event()
-        assert isinstance(event2, CompletedEvent)
-        assert event2.result == "done"
-        assert event2.summary == "all set"
-
-
 @pytest.mark.asyncio
 async def test_compact_history_rewrites_transcript() -> None:
     session = AssistantSession(tools=[], options=make_options())
