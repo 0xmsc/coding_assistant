@@ -24,7 +24,6 @@ from coding_assistant.runtime.engine import (
 from coding_assistant.runtime.events import (
     AssistantMessageEvent,
     CancelledEvent,
-    CompletedEvent,
     FailedEvent,
     InputRequestedEvent,
     SessionEvent,
@@ -146,20 +145,6 @@ class AssistantSession:
         pending = self._require_pending_tool_call(tool_call_id)
         self._record_tool_result(pending, f"Error executing tool: {error}")
         self._run_task = asyncio.create_task(self._run_loop(), name="assistant-session-run")
-
-    async def complete(self, *, result: str, summary: str) -> None:
-        self._ensure_entered()
-        if self._terminal:
-            raise RuntimeError("Session is already terminal.")
-        if self._active_model is None:
-            raise RuntimeError("Session has not been started.")
-
-        self._waiting_for_user = False
-        self._pending_external_tool_call = None
-        self._pending_tool_calls.clear()
-        self._terminal = True
-        self._persist_history()
-        self._emit(CompletedEvent(result=result, summary=summary))
 
     def compact_history(self, summary: str) -> None:
         self._ensure_entered()

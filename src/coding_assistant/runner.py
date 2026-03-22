@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from typing import Any, AsyncIterator, Literal
+from typing import Any, AsyncIterator
 
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.llm.types import AssistantMessage, BaseMessage, SystemMessage, Tool, UserMessage
@@ -10,7 +10,6 @@ from coding_assistant.runtime import (
     AssistantMessageEvent,
     AssistantSession,
     CancelledEvent,
-    CompletedEvent,
     FailedEvent,
     InputRequestedEvent,
     SessionEvent,
@@ -24,34 +23,18 @@ from coding_assistant.tool_results import TextResult
 from coding_assistant.tools.managed import (
     CompactConversationSchema,
     CompactConversationTool,
-    FinishTaskSchema,
-    FinishTaskTool,
     LaunchAgentSchema,
     LaunchAgentTool,
     RedirectToolCallTool,
 )
 
 
-CHAT_SYSTEM_PROMPT_TEMPLATE = """
+SYSTEM_PROMPT_TEMPLATE = """
 ## General
 
 - You are an agent.
-- You are in chat mode.
-  - Use tools only when they materially advance the work.
-  - When you want the user to reply, write a normal assistant message without tool calls.
-
-{instructions_section}
-""".strip()
-
-
-AGENT_SYSTEM_PROMPT_TEMPLATE = """
-## General
-
-- You are an agent.
-- You are working in agent mode.
-  - Use tools when they materially advance the work.
-  - When you are done, call the `finish_task` tool.
-  - When you need more information, write a normal assistant message without tool calls.
+- Use tools when they materially advance the work.
+- When you want the client to reply, write a normal assistant message without tool calls.
 
 {instructions_section}
 """.strip()
@@ -110,17 +93,16 @@ class ManagedSession:
     async def start(
         self,
         *,
-        mode: Literal["chat", "agent"],
-        task: str | None = None,
         history: list[BaseMessage] | None = None,
+        initial_user_message: str | list[dict[str, Any]] | None = None,
         instructions: str | None = None,
         model: str | None = None,
+        use_expert_model: bool = False,
     ) -> None:
-        resolved_model = model or self._resolve_model(mode=mode)
+        resolved_model = model or self._resolve_model(use_expert_model=use_expert_model)
         start_history = self._build_start_history(
-            mode=mode,
-            task=task,
             history=history,
+            initial_user_message=initial_user_message,
             instructions=instructions,
         )
         await self._session.start(
@@ -151,7 +133,6 @@ class ManagedSession:
 
     def _build_tools(self, *, include_launch_agent: bool, include_redirect_tool_call: bool) -> list[Tool]:
         managed_tools: list[Tool] = [
-            FinishTaskTool(),
             CompactConversationTool(),
         ]
         if include_launch_agent:
@@ -183,12 +164,6 @@ class ManagedSession:
             arguments=event.arguments,
         ):
             await self._session.submit_tool_result(event.tool_call.id, policy_result)
-            return
-
-        if tool_name == "finish_task":
-            finish_request = FinishTaskSchema.model_validate(event.arguments)
-            await self._session.submit_tool_result(event.tool_call.id, "Task finished.", resume=False)
-            await self._session.complete(result=finish_request.result, summary=finish_request.summary)
             return
 
         if tool_name == "compact_conversation":
@@ -224,24 +199,19 @@ class ManagedSession:
         try:
             async with child:
                 await child.start(
-                    mode="agent",
-                    task=request.task,
+                    initial_user_message=request.task,
                     instructions=self._compose_child_instructions(request),
                     model=model,
+                    use_expert_model=request.expert_knowledge,
                 )
                 async for event in child.events():
                     if isinstance(event, AssistantMessageEvent):
                         last_assistant_message = event.message
                         continue
-                    if isinstance(event, CompletedEvent):
-                        return TextResult(content=event.result)
                     if isinstance(event, InputRequestedEvent):
-                        detail = (
-                            last_assistant_message.content
-                            if last_assistant_message is not None and isinstance(last_assistant_message.content, str)
-                            else "The sub-agent needs more information to proceed."
-                        )
-                        return TextResult(content=f"Sub-agent needs more information: {detail}")
+                        if last_assistant_message is not None and isinstance(last_assistant_message.content, str):
+                            return TextResult(content=last_assistant_message.content)
+                        return TextResult(content="The sub-agent yielded control without a text reply.")
                     if isinstance(event, FailedEvent):
                         return TextResult(content=f"Sub-agent failed: {event.error}")
                     if isinstance(event, CancelledEvent):
@@ -262,8 +232,8 @@ class ManagedSession:
             return None
         return "\n\n".join(parts)
 
-    def _resolve_model(self, *, mode: Literal["chat", "agent"]) -> str:
-        if mode == "agent":
+    def _resolve_model(self, *, use_expert_model: bool) -> str:
+        if use_expert_model:
             return self._resolve_expert_model()
         return self._model
 
@@ -273,20 +243,15 @@ class ManagedSession:
     def _build_start_history(
         self,
         *,
-        mode: Literal["chat", "agent"],
-        task: str | None,
         history: list[BaseMessage] | None,
+        initial_user_message: str | list[dict[str, Any]] | None,
         instructions: str | None,
     ) -> list[BaseMessage]:
-        if mode == "agent" and not task:
-            raise ValueError("Agent mode requires a task.")
-
         start_history = list(history or [])
         if not start_history:
             start_history.append(
                 SystemMessage(
                     content=self._build_system_prompt(
-                        mode=mode,
                         instructions=self._merge_instructions(extra_instructions=instructions),
                     )
                 )
@@ -294,9 +259,8 @@ class ManagedSession:
         elif instructions and instructions.strip():
             start_history.append(SystemMessage(content=self._format_run_instructions(instructions)))
 
-        if mode == "agent":
-            assert task is not None
-            start_history.append(UserMessage(content=task))
+        if initial_user_message is not None:
+            start_history.append(UserMessage(content=initial_user_message))
 
         return start_history
 
@@ -305,9 +269,8 @@ class ManagedSession:
             return self._instructions
         return f"{self._instructions}\n\n# Run-specific instructions\n\n{extra_instructions.strip()}"
 
-    def _build_system_prompt(self, *, mode: Literal["chat", "agent"], instructions: str) -> str:
-        template = CHAT_SYSTEM_PROMPT_TEMPLATE if mode == "chat" else AGENT_SYSTEM_PROMPT_TEMPLATE
-        return template.format(instructions_section=_render_instructions_section(instructions))
+    def _build_system_prompt(self, *, instructions: str) -> str:
+        return SYSTEM_PROMPT_TEMPLATE.format(instructions_section=_render_instructions_section(instructions))
 
     def _format_run_instructions(self, instructions: str) -> str:
         return f"# Run-specific instructions\n\n{instructions.strip()}"

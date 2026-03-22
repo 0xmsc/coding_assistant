@@ -7,7 +7,7 @@ import pytest
 
 from coding_assistant import ManagedSession, SessionOptions
 from coding_assistant.llm.types import AssistantMessage, Completion, FunctionCall, Tool, ToolCall, Usage
-from coding_assistant.runtime import AssistantMessageEvent, CompletedEvent, InputRequestedEvent
+from coding_assistant.runtime import AssistantDeltaEvent, AssistantMessageEvent, InputRequestedEvent
 from coding_assistant.tool_policy import ToolPolicy
 from coding_assistant.tool_results import TextResult
 
@@ -71,10 +71,6 @@ async def test_runner_executes_tool_requests_internally() -> None:
         id="call-1",
         function=FunctionCall(name="mock_tool", arguments=json.dumps({})),
     )
-    finish_call = ToolCall(
-        id="finish-1",
-        function=FunctionCall(name="finish_task", arguments=json.dumps({"result": "done", "summary": "all set"})),
-    )
     tool = MockTool()
     runner = ManagedSession(
         instructions="# Instructions\n\nTest instructions",
@@ -85,20 +81,24 @@ async def test_runner_executes_tool_requests_internally() -> None:
         completer=ScriptedCompleter(
             [
                 AssistantMessage(tool_calls=[external_call]),
-                AssistantMessage(tool_calls=[finish_call]),
+                AssistantMessage(content="done"),
             ]
         ),
     )
 
     async with runner:
-        await runner.start(mode="agent", task="Finish the task")
+        await runner.start(initial_user_message="Finish the task", use_expert_model=True)
         event1 = await runner.next_event()
         event2 = await runner.next_event()
         event3 = await runner.next_event()
+        event4 = await runner.next_event()
 
         assert isinstance(event1, AssistantMessageEvent)
-        assert isinstance(event2, AssistantMessageEvent)
-        assert isinstance(event3, CompletedEvent)
+        assert isinstance(event2, AssistantDeltaEvent)
+        assert event2.delta == "done"
+        assert isinstance(event3, AssistantMessageEvent)
+        assert event3.message.content == "done"
+        assert isinstance(event4, InputRequestedEvent)
         assert tool.calls == [{}]
         tool_messages = [message for message in runner.history if message.role == "tool"]
         assert tool_messages[0].content == "tool result"
@@ -113,16 +113,6 @@ async def test_runner_launch_agent_stays_internal() -> None:
             arguments=json.dumps({"task": "Child task", "expert_knowledge": False}),
         ),
     )
-    child_finish_call = ToolCall(
-        id="child-finish",
-        function=FunctionCall(name="finish_task", arguments=json.dumps({"result": "child result", "summary": "child"})),
-    )
-    parent_finish_call = ToolCall(
-        id="parent-finish",
-        function=FunctionCall(
-            name="finish_task", arguments=json.dumps({"result": "parent result", "summary": "parent"})
-        ),
-    )
     runner = ManagedSession(
         instructions="# Instructions\n\nTest instructions",
         tools=[],
@@ -132,23 +122,27 @@ async def test_runner_launch_agent_stays_internal() -> None:
         completer=ScriptedCompleter(
             [
                 AssistantMessage(tool_calls=[launch_call]),
-                AssistantMessage(tool_calls=[child_finish_call]),
-                AssistantMessage(tool_calls=[parent_finish_call]),
+                AssistantMessage(content="child result"),
+                AssistantMessage(content="parent result"),
             ]
         ),
     )
 
     async with runner:
-        await runner.start(mode="agent", task="Parent task")
+        await runner.start(initial_user_message="Parent task", use_expert_model=True)
         event1 = await runner.next_event()
         event2 = await runner.next_event()
         event3 = await runner.next_event()
+        event4 = await runner.next_event()
 
         assert isinstance(event1, AssistantMessageEvent)
-        assert isinstance(event2, AssistantMessageEvent)
-        assert isinstance(event3, CompletedEvent)
+        assert isinstance(event2, AssistantDeltaEvent)
+        assert event2.delta == "parent result"
+        assert isinstance(event3, AssistantMessageEvent)
+        assert event3.message.content == "parent result"
+        assert isinstance(event4, InputRequestedEvent)
         tool_messages = [message for message in runner.history if message.role == "tool"]
-        assert len(tool_messages) == 2
+        assert len(tool_messages) == 1
         assert tool_messages[0].content == "child result"
 
 
@@ -177,7 +171,7 @@ async def test_runner_sub_agent_waiting_becomes_tool_result() -> None:
     )
 
     async with runner:
-        await runner.start(mode="agent", task="Parent task")
+        await runner.start(initial_user_message="Parent task", use_expert_model=True)
         event1 = await runner.next_event()
         event2 = await runner.next_event()
         event3 = await runner.next_event()
@@ -188,7 +182,7 @@ async def test_runner_sub_agent_waiting_becomes_tool_result() -> None:
         assert isinstance(event3, AssistantMessageEvent)
         assert isinstance(event4, InputRequestedEvent)
         tool_messages = [message for message in runner.history if message.role == "tool"]
-        assert tool_messages[0].content.startswith("Sub-agent needs more information:")
+        assert tool_messages[0].content == "I need one more detail"
 
 
 @pytest.mark.asyncio
@@ -196,10 +190,6 @@ async def test_runner_policy_can_deny_tool_execution() -> None:
     external_call = ToolCall(
         id="call-1",
         function=FunctionCall(name="mock_tool", arguments=json.dumps({})),
-    )
-    finish_call = ToolCall(
-        id="finish-1",
-        function=FunctionCall(name="finish_task", arguments=json.dumps({"result": "done", "summary": "all set"})),
     )
     tool = MockTool()
     runner = ManagedSession(
@@ -211,14 +201,15 @@ async def test_runner_policy_can_deny_tool_execution() -> None:
         completer=ScriptedCompleter(
             [
                 AssistantMessage(tool_calls=[external_call]),
-                AssistantMessage(tool_calls=[finish_call]),
+                AssistantMessage(content="done"),
             ]
         ),
         tool_policy=DenyPolicy(),
     )
 
     async with runner:
-        await runner.start(mode="agent", task="Parent task")
+        await runner.start(initial_user_message="Parent task", use_expert_model=True)
+        await runner.next_event()
         await runner.next_event()
         await runner.next_event()
         await runner.next_event()
