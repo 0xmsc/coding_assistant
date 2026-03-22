@@ -7,7 +7,6 @@ from coding_assistant.runtime import (
     AssistantDeltaEvent,
     AssistantMessageEvent,
     CancelledEvent,
-    CompletedEvent,
     FailedEvent,
     InputRequestedEvent,
     SessionEvent,
@@ -37,8 +36,6 @@ def session_event_to_json(event: SessionEvent) -> dict[str, Any]:
         }
     if isinstance(event, InputRequestedEvent):
         return {"type": event.type}
-    if isinstance(event, CompletedEvent):
-        return {"type": event.type, "result": event.result, "summary": event.summary}
     if isinstance(event, FailedEvent):
         return {"type": event.type, "error": event.error}
     if isinstance(event, CancelledEvent):
@@ -52,9 +49,9 @@ def websocket_command_from_json(payload: dict[str, Any]) -> WebsocketCommand:
         return WebsocketCommand(
             name="start",
             payload={
-                "mode": payload.get("mode", "chat"),
-                "task": payload.get("task"),
+                "initial_user_message": payload.get("initial_user_message"),
                 "instructions": payload.get("instructions"),
+                "use_expert_model": payload.get("use_expert_model", False),
             },
         )
     if message_type == "send_user_message":

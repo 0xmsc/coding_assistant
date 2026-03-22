@@ -13,15 +13,6 @@ class TextResult(ToolResult):
 
 
 @dataclass
-class FinishTaskResult(ToolResult):
-    result: str
-    summary: str
-
-    def to_dict(self) -> dict[str, Any]:
-        return {"result": self.result, "summary": self.summary}
-
-
-@dataclass
 class CompactConversationResult(ToolResult):
     summary: str
 

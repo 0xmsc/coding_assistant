@@ -130,7 +130,7 @@ def parse_args() -> argparse.Namespace:
         "--ask-user",
         action=BooleanOptionalAction,
         default=True,
-        help="Enable/disable asking the user for input in agent mode.",
+        help="Enable/disable asking the user for input in runs started with --task.",
     )
 
     parser.add_argument(
