@@ -1,22 +1,28 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-from coding_assistant import AssistantSession as RootAssistantSession, SessionOptions as RootSessionOptions, ToolSpec
-from coding_assistant.llm.types import AssistantMessage, Completion, FunctionCall, SystemMessage, ToolCall, Usage
+from coding_assistant import AssistantSession as RootAssistantSession
+from coding_assistant.llm.types import (
+    AssistantMessage,
+    Completion,
+    FunctionCall,
+    SystemMessage,
+    ToolCall,
+    ToolDefinition,
+    Usage,
+    UserMessage,
+)
 from coding_assistant.runtime import (
     AssistantDeltaEvent,
     AssistantMessageEvent,
     AssistantSession,
     CancelledEvent,
     FailedEvent,
-    FileHistoryStore,
     InputRequestedEvent,
-    SessionOptions,
     ToolCallRequestedEvent,
 )
 
@@ -43,16 +49,18 @@ class ScriptedCompleter:
         return Completion(message=action, usage=Usage(tokens=10, cost=0.0))
 
 
-def make_options() -> SessionOptions:
-    return SessionOptions(compact_conversation_at_tokens=200_000)
+class MockToolDefinition(ToolDefinition):
+    def __init__(self, name: str = "mock_tool") -> None:
+        self._name = name
 
+    def name(self) -> str:
+        return self._name
 
-def make_external_tool_spec(name: str = "mock_tool") -> ToolSpec:
-    return ToolSpec(
-        name=name,
-        description="Mock external tool",
-        parameters={"type": "object", "properties": {}, "additionalProperties": False},
-    )
+    def description(self) -> str:
+        return "Mock external tool"
+
+    def parameters(self) -> dict[str, Any]:
+        return {"type": "object", "properties": {}, "additionalProperties": False}
 
 
 def make_system_history() -> list[SystemMessage]:
@@ -61,15 +69,11 @@ def make_system_history() -> list[SystemMessage]:
 
 def test_root_package_exports_runtime_types() -> None:
     assert RootAssistantSession is AssistantSession
-    assert RootSessionOptions is SessionOptions
 
 
 @pytest.mark.asyncio
 async def test_start_without_pending_model_turn_emits_input_requested() -> None:
-    session = AssistantSession(
-        tools=[],
-        options=make_options(),
-    )
+    session = AssistantSession(tools=[])
 
     async with session:
         await session.start(history=make_system_history(), model="test-model")
@@ -83,7 +87,6 @@ async def test_user_reply_emits_delta_message_and_input_requested() -> None:
     completer = ScriptedCompleter([AssistantMessage(content="Hello from the assistant")])
     session = AssistantSession(
         tools=[],
-        options=make_options(),
         completer=completer,
     )
 
@@ -107,7 +110,7 @@ async def test_user_reply_emits_delta_message_and_input_requested() -> None:
 
 @pytest.mark.asyncio
 async def test_session_requires_non_empty_history() -> None:
-    session = AssistantSession(tools=[], options=make_options())
+    session = AssistantSession(tools=[])
 
     async with session:
         with pytest.raises(ValueError, match="non-empty history"):
@@ -127,8 +130,7 @@ async def test_external_tool_call_emits_request_and_accepts_result() -> None:
         ]
     )
     session = AssistantSession(
-        tools=[make_external_tool_spec()],
-        options=make_options(),
+        tools=[MockToolDefinition()],
         completer=completer,
     )
 
@@ -174,8 +176,7 @@ async def test_submit_tool_error_resumes_model_loop() -> None:
         ]
     )
     session = AssistantSession(
-        tools=[make_external_tool_spec()],
-        options=make_options(),
+        tools=[MockToolDefinition()],
         completer=completer,
     )
 
@@ -202,14 +203,18 @@ async def test_submit_tool_error_resumes_model_loop() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.asyncio
-async def test_compact_history_rewrites_transcript() -> None:
-    session = AssistantSession(tools=[], options=make_options())
+async def test_replace_history_rewrites_transcript() -> None:
+    session = AssistantSession(tools=[])
 
     async with session:
         await session.start(history=make_system_history(), model="test-model")
         await session.next_event()
-        session.compact_history("Short summary")
+        session.replace_history(
+            [
+                make_system_history()[0],
+                UserMessage(content="A summary of your conversation until now:\n\nShort summary\n\nPlease continue."),
+            ]
+        )
 
         assert [message.role for message in session.history] == ["system", "user"]
         assert isinstance(session.history[-1].content, str)
@@ -224,8 +229,7 @@ async def test_cancel_pending_tool_request_emits_cancelled_event() -> None:
     )
     completer = ScriptedCompleter([AssistantMessage(tool_calls=[external_call])])
     session = AssistantSession(
-        tools=[make_external_tool_spec()],
-        options=make_options(),
+        tools=[MockToolDefinition()],
         completer=completer,
     )
 
@@ -243,35 +247,10 @@ async def test_cancel_pending_tool_request_emits_cancelled_event() -> None:
 
 
 @pytest.mark.asyncio
-async def test_session_persists_history_via_history_store(tmp_path: Path) -> None:
-    history_store = FileHistoryStore(tmp_path)
-    completer = ScriptedCompleter([AssistantMessage(content="Hello from the assistant")])
-    session = AssistantSession(
-        tools=[],
-        options=make_options(),
-        completer=completer,
-        history_store=history_store,
-    )
-
-    async with session:
-        await session.start(history=make_system_history(), model="test-model")
-        await session.next_event()
-        await session.send_user_message("Hi")
-        await session.next_event()
-        await session.next_event()
-        await session.next_event()
-
-    loaded = history_store.load()
-    assert loaded is not None
-    assert loaded[-1].role == "assistant"
-
-
-@pytest.mark.asyncio
 async def test_failure_emits_failed_event() -> None:
     completer = ScriptedCompleter([RuntimeError("boom")])
     session = AssistantSession(
         tools=[],
-        options=make_options(),
         completer=completer,
     )
 

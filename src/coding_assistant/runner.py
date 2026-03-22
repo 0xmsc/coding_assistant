@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
 from typing import Any, AsyncIterator
 
 from coding_assistant.llm.openai import complete as openai_complete
 from coding_assistant.llm.types import AssistantMessage, BaseMessage, SystemMessage, Tool, UserMessage
+from coding_assistant.history_store import HistoryStore
 from coding_assistant.runtime import (
     AssistantMessageEvent,
     AssistantSession,
@@ -13,13 +13,10 @@ from coding_assistant.runtime import (
     FailedEvent,
     InputRequestedEvent,
     SessionEvent,
-    SessionOptions,
     ToolCallRequestedEvent,
-    ToolSpec,
 )
-from coding_assistant.runtime.persistence import HistoryStore
 from coding_assistant.tool_policy import NullToolPolicy, ToolPolicy
-from coding_assistant.tool_results import TextResult
+from coding_assistant.tool_results import TextResult, normalize_tool_result
 from coding_assistant.tools.managed import (
     CompactConversationSchema,
     CompactConversationTool,
@@ -48,7 +45,6 @@ class ManagedSession:
         tools: list[Tool],
         model: str,
         expert_model: str | None = None,
-        runtime_options: SessionOptions | None = None,
         completer: Any = openai_complete,
         history_store: HistoryStore | None = None,
         tool_policy: ToolPolicy | None = None,
@@ -60,7 +56,6 @@ class ManagedSession:
         self._tool_policy = tool_policy or NullToolPolicy()
         self._model = model
         self._expert_model = expert_model
-        self._runtime_options = runtime_options or SessionOptions()
         self._completer = completer
         self._history_store = history_store
         self._tools = self._build_tools(
@@ -69,10 +64,8 @@ class ManagedSession:
         )
         self._tools_by_name = {tool.name(): tool for tool in self._tools}
         self._session = AssistantSession(
-            tools=[ToolSpec.from_definition(tool) for tool in self._tools],
-            options=self._runtime_options,
+            tools=self._tools,
             completer=completer,
-            history_store=history_store,
         )
 
     @property
@@ -80,7 +73,7 @@ class ManagedSession:
         return self._instructions
 
     @property
-    def history(self) -> list[Any]:
+    def history(self) -> list[BaseMessage]:
         return self._session.history
 
     async def __aenter__(self) -> "ManagedSession":
@@ -89,6 +82,7 @@ class ManagedSession:
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self._session.__aexit__(exc_type, exc_val, exc_tb)
+        self._persist_history()
 
     async def start(
         self,
@@ -115,6 +109,7 @@ class ManagedSession:
 
     async def cancel(self) -> None:
         await self._session.cancel()
+        self._persist_history()
 
     async def next_event(self) -> SessionEvent:
         while True:
@@ -122,6 +117,7 @@ class ManagedSession:
             if isinstance(event, ToolCallRequestedEvent):
                 await self._handle_tool_call_requested(event)
                 continue
+            self._persist_if_needed(event)
             return event
 
     async def events(self) -> AsyncIterator[SessionEvent]:
@@ -129,6 +125,7 @@ class ManagedSession:
             if isinstance(event, ToolCallRequestedEvent):
                 await self._handle_tool_call_requested(event)
                 continue
+            self._persist_if_needed(event)
             yield event
 
     def _build_tools(self, *, include_launch_agent: bool, include_redirect_tool_call: bool) -> list[Tool]:
@@ -163,12 +160,12 @@ class ManagedSession:
             tool_name=tool_name,
             arguments=event.arguments,
         ):
-            await self._session.submit_tool_result(event.tool_call.id, policy_result)
+            await self._session.submit_tool_result(event.tool_call.id, normalize_tool_result(policy_result))
             return
 
         if tool_name == "compact_conversation":
             compact_request = CompactConversationSchema.model_validate(event.arguments)
-            self._session.compact_history(compact_request.summary)
+            self._session.replace_history(_build_compacted_history(self._session.history, compact_request.summary))
             await self._session.submit_tool_result(event.tool_call.id, "Conversation compacted and history reset.")
             return
 
@@ -180,7 +177,7 @@ class ManagedSession:
             await self._session.submit_tool_error(event.tool_call.id, str(exc))
             return
 
-        await self._session.submit_tool_result(event.tool_call.id, result)
+        await self._session.submit_tool_result(event.tool_call.id, normalize_tool_result(result))
 
     async def _run_child_agent(self, request: LaunchAgentSchema) -> TextResult:
         model = self._resolve_expert_model() if request.expert_knowledge else self._model
@@ -189,7 +186,6 @@ class ManagedSession:
             tools=self._base_tools,
             model=self._model,
             expert_model=self._expert_model,
-            runtime_options=replace(self._runtime_options),
             completer=self._completer,
             history_store=None,
             tool_policy=self._tool_policy,
@@ -275,9 +271,26 @@ class ManagedSession:
     def _format_run_instructions(self, instructions: str) -> str:
         return f"# Run-specific instructions\n\n{instructions.strip()}"
 
+    def _persist_history(self) -> None:
+        if self._history_store is not None:
+            self._history_store.save(self._session.history)
+
+    def _persist_if_needed(self, event: SessionEvent) -> None:
+        if isinstance(event, InputRequestedEvent | FailedEvent | CancelledEvent):
+            self._persist_history()
+
 
 def _render_instructions_section(instructions: str) -> str:
     cleaned = instructions.strip()
     if not cleaned:
         return ""
     return f"## Instructions\n\n{cleaned}"
+
+
+def _build_compacted_history(history: list[BaseMessage], summary: str) -> list[BaseMessage]:
+    if not history:
+        raise RuntimeError("Session has no history to compact.")
+    return [
+        history[0],
+        UserMessage(content=f"A summary of your conversation until now:\n\n{summary}\n\nPlease continue your work."),
+    ]

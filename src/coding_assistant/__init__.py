@@ -1,4 +1,4 @@
 from coding_assistant.runner import ManagedSession
-from coding_assistant.runtime import AssistantSession, SessionOptions, ToolSpec
+from coding_assistant.runtime import AssistantSession
 
-__all__ = ["ManagedSession", "AssistantSession", "SessionOptions", "ToolSpec"]
+__all__ = ["ManagedSession", "AssistantSession"]

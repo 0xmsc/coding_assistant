@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from coding_assistant.adapters.cli import build_default_session_config, build_runtime_options
+from coding_assistant.adapters.cli import build_default_session_config
 from coding_assistant.main import main, parse_args
 
 
@@ -19,7 +19,6 @@ def test_parse_args_defaults() -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "gpt-4"]):
         args = parse_args()
         assert args.ask_user is True
-        assert args.compact_conversation_at_tokens == 200000
 
 
 def test_parse_args_with_multiple_flags() -> None:
@@ -28,15 +27,6 @@ def test_parse_args_with_multiple_flags() -> None:
         assert args.trace is True
         assert args.sandbox is False
         assert args.ask_user is False
-
-
-def test_build_runtime_options_from_args() -> None:
-    args = type("MockArgs", (), {})()
-    args.compact_conversation_at_tokens = 123
-
-    options = build_runtime_options(args)
-
-    assert options.compact_conversation_at_tokens == 123
 
 
 def test_build_default_session_config_from_args(tmp_path: Any) -> None:

@@ -12,6 +12,7 @@ from rich.panel import Panel
 
 from coding_assistant.config import MCPServerConfig
 from coding_assistant.defaults import DefaultSessionConfig, create_default_session
+from coding_assistant.history_store import FileHistoryStore
 from coding_assistant.image import get_image
 from coding_assistant.runner import ManagedSession
 from coding_assistant.runtime import (
@@ -19,9 +20,7 @@ from coding_assistant.runtime import (
     AssistantMessageEvent,
     CancelledEvent,
     FailedEvent,
-    FileHistoryStore,
     InputRequestedEvent,
-    SessionOptions,
 )
 from coding_assistant.sandbox import sandbox
 from coding_assistant.tool_policy import ConfirmationToolPolicy, NullToolPolicy, ToolPolicy
@@ -72,12 +71,6 @@ class EventRenderer:
         self._streaming = False
 
 
-def build_runtime_options(args: Namespace) -> SessionOptions:
-    return SessionOptions(
-        compact_conversation_at_tokens=args.compact_conversation_at_tokens,
-    )
-
-
 def build_default_session_config(args: Namespace) -> DefaultSessionConfig:
     working_directory = Path(os.getcwd())
     coding_assistant_root = Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
@@ -93,7 +86,6 @@ def build_default_session_config(args: Namespace) -> DefaultSessionConfig:
 
 
 async def run_cli(args: Namespace) -> None:
-    runtime_options = build_runtime_options(args)
     config = build_default_session_config(args)
 
     if args.sandbox:
@@ -118,7 +110,6 @@ async def run_cli(args: Namespace) -> None:
     async with create_default_session(
         model=args.model,
         expert_model=args.expert_model,
-        runtime_options=runtime_options,
         config=config,
         tool_policy=tool_policy,
     ) as bundle:

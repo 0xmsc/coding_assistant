@@ -70,21 +70,30 @@ The project now has two Python surfaces:
 
 ```python
 import asyncio
+from typing import Any
 
-from coding_assistant import AssistantSession, SessionOptions, ToolSpec
-from coding_assistant.llm.types import SystemMessage
+from coding_assistant import AssistantSession
+from coding_assistant.llm.types import SystemMessage, ToolDefinition
+
+
+class LookupDocsTool(ToolDefinition):
+    def name(self) -> str:
+        return "lookup_docs"
+
+    def description(self) -> str:
+        return "Look up project documentation."
+
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        }
 
 
 async def main() -> None:
     session = AssistantSession(
-        tools=[
-            ToolSpec(
-                name="lookup_docs",
-                description="Look up project documentation.",
-                parameters={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
-            )
-        ],
-        options=SessionOptions(),
+        tools=[LookupDocsTool()],
     )
 
     async with session:
@@ -137,7 +146,6 @@ Notes:
 - `--resume` / `--resume-file` Resume from the latest/specific orchestrator history in `.coding_assistant/history/`.
 - `--instructions` Provide extra instructions that are composed with defaults. Can be repeated.
 - `--mcp-env` Environment variables to pass to the default MCP server.
-- `--compact-conversation-at-tokens` Number of tokens after which conversation should be shortened (default: 200,000).
 - `--trace` / `--no-trace` Enable/disable tracing of model requests/responses.
 - `--sandbox` / `--no-sandbox` Enable/disable Landlock-based sandboxing (default: **enabled**).
 - `--wait-for-debugger` Wait for a debugger (debugpy) to attach on port 1234.
