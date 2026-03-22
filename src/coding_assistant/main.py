@@ -97,12 +97,6 @@ def parse_args() -> argparse.Namespace:
         help="Environment variables to pass to the default MCP server.",
     )
     parser.add_argument(
-        "--compact-conversation-at-tokens",
-        type=int,
-        default=200_000,
-        help="Number of tokens after which conversation should be shortened.",
-    )
-    parser.add_argument(
         "--tool-confirmation-patterns",
         nargs="*",
         default=[],
