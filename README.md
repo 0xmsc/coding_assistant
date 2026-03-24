@@ -4,8 +4,8 @@ Coding Assistant is a Python-based, agent-orchestrated CLI and embeddable librar
 
 ## Key Features
 
-- Low-level `AssistantSession` runtime with explicit events and commands
-- Managed `ManagedSession` wrapper that executes tools and sub-agents
+- Simple `run_agent(history=...)` embedding API
+- Caller-owned history with pure `compact_history(...)` transcript compaction
 - Resumable sessions and conversation summaries stored per-project
 - Built-in MCP server with shell, Python, filesystem, and TODO tools
 - Support for external MCP servers (filesystem, fetch, Context7, Tavily, etc.)
@@ -61,22 +61,18 @@ coding-assistant --help
 
 ## Embedding
 
-The project now has two Python surfaces:
-
-- `AssistantSession`: low-level runtime. It emits `tool_call_requested` and expects the host to submit tool results.
-- `ManagedSession`: managed wrapper. It handles tool execution for you.
-
-### Low-Level Runtime
+The primary Python surface is `run_agent(...)`. You pass in history, model, and executable tools; the function runs the tool loop internally and returns the updated history.
 
 ```python
 import asyncio
 from typing import Any
 
-from coding_assistant import AssistantSession
-from coding_assistant.llm.types import SystemMessage, ToolDefinition
+from coding_assistant import run_agent
+from coding_assistant.history import build_system_prompt
+from coding_assistant.llm.types import SystemMessage, Tool, UserMessage
 
 
-class LookupDocsTool(ToolDefinition):
+class LookupDocsTool(Tool):
     def name(self) -> str:
         return "lookup_docs"
 
@@ -90,36 +86,31 @@ class LookupDocsTool(ToolDefinition):
             "required": ["query"],
         }
 
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        return f"Documentation for: {parameters['query']}"
+
 
 async def main() -> None:
-    session = AssistantSession(
+    history = [
+        SystemMessage(content=build_system_prompt(instructions="You are a helpful coding agent.")),
+        UserMessage(content="Say hello in one sentence."),
+    ]
+
+    result = await run_agent(
+        history=history,
+        model="openai/gpt-5-mini",
         tools=[LookupDocsTool()],
+        on_delta=lambda chunk: print(chunk, end="", flush=True),
     )
 
-    async with session:
-        await session.start(
-            history=[SystemMessage(content="You are a helpful coding agent.")],
-            model="openai/gpt-5-mini",
-        )
-
-        async for event in session.events():
-            if event.type == "input_requested":
-                await session.send_user_message("Say hello in one sentence.")
-            elif event.type == "tool_call_requested":
-                await session.submit_tool_result(event.tool_call.id, "Documentation lookup result.")
-            elif event.type == "assistant_delta":
-                print(event.delta, end="", flush=True)
-            elif event.type == "assistant_message":
-                print()
-                break
+    print(result.status)
+    print(result.history[-1])
 
 
 asyncio.run(main())
 ```
 
-### Managed Session
-
-Use `ManagedSession` when you already have executable tool objects and want a higher-level embedding surface.
+`run_agent(...)` returns updated history plus a small status such as `awaiting_user` or `failed`. To continue the conversation, append another `UserMessage` and call it again.
 
 ### Advanced Examples
 
