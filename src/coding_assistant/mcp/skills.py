@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Skill:
+    """Loaded skill metadata and the files it is allowed to expose."""
+
     name: str
     description: str
     root: Path
@@ -21,6 +23,7 @@ class Skill:
 
 
 def parse_skill_file(content: str, source_info: str, root: Path) -> Optional[Skill]:
+    """Parse one `SKILL.md` file into a `Skill` record when valid."""
     post = frontmatter.loads(content)
 
     name = post.metadata.get("name")
@@ -38,6 +41,7 @@ def parse_skill_file(content: str, source_info: str, root: Path) -> Optional[Ski
 
 
 def load_skills_from_root(root_dir: Path) -> List[Skill]:
+    """Load all skills from the immediate child directories of a root."""
     skills = []
     for skill_dir in root_dir.iterdir():
         if not skill_dir.is_dir():
@@ -54,11 +58,13 @@ def load_skills_from_root(root_dir: Path) -> List[Skill]:
 
 
 def load_builtin_skills() -> List[Skill]:
+    """Load the skills bundled with the coding assistant package."""
     files = importlib.resources.files("coding_assistant") / "skills"
     return load_skills_from_root(Path(str(files)))
 
 
 def format_skills_instructions(skills: List[Skill]) -> str:
+    """Render the instruction block that explains the available skills."""
     if not skills:
         return ""
 
@@ -88,6 +94,7 @@ def format_skills_instructions(skills: List[Skill]) -> str:
 
 
 def load_skills_from_directory(skills_dir: Path) -> List[Skill]:
+    """Load skills from one user-provided skills directory."""
     if not skills_dir.exists() or not skills_dir.is_dir():
         logger.warning(f"Skills directory does not exist or is not a directory: {skills_dir}")
         return []

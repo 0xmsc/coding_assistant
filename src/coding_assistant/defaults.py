@@ -16,6 +16,8 @@ from coding_assistant.tools.mcp import MCPServer, get_mcp_servers_from_config, g
 
 @dataclass(slots=True)
 class DefaultAgentConfig:
+    """Configuration for the default CLI and embedding setup."""
+
     working_directory: Path
     mcp_server_configs: tuple[MCPServerConfig, ...] = ()
     skills_directories: tuple[str, ...] = ()
@@ -26,6 +28,8 @@ class DefaultAgentConfig:
 
 @dataclass(slots=True)
 class DefaultAgentBundle:
+    """Resolved defaults needed to run an agent in one place."""
+
     tools: list[Tool]
     instructions: str
     mcp_servers: list[MCPServer]
@@ -37,6 +41,7 @@ def get_default_mcp_server_config(
     skills_directories: tuple[str, ...],
     env: tuple[str, ...] = (),
 ) -> MCPServerConfig:
+    """Build the bundled MCP server config used by default runs."""
     import sys
 
     args = ["-m", mcp_package_name]
@@ -56,6 +61,7 @@ async def create_default_agent(
     *,
     config: DefaultAgentConfig,
 ) -> AsyncIterator[DefaultAgentBundle]:
+    """Resolve instructions, tools, and history storage for a default agent run."""
     root = config.coding_assistant_root or Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
     history_store = FileHistoryStore(config.working_directory)
     server_configs = (

@@ -12,18 +12,23 @@ from coding_assistant.mcp.utils import truncate_output
 
 @dataclass
 class Task:
+    """Tracked background process plus its display metadata."""
+
     id: int
     name: str
     handle: ProcessHandle
 
 
 class TaskManager:
+    """Track background subprocess tasks exposed through MCP tools."""
+
     def __init__(self, max_finished_tasks: int = 10):
         self._tasks: Dict[int, Task] = {}
         self._next_id = 1
         self._max_finished_tasks = max_finished_tasks
 
     def register_task(self, name: str, handle: ProcessHandle) -> int:
+        """Register a new task and return its numeric identifier."""
         task_id = self._next_id
         self._next_id += 1
         self._tasks[task_id] = Task(id=task_id, name=name, handle=handle)
@@ -31,6 +36,7 @@ class TaskManager:
         return task_id
 
     def _cleanup_finished_tasks(self) -> None:
+        """Drop old finished tasks once the retention limit is exceeded."""
         current_finished = [tid for tid, task in self._tasks.items() if not task.handle.is_running]
         if len(current_finished) > self._max_finished_tasks:
             num_to_remove = len(current_finished) - self._max_finished_tasks
@@ -39,12 +45,15 @@ class TaskManager:
                 self.remove_task(tid)
 
     def get_task(self, task_id: int) -> Task | None:
+        """Return a tracked task by ID, if it still exists."""
         return self._tasks.get(task_id)
 
     def list_tasks(self) -> list[Task]:
+        """Return all tracked tasks in insertion order."""
         return list(self._tasks.values())
 
     def remove_task(self, task_id: int) -> None:
+        """Remove a task and terminate its process in the background."""
         if task_id in self._tasks:
             task = self._tasks[task_id]
             loop = asyncio.get_running_loop()
@@ -53,10 +62,12 @@ class TaskManager:
 
 
 def create_task_server(*, manager: TaskManager) -> FastMCP:
+    """Create the MCP server for listing and managing background tasks."""
     task_server = FastMCP("TaskManager")
 
     @task_server.tool()
     async def list_tasks() -> str:
+        """List all tracked tasks with their IDs and current status."""
         tasks = manager.list_tasks()
         if not tasks:
             return "No tasks found."
@@ -75,6 +86,7 @@ def create_task_server(*, manager: TaskManager) -> FastMCP:
         timeout: int = 30,
         truncate_at: int = 50_000,
     ) -> str:
+        """Return captured output for a task, optionally waiting for completion."""
         task = manager.get_task(task_id)
         if not task:
             return f"Error: Task {task_id} not found."

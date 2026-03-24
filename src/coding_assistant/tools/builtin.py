@@ -18,15 +18,19 @@ class CompactConversationSchema(BaseModel):
 
 class CompactConversationTool(Tool):
     def name(self) -> str:
+        """Return the built-in tool name for conversation compaction."""
         return "compact_conversation"
 
     def description(self) -> str:
+        """Explain when the agent should summarize and reset prior context."""
         return "Give the runtime a summary of your conversation with the client so far. The work should be continuable based on this summary. This means that you need to include all the results you have already gathered so far. Additionally, you should include the next steps you had planned. When the user tells you to call this tool, you must do so immediately! This can also be called when you have reached a milestone and you think that the context you've gathered so far will not be relevant anymore going forward."
 
     def parameters(self) -> dict[str, Any]:
+        """Return the schema for the compaction summary payload."""
         return CompactConversationSchema.model_json_schema()
 
     async def execute(self, parameters: dict[str, Any]) -> str:
+        """Validate the request and return the summary text unchanged."""
         validated = CompactConversationSchema.model_validate(parameters)
         return validated.summary
 
@@ -54,22 +58,28 @@ class LaunchAgentSchema(BaseModel):
 
 
 class LaunchAgentTool(Tool):
+    """Launch a nested agent run and return its text reply."""
+
     def __init__(self, *, execute_child: Callable[[LaunchAgentSchema], Awaitable[str]]) -> None:
         self._execute_child = execute_child
 
     def name(self) -> str:
+        """Return the built-in tool name for launching sub-agents."""
         return "launch_agent"
 
     def description(self) -> str:
+        """Describe the sub-agent execution behavior exposed to the model."""
         return (
             "Launch a sub-agent to work on a well-scoped task. "
             "The sub-agent replies using normal assistant messages, and that reply is returned to the caller."
         )
 
     def parameters(self) -> dict[str, Any]:
+        """Return the schema for sub-agent launch requests."""
         return LaunchAgentSchema.model_json_schema()
 
     async def execute(self, parameters: dict[str, Any]) -> str:
+        """Validate and execute one sub-agent request."""
         validated = LaunchAgentSchema.model_validate(parameters)
         return await self._execute_child(validated)
 
@@ -84,13 +94,17 @@ class RedirectToolCallSchema(BaseModel):
 
 
 class RedirectToolCallTool(Tool):
+    """Run another tool and persist its output to a file."""
+
     def __init__(self, *, tools: Sequence[Tool]) -> None:
         self._tools = list(tools)
 
     def name(self) -> str:
+        """Return the built-in tool name for redirected tool output."""
         return "redirect_tool_call"
 
     def description(self) -> str:
+        """Explain when large tool output should be redirected to disk."""
         return (
             "Call another tool and redirect its output to a file. Use this when the output of a tool is too large "
             "to be handled in the conversation or when you need to pipeline the result into another tool "
@@ -98,9 +112,11 @@ class RedirectToolCallTool(Tool):
         )
 
     def parameters(self) -> dict[str, Any]:
+        """Return the schema for redirected tool-call requests."""
         return RedirectToolCallSchema.model_json_schema()
 
     async def execute(self, parameters: dict[str, Any]) -> str:
+        """Execute the target tool and write its text output to a file."""
         validated = RedirectToolCallSchema.model_validate(parameters)
         tool_name = validated.tool_name
         tool_args = validated.tool_args
