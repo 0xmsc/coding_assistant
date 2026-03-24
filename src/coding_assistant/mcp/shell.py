@@ -10,6 +10,7 @@ from coding_assistant.mcp.tasks import TaskManager
 
 
 def create_shell_server(*, manager: TaskManager) -> FastMCP:
+    """Create the MCP server that executes shell commands via bash."""
     shell_server = FastMCP("Shell")
 
     @shell_server.tool()

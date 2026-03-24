@@ -48,6 +48,7 @@ INSTRUCTIONS = """
 
 
 async def _main() -> None:
+    """Start the bundled MCP server with its component tool servers."""
     parser = argparse.ArgumentParser(description="Coding Assistant MCP Server")
     parser.add_argument(
         "--skills-directories",
@@ -76,6 +77,7 @@ async def _main() -> None:
 
 
 def main() -> None:
+    """Synchronous entrypoint for the MCP server executable."""
     asyncio.run(_main())
 
 

@@ -7,6 +7,7 @@ SESSION_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
 def get_cache_home() -> Path:
+    """Return the XDG cache home or its standard fallback."""
     xdg_cache_home = os.getenv("XDG_CACHE_HOME")
     if xdg_cache_home:
         return Path(xdg_cache_home)
@@ -14,6 +15,7 @@ def get_cache_home() -> Path:
 
 
 def get_state_home() -> Path:
+    """Return the XDG state home or its standard fallback."""
     xdg_state_home = os.getenv("XDG_STATE_HOME")
     if xdg_state_home:
         return Path(xdg_state_home)
@@ -21,6 +23,7 @@ def get_state_home() -> Path:
 
 
 def get_data_home() -> Path:
+    """Return the XDG data home or its standard fallback."""
     xdg_data_home = os.getenv("XDG_DATA_HOME")
     if xdg_data_home:
         return Path(xdg_data_home)
@@ -28,6 +31,7 @@ def get_data_home() -> Path:
 
 
 def get_config_home() -> Path:
+    """Return the XDG config home or its standard fallback."""
     xdg_config_home = os.getenv("XDG_CONFIG_HOME")
     if xdg_config_home:
         return Path(xdg_config_home)
@@ -35,22 +39,27 @@ def get_config_home() -> Path:
 
 
 def get_app_cache_dir() -> Path:
+    """Return the application's cache directory path."""
     return get_cache_home() / "coding_assistant"
 
 
 def get_app_state_dir() -> Path:
+    """Return the application's state directory path."""
     return get_state_home() / "coding_assistant"
 
 
 def get_session_dir() -> Path:
+    """Return the current session directory, creating it on first use."""
     session_dir = get_app_cache_dir() / "sessions" / SESSION_ID
     session_dir.mkdir(parents=True, exist_ok=True)
     return session_dir
 
 
 def get_log_file() -> Path:
+    """Return the log file path for the current session."""
     return get_session_dir() / "session.log"
 
 
 def get_traces_dir() -> Path:
+    """Return the trace directory path for the current session."""
     return get_session_dir() / "traces"

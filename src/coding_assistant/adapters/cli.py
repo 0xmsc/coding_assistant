@@ -24,12 +24,16 @@ from coding_assistant.llm.types import BaseMessage, SystemMessage, Tool, UserMes
 
 
 class DeltaRenderer:
+    """Write streamed assistant text directly to stdout."""
+
     def on_delta(self, chunk: str) -> None:
+        """Render one streamed content chunk without buffering."""
         sys.stdout.write(chunk)
         sys.stdout.flush()
 
 
 def build_default_agent_config(args: Namespace) -> DefaultAgentConfig:
+    """Translate CLI arguments into the default agent configuration."""
     working_directory = Path(os.getcwd())
     coding_assistant_root = Path(str(importlib.resources.files("coding_assistant"))).parent.resolve()
     mcp_server_configs = tuple(MCPServerConfig.model_validate_json(item) for item in args.mcp_servers)
@@ -44,6 +48,7 @@ def build_default_agent_config(args: Namespace) -> DefaultAgentConfig:
 
 
 async def run_cli(args: Namespace) -> None:
+    """Run the interactive or single-shot CLI entry point."""
     config = build_default_agent_config(args)
 
     if args.sandbox:
@@ -101,6 +106,7 @@ def _load_history(
     history_store: FileHistoryStore,
     working_directory: Path,
 ) -> list[BaseMessage] | None:
+    """Load persisted history according to the selected resume flags."""
     if args.resume_file is not None:
         file_store = FileHistoryStore(working_directory, path=args.resume_file)
         return file_store.load()
@@ -112,6 +118,7 @@ def _load_history(
 
 
 def _apply_sandbox(*, args: Namespace, config: DefaultAgentConfig) -> None:
+    """Apply the CLI sandbox policy before starting the agent."""
     coding_assistant_root = config.coding_assistant_root
     if coding_assistant_root is None:
         raise RuntimeError("coding_assistant_root must be resolved before sandboxing.")
@@ -130,6 +137,7 @@ def _ensure_initial_history(
     history: list[BaseMessage] | None,
     instructions: str,
 ) -> list[BaseMessage]:
+    """Create the initial system prompt when no prior history exists."""
     if history:
         return list(history)
     return [SystemMessage(content=build_system_prompt(instructions=instructions))]
@@ -146,6 +154,7 @@ async def _drive_agent(
     ui: UI,
     interactive: bool,
 ) -> None:
+    """Drive one or more `run_agent` turns until the CLI should exit."""
     renderer = DeltaRenderer()
     command_names = ["/exit", "/help", "/compact", "/image"]
 
