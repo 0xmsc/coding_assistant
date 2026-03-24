@@ -7,7 +7,6 @@ from coding_assistant.tool_policy import (
     confirm_shell_if_needed,
     confirm_tool_if_needed,
 )
-from coding_assistant.tool_results import TextResult
 
 
 def make_ui_mock(*, confirm_sequence: list[tuple[str, bool]] | None = None) -> Mock:
@@ -40,8 +39,7 @@ async def test_confirm_tool_if_needed_denied_and_allowed() -> None:
         patterns=[r"dangerous_"],
         ui=ui,
     )
-    assert isinstance(res, TextResult)
-    assert res.content == "Tool execution denied."
+    assert res == "Tool execution denied."
 
     res2 = await confirm_tool_if_needed(
         tool_name=tool_name,
@@ -78,8 +76,7 @@ async def test_confirm_shell_if_needed_denied_and_allowed() -> None:
         patterns=[r"rm -rf"],
         ui=ui,
     )
-    assert isinstance(res, TextResult)
-    assert res.content == "Shell command execution denied."
+    assert res == "Shell command execution denied."
 
     res2 = await confirm_shell_if_needed(
         tool_name=tool_name,
@@ -127,8 +124,7 @@ async def test_confirmation_tool_policy_tool_pattern() -> None:
         tool_name=tool_name,
         arguments=args,
     )
-    assert isinstance(res, TextResult)
-    assert res.content == "Tool execution denied."
+    assert res == "Tool execution denied."
 
     res2 = await policy.before_tool_execution(
         tool_call_id="2",
@@ -156,8 +152,7 @@ async def test_confirmation_tool_policy_shell_pattern() -> None:
         tool_name=tool_name,
         arguments=args,
     )
-    assert isinstance(res, TextResult)
-    assert res.content == "Shell command execution denied."
+    assert res == "Shell command execution denied."
 
     res2 = await policy.before_tool_execution(
         tool_call_id="2",

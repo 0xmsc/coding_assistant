@@ -104,7 +104,7 @@ async def test_skills_tools(tmp_path: Any) -> None:
     tools = await server.get_tools()
     list_tool = tools["list_resources"]
     result = await list_tool.run({"name": "myskill"})
-    # FastMCP returns a ToolResult object. Content is in result.content
+    # FastMCP returns an object with the response text on result.content
     result_text = cast(TextContent, result.content[0]).text
     assert "- SKILL.md" in result_text
     assert "- script.py" in result_text

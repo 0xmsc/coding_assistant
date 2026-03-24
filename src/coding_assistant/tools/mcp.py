@@ -13,7 +13,6 @@ from rich.table import Table
 
 from coding_assistant.llm.types import Tool
 from coding_assistant.config import MCPServerConfig
-from coding_assistant.tool_results import TextResult
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ class MCPWrappedTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return cast(dict[str, Any], self._tool.inputSchema)
 
-    async def execute(self, parameters: dict[str, Any]) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> str:
         result = await self._client.call_tool(self._tool.name, parameters)
 
         if len(result.content) != 1:
@@ -54,7 +53,7 @@ class MCPWrappedTool(Tool):
             raise ValueError("Expected result to have a 'text' attribute.")
 
         content = result.content[0].text
-        return TextResult(content=content)
+        return str(content)
 
 
 async def get_mcp_wrapped_tools(mcp_servers: list[MCPServer]) -> list[Tool]:
