@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from coding_assistant.adapters.cli import build_default_session_config
+from coding_assistant.adapters.cli import build_default_agent_config
 from coding_assistant.main import main, parse_args
 
 
@@ -29,7 +29,7 @@ def test_parse_args_with_multiple_flags() -> None:
         assert args.ask_user is False
 
 
-def test_build_default_session_config_from_args(tmp_path: Any) -> None:
+def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
     args = type("MockArgs", (), {})()
     args.mcp_servers = []
     args.skills_directories = []
@@ -37,7 +37,7 @@ def test_build_default_session_config_from_args(tmp_path: Any) -> None:
     args.instructions = []
 
     with patch("coding_assistant.adapters.cli.os.getcwd", return_value=str(tmp_path)):
-        config = build_default_session_config(args)
+        config = build_default_agent_config(args)
 
     assert config.working_directory == tmp_path
     assert config.skills_directories == ()

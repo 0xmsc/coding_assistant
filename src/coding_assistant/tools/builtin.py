@@ -3,12 +3,11 @@ from __future__ import annotations
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Sequence
 
 from pydantic import BaseModel, Field
 
 from coding_assistant.llm.types import Tool
-from coding_assistant.tool_results import CompactConversationResult, TextResult
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +26,9 @@ class CompactConversationTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return CompactConversationSchema.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> CompactConversationResult:
+    async def execute(self, parameters: dict[str, Any]) -> str:
         validated = CompactConversationSchema.model_validate(parameters)
-        return CompactConversationResult(summary=validated.summary)
+        return validated.summary
 
 
 class LaunchAgentSchema(BaseModel):
@@ -55,7 +54,7 @@ class LaunchAgentSchema(BaseModel):
 
 
 class LaunchAgentTool(Tool):
-    def __init__(self, *, execute_child: Callable[[LaunchAgentSchema], Awaitable[TextResult]]) -> None:
+    def __init__(self, *, execute_child: Callable[[LaunchAgentSchema], Awaitable[str]]) -> None:
         self._execute_child = execute_child
 
     def name(self) -> str:
@@ -70,7 +69,7 @@ class LaunchAgentTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return LaunchAgentSchema.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> str:
         validated = LaunchAgentSchema.model_validate(parameters)
         return await self._execute_child(validated)
 
@@ -85,8 +84,8 @@ class RedirectToolCallSchema(BaseModel):
 
 
 class RedirectToolCallTool(Tool):
-    def __init__(self, *, tools: list[Tool]) -> None:
-        self._tools = tools
+    def __init__(self, *, tools: Sequence[Tool]) -> None:
+        self._tools = list(tools)
 
     def name(self) -> str:
         return "redirect_tool_call"
@@ -101,35 +100,33 @@ class RedirectToolCallTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return RedirectToolCallSchema.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> TextResult:
+    async def execute(self, parameters: dict[str, Any]) -> str:
         validated = RedirectToolCallSchema.model_validate(parameters)
         tool_name = validated.tool_name
         tool_args = validated.tool_args
         output_file = validated.output_file
 
         if tool_name == self.name():
-            return TextResult(content="Error: Cannot call redirect_tool_call recursively.")
+            return "Error: Cannot call redirect_tool_call recursively."
 
         target_tool = next((tool for tool in self._tools if tool.name() == tool_name), None)
         if target_tool is None:
-            return TextResult(content=f"Error: Tool '{tool_name}' not found or cannot be redirected.")
+            return f"Error: Tool '{tool_name}' not found or cannot be redirected."
 
         try:
             result = await target_tool.execute(tool_args)
-            if not isinstance(result, TextResult):
-                return TextResult(content=f"Error: Tool '{tool_name}' did not return a TextResult.")
+            if not isinstance(result, str):
+                return f"Error: Tool '{tool_name}' did not return text."
 
             if output_file:
                 path = Path(output_file)
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(result.content)
-                return TextResult(content=f"Tool '{tool_name}' executed. Output redirected to {output_file}")
+                path.write_text(result)
+                return f"Tool '{tool_name}' executed. Output redirected to {output_file}"
 
             with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
-                tmp.write(result.content)
-                return TextResult(
-                    content=f"Tool '{tool_name}' executed. Output redirected to temporary file: {tmp.name}"
-                )
+                tmp.write(result)
+                return f"Tool '{tool_name}' executed. Output redirected to temporary file: {tmp.name}"
         except Exception as exc:
             logger.exception("Error executing tool '%s' via redirect_tool_call", tool_name)
-            return TextResult(content=f"Error executing tool '{tool_name}': {exc}")
+            return f"Error executing tool '{tool_name}': {exc}"

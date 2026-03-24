@@ -3,8 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any, Protocol
 
-from coding_assistant.tool_results import TextResult
-
 
 class ToolPolicy(Protocol):
     async def before_tool_execution(
@@ -13,7 +11,7 @@ class ToolPolicy(Protocol):
         tool_call_id: str,
         tool_name: str,
         arguments: dict[str, Any],
-    ) -> TextResult | None: ...
+    ) -> str | None: ...
 
 
 class NullToolPolicy:
@@ -23,7 +21,7 @@ class NullToolPolicy:
         tool_call_id: str,
         tool_name: str,
         arguments: dict[str, Any],
-    ) -> TextResult | None:
+    ) -> str | None:
         return None
 
 
@@ -33,13 +31,13 @@ async def confirm_tool_if_needed(
     arguments: dict[str, Any],
     patterns: list[str],
     ui: Any,
-) -> TextResult | None:
+) -> str | None:
     for pattern in patterns:
         if re.search(pattern, tool_name):
             question = f"Execute tool `{tool_name}` with arguments `{arguments}`?"
             allowed = await ui.confirm(question)
             if not allowed:
-                return TextResult(content="Tool execution denied.")
+                return "Tool execution denied."
             break
     return None
 
@@ -50,7 +48,7 @@ async def confirm_shell_if_needed(
     arguments: dict[str, Any],
     patterns: list[str],
     ui: Any,
-) -> TextResult | None:
+) -> str | None:
     if tool_name != "shell_execute":
         return None
 
@@ -63,7 +61,7 @@ async def confirm_shell_if_needed(
             question = f"Execute shell command `{command}` for tool `{tool_name}`?"
             allowed = await ui.confirm(question)
             if not allowed:
-                return TextResult(content="Shell command execution denied.")
+                return "Shell command execution denied."
             break
     return None
 
@@ -86,7 +84,7 @@ class ConfirmationToolPolicy:
         tool_call_id: str,
         tool_name: str,
         arguments: dict[str, Any],
-    ) -> TextResult | None:
+    ) -> str | None:
         if result := await confirm_tool_if_needed(
             tool_name=tool_name,
             arguments=arguments,

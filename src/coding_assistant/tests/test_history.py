@@ -1,74 +1,29 @@
-from pathlib import Path
+import pytest
 
-from coding_assistant.history_store import (
-    FileHistoryStore,
-    get_history_path,
-    get_project_cache_dir,
-    sanitize_history,
-)
-from coding_assistant.llm.types import AssistantMessage, FunctionCall, ToolCall, ToolMessage, UserMessage
+from coding_assistant import compact_history
+from coding_assistant.history import build_system_prompt
+from coding_assistant.llm.types import SystemMessage, UserMessage
 
 
-def test_sanitize_history_with_empty_list() -> None:
-    assert sanitize_history([]) == []
+def test_build_system_prompt_wraps_instructions() -> None:
+    prompt = build_system_prompt(instructions="# Instructions\n\nBe precise.")
+    assert "## General" in prompt
+    assert "# Instructions\n\nBe precise." in prompt
 
 
-def test_sanitize_history_with_valid_history() -> None:
-    history = [UserMessage(content="Hello"), AssistantMessage(content="Hi there!")]
-    assert sanitize_history(history) == history
-
-
-def test_sanitize_history_with_trailing_assistant_message_with_tool_calls() -> None:
+def test_compact_history_preserves_system_prompt() -> None:
     history = [
-        UserMessage(content="Hello"),
-        AssistantMessage(
-            content="Thinking...",
-            tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))],
-        ),
-    ]
-    assert sanitize_history(history) == [UserMessage(content="Hello")]
-
-
-def test_sanitize_history_with_no_trailing_assistant_message() -> None:
-    history = [
-        UserMessage(content="Hello"),
-        AssistantMessage(
-            content="Thinking...",
-            tool_calls=[ToolCall(id="123", function=FunctionCall(name="test", arguments="{}"))],
-        ),
-        ToolMessage(content="Result", tool_call_id="123"),
-    ]
-    assert sanitize_history(history) == history
-
-
-def test_file_history_store_roundtrip(tmp_path: Path) -> None:
-    store = FileHistoryStore(tmp_path)
-    assert get_project_cache_dir(tmp_path).exists()
-    assert store.path == get_history_path(tmp_path)
-
-    store.save([UserMessage(content="msg-1")])
-    data = store.load()
-    assert data is not None
-    assert data[-1].content == "msg-1"
-
-    store.save([UserMessage(content="msg-2")])
-    data = store.load()
-    assert data is not None
-    assert data[-1].content == "msg-2"
-
-
-def test_file_history_store_strips_trailing_tool_calls(tmp_path: Path) -> None:
-    store = FileHistoryStore(tmp_path)
-    invalid = [
-        UserMessage(content="hi"),
-        AssistantMessage(
-            content="Thinking...",
-            tool_calls=[ToolCall(id="1", function=FunctionCall(name="x", arguments="{}"))],
-        ),
+        SystemMessage(content="# Instructions\n\nTest instructions"),
+        UserMessage(content="Original task"),
     ]
 
-    store.save(invalid)
-    loaded = store.load()
-    assert loaded is not None
-    assert len(loaded) == 1
-    assert loaded[0].content == "hi"
+    compacted = compact_history(history, "Short summary")
+
+    assert [message.role for message in compacted] == ["system", "user"]
+    assert isinstance(compacted[1].content, str)
+    assert "Short summary" in compacted[1].content
+
+
+def test_compact_history_requires_system_message() -> None:
+    with pytest.raises(RuntimeError, match="initial system message"):
+        compact_history([UserMessage(content="Hi")], "Short summary")

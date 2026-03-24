@@ -7,11 +7,6 @@ from typing import Any, Literal, Optional, Protocol
 from dacite import from_dict
 
 
-class ToolResult(ABC):
-    @abstractmethod
-    def to_dict(self) -> dict[str, Any]: ...
-
-
 class ToolDefinition(Protocol):
     def name(self) -> str: ...
 
@@ -22,7 +17,7 @@ class ToolDefinition(Protocol):
 
 class Tool(ToolDefinition, ABC):
     @abstractmethod
-    async def execute(self, parameters: dict[str, Any]) -> ToolResult: ...
+    async def execute(self, parameters: dict[str, Any]) -> str: ...
 
 
 @dataclass(frozen=True)
