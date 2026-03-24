@@ -7,12 +7,15 @@ from pydantic import BaseModel
 
 @dataclass
 class Parameter:
+    """Rendered view of one configuration parameter."""
+
     name: str
     description: str
     value: str
 
 
 def parameters_from_model(model: BaseModel) -> list[Parameter]:
+    """Extract described, non-empty model fields into display-ready parameters."""
     params: list[Parameter] = []
     data = model.model_dump()
     for name, field in model.__class__.model_fields.items():
@@ -56,6 +59,7 @@ def parameters_from_model(model: BaseModel) -> list[Parameter]:
 
 
 def format_parameters(parameters: list[Parameter]) -> str:
+    """Format parameters into a readable bullet list."""
     parameter_template = """
 - Name: {name}
   - Description: {description}

@@ -37,6 +37,7 @@ def setup_logging() -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the coding assistant executable."""
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant CLI")
     parser.add_argument(
         "--task", type=str, help="Task for the orchestrator agent. If provided, the agent runs in autonomous mode."
@@ -138,6 +139,7 @@ def parse_args() -> argparse.Namespace:
 
 
 async def _main(args: argparse.Namespace) -> None:
+    """Run the CLI and translate Ctrl-C into a clean shutdown."""
     logger.info(f"Starting Coding Assistant with arguments {args}")
     try:
         await run_cli(args)
@@ -146,6 +148,7 @@ async def _main(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    """Entrypoint for the installed `coding_assistant` command."""
     args = parse_args()
     setup_logging()
 

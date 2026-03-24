@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def _load_default_instructions() -> str:
+    """Load the built-in instruction document bundled with the package."""
     path = importlib.resources.files("coding_assistant") / "default_instructions.md"
     try:
         return path.read_text().strip()
@@ -23,6 +24,7 @@ def get_instructions(
     user_instructions: list[str],
     mcp_servers: list[MCPServer] | None = None,
 ) -> str:
+    """Assemble instructions from defaults, project files, MCP, and user input."""
     sections: list[str] = []
 
     sections.append(_load_default_instructions())

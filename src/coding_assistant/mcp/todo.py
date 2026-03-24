@@ -8,6 +8,8 @@ from fastmcp import FastMCP
 
 @dataclass
 class Todo:
+    """One tracked TODO item for an MCP-managed task list."""
+
     id: int
     description: str
     completed: bool = False
@@ -15,11 +17,14 @@ class Todo:
 
 
 class TodoManager:
+    """Mutable in-memory TODO list exposed through MCP tools."""
+
     def __init__(self) -> None:
         self._todos: dict[int, Todo] = {}
         self._next_id = 1
 
     def format(self) -> str:
+        """Render the current TODO list as markdown-style checkboxes."""
         lines: list[str] = []
         for t in self._todos.values():
             box = "x" if t.completed else " "
@@ -43,6 +48,7 @@ class TodoManager:
         return self.format()
 
     def list_todos(self) -> str:
+        """Return the formatted TODO list."""
         return self.format()
 
     def complete(
@@ -62,12 +68,14 @@ class TodoManager:
         return self.format()
 
     def reset(self) -> str:
+        """Clear the TODO list and reset numbering."""
         self._todos.clear()
         self._next_id = 1
         return "Reset TODO list (now empty)."
 
 
 def create_todo_server() -> FastMCP:
+    """Create the MCP server that exposes the in-memory TODO manager."""
     manager = TodoManager()
     server = FastMCP()
 

@@ -5,16 +5,8 @@ from typing import Any, Protocol
 
 
 class ToolPolicy(Protocol):
-    async def before_tool_execution(
-        self,
-        *,
-        tool_call_id: str,
-        tool_name: str,
-        arguments: dict[str, Any],
-    ) -> str | None: ...
+    """Hook for approving, blocking, or short-circuiting tool execution."""
 
-
-class NullToolPolicy:
     async def before_tool_execution(
         self,
         *,
@@ -22,6 +14,21 @@ class NullToolPolicy:
         tool_name: str,
         arguments: dict[str, Any],
     ) -> str | None:
+        """Return a tool result to skip execution, or `None` to allow it."""
+        ...
+
+
+class NullToolPolicy:
+    """Policy that always allows the tool call to proceed."""
+
+    async def before_tool_execution(
+        self,
+        *,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> str | None:
+        """Allow the tool call without modification."""
         return None
 
 
@@ -32,6 +39,7 @@ async def confirm_tool_if_needed(
     patterns: list[str],
     ui: Any,
 ) -> str | None:
+    """Ask the user before running tools whose names match a configured pattern."""
     for pattern in patterns:
         if re.search(pattern, tool_name):
             question = f"Execute tool `{tool_name}` with arguments `{arguments}`?"
@@ -49,6 +57,7 @@ async def confirm_shell_if_needed(
     patterns: list[str],
     ui: Any,
 ) -> str | None:
+    """Ask the user before running shell commands that match a configured pattern."""
     if tool_name != "shell_execute":
         return None
 
@@ -67,6 +76,8 @@ async def confirm_shell_if_needed(
 
 
 class ConfirmationToolPolicy:
+    """Policy that prompts before matching tool or shell executions."""
+
     def __init__(
         self,
         *,
@@ -85,6 +96,7 @@ class ConfirmationToolPolicy:
         tool_name: str,
         arguments: dict[str, Any],
     ) -> str | None:
+        """Apply the configured confirmation checks before a tool runs."""
         if result := await confirm_tool_if_needed(
             tool_name=tool_name,
             arguments=arguments,

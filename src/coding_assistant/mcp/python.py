@@ -10,6 +10,7 @@ from coding_assistant.mcp.tasks import TaskManager
 
 
 def create_python_server(*, manager: TaskManager) -> FastMCP:
+    """Create the MCP server that executes Python snippets via `uv run`."""
     python_server = FastMCP("Python")
 
     @python_server.tool()

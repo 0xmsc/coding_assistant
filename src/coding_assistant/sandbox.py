@@ -45,22 +45,27 @@ DEFAULT_WRITABLE_PATHS = [
 
 
 def _get_read_only_rule() -> FSAccess:
+    """Return the Landlock rule set for read-only directories."""
     return FSAccess.EXECUTE | FSAccess.READ_DIR | FSAccess.READ_FILE
 
 
 def _get_read_write_file_rule() -> FSAccess:
+    """Return the Landlock rule set for readable and writable files."""
     return FSAccess.WRITE_FILE | FSAccess.READ_FILE
 
 
 def _get_read_only_file_rule() -> FSAccess:
+    """Return the Landlock rule set for read-only files."""
     return FSAccess.READ_FILE
 
 
 def _to_paths(items: Sequence[str | Path]) -> list[Path]:
+    """Expand and resolve a mixed list of string and `Path` entries."""
     return [Path(entry).expanduser().resolve() for entry in items]
 
 
 def allow_read(rs: Ruleset, paths: list[Path]) -> None:
+    """Grant read access for the given paths within the ruleset."""
     for path in paths:
         if not path.exists():
             continue
@@ -72,6 +77,7 @@ def allow_read(rs: Ruleset, paths: list[Path]) -> None:
 
 
 def allow_write(rs: Ruleset, paths: list[Path]) -> None:
+    """Grant write access for the given paths within the ruleset."""
     for path in paths:
         if not path.exists():
             continue
@@ -83,6 +89,7 @@ def allow_write(rs: Ruleset, paths: list[Path]) -> None:
 
 
 def sandbox(readable_paths: list[Path], writable_paths: list[Path], include_defaults: bool = False) -> None:
+    """Apply a Landlock sandbox with the requested readable and writable paths."""
     rs = Ruleset()
 
     if include_defaults:
@@ -102,6 +109,7 @@ def sandbox(readable_paths: list[Path], writable_paths: list[Path], include_defa
 
 
 def main() -> None:
+    """CLI entrypoint for running a command inside the filesystem sandbox."""
     parser = argparse.ArgumentParser(
         description="Run a command in a sandboxed environment with restricted filesystem access"
     )

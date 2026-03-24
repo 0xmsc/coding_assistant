@@ -17,10 +17,12 @@ SYSTEM_PROMPT_TEMPLATE = """
 
 
 def build_system_prompt(*, instructions: str) -> str:
+    """Render the top-level system prompt for a new transcript."""
     return SYSTEM_PROMPT_TEMPLATE.format(instructions_section=_render_instructions_section(instructions))
 
 
 def compact_history(history: Sequence[BaseMessage], summary: str) -> list[BaseMessage]:
+    """Replace prior turns with a summary while keeping the original system prompt."""
     if not history:
         raise RuntimeError("History is empty.")
 
@@ -35,6 +37,7 @@ def compact_history(history: Sequence[BaseMessage], summary: str) -> list[BaseMe
 
 
 def _render_instructions_section(instructions: str) -> str:
+    """Render the optional instructions section only when it has content."""
     cleaned = instructions.strip()
     if not cleaned:
         return ""

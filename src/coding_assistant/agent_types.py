@@ -11,6 +11,8 @@ AgentStatus = Literal["awaiting_user", "failed"]
 
 @dataclass(slots=True)
 class AgentRunResult:
+    """Terminal result returned by one `run_agent` invocation."""
+
     history: list[BaseMessage]
     status: AgentStatus
     error: str | None = None

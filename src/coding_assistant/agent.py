@@ -29,17 +29,21 @@ from coding_assistant.tools.builtin import (
 
 
 class _ProgressCallbacks(NullProgressCallbacks):
+    """Bridge streaming content chunks into the simple `on_delta` callback."""
+
     def __init__(self, on_delta: Callable[[str], None] | None) -> None:
         self._on_delta = on_delta
         self.saw_content = False
 
     def on_content_chunk(self, chunk: str) -> None:
+        """Forward assistant text chunks and remember that output was streamed."""
         self.saw_content = True
         if self._on_delta is not None:
             self._on_delta(chunk)
 
 
 def _parse_tool_call_arguments(tool_call: ToolCall) -> tuple[dict[str, Any] | None, str | None]:
+    """Decode tool arguments into a JSON object or return a user-visible error."""
     try:
         parsed = json.loads(tool_call.function.arguments)
     except JSONDecodeError as exc:
@@ -50,6 +54,7 @@ def _parse_tool_call_arguments(tool_call: ToolCall) -> tuple[dict[str, Any] | No
 
 
 def _compose_child_instructions(request: LaunchAgentSchema) -> str | None:
+    """Combine optional sub-agent instructions into one instruction block."""
     parts: list[str] = []
     if request.instructions:
         parts.append(request.instructions.strip())
@@ -61,10 +66,12 @@ def _compose_child_instructions(request: LaunchAgentSchema) -> str | None:
 
 
 def _format_run_instructions(instructions: str) -> str:
+    """Wrap ad-hoc instructions in a heading before injecting them into history."""
     return f"# Run-specific instructions\n\n{instructions.strip()}"
 
 
 def _build_child_history(history: Sequence[BaseMessage], request: LaunchAgentSchema) -> list[BaseMessage]:
+    """Create the minimal transcript needed to run a launched sub-agent."""
     child_history: list[BaseMessage] = []
     if history and isinstance(history[0], SystemMessage):
         child_history.append(history[0])
@@ -77,6 +84,7 @@ def _build_child_history(history: Sequence[BaseMessage], request: LaunchAgentSch
 
 
 def _last_assistant_text(history: Sequence[BaseMessage]) -> str | None:
+    """Return the latest plain-text assistant reply from a transcript."""
     for message in reversed(history):
         if isinstance(message, AssistantMessage) and isinstance(message.content, str):
             return message.content
@@ -84,6 +92,7 @@ def _last_assistant_text(history: Sequence[BaseMessage]) -> str | None:
 
 
 def _build_tools(tools: Sequence[Tool], execute_child: Callable[[LaunchAgentSchema], Any]) -> list[Tool]:
+    """Add built-in orchestration tools and reject duplicate tool names."""
     builtin_tools: list[Tool] = [
         CompactConversationTool(),
         LaunchAgentTool(execute_child=execute_child),
@@ -102,6 +111,7 @@ def _build_tools(tools: Sequence[Tool], execute_child: Callable[[LaunchAgentSche
 
 
 def _should_wait_for_user(history: Sequence[BaseMessage]) -> bool:
+    """Return true when the transcript already ends in assistant-owned output."""
     return history[-1].role not in {"user", "tool"}
 
 
@@ -115,6 +125,7 @@ async def run_agent(
     completer: Any = openai_complete,
     on_delta: Callable[[str], None] | None = None,
 ) -> AgentRunResult:
+    """Run the agent loop until it yields back to the caller or fails."""
     current_history = list(history)
     if not current_history:
         raise ValueError("run_agent requires a non-empty history.")
@@ -125,6 +136,7 @@ async def run_agent(
         return AgentRunResult(history=current_history, status="awaiting_user")
 
     async def execute_child(request: LaunchAgentSchema) -> str:
+        """Run a launched sub-agent and collapse its outcome into plain text."""
         child_result = await run_agent(
             history=_build_child_history(current_history, request),
             model=(expert_model or model) if request.expert_knowledge else model,

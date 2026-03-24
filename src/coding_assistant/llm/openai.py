@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_base_url_and_api_key() -> tuple[str, str]:
+    """Resolve the API base URL and key from the configured provider env vars."""
     if os.environ.get("OPENROUTER_API_KEY"):
         return ("https://openrouter.ai/api/v1", os.environ["OPENROUTER_API_KEY"])
     if os.environ.get("OPENAI_BASE_URL"):
@@ -41,6 +42,7 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
 
 
 def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
+    """Collapse streamed provider chunks into one assistant message."""
     full_content = ""
     full_reasoning = ""
     full_tool_calls: dict[int, dict[str, Any]] = {}
@@ -121,6 +123,7 @@ def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
 
 
 def _extract_usage(chunks: list[dict[str, Any]]) -> Usage | None:
+    """Read usage information from the final streamed chunk when present."""
     if not chunks:
         return None
 
@@ -133,6 +136,7 @@ def _extract_usage(chunks: list[dict[str, Any]]) -> Usage | None:
 
 
 def _prepare_messages(messages: Sequence[BaseMessage]) -> list[dict[str, Any]]:
+    """Convert internal messages into the provider request payload shape."""
     result = [message_to_dict(m) for m in messages]
     for m in result:
         if "provider_specific_fields" in m:
@@ -149,6 +153,7 @@ async def _try_completion(
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
 ) -> Completion:
+    """Perform one streaming chat completion request against the provider."""
     base_url, api_key = _get_base_url_and_api_key()
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -226,6 +231,7 @@ async def _try_completion_with_retry(
     reasoning_effort: Literal["low", "medium", "high"] | None,
     callbacks: ProgressCallbacks,
 ) -> Completion:
+    """Retry transient HTTP failures before surfacing the completion error."""
     max_retries = 5
     for attempt in range(max_retries):
         try:
@@ -246,6 +252,7 @@ async def _try_completion_with_retry(
 def _parse_model_and_reasoning(
     model: str,
 ) -> tuple[str, Literal["low", "medium", "high"] | None]:
+    """Split `model (effort)` syntax into the provider model and reasoning effort."""
     s = model.strip()
     m = re.match(r"^(.+?) \(([^)]*)\)$", s)
 
@@ -269,6 +276,7 @@ async def complete(
     tools: Sequence[ToolDefinition],
     callbacks: ProgressCallbacks,
 ) -> Completion:
+    """Run a streamed OpenAI-compatible completion for the current transcript."""
     try:
         model, reasoning_effort = _parse_model_and_reasoning(model)
         return await _try_completion_with_retry(messages, tools, model, reasoning_effort, callbacks)

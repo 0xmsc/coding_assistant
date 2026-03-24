@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MCPServer:
+    """Live MCP server connection plus its surfaced metadata."""
+
     name: str
     client: Client[Any]
     instructions: str | None = None
@@ -26,6 +28,8 @@ class MCPServer:
 
 
 class MCPWrappedTool(Tool):
+    """Expose one MCP tool through the local `Tool` interface."""
+
     def __init__(self, client: Client[Any], server_name: str, tool: Any, prefix: str | None = None) -> None:
         self._client = client
         self._server_name = server_name
@@ -33,17 +37,21 @@ class MCPWrappedTool(Tool):
         self._prefix = prefix
 
     def name(self) -> str:
+        """Return the tool name, including any configured server prefix."""
         if self._prefix:
             return f"{self._prefix}{self._tool.name}"
         return str(self._tool.name)
 
     def description(self) -> str:
+        """Return the MCP tool description as plain text."""
         return str(self._tool.description or "")
 
     def parameters(self) -> dict[str, Any]:
+        """Return the MCP tool input schema."""
         return cast(dict[str, Any], self._tool.inputSchema)
 
     async def execute(self, parameters: dict[str, Any]) -> str:
+        """Call the remote MCP tool and unwrap its single text response."""
         result = await self._client.call_tool(self._tool.name, parameters)
 
         if len(result.content) != 1:
@@ -57,6 +65,7 @@ class MCPWrappedTool(Tool):
 
 
 async def get_mcp_wrapped_tools(mcp_servers: list[MCPServer]) -> list[Tool]:
+    """List and wrap all tools exposed by the active MCP servers."""
     wrapped: list[Tool] = []
     names: set[str] = set()
     for server in mcp_servers:
@@ -92,6 +101,7 @@ DEFAULT_VARS = [
 
 
 def get_default_env() -> dict[str, str]:
+    """Return the safe default environment passed through to MCP subprocesses."""
     default_env: dict[str, str] = dict()
     for var in DEFAULT_VARS:
         if var in os.environ:
@@ -105,6 +115,7 @@ async def _get_mcp_server(
     config: StdioMCPServer | RemoteMCPServer,
     prefix: str | None = None,
 ) -> AsyncGenerator[MCPServer, None]:
+    """Open and initialize one MCP server connection."""
     client = Client(config.to_transport(), name=name)
     async with client:
         result = await client.initialize()
@@ -169,6 +180,7 @@ async def get_mcp_servers_from_config(
 
 
 async def print_mcp_tools(mcp_servers: list[MCPServer]) -> None:
+    """Pretty-print the available MCP tools for inspection in the CLI."""
     console = Console()
 
     if not mcp_servers:
