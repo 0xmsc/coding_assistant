@@ -102,19 +102,3 @@ class DefaultAnswerUI(UI):
         """Return a canned free-form input in non-interactive mode."""
         logger.info("Skipping user input for generic prompt")
         return "UI is not available. Assume the user provided the most sensible input."
-
-
-class NullUI(UI):
-    """UI implementation that fails on every attempted interaction."""
-
-    async def ask(self, prompt_text: str, default: str | None = None) -> str:
-        """Reject text prompts when no UI is available."""
-        raise RuntimeError("No UI available")
-
-    async def confirm(self, prompt_text: str) -> bool:
-        """Reject confirmations when no UI is available."""
-        raise RuntimeError("No UI available")
-
-    async def prompt(self, words: list[str] | None = None) -> str:
-        """Reject generic prompts when no UI is available."""
-        raise RuntimeError("No UI available")

@@ -1,10 +1,10 @@
 # Coding Assistant
 
-Coding Assistant is a Python-based, agent-orchestrated CLI and embeddable library for coding workflows. It can plan, launch sub-agents, use MCP tools (filesystem, web fetch/search, Context7, Tavily, etc.), run inside a sandbox, and keep resumable history.
+Coding Assistant is a Python-based CLI and embeddable library for coding workflows. It can use MCP tools (filesystem, web fetch/search, Context7, Tavily, etc.), run inside a sandbox, and keep resumable history.
 
 ## Key Features
 
-- Simple `run_agent(history=...)` embedding API
+- Simple `run_agent(history=...)` streaming embedding API
 - Caller-owned history with pure `compact_history(...)` transcript compaction
 - Resumable sessions and conversation summaries stored per-project
 - Built-in MCP server with shell, Python, filesystem, and TODO tools
@@ -12,7 +12,7 @@ Coding Assistant is a Python-based, agent-orchestrated CLI and embeddable librar
 - Landlock-based filesystem sandbox with readable/writable allowlists
 - Prompt-toolkit powered interactive CLI
 - Shell/tool confirmation patterns to guard dangerous operations
-- Chat mode enabled by default for interactive conversations
+- Interactive mode enabled by default for conversations
 - Configurable via CLI flags (models, instructions, sandbox, MCP, etc.)
 
 ## Requirements
@@ -61,14 +61,16 @@ coding-assistant --help
 
 ## Embedding
 
-The primary Python surface is `run_agent(...)`. You pass in history, model, and executable tools; the function runs the tool loop internally and returns the updated history.
+The primary Python surface is `run_agent(...)`. You pass in history, model, and executable tools; the function streams assistant output and stops at the next external boundary.
 
 ```python
 import asyncio
 from typing import Any
 
 from coding_assistant import run_agent
+from coding_assistant.agent import AwaitingToolsEvent, AwaitingUserEvent, ContentDeltaEvent
 from coding_assistant.history import build_system_prompt
+from coding_assistant.llm.types import ToolMessage
 from coding_assistant.llm.types import SystemMessage, Tool, UserMessage
 
 
@@ -96,21 +98,30 @@ async def main() -> None:
         UserMessage(content="Say hello in one sentence."),
     ]
 
-    result = await run_agent(
+    async for event in run_agent(
         history=history,
         model="openai/gpt-5-mini",
         tools=[LookupDocsTool()],
-        on_delta=lambda chunk: print(chunk, end="", flush=True),
-    )
-
-    print(result.status)
-    print(result.history[-1])
+    ):
+        if isinstance(event, ContentDeltaEvent):
+            print(event.content, end="", flush=True)
+        elif isinstance(event, AwaitingUserEvent) and event.message is not None:
+            history.append(event.message)
+        elif isinstance(event, AwaitingToolsEvent):
+            history.append(event.message)
+            history.append(
+                ToolMessage(
+                    tool_call_id=event.message.tool_calls[0].id,
+                    name="lookup_docs",
+                    content="Documentation for: hello",
+                )
+            )
 
 
 asyncio.run(main())
 ```
 
-`run_agent(...)` returns updated history plus a small status such as `awaiting_user` or `failed`. To continue the conversation, append another `UserMessage` and call it again.
+`run_agent(...)` is an async generator. It streams content chunks and then yields a boundary event such as `AwaitingUserEvent` or `AwaitingToolsEvent`. To continue after tools run, append `ToolMessage`s to history and call it again.
 
 ### Advanced Examples
 
@@ -132,7 +143,6 @@ Notes:
 ## Usage Highlights
 
 - `--model` Select model for the orchestrator agent (required).
-- `--expert-model` Select model for expert tasks (defaults to the same value as `--model`).
 - `--tool-confirmation-patterns` / `--shell-confirmation-patterns` Regex patterns to require user confirmation before tool/shell execution.
 - `--resume` / `--resume-file` Resume from the latest/specific orchestrator history in `.coding_assistant/history/`.
 - `--instructions` Provide extra instructions that are composed with defaults. Can be repeated.
@@ -140,10 +150,10 @@ Notes:
 - `--trace` / `--no-trace` Enable/disable tracing of model requests/responses.
 - `--sandbox` / `--no-sandbox` Enable/disable Landlock-based sandboxing (default: **enabled**).
 - `--wait-for-debugger` Wait for a debugger (debugpy) to attach on port 1234.
-- `--ask-user` / `--no-ask-user` Enable/disable asking the user for input in runs started with `--task` (default: **enabled**).
+- `--ask-user` / `--no-ask-user` Enable/disable follow-up user prompts in runs started with `--task` (default: **enabled**).
 - `--skills-directories` Paths to directories containing Agent Skills (with SKILL.md files).
 
-Note: Chat mode is enabled by default when no `--task` is provided.
+Note: Interactive prompting is enabled by default when no `--task` is provided.
 
 Run `coding-assistant --help` to see all options.
 
