@@ -7,19 +7,22 @@ import json
 import logging
 import os
 import re
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import Literal, cast, Any
 
 import httpx
 from httpx_sse import aconnect_sse, SSEError
 
-from coding_assistant.llm.adapters import get_tools
 from coding_assistant.llm.types import (
     Completion,
+    CompletionEvent,
+    ContentDeltaEvent,
     Usage,
     BaseMessage,
-    ProgressCallbacks,
+    LLMEvent,
+    ReasoningDeltaEvent,
     StatusLevel,
+    StatusEvent,
     ToolDefinition,
     ToolCall,
     FunctionCall,
@@ -29,6 +32,33 @@ from coding_assistant.llm.types import (
 from coding_assistant.trace import trace_json
 
 logger = logging.getLogger(__name__)
+
+
+def fix_input_schema(input_schema: dict[str, Any]) -> None:
+    """Remove schema features that some OpenAI-compatible providers reject."""
+    for prop in input_schema.get("properties", {}).values():
+        fmt = prop.get("format")
+        if fmt == "uri":
+            prop.pop("format", None)
+
+
+async def _get_tools_payload(tools: Sequence[ToolDefinition]) -> list[dict[str, Any]]:
+    """Convert tool definitions into the provider request payload."""
+    result: list[dict[str, Any]] = []
+    for tool in tools:
+        params = tool.parameters()
+        fix_input_schema(params)
+        result.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name(),
+                    "description": tool.description(),
+                    "parameters": params,
+                },
+            }
+        )
+    return result
 
 
 def _get_base_url_and_api_key() -> tuple[str, str]:
@@ -151,8 +181,7 @@ async def _try_completion(
     tools: Sequence[ToolDefinition],
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
-    callbacks: ProgressCallbacks,
-) -> Completion:
+) -> AsyncIterator[LLMEvent]:
     """Perform one streaming chat completion request against the provider."""
     base_url, api_key = _get_base_url_and_api_key()
     headers = {
@@ -160,7 +189,7 @@ async def _try_completion(
         "Content-Type": "application/json",
     }
     provider_messages = _prepare_messages(messages)
-    provider_tools = await get_tools(tools)
+    provider_tools = await _get_tools_payload(tools)
 
     payload = {
         "model": model,
@@ -188,18 +217,16 @@ async def _try_completion(
                     delta = chunk["choices"][0]["delta"]
 
                     if (reasoning := delta.get("reasoning")) or (reasoning := delta.get("reasoning_content")):
-                        callbacks.on_reasoning_chunk(reasoning)
+                        yield ReasoningDeltaEvent(content=reasoning)
 
                     if content := delta.get("content"):
-                        callbacks.on_content_chunk(content)
+                        yield ContentDeltaEvent(content=content)
             except SSEError as e:
                 response = source.response
                 await response.aread()
                 content = response.text
                 logger.error(f"SSE error during completion: {e}, response {response}, {content}")
                 raise
-
-            callbacks.on_chunks_end()
 
             # Merge all chunks into final message
             message = _merge_chunks(chunks)
@@ -218,34 +245,37 @@ async def _try_completion(
 
     trace_json("completion.json5", trace_data)
 
-    return Completion(
-        message=message,
-        usage=usage,
+    yield CompletionEvent(
+        completion=Completion(
+            message=message,
+            usage=usage,
+        )
     )
 
 
-async def _try_completion_with_retry(
+async def stream_completion(
     messages: Sequence[BaseMessage],
     tools: Sequence[ToolDefinition],
     model: str,
-    reasoning_effort: Literal["low", "medium", "high"] | None,
-    callbacks: ProgressCallbacks,
-) -> Completion:
+) -> AsyncIterator[LLMEvent]:
     """Retry transient HTTP failures before surfacing the completion error."""
+    model, reasoning_effort = _parse_model_and_reasoning(model)
+
     max_retries = 5
     for attempt in range(max_retries):
         try:
-            return await _try_completion(messages, tools, model, reasoning_effort, callbacks)
+            async for event in _try_completion(messages, tools, model, reasoning_effort):
+                yield event
+            return
         except httpx.HTTPError as e:
             if attempt == max_retries - 1:
                 raise
             logger.warning(f"Retry {attempt + 1}/{max_retries} due to {e} for model {model}")
-            callbacks.on_status_message(
-                f"Retrying LLM request (attempt {attempt + 1}/{max_retries}) due to {e}",
+            yield StatusEvent(
+                message=f"Retrying LLM request (attempt {attempt + 1}/{max_retries}) due to {e}",
                 level=StatusLevel.WARNING,
             )
             await asyncio.sleep(0.5 + attempt)
-    raise RuntimeError("Unreachable")
 
 
 @functools.cache
@@ -267,19 +297,3 @@ def _parse_model_and_reasoning(
 
     effort = cast(Literal["low", "medium", "high"], effort)
     return base, effort
-
-
-async def complete(
-    messages: Sequence[BaseMessage],
-    *,
-    model: str,
-    tools: Sequence[ToolDefinition],
-    callbacks: ProgressCallbacks,
-) -> Completion:
-    """Run a streamed OpenAI-compatible completion for the current transcript."""
-    try:
-        model, reasoning_effort = _parse_model_and_reasoning(model)
-        return await _try_completion_with_retry(messages, tools, model, reasoning_effort, callbacks)
-    except Exception as e:
-        logger.error(f"Error during model completion (OpenAI): {e}, last messages: {messages[-5:]}")
-        raise e

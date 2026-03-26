@@ -7,9 +7,11 @@ from typing import Any, Awaitable, Callable, Sequence
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.llm.types import Tool
+from coding_assistant.llm.types import Tool, ToolDefinition
 
 logger = logging.getLogger(__name__)
+
+ToolExecutionResult = tuple[bool, str]
 
 
 class CompactConversationSchema(BaseModel):
@@ -35,55 +37,6 @@ class CompactConversationTool(Tool):
         return validated.summary
 
 
-class LaunchAgentSchema(BaseModel):
-    task: str = Field(description="The task to assign to the agent.")
-    expected_output: str | None = Field(
-        default=None,
-        description=(
-            "The expected output to return to the client. This includes the content but also "
-            "the format of the output (e.g. markdown)."
-        ),
-    )
-    instructions: str | None = Field(
-        default=None,
-        description=(
-            "Special instructions for the agent. The agent will do everything it can to follow these "
-            "instructions. If appropriate, it can forward relevant instructions to the agents it launches."
-        ),
-    )
-    expert_knowledge: bool = Field(
-        False,
-        description="Use an expert-level model when the task is difficult.",
-    )
-
-
-class LaunchAgentTool(Tool):
-    """Launch a nested agent run and return its text reply."""
-
-    def __init__(self, *, execute_child: Callable[[LaunchAgentSchema], Awaitable[str]]) -> None:
-        self._execute_child = execute_child
-
-    def name(self) -> str:
-        """Return the built-in tool name for launching sub-agents."""
-        return "launch_agent"
-
-    def description(self) -> str:
-        """Describe the sub-agent execution behavior exposed to the model."""
-        return (
-            "Launch a sub-agent to work on a well-scoped task. "
-            "The sub-agent replies using normal assistant messages, and that reply is returned to the caller."
-        )
-
-    def parameters(self) -> dict[str, Any]:
-        """Return the schema for sub-agent launch requests."""
-        return LaunchAgentSchema.model_json_schema()
-
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        """Validate and execute one sub-agent request."""
-        validated = LaunchAgentSchema.model_validate(parameters)
-        return await self._execute_child(validated)
-
-
 class RedirectToolCallSchema(BaseModel):
     tool_name: str = Field(description="The name of the tool to call.")
     tool_args: dict[str, Any] = Field(description="The arguments to pass to the tool.")
@@ -96,8 +49,14 @@ class RedirectToolCallSchema(BaseModel):
 class RedirectToolCallTool(Tool):
     """Run another tool and persist its output to a file."""
 
-    def __init__(self, *, tools: Sequence[Tool]) -> None:
+    def __init__(
+        self,
+        *,
+        tools: Sequence[ToolDefinition],
+        execute_tool: Callable[[str, dict[str, Any]], Awaitable[ToolExecutionResult]],
+    ) -> None:
         self._tools = list(tools)
+        self._execute_tool = execute_tool
 
     def name(self) -> str:
         """Return the built-in tool name for redirected tool output."""
@@ -124,15 +83,17 @@ class RedirectToolCallTool(Tool):
 
         if tool_name == self.name():
             return "Error: Cannot call redirect_tool_call recursively."
+        if tool_name == "compact_conversation":
+            return "Error: Cannot redirect compact_conversation."
 
         target_tool = next((tool for tool in self._tools if tool.name() == tool_name), None)
         if target_tool is None:
             return f"Error: Tool '{tool_name}' not found or cannot be redirected."
 
         try:
-            result = await target_tool.execute(tool_args)
-            if not isinstance(result, str):
-                return f"Error: Tool '{tool_name}' did not return text."
+            success, result = await self._execute_tool(tool_name, tool_args)
+            if not success:
+                return result
 
             if output_file:
                 path = Path(output_file)
