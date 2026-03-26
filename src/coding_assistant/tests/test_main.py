@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from coding_assistant.adapters.cli import build_default_agent_config
+from coding_assistant.cli import build_default_agent_config
 from coding_assistant.main import main, parse_args
 
 
@@ -36,7 +36,7 @@ def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
     args.mcp_env = []
     args.instructions = []
 
-    with patch("coding_assistant.adapters.cli.os.getcwd", return_value=str(tmp_path)):
+    with patch("coding_assistant.cli.os.getcwd", return_value=str(tmp_path)):
         config = build_default_agent_config(args)
 
     assert config.working_directory == tmp_path

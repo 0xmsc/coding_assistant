@@ -6,7 +6,7 @@ from pathlib import Path
 
 import debugpy
 
-from coding_assistant.adapters.cli import run_cli
+from coding_assistant.cli import run_cli
 from coding_assistant.paths import get_log_file
 from coding_assistant.trace import enable_tracing, get_default_trace_dir
 
@@ -40,7 +40,9 @@ def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the coding assistant executable."""
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant CLI")
     parser.add_argument(
-        "--task", type=str, help="Task for the orchestrator agent. If provided, the agent runs in autonomous mode."
+        "--task",
+        type=str,
+        help="Initial task to seed the conversation before the agent runs.",
     )
     parser.add_argument(
         "--resume",
@@ -60,7 +62,6 @@ def parse_args() -> argparse.Namespace:
         help="Print the instructions that will be given to the orchestrator agent and exit.",
     )
     parser.add_argument("--model", type=str, required=True, help="Model to use for the orchestrator agent.")
-    parser.add_argument("--expert-model", type=str, default=None, help="Expert model to use.")
     parser.add_argument(
         "--instructions",
         nargs="*",

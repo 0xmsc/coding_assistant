@@ -10,7 +10,7 @@ async def test_mcp_wrapped_tool_name_without_prefix() -> None:
     mock_tool = MagicMock()
     mock_tool.name = "my_tool"
 
-    wrapped = MCPWrappedTool(client=mock_client, server_name="test_server", tool=mock_tool, prefix=None)
+    wrapped = MCPWrappedTool(client=mock_client, tool=mock_tool, prefix=None)
 
     # Assert
     assert wrapped.name() == "my_tool"
@@ -23,7 +23,7 @@ async def test_mcp_wrapped_tool_name_with_prefix() -> None:
     mock_tool = MagicMock()
     mock_tool.name = "my_tool"
 
-    wrapped = MCPWrappedTool(client=mock_client, server_name="test_server", tool=mock_tool, prefix="pre_")
+    wrapped = MCPWrappedTool(client=mock_client, tool=mock_tool, prefix="pre_")
 
     # Assert
     assert wrapped.name() == "pre_my_tool"

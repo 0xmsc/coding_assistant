@@ -7,12 +7,16 @@ import httpx
 from coding_assistant.llm import openai as openai_model
 from coding_assistant.llm.types import (
     Completion,
+    CompletionEvent,
+    ContentDeltaEvent,
+    ReasoningDeltaEvent,
+    StatusEvent,
+    StatusLevel,
     Usage,
     AssistantMessage,
     ToolCall,
     FunctionCall,
     UserMessage,
-    NullProgressCallbacks,
 )
 from coding_assistant.llm.openai import (
     _merge_chunks,
@@ -20,25 +24,6 @@ from coding_assistant.llm.openai import (
     _get_base_url_and_api_key,
     _prepare_messages,
 )
-
-
-class _CB(NullProgressCallbacks):
-    """Test callback tracker."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.chunks: Any = []
-        self.end = False
-        self.reasoning: Any = []
-
-    def on_content_chunk(self, chunk: str) -> Any:
-        self.chunks.append(chunk)
-
-    def on_reasoning_chunk(self, chunk: str) -> Any:
-        self.reasoning.append(chunk)
-
-    def on_chunks_end(self) -> Any:
-        self.end = True
 
 
 class FakeSource:
@@ -716,8 +701,12 @@ class TestHelperFunctions:
         assert "provider_specific_fields" not in prepared[1]
 
 
+async def collect_events(*, messages: list[UserMessage], model: str, tools: Any) -> list[Any]:
+    return [event async for event in openai_model.stream_completion(messages, model=model, tools=tools)]
+
+
 class TestOpenAIComplete:
-    """Integration tests for the complete() function."""
+    """Integration tests for the stream_completion() function."""
 
     @pytest.mark.asyncio
     async def test_openai_complete_streaming_happy_path(self, monkeypatch: Any) -> None:
@@ -730,13 +719,18 @@ class TestOpenAIComplete:
         mock_ac = MagicMock(return_value=mock_context_instance)
         monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
 
-        cb = _CB()
         msgs = [UserMessage(content="Hello")]
-        ret = await openai_model.complete(msgs, model="gpt-4o", tools=[], callbacks=cb)
-        assert ret.message.content == "Hello world"
-        assert ret.message.tool_calls == []
-        assert cb.chunks == ["Hello", " world"]
-        assert cb.end is True
+        events = await collect_events(messages=msgs, model="gpt-4o", tools=[])
+        assert events == [
+            ContentDeltaEvent(content="Hello"),
+            ContentDeltaEvent(content=" world"),
+            CompletionEvent(
+                completion=Completion(
+                    message=AssistantMessage(content="Hello world", provider_specific_fields={"reasoning_details": []}),
+                    usage=None,
+                )
+            ),
+        ]
 
     @pytest.mark.asyncio
     async def test_openai_complete_tool_calls(self, monkeypatch: Any) -> None:
@@ -764,12 +758,12 @@ class TestOpenAIComplete:
         mock_ac = MagicMock(return_value=mock_context_instance)
         monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
 
-        cb = _CB()
-
         msgs = [UserMessage(content="What's the weather in New York")]
         tools: Any = []
 
-        ret = await openai_model.complete(msgs, model="gpt-4o", tools=tools, callbacks=cb)
+        events = await collect_events(messages=msgs, model="gpt-4o", tools=tools)
+        assert isinstance(events[-1], CompletionEvent)
+        ret = events[-1].completion
 
         assert ret.message.tool_calls[0].id == "call_123"
         assert ret.message.tool_calls[0].function.name == "get_weather"
@@ -787,12 +781,17 @@ class TestOpenAIComplete:
         mock_ac = MagicMock(return_value=mock_context_instance)
         monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
 
-        cb = _CB()
         msgs = [UserMessage(content="Reason")]
-        ret = await openai_model.complete(msgs, model="o1-preview", tools=[], callbacks=cb)
+        events = await collect_events(messages=msgs, model="o1-preview", tools=[])
+        assert events[:-1] == [
+            ReasoningDeltaEvent(content="Thinking"),
+            ReasoningDeltaEvent(content=" step by step"),
+            ContentDeltaEvent(content="Answer"),
+        ]
+        assert isinstance(events[-1], CompletionEvent)
+        ret = events[-1].completion
         assert ret.message.content == "Answer"
         assert ret.message.reasoning_content == "Thinking step by step"
-        assert cb.reasoning == ["Thinking", " step by step"]
 
     @pytest.mark.asyncio
     async def test_openai_complete_with_reasoning_effort(self, monkeypatch: Any) -> None:
@@ -809,12 +808,11 @@ class TestOpenAIComplete:
 
         monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
 
-        cb = _CB()
         msgs = [UserMessage(content="Reason")]
         # Mock _parse_model_and_reasoning
         monkeypatch.setattr("coding_assistant.llm.openai._parse_model_and_reasoning", lambda m: ("o1", "high"))
 
-        await openai_model.complete(msgs, model="o1:high", tools=[], callbacks=cb)
+        await collect_events(messages=msgs, model="o1:high", tools=[])
 
         assert cast(Any, captured_payload)["model"] == "o1"
         assert cast(Any, captured_payload)["reasoning_effort"] == "high"
@@ -838,10 +836,9 @@ class TestOpenAIComplete:
 
         monkeypatch.setattr("asyncio.sleep", mocked_sleep)
 
-        cb = _CB()
         # Now that we have max_retries = 5, it should call 5 times before failing
         with pytest.raises(httpx.ReadTimeout):
-            await openai_model.complete([UserMessage(content="hi")], model="gpt-4o", tools=[], callbacks=cb)
+            await collect_events(messages=[UserMessage(content="hi")], model="gpt-4o", tools=[])
 
         assert call_count == 5
 
@@ -866,8 +863,11 @@ class TestOpenAIComplete:
 
         monkeypatch.setattr("asyncio.sleep", mocked_sleep)
 
-        cb = _CB()
-        ret = await openai_model.complete([UserMessage(content="hi")], model="gpt-4o", tools=[], callbacks=cb)
-
-        assert ret.message.content == "Recovered"
+        events = await collect_events(messages=[UserMessage(content="hi")], model="gpt-4o", tools=[])
+        assert events[0] == StatusEvent(
+            message="Retrying LLM request (attempt 1/5) due to Timeout",
+            level=StatusLevel.WARNING,
+        )
+        assert isinstance(events[-1], CompletionEvent)
+        assert events[-1].completion.message.content == "Recovered"
         assert call_count == 2

@@ -1,9 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Literal, Optional, Protocol
-
-
+from typing import Any, Literal, Optional, Protocol, TypeAlias
 from dacite import from_dict
 
 
@@ -87,90 +85,6 @@ class StatusLevel(Enum):
     ERROR = "error"
 
 
-class ProgressCallbacks(ABC):
-    """Abstract interface for agent callbacks."""
-
-    @abstractmethod
-    def on_status_message(self, message: str, level: StatusLevel = StatusLevel.INFO) -> None:
-        """Handle status messages from the system."""
-        pass
-
-    @abstractmethod
-    def on_user_message(self, context_name: str, message: UserMessage, *, force: bool = False) -> None:
-        """Handle messages with role: user."""
-        pass
-
-    @abstractmethod
-    def on_assistant_message(self, context_name: str, message: AssistantMessage, *, force: bool = False) -> None:
-        """Handle messages with role: assistant."""
-        pass
-
-    @abstractmethod
-    def on_tool_start(self, context_name: str, tool_call: ToolCall, arguments: dict[str, Any]) -> None:
-        """Handle tool start events."""
-        pass
-
-    @abstractmethod
-    def on_tool_message(
-        self, context_name: str, message: ToolMessage, tool_name: str, arguments: dict[str, Any]
-    ) -> None:
-        """Handle messages with role: tool."""
-        pass
-
-    @abstractmethod
-    def on_content_chunk(self, chunk: str) -> None:
-        """Handle LLM content chunks."""
-        pass
-
-    @abstractmethod
-    def on_reasoning_chunk(self, chunk: str) -> None:
-        """Handle LLM reasoning chunks."""
-        pass
-
-    @abstractmethod
-    def on_chunks_end(self) -> None:
-        """Handle end of LLM chunks."""
-        pass
-
-
-class NullProgressCallbacks(ProgressCallbacks):
-    """Null object implementation that does nothing."""
-
-    def on_status_message(self, message: str, level: StatusLevel = StatusLevel.INFO) -> None:
-        """Ignore status updates."""
-        pass
-
-    def on_user_message(self, context_name: str, message: UserMessage, *, force: bool = False) -> None:
-        """Ignore user-message notifications."""
-        pass
-
-    def on_assistant_message(self, context_name: str, message: AssistantMessage, *, force: bool = False) -> None:
-        """Ignore assistant-message notifications."""
-        pass
-
-    def on_tool_start(self, context_name: str, tool_call: ToolCall, arguments: dict[str, Any]) -> None:
-        """Ignore tool-start notifications."""
-        pass
-
-    def on_tool_message(
-        self, context_name: str, message: ToolMessage, tool_name: str, arguments: dict[str, Any]
-    ) -> None:
-        """Ignore tool result notifications."""
-        pass
-
-    def on_content_chunk(self, chunk: str) -> None:
-        """Ignore streamed content chunks."""
-        pass
-
-    def on_reasoning_chunk(self, chunk: str) -> None:
-        """Ignore streamed reasoning chunks."""
-        pass
-
-    def on_chunks_end(self) -> None:
-        """Ignore the end-of-stream notification."""
-        pass
-
-
 @dataclass(frozen=True)
 class Usage:
     tokens: int
@@ -181,6 +95,38 @@ class Usage:
 class Completion:
     message: AssistantMessage
     usage: Optional[Usage] = None
+
+
+@dataclass(frozen=True)
+class ContentDeltaEvent:
+    """One streamed content chunk from the LLM."""
+
+    content: str
+
+
+@dataclass(frozen=True)
+class ReasoningDeltaEvent:
+    """One streamed reasoning chunk from the LLM."""
+
+    content: str
+
+
+@dataclass(frozen=True)
+class StatusEvent:
+    """One non-content status update from the LLM layer."""
+
+    message: str
+    level: StatusLevel = StatusLevel.INFO
+
+
+@dataclass(frozen=True)
+class CompletionEvent:
+    """Final completion payload after all chunks have been read."""
+
+    completion: Completion
+
+
+LLMEvent: TypeAlias = ContentDeltaEvent | ReasoningDeltaEvent | StatusEvent | CompletionEvent
 
 
 def message_from_dict(d: dict[str, Any]) -> BaseMessage:

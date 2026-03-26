@@ -2,8 +2,7 @@ import pytest
 from pydantic import ValidationError
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from coding_assistant.config import MCPServerConfig
-from coding_assistant.tools.mcp import get_mcp_servers_from_config
+from coding_assistant.tools.mcp import MCPServerConfig, get_mcp_servers_from_config
 from fastmcp.mcp_config import StdioMCPServer, RemoteMCPServer
 
 

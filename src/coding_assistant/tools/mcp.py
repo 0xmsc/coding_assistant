@@ -7,14 +7,34 @@ from typing import Any, AsyncGenerator, cast
 
 from fastmcp import Client
 from fastmcp.mcp_config import RemoteMCPServer, StdioMCPServer
+from pydantic import BaseModel, Field, model_validator
 from rich.console import Console
 from rich.pretty import Pretty
 from rich.table import Table
 
 from coding_assistant.llm.types import Tool
-from coding_assistant.config import MCPServerConfig
 
 logger = logging.getLogger(__name__)
+
+
+class MCPServerConfig(BaseModel):
+    """Configuration for connecting to one MCP server."""
+
+    name: str
+    command: str | None = None
+    args: list[str] = Field(default_factory=list)
+    url: str | None = None
+    env: list[str] = Field(default_factory=list)
+    prefix: str | None = None
+
+    @model_validator(mode="after")
+    def check_command_or_url(self) -> "MCPServerConfig":
+        """Require exactly one connection backend: command or URL."""
+        if self.command and self.url:
+            raise ValueError(f"MCP server '{self.name}' cannot have both a command and a url.")
+        if not self.command and not self.url:
+            raise ValueError(f"MCP server '{self.name}' must have either a command or a url.")
+        return self
 
 
 @dataclass
@@ -30,9 +50,8 @@ class MCPServer:
 class MCPWrappedTool(Tool):
     """Expose one MCP tool through the local `Tool` interface."""
 
-    def __init__(self, client: Client[Any], server_name: str, tool: Any, prefix: str | None = None) -> None:
+    def __init__(self, client: Client[Any], tool: Any, prefix: str | None = None) -> None:
         self._client = client
-        self._server_name = server_name
         self._tool = tool
         self._prefix = prefix
 
@@ -73,7 +92,6 @@ async def get_mcp_wrapped_tools(mcp_servers: list[MCPServer]) -> list[Tool]:
         for tool in tools:
             wrapped_tool = MCPWrappedTool(
                 client=server.client,
-                server_name=server.name,
                 tool=tool,
                 prefix=server.prefix,
             )
