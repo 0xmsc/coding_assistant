@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import tempfile
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Sequence
@@ -8,10 +7,7 @@ from typing import Any, Awaitable, Callable, Sequence
 from pydantic import BaseModel, Field
 
 from coding_assistant.llm.types import Tool, ToolDefinition
-
-logger = logging.getLogger(__name__)
-
-ToolExecutionResult = tuple[bool, str]
+from coding_assistant.tool_policy import ToolApproved, ToolDenied, ToolExecutionResult
 
 
 class CompactConversationSchema(BaseModel):
@@ -90,20 +86,17 @@ class RedirectToolCallTool(Tool):
         if target_tool is None:
             return f"Error: Tool '{tool_name}' not found or cannot be redirected."
 
-        try:
-            success, result = await self._execute_tool(tool_name, tool_args)
-            if not success:
-                return result
+        result = await self._execute_tool(tool_name, tool_args)
+        if isinstance(result, ToolDenied):
+            return result.content
 
-            if output_file:
-                path = Path(output_file)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(result)
-                return f"Tool '{tool_name}' executed. Output redirected to {output_file}"
+        assert isinstance(result, ToolApproved)
+        if output_file:
+            path = Path(output_file)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(result.content)
+            return f"Tool '{tool_name}' executed. Output redirected to {output_file}"
 
-            with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
-                tmp.write(result)
-                return f"Tool '{tool_name}' executed. Output redirected to temporary file: {tmp.name}"
-        except Exception as exc:
-            logger.exception("Error executing tool '%s' via redirect_tool_call", tool_name)
-            return f"Error executing tool '{tool_name}': {exc}"
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
+            tmp.write(result.content)
+            return f"Tool '{tool_name}' executed. Output redirected to temporary file: {tmp.name}"

@@ -1,9 +1,11 @@
-import pytest
 import tempfile
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from coding_assistant.llm.types import Tool
+from coding_assistant.tool_policy import ToolApproved, ToolDenied
 from coding_assistant.tools.builtin import RedirectToolCallTool
 
 
@@ -49,12 +51,12 @@ class MockErrorTool(Tool):
         raise ValueError("Something went wrong")
 
 
-async def execute_tool(tool_name: str, tool_args: dict[str, Any], tools: list[Tool]) -> tuple[bool, str]:
+async def execute_tool(tool_name: str, tool_args: dict[str, Any], tools: list[Tool]) -> ToolApproved | ToolDenied:
     tool = next(tool for tool in tools if tool.name() == tool_name)
     result = await tool.execute(tool_args)
     if not isinstance(result, str):
-        return False, f"Error: Tool '{tool_name}' did not return text."
-    return True, result
+        return ToolDenied(content=f"Error: Tool '{tool_name}' did not return text.")
+    return ToolApproved(content=result)
 
 
 @pytest.mark.asyncio
@@ -91,11 +93,11 @@ async def test_redirect_to_nested_file() -> None:
 async def test_redirect_structured_result_error() -> None:
     mock = MockStructuredTool()
 
-    async def execute_struct(tool_name: str, tool_args: dict[str, Any]) -> tuple[bool, str]:
+    async def execute_struct(tool_name: str, tool_args: dict[str, Any]) -> ToolApproved | ToolDenied:
         result = await mock.execute(tool_args)
         if not isinstance(result, str):
-            return False, "Error: Tool 'mock_struct' did not return text."
-        return True, result
+            return ToolDenied(content="Error: Tool 'mock_struct' did not return text.")
+        return ToolApproved(content=result)
 
     redirect = RedirectToolCallTool(tools=[mock], execute_tool=execute_struct)
 
@@ -145,10 +147,11 @@ async def test_tool_not_found() -> None:
 async def test_redirect_tool_exception() -> None:
     mock = MockErrorTool()
 
-    async def execute_error(tool_name: str, tool_args: dict[str, Any]) -> tuple[bool, str]:
+    async def execute_error(tool_name: str, tool_args: dict[str, Any]) -> ToolApproved | ToolDenied:
+        del tool_name
         result = await mock.execute(tool_args)
-        return True, result
+        return ToolApproved(content=result)
 
     redirect = RedirectToolCallTool(tools=[mock], execute_tool=execute_error)
-    result = await redirect.execute({"tool_name": "mock_error", "tool_args": {}})
-    assert "Error executing tool 'mock_error': Something went wrong" in result
+    with pytest.raises(ValueError, match="Something went wrong"):
+        await redirect.execute({"tool_name": "mock_error", "tool_args": {}})
