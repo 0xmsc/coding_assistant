@@ -19,6 +19,7 @@ from coding_assistant.app.ui import DefaultAnswerUI, PromptToolkitUI, UI
 from coding_assistant.core.agent import AwaitingTools, execute_tool_calls, run_agent_until_boundary
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import (
+    AssistantMessage,
     BaseMessage,
     SystemMessage,
     Tool,
@@ -54,17 +55,60 @@ class DefaultAgentBundle:
     mcp_servers: list[MCPServer]
 
 
-class DeltaRenderer:
-    """Write streamed assistant text directly to stdout."""
+class ParagraphBuffer:
+    """Buffer streamed content until paragraph boundaries are safe to render."""
 
     def __init__(self) -> None:
+        self._buffer = ""
+
+    def _is_inside_code_fence(self, text: str) -> bool:
+        return text.count("```") % 2 != 0
+
+    def push(self, chunk: str) -> list[str]:
+        self._buffer += chunk
+        paragraphs: list[str] = []
+
+        search_from = 0
+        while (pos := self._buffer.find("\n\n", search_from)) != -1:
+            candidate = self._buffer[:pos]
+            if not self._is_inside_code_fence(candidate):
+                paragraphs.append(candidate)
+                self._buffer = self._buffer[pos + 2 :]
+                search_from = 0
+            else:
+                search_from = pos + 2
+
+        return paragraphs
+
+    def flush(self) -> str | None:
+        remaining = self._buffer.strip()
+        self._buffer = ""
+        return remaining if remaining else None
+
+
+class DeltaRenderer:
+    """Render streamed assistant text as markdown paragraphs."""
+
+    def __init__(self) -> None:
+        self._buffer = ParagraphBuffer()
         self.saw_content = False
 
     def on_delta(self, chunk: str) -> None:
-        """Render one streamed content chunk without buffering."""
+        """Render one streamed content chunk when a paragraph is complete."""
         self.saw_content = True
-        sys.stdout.write(chunk)
-        sys.stdout.flush()
+        for paragraph in self._buffer.push(chunk):
+            self._print_markdown(paragraph)
+
+    def finish(self) -> None:
+        """Flush any remaining buffered content at the end of a turn."""
+        if flushed := self._buffer.flush():
+            self._print_markdown(flushed)
+        if self.saw_content:
+            rich_print()
+
+    def _print_markdown(self, content: str) -> None:
+        rich_print()
+        rich_print(Markdown(content))
 
 
 def build_default_agent_config(args: Namespace) -> DefaultAgentConfig:
@@ -179,6 +223,17 @@ def _print_system_message(message: SystemMessage) -> None:
     rich_print(Panel(Markdown(message.content), title="System"))
 
 
+def _print_tool_calls(message: AssistantMessage) -> None:
+    """Render the names of tools the assistant is about to execute."""
+    tool_lines = []
+    for tool_call in message.tool_calls:
+        tool_name = tool_call.function.name or "<missing>"
+        tool_lines.append(f"- `{tool_name}`")
+
+    title = "Running Tool" if len(tool_lines) == 1 else "Running Tools"
+    rich_print(Panel.fit(Markdown("\n".join(tool_lines)), title=title, border_style="yellow"))
+
+
 async def _drive_agent(
     *,
     history: list[BaseMessage],
@@ -200,10 +255,10 @@ async def _drive_agent(
             on_content=renderer.on_delta,
         )
 
-        if renderer.saw_content:
-            renderer.on_delta("\n")
+        renderer.finish()
 
         if isinstance(boundary, AwaitingTools):
+            _print_tool_calls(boundary.message)
             current_history = await execute_tool_calls(
                 boundary=boundary,
                 tools=tools,

@@ -1,13 +1,23 @@
 from argparse import Namespace
 from contextlib import asynccontextmanager
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from rich.markdown import Markdown
+from rich.panel import Panel
 
-from coding_assistant.app.cli import DefaultAgentBundle, build_default_agent_config, run_cli
+from coding_assistant.app.cli import (
+    DefaultAgentBundle,
+    DeltaRenderer,
+    ParagraphBuffer,
+    _drive_agent,
+    build_default_agent_config,
+    run_cli,
+)
+from coding_assistant.core.agent import AwaitingTools, AwaitingUser
 from coding_assistant.core.history import build_system_prompt
-from coding_assistant.llm.types import SystemMessage, UserMessage
+from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, UserMessage
 from coding_assistant.app.main import main, parse_args
 
 
@@ -121,3 +131,68 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
         UserMessage(content="test task"),
     ]
+
+
+def test_paragraph_buffer_respects_code_fences() -> None:
+    buffer = ParagraphBuffer()
+
+    assert buffer.push("Before\n\n```python\nprint('hi')") == ["Before"]
+    assert buffer.push("\n\nprint('bye')\n```\n\nAfter") == ["```python\nprint('hi')\n\nprint('bye')\n```"]
+    assert buffer.flush() == "After"
+
+
+def test_delta_renderer_prints_markdown_paragraphs() -> None:
+    renderer = DeltaRenderer()
+
+    with patch("coding_assistant.app.cli.rich_print") as mock_print:
+        renderer.on_delta("First paragraph")
+        renderer.on_delta("\n\nSecond paragraph")
+        renderer.finish()
+
+    markdown_blocks = [
+        call.args[0] for call in mock_print.call_args_list if call.args and isinstance(call.args[0], Markdown)
+    ]
+    assert [block.markup for block in markdown_blocks] == ["First paragraph", "Second paragraph"]
+
+
+@pytest.mark.asyncio
+async def test_drive_agent_prints_tool_names_before_execution() -> None:
+    tool_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="mock_tool", arguments="{}"),
+    )
+    tool_boundary = AwaitingTools(
+        history=[
+            SystemMessage(content="System"),
+            UserMessage(content="Do the task"),
+            AssistantMessage(tool_calls=[tool_call]),
+        ],
+        message=AssistantMessage(tool_calls=[tool_call]),
+    )
+
+    with (
+        patch(
+            "coding_assistant.app.cli.run_agent_until_boundary",
+            new=AsyncMock(
+                side_effect=[
+                    tool_boundary,
+                    AwaitingUser(history=[SystemMessage(content="System"), AssistantMessage(content="Done")]),
+                ]
+            ),
+        ),
+        patch("coding_assistant.app.cli.execute_tool_calls", new=AsyncMock(return_value=tool_boundary.history)),
+        patch("coding_assistant.app.cli.rich_print") as mock_print,
+    ):
+        await _drive_agent(
+            history=[SystemMessage(content="System"), UserMessage(content="Do the task")],
+            model="gpt-4",
+            tools=[],
+            ui=Mock(),
+            interactive=False,
+        )
+
+    panels = [call.args[0] for call in mock_print.call_args_list if call.args and isinstance(call.args[0], Panel)]
+    assert len(panels) == 1
+    assert panels[0].title == "Running Tool"
+    assert isinstance(panels[0].renderable, Markdown)
+    assert panels[0].renderable.markup == "- `mock_tool`"
