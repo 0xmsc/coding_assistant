@@ -1,6 +1,8 @@
 from typing import Any
+
 import pytest
-from coding_assistant.mcp.todo import TodoManager
+
+from coding_assistant.tools.todo import TodoManager
 
 
 @pytest.fixture()
