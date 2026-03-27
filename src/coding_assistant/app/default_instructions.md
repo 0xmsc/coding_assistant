@@ -9,8 +9,5 @@
 ## Tools
 
 - Call multiple tools in one step where appropriate, to parallelize their execution.
-
-## MCP
-
-- You have access to a custom MCP server (`coding_assistant.mcp`).
-- Prefer it where other MCPs provide similar tools.
+- You have access to built-in local tools for shell, python, filesystem, todo tracking, task management, and skills.
+- When external MCP servers are configured, use them when they are the best fit for the task.

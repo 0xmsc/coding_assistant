@@ -6,15 +6,8 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from rich.markdown import Markdown
 
-from coding_assistant.app.cli import (
-    DefaultAgentBundle,
-    DeltaRenderer,
-    ParagraphBuffer,
-    _format_tool_call_display,
-    _drive_agent,
-    build_default_agent_config,
-    run_cli,
-)
+from coding_assistant.app.cli import DefaultAgentBundle, _drive_agent, build_default_agent_config, run_cli
+from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display
 from coding_assistant.core.agent import AwaitingTools, AwaitingUser
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, UserMessage
@@ -47,7 +40,6 @@ def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
     args = type("MockArgs", (), {})()
     args.mcp_servers = []
     args.skills_directories = []
-    args.mcp_env = []
     args.instructions = []
 
     with patch("coding_assistant.app.cli.os.getcwd", return_value=str(tmp_path)):
@@ -55,7 +47,6 @@ def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
 
     assert config.working_directory == tmp_path
     assert config.skills_directories == ()
-    assert config.mcp_env == ()
     assert config.user_instructions == ()
 
 
@@ -79,12 +70,6 @@ def test_main_waits_for_debugger(mock_listen: Any, mock_wait: Any, mock_run_cli:
         mock_run_cli.assert_called_once()
 
 
-def test_parse_args_mcp_env() -> None:
-    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--mcp-env", "VAR1", "VAR2"]):
-        args = parse_args()
-        assert args.mcp_env == ["VAR1", "VAR2"]
-
-
 def test_help_exits_with_zero() -> None:
     with patch("sys.argv", ["coding-assistant", "--help"]):
         with pytest.raises(SystemExit) as exc_info:
@@ -97,7 +82,6 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     args = Namespace(
         ask_user=False,
         instructions=[],
-        mcp_env=[],
         mcp_servers=[],
         model="gpt-4",
         print_mcp_tools=False,
@@ -119,12 +103,12 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
 
     with (
         patch("coding_assistant.app.cli.create_default_agent", fake_create_default_agent),
-        patch("coding_assistant.app.cli.rich_print") as mock_print,
+        patch("coding_assistant.app.cli.print_system_message") as mock_print_system,
         patch("coding_assistant.app.cli._drive_agent", new=AsyncMock()) as mock_drive_agent,
     ):
         await run_cli(args)
 
-    mock_print.assert_called_once()
+    mock_print_system.assert_called_once()
     assert mock_drive_agent.await_args is not None
     history = mock_drive_agent.await_args.kwargs["history"]
     assert history == [
@@ -144,7 +128,7 @@ def test_paragraph_buffer_respects_code_fences() -> None:
 def test_delta_renderer_prints_markdown_paragraphs() -> None:
     renderer = DeltaRenderer()
 
-    with patch("coding_assistant.app.cli.rich_print") as mock_print:
+    with patch("coding_assistant.app.output.rich_print") as mock_print:
         renderer.on_delta("First paragraph")
         renderer.on_delta("\n\nSecond paragraph")
         renderer.finish()
@@ -164,7 +148,7 @@ def test_format_tool_call_markdown_formats_multiline_arguments() -> None:
         ),
     )
 
-    header, body_sections = _format_tool_call_display(tool_call)
+    header, body_sections = format_tool_call_display(tool_call)
 
     assert header == "shell_execute(command, background=false)"
     assert body_sections == [("command", "echo hello\npwd", "bash")]
@@ -179,7 +163,7 @@ def test_format_tool_call_markdown_hides_edit_payload_values() -> None:
         ),
     )
 
-    header, body_sections = _format_tool_call_display(tool_call)
+    header, body_sections = format_tool_call_display(tool_call)
 
     assert header == 'filesystem_edit_file(path="script.sh", old_text, new_text)'
     assert body_sections == []
@@ -211,7 +195,7 @@ async def test_drive_agent_prints_formatted_tool_call_before_execution() -> None
             ),
         ),
         patch("coding_assistant.app.cli.execute_tool_calls", new=AsyncMock(return_value=tool_boundary.history)),
-        patch("coding_assistant.app.cli.rich_print") as mock_print,
+        patch("coding_assistant.app.output.rich_print") as mock_print,
     ):
         await _drive_agent(
             history=[SystemMessage(content="System"), UserMessage(content="Do the task")],

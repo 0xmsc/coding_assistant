@@ -1,8 +1,16 @@
-from typing import Any, cast
+from typing import Any
 from pathlib import Path
+
 import pytest
-from mcp.types import TextContent
-from coding_assistant.mcp.skills import load_skills_from_directory, parse_skill_file, load_builtin_skills
+
+from coding_assistant.tools.skills import (
+    Skill,
+    create_skill_tools,
+    format_skills_instructions,
+    load_builtin_skills,
+    load_skills_from_directory,
+    parse_skill_file,
+)
 
 
 def test_load_skills_from_directory(tmp_path: Any) -> None:
@@ -38,8 +46,6 @@ def test_parse_skill_file_name_with_spaces(tmp_path: Any) -> None:
 
 
 def test_format_skills_instructions() -> None:
-    from coding_assistant.mcp.skills import Skill, format_skills_instructions
-
     skills = [
         Skill(name="skill1", description="desc1", root=Path("/path/1"), resources=["SKILL.md", "script.py"]),
         Skill(name="skill2", description="desc2", root=Path("/path/2"), resources=["SKILL.md"]),
@@ -72,51 +78,43 @@ def test_load_builtin_skills() -> None:
     assert "develop" in names
 
 
-def test_create_skills_server(tmp_path: Any) -> None:
-    from coding_assistant.mcp.skills import create_skills_server
-
+def test_create_skill_tools(tmp_path: Any) -> None:
     # Create a CLI skill
     cli_skills_dir = tmp_path / "cli_skills"
     cli_skills_dir.mkdir()
     (cli_skills_dir / "my_cli_skill").mkdir()
     (cli_skills_dir / "my_cli_skill" / "SKILL.md").write_text("---\nname: my_cli_skill\ndescription: CLI skill\n---\n")
 
-    server, instr = create_skills_server(skills_directories=[cli_skills_dir])
+    tools, skills = create_skill_tools(skills_directories=[cli_skills_dir])
+    instr = format_skills_instructions(skills)
 
     assert "develop" in instr
     assert "my_cli_skill" in instr
     assert "skills_list_resources" in instr
     assert "skills_read" in instr
+    assert {tool.name() for tool in tools} == {"skills_list_resources", "skills_read"}
 
 
 @pytest.mark.asyncio
 async def test_skills_tools(tmp_path: Any) -> None:
-    from coding_assistant.mcp.skills import create_skills_server
-
     skill_dir = tmp_path / "myskill"
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text("---\nname: myskill\ndescription: desc\n---\ncontent")
     (skill_dir / "script.py").write_text("print(1)")
 
-    server, _ = create_skills_server(skills_directories=[tmp_path])
+    tools, _ = create_skill_tools(skills_directories=[tmp_path])
+    list_tool = next(tool for tool in tools if tool.name() == "skills_list_resources")
+    read_tool = next(tool for tool in tools if tool.name() == "skills_read")
 
-    # Test list_resources
-    tools = await server.get_tools()
-    list_tool = tools["list_resources"]
-    result = await list_tool.run({"name": "myskill"})
-    # FastMCP returns an object with the response text on result.content
-    result_text = cast(TextContent, result.content[0]).text
+    result_text = await list_tool.execute({"name": "myskill"})
     assert "- SKILL.md" in result_text
     assert "- script.py" in result_text
 
-    # Test read
-    read_tool = tools["read"]
-    result = await read_tool.run({"name": "myskill", "resource": "script.py"})
-    assert cast(TextContent, result.content[0]).text == "print(1)"
+    script_content = await read_tool.execute({"name": "myskill", "resource": "script.py"})
+    assert script_content == "print(1)"
 
-    # Test read default
-    result_main = await read_tool.run({"name": "myskill"})
-    assert "content" in cast(TextContent, result_main.content[0]).text
+    main_content = await read_tool.execute({"name": "myskill"})
+    assert "content" in main_content
 
 
 def test_builtin_skills_parsing_content() -> None:

@@ -33,6 +33,17 @@ def test_get_instructions_with_plan_and_local_file(tmp_path: Path) -> None:
     assert "- extra rule" in instr
 
 
+def test_get_instructions_appends_extra_sections(tmp_path: Path) -> None:
+    instr = get_instructions(
+        working_directory=tmp_path,
+        user_instructions=[],
+        extra_sections=["# Local tools\n\n## Shell\n- Use shell_execute."],
+    )
+
+    assert "# Local tools" in instr
+    assert "Use shell_execute." in instr
+
+
 def test_get_instructions_appends_mcp_instructions(tmp_path: Path) -> None:
     wd = tmp_path
 
@@ -92,7 +103,7 @@ def test_get_instructions_includes_mcp_formatting_with_real_mcp_instructions(tmp
             self.name = name
             self.instructions = instructions
 
-    server = _FakeServer("coding_assistant.mcp", mcp_instructions)
+    server = _FakeServer("external-server", mcp_instructions)
 
     instr = get_instructions(
         working_directory=wd,
@@ -100,7 +111,7 @@ def test_get_instructions_includes_mcp_formatting_with_real_mcp_instructions(tmp
         mcp_servers=cast(list[MCPServer], [server]),
     )
 
-    assert "# MCP `coding_assistant.mcp` instructions" in instr
+    assert "# MCP `external-server` instructions" in instr
     assert "## Shell" in instr
     assert "- Rule 1" in instr
     assert "## Tasks" in instr

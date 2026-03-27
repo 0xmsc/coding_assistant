@@ -76,12 +76,6 @@ def parse_args() -> argparse.Namespace:
         help='MCP server configurations as JSON strings. Format: \'{"name": "server_name", "command": "command", "args": ["arg1", "arg2"], "env": ["ENV_VAR1", "ENV_VAR2"]}\' or \'{"name": "server_name", "url": "http://localhost:8000/sse"}\'',
     )
     parser.add_argument(
-        "--mcp-env",
-        nargs="*",
-        default=[],
-        help="Environment variables to pass to the default MCP server.",
-    )
-    parser.add_argument(
         "--wait-for-debugger",
         action=BooleanOptionalAction,
         default=False,

@@ -7,7 +7,7 @@ Coding Assistant is a Python-based CLI and embeddable library for coding workflo
 - Boundary-based core API with `run_agent_until_boundary(...)`
 - Simple `run_agent(history=...)` convenience wrapper
 - Caller-owned history with pure `compact_history(...)` transcript compaction
-- Built-in MCP server with shell, Python, filesystem, and TODO tools
+- Built-in local shell, Python, filesystem, TODO, task, and skills tools
 - Support for external MCP servers (filesystem, fetch, Context7, Tavily, etc.)
 - Landlock-based filesystem sandbox with readable/writable allowlists
 - Prompt-toolkit powered interactive CLI
@@ -104,7 +104,7 @@ If you want explicit control boundaries, use `run_agent_until_boundary(...)` and
 
 ### Advanced Examples
 
-You can invoke the CLI with additional MCP servers (stdio or SSE/remote). The built-in `coding_assistant.mcp` is included by default.
+You can invoke the CLI with additional MCP servers (stdio or SSE/remote) alongside the built-in local tools.
 
 ```bash
 coding-assistant \
@@ -123,7 +123,6 @@ Notes:
 
 - `--model` Select model for the orchestrator agent (required).
 - `--instructions` Provide extra instructions that are composed with defaults. Can be repeated.
-- `--mcp-env` Environment variables to pass to the default MCP server.
 - `--trace` / `--no-trace` Enable/disable tracing of model requests/responses.
 - `--sandbox` / `--no-sandbox` Enable/disable Landlock-based sandboxing (default: **enabled**).
 - `--wait-for-debugger` Wait for a debugger (debugpy) to attach on port 1234.
@@ -157,9 +156,9 @@ Pass MCP servers with repeated `--mcp-servers` flags as JSON strings. Support is
 }
 ```
 
-### Built-in: Coding Assistant MCP
+### Built-in Local Tools
 
-This repository includes a built-in MCP server (package `coding_assistant.mcp`) that is started automatically by default. It provides:
+The main binary includes the following built-in tools by default:
 
 - **shell**: `shell_execute` — Execute shell commands with timeout and output truncation
 - **python**: `python_execute` — Execute Python code with timeout and output truncation
@@ -167,9 +166,6 @@ This repository includes a built-in MCP server (package `coding_assistant.mcp`) 
 - **todo**: `todo_add`, `todo_list_todos`, `todo_complete` — Simple in-memory TODO list management
 - **tasks**: `tasks_list_tasks`, `tasks_get_status`, `tasks_get_output`, `tasks_kill_task`, `tasks_remove_task` — Manage background tasks
 - **skills**: `skills_list_resources`, `skills_read` — Discover and read agent skills and their resources
-
-When connected, tools are exposed to the agent as fully-qualified names (e.g., `shell_execute`).
-
 
 ### External MCP Servers (Optional)
 
@@ -182,7 +178,7 @@ You can add external MCP servers to extend functionality. Examples include:
 
 To use these, add them via `--mcp-servers` flags as shown in the examples above.
 
-You can print all discovered tools from running MCP servers:
+You can print all discovered tools from configured external MCP servers:
 
 ```bash
 coding-assistant --print-mcp-tools --mcp-servers '...'
@@ -204,7 +200,7 @@ Example:
 
 ## Shell command execution behavior
 
-The built-in MCP tools `shell_execute` and `python_execute`:
+The built-in tools `shell_execute` and `python_execute`:
 - Support multi-line scripts
 - Merge stderr into stdout and return plain text (no JSON envelope)
 - Prefix output with `Exit code: N` only when the command/code exits non-zero

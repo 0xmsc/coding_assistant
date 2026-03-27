@@ -22,6 +22,7 @@ def get_instructions(
     *,
     working_directory: Path,
     user_instructions: list[str],
+    extra_sections: list[str] | None = None,
     mcp_servers: list[MCPServer] | None = None,
 ) -> str:
     """Assemble instructions from defaults, project files, MCP, and user input."""
@@ -41,6 +42,10 @@ def get_instructions(
             continue
 
         sections.append(content)
+
+    for section in extra_sections or []:
+        if section and section.strip():
+            sections.append(section.strip())
 
     for server in mcp_servers or []:
         instructions = server.instructions

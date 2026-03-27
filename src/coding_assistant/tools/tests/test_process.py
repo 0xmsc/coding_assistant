@@ -1,6 +1,8 @@
 import os
+
 import pytest
-from coding_assistant.mcp.proc import start_process
+
+from coding_assistant.tools.process import start_process
 
 
 @pytest.mark.asyncio
@@ -16,7 +18,7 @@ async def test_start_process_env_merging() -> None:
     # but here we know we are in a unix-like environment.
     cmd = ["python3", "-c", "import os; print(os.environ.get('PARENT_VAR')); print(os.environ.get('EXTRA_VAR'))"]
 
-    handle = await start_process(cmd, env=extra_env)
+    handle = await start_process(args=cmd, env=extra_env)
     await handle.wait(timeout=5.0)
 
     output = handle.stdout.strip().split("\n")
@@ -34,7 +36,7 @@ async def test_start_process_env_override() -> None:
 
     cmd = ["python3", "-c", "import os; print(os.environ.get('OVERRIDE_VAR'))"]
 
-    handle = await start_process(cmd, env=extra_env)
+    handle = await start_process(args=cmd, env=extra_env)
     await handle.wait(timeout=5.0)
 
     assert handle.stdout.strip() == "new_value"
@@ -47,7 +49,7 @@ async def test_start_process_no_env_provided() -> None:
     cmd = ["python3", "-c", "import os; print(os.environ.get('STAY_VAR'))"]
 
     # Pass None as env
-    handle = await start_process(cmd, env=None)
+    handle = await start_process(args=cmd, env=None)
     await handle.wait(timeout=5.0)
 
     assert handle.stdout.strip() == "stay"
