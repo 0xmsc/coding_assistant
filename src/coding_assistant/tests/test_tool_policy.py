@@ -1,12 +1,34 @@
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from coding_assistant.tool_policy import (
     ConfirmationToolPolicy,
+    DirectToolExecutor,
+    ToolApproved,
     confirm_shell_if_needed,
     confirm_tool_if_needed,
 )
+from coding_assistant.llm.types import Tool
+
+
+class MockTool(Tool):
+    def __init__(self, result: Any) -> None:
+        self._result = result
+
+    def name(self) -> str:
+        return "mock_tool"
+
+    def description(self) -> str:
+        return "mock"
+
+    def parameters(self) -> dict[str, Any]:
+        return {}
+
+    async def execute(self, parameters: dict[str, Any]) -> Any:
+        del parameters
+        return self._result
 
 
 def make_ui_mock(*, confirm_sequence: list[tuple[str, bool]] | None = None) -> Mock:
@@ -160,3 +182,28 @@ async def test_confirmation_tool_policy_shell_pattern() -> None:
         arguments=args,
     )
     assert res2 is None
+
+
+@pytest.mark.asyncio
+async def test_direct_tool_executor_returns_typed_success() -> None:
+    executor = DirectToolExecutor()
+
+    result = await executor.execute(
+        tool_call_id="call-1",
+        tool=MockTool("tool result"),
+        arguments={},
+    )
+
+    assert result == ToolApproved(content="tool result")
+
+
+@pytest.mark.asyncio
+async def test_direct_tool_executor_rejects_non_text_tool_results() -> None:
+    executor = DirectToolExecutor()
+
+    with pytest.raises(TypeError, match="did not return text"):
+        await executor.execute(
+            tool_call_id="call-1",
+            tool=MockTool({"status": "ok"}),
+            arguments={},
+        )

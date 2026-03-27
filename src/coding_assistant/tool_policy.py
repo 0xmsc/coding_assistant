@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any, Protocol
+
+from coding_assistant.llm.types import Tool
 
 
 class ToolPolicy(Protocol):
@@ -18,6 +21,37 @@ class ToolPolicy(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class ToolApproved:
+    """Successful tool execution result to append to the transcript."""
+
+    content: str
+
+
+@dataclass(frozen=True)
+class ToolDenied:
+    """Denied tool execution result to append to the transcript."""
+
+    content: str
+
+
+ToolExecutionResult = ToolApproved | ToolDenied
+
+
+class ToolExecutor(Protocol):
+    """Interface for executing one already-resolved tool call."""
+
+    async def execute(
+        self,
+        *,
+        tool_call_id: str,
+        tool: Tool,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Execute the tool or return a typed denial result."""
+        ...
+
+
 class NullToolPolicy:
     """Policy that always allows the tool call to proceed."""
 
@@ -30,6 +64,24 @@ class NullToolPolicy:
     ) -> str | None:
         """Allow the tool call without modification."""
         return None
+
+
+class DirectToolExecutor:
+    """Execute tools directly without any approval or policy checks."""
+
+    async def execute(
+        self,
+        *,
+        tool_call_id: str,
+        tool: Tool,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Run the tool and require it to return transcript text."""
+        del tool_call_id
+        result = await tool.execute(arguments)
+        if not isinstance(result, str):
+            raise TypeError(f"Tool '{tool.name()}' did not return text.")
+        return ToolApproved(content=result)
 
 
 async def confirm_tool_if_needed(

@@ -4,7 +4,7 @@ Coding Assistant is a Python-based CLI and embeddable library for coding workflo
 
 ## Key Features
 
-- Simple `run_agent(history=...)` streaming embedding API
+- Simple `run_agent(history=...)` embedding API with streamed content callbacks
 - Caller-owned history with pure `compact_history(...)` transcript compaction
 - Resumable sessions and conversation summaries stored per-project
 - Built-in MCP server with shell, Python, filesystem, and TODO tools
@@ -61,16 +61,14 @@ coding-assistant --help
 
 ## Embedding
 
-The primary Python surface is `run_agent(...)`. You pass in history, model, and executable tools; the function streams assistant output and stops at the next external boundary.
+The primary Python surface is `run_agent(...)`. You pass in history, model, and executable tools; the function streams assistant output through `on_content` and returns the updated transcript after executing any requested tools.
 
 ```python
 import asyncio
 from typing import Any
 
 from coding_assistant import run_agent
-from coding_assistant.agent import AwaitingToolsEvent, AwaitingUserEvent, ContentDeltaEvent
 from coding_assistant.history import build_system_prompt
-from coding_assistant.llm.types import ToolMessage
 from coding_assistant.llm.types import SystemMessage, Tool, UserMessage
 
 
@@ -98,30 +96,18 @@ async def main() -> None:
         UserMessage(content="Say hello in one sentence."),
     ]
 
-    async for event in run_agent(
+    history = await run_agent(
         history=history,
         model="openai/gpt-5-mini",
         tools=[LookupDocsTool()],
-    ):
-        if isinstance(event, ContentDeltaEvent):
-            print(event.content, end="", flush=True)
-        elif isinstance(event, AwaitingUserEvent) and event.message is not None:
-            history.append(event.message)
-        elif isinstance(event, AwaitingToolsEvent):
-            history.append(event.message)
-            history.append(
-                ToolMessage(
-                    tool_call_id=event.message.tool_calls[0].id,
-                    name="lookup_docs",
-                    content="Documentation for: hello",
-                )
-            )
+        on_content=lambda chunk: print(chunk, end="", flush=True),
+    )
 
 
 asyncio.run(main())
 ```
 
-`run_agent(...)` is an async generator. It streams content chunks and then yields a boundary event such as `AwaitingUserEvent` or `AwaitingToolsEvent`. To continue after tools run, append `ToolMessage`s to history and call it again.
+`run_agent(...)` owns the assistant/tool loop. If you need approvals or denials above raw tools, pass a custom `tool_executor` that can return a typed denial result before the tool runs.
 
 ### Advanced Examples
 
