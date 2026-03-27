@@ -1,0 +1,14 @@
+- [x] Simplify `src/coding_assistant/agent.py` by removing sub-agent support and inlining `AgentRunResult`.
+- [x] Remove `launch_agent` support from `src/coding_assistant/tools/builtin.py` and adjust agent tests.
+- [x] Flatten `src/coding_assistant/adapters/cli.py` and `src/coding_assistant/defaults.py` into `src/coding_assistant/cli.py`, then update entrypoints and tests.
+- [x] Merge thin helper modules into owners and remove dead code (`config.py`, `llm/adapters.py`, `parameters.py`, `interrupts.py`, unused `NullUI`).
+- [x] Update docs for the simplified surface and verify with `just test` and `just lint`.
+- [x] Convert `src/coding_assistant/llm/openai.py` to stream async-generator events instead of callback notifications.
+- [x] Convert `src/coding_assistant/agent.py` so `run_agent(...)` is a unidirectional async generator that stops at external boundaries.
+- [x] Move tool approval and execution ownership into `src/coding_assistant/cli.py`.
+- [x] Update `redirect_tool_call` to execute nested tools through the caller-owned execution path.
+- [x] Update tests and README for the generator-based `run_agent(...)` API and verify with `just test` and `just lint`.
+- [x] Restore `run_agent(...)` as the real orchestration loop and move tool execution back into `src/coding_assistant/agent.py`.
+- [x] Introduce a typed tool-execution contract with explicit denial results and reuse it for `redirect_tool_call`.
+- [x] Simplify `src/coding_assistant/cli.py` so it supplies policy-aware execution instead of driving tool boundaries itself.
+- [x] Update tests and README for the restored `run_agent(...)` API, then verify with `just test` and `just lint`.
