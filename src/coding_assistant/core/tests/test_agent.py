@@ -21,7 +21,6 @@ from coding_assistant.llm.types import (
     Usage,
     UserMessage,
 )
-from coding_assistant.core.tool_policy import ToolApproved, ToolDenied
 
 
 class ScriptedStreamer:
@@ -75,16 +74,19 @@ class ErrorTool(Tool):
         raise RuntimeError("tool boom")
 
 
-class DenyingToolExecutor:
-    async def execute(
-        self,
-        *,
-        tool_call_id: str,
-        tool: Tool,
-        arguments: dict[str, Any],
-    ) -> ToolApproved | ToolDenied:
-        del tool_call_id, tool, arguments
-        return ToolDenied(content="Tool execution denied.")
+class StructuredTool(Tool):
+    def name(self) -> str:
+        return "structured_tool"
+
+    def description(self) -> str:
+        return "Tool that returns structured data"
+
+    def parameters(self) -> dict[str, Any]:
+        return {"type": "object", "properties": {}, "additionalProperties": False}
+
+    async def execute(self, parameters: dict[str, Any]) -> Any:
+        del parameters
+        return {"status": "ok"}
 
 
 def make_system_history() -> list[BaseMessage]:
@@ -219,17 +221,16 @@ async def test_run_agent_executes_tool_calls_and_continues() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_agent_appends_denied_tool_result_and_continues() -> None:
+async def test_run_agent_appends_non_text_tool_errors_and_continues() -> None:
     external_call = ToolCall(
         id="call-1",
-        function=FunctionCall(name="mock_tool", arguments="{}"),
+        function=FunctionCall(name="structured_tool", arguments="{}"),
     )
 
     result = await run_agent(
         history=[*make_system_history(), UserMessage(content="Finish the task")],
         model="test-model",
-        tools=[MockTool()],
-        tool_executor=DenyingToolExecutor(),
+        tools=[StructuredTool()],
         streamer=ScriptedStreamer(
             [
                 AssistantMessage(tool_calls=[external_call]),
@@ -238,7 +239,11 @@ async def test_run_agent_appends_denied_tool_result_and_continues() -> None:
         ),
     )
 
-    assert result[-2] == ToolMessage(tool_call_id="call-1", name="mock_tool", content="Tool execution denied.")
+    assert result[-2] == ToolMessage(
+        tool_call_id="call-1",
+        name="structured_tool",
+        content="Error executing tool: Tool 'structured_tool' did not return text.",
+    )
     assert result[-1] == AssistantMessage(content="I can continue without that tool.")
 
 

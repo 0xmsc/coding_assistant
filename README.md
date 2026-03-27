@@ -4,13 +4,13 @@ Coding Assistant is a Python-based CLI and embeddable library for coding workflo
 
 ## Key Features
 
-- Simple `run_agent(history=...)` embedding API with streamed content callbacks
+- Boundary-based core API with `run_agent_until_boundary(...)`
+- Simple `run_agent(history=...)` convenience wrapper
 - Caller-owned history with pure `compact_history(...)` transcript compaction
 - Built-in MCP server with shell, Python, filesystem, and TODO tools
 - Support for external MCP servers (filesystem, fetch, Context7, Tavily, etc.)
 - Landlock-based filesystem sandbox with readable/writable allowlists
 - Prompt-toolkit powered interactive CLI
-- Shell/tool confirmation patterns to guard dangerous operations
 - Interactive mode enabled by default for conversations
 - Configurable via CLI flags (models, instructions, sandbox, MCP, etc.)
 
@@ -52,7 +52,7 @@ coding-assistant --help
 
 ## Embedding
 
-The primary Python surface is `run_agent(...)`. You pass in history, model, and executable tools; the function streams assistant output through `on_content` and returns the updated transcript after executing any requested tools.
+The simplest Python surface is `run_agent(...)`. You pass in history, model, and executable tools; the function streams assistant output through `on_content` and returns the updated transcript after executing any requested tools.
 
 ```python
 import asyncio
@@ -98,9 +98,9 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`run_agent(...)` is the convenience wrapper that owns the assistant/tool loop. If you need approvals or denials above raw tools, pass a custom `tool_executor` that can return a typed denial result before the tool runs.
+`run_agent(...)` is the convenience wrapper that owns the assistant/tool loop and executes tools directly.
 
-If you want explicit control boundaries, use `run_agent_until_boundary(...)` and `execute_tool_calls(...)`. The lower-level API returns `AwaitingUser` or `AwaitingTools`, and the helper can execute one returned tool boundary through the same typed executor contract.
+If you want explicit control boundaries, use `run_agent_until_boundary(...)` and `execute_tool_calls(...)`. The lower-level API returns `AwaitingUser` or `AwaitingTools`, and callers can own the surrounding loop while still using the helper to execute one returned tool boundary.
 
 ### Advanced Examples
 
@@ -122,7 +122,6 @@ Notes:
 ## Usage Highlights
 
 - `--model` Select model for the orchestrator agent (required).
-- `--tool-confirmation-patterns` / `--shell-confirmation-patterns` Regex patterns to require user confirmation before tool/shell execution.
 - `--instructions` Provide extra instructions that are composed with defaults. Can be repeated.
 - `--mcp-env` Environment variables to pass to the default MCP server.
 - `--trace` / `--no-trace` Enable/disable tracing of model requests/responses.

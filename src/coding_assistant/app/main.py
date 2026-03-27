@@ -44,11 +44,6 @@ def parse_args() -> argparse.Namespace:
         help="Initial task to seed the conversation before the agent runs.",
     )
     parser.add_argument("--print-mcp-tools", action="store_true", help="Print all available tools from MCP servers.")
-    parser.add_argument(
-        "--print-instructions",
-        action="store_true",
-        help="Print the instructions that will be given to the orchestrator agent and exit.",
-    )
     parser.add_argument("--model", type=str, required=True, help="Model to use for the orchestrator agent.")
     parser.add_argument(
         "--instructions",
@@ -85,18 +80,6 @@ def parse_args() -> argparse.Namespace:
         nargs="*",
         default=[],
         help="Environment variables to pass to the default MCP server.",
-    )
-    parser.add_argument(
-        "--tool-confirmation-patterns",
-        nargs="*",
-        default=[],
-        help="Ask for confirmation before executing a tool that matches any of the given patterns.",
-    )
-    parser.add_argument(
-        "--shell-confirmation-patterns",
-        nargs="*",
-        default=[],
-        help="Regex patterns that require confirmation before executing shell commands",
     )
     parser.add_argument(
         "--wait-for-debugger",
