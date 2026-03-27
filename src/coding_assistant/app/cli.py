@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 from argparse import Namespace
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from rich import print as rich_print
 from rich.markdown import Markdown
@@ -53,6 +54,28 @@ class DefaultAgentBundle:
     tools: list[Tool]
     instructions: str
     mcp_servers: list[MCPServer]
+
+
+SPECIAL_TOOL_FORMATS: dict[str, dict[str, Any]] = {
+    "shell_execute": {
+        "languages": {"command": "bash"},
+    },
+    "python_execute": {
+        "languages": {"code": "python"},
+    },
+    "filesystem_write_file": {
+        "languages": {"content": ""},
+    },
+    "filesystem_edit_file": {
+        "hide_value": ["old_text", "new_text"],
+    },
+    "todo_add": {
+        "languages": {"descriptions": "json"},
+    },
+    "compact_conversation": {
+        "languages": {"summary": "markdown"},
+    },
+}
 
 
 class ParagraphBuffer:
@@ -225,13 +248,97 @@ def _print_system_message(message: SystemMessage) -> None:
 
 def _print_tool_calls(message: AssistantMessage) -> None:
     """Render the names of tools the assistant is about to execute."""
-    tool_lines = []
-    for tool_call in message.tool_calls:
-        tool_name = tool_call.function.name or "<missing>"
-        tool_lines.append(f"- `{tool_name}`")
+    count = len(message.tool_calls)
+    for index, tool_call in enumerate(message.tool_calls, start=1):
+        title = "Running Tool" if count == 1 else f"Running Tool {index}/{count}"
+        rich_print(
+            Panel.fit(
+                Markdown(_format_tool_call_markdown(tool_call)),
+                title=title,
+                border_style="yellow",
+            )
+        )
 
-    title = "Running Tool" if len(tool_lines) == 1 else "Running Tools"
-    rich_print(Panel.fit(Markdown("\n".join(tool_lines)), title=title, border_style="yellow"))
+
+def _format_tool_call_markdown(tool_call: Any) -> str:
+    """Format one tool call in the old dense-progress style."""
+    tool_name = tool_call.function.name or "<missing>"
+    parsed_arguments = _parse_tool_arguments_for_display(tool_call.function.arguments)
+    if parsed_arguments is None:
+        return "\n\n".join(
+            [
+                f"### `{tool_name}`",
+                "**arguments:**",
+                f"```\n{tool_call.function.arguments}\n```",
+            ]
+        )
+
+    config = SPECIAL_TOOL_FORMATS.get(tool_name, {})
+    hide_value_keys = set(config.get("hide_value", []))
+    language_hints: dict[str, str] = dict(config.get("languages", {}))
+    header_params: list[str] = []
+    body_sections: list[str] = []
+    language_override = _get_tool_language_override(tool_name, parsed_arguments)
+
+    for key, value in parsed_arguments.items():
+        if key in hide_value_keys:
+            header_params.append(key)
+            continue
+
+        if key in language_hints:
+            formatted_value = value if isinstance(value, str) else json.dumps(value, indent=2)
+            if "\n" in formatted_value:
+                header_params.append(key)
+                body_sections.append(
+                    _format_tool_block(
+                        key=key,
+                        value=formatted_value,
+                        language=language_override or language_hints[key],
+                    )
+                )
+                continue
+
+        header_params.append(f"{key}={json.dumps(value)}")
+
+    args_suffix = f"({', '.join(header_params)})"
+    sections = [f"### `{tool_name}{args_suffix}`"]
+    sections.extend(body_sections)
+    return "\n\n".join(sections)
+
+
+def _parse_tool_arguments_for_display(arguments: str) -> dict[str, Any] | None:
+    """Best-effort JSON decoding for tool-call display."""
+    try:
+        parsed = json.loads(arguments)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    return parsed
+
+
+def _format_tool_block(*, key: str, value: str, language: str) -> str:
+    """Render one multiline tool argument."""
+    if language == "markdown":
+        return f"**{key}:**\n\n{value}"
+    fence = f"```{language}\n{value}\n```" if language else f"```\n{value}\n```"
+    return f"**{key}:**\n\n{fence}"
+
+
+def _get_tool_language_override(tool_name: str, arguments: dict[str, Any]) -> str | None:
+    """Infer a code-fence language from file extensions when helpful."""
+    if tool_name not in {"filesystem_write_file", "filesystem_edit_file"}:
+        return None
+
+    path = arguments.get("path")
+    if not isinstance(path, str):
+        return None
+
+    basename = os.path.basename(path)
+    _, extension = os.path.splitext(basename)
+    if not extension:
+        return None
+    return extension[1:]
 
 
 async def _drive_agent(
