@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Sequence
 import os
+from collections.abc import Sequence
 
 
 class OutputBuffer:
@@ -10,7 +10,7 @@ class OutputBuffer:
 
     def __init__(self, stream: asyncio.StreamReader):
         self._stream = stream
-        self._buf = bytearray()
+        self._buffer = bytearray()
         self._read_task = asyncio.create_task(self._read_stream())
 
     async def _read_stream(self) -> None:
@@ -19,17 +19,17 @@ class OutputBuffer:
             chunk = await self._stream.read(4096)
             if not chunk:
                 break
-            self._buf.extend(chunk)
+            self._buffer.extend(chunk)
 
     @property
     def text(self) -> str:
         """Return all buffered output as decoded text."""
-        return self._buf.decode(errors="replace")
+        return self._buffer.decode(errors="replace")
 
     def consume_text(self) -> str:
         """Return buffered output and clear the buffer."""
-        content = self._buf.decode(errors="replace")
-        self._buf.clear()
+        content = self._buffer.decode(errors="replace")
+        self._buffer.clear()
         return content
 
     async def wait_for_finish(self, timeout: float | None = 5.0) -> None:
@@ -45,21 +45,22 @@ class ProcessHandle:
 
     def __init__(
         self,
-        proc: asyncio.subprocess.Process,
+        *,
+        process: asyncio.subprocess.Process,
         output: OutputBuffer,
-    ):
-        self.proc = proc
-        self.output = output
+    ) -> None:
+        self._process = process
+        self._output = output
 
     @property
     def exit_code(self) -> int | None:
         """Return the process exit code, or `None` while it is still running."""
-        return self.proc.returncode
+        return self._process.returncode
 
     @property
     def stdout(self) -> str:
         """Return all output captured so far."""
-        return self.output.text
+        return self._output.text
 
     @property
     def is_running(self) -> bool:
@@ -68,13 +69,13 @@ class ProcessHandle:
 
     def consume_text(self) -> str:
         """Return and clear the output accumulated since the last read."""
-        return self.output.consume_text()
+        return self._output.consume_text()
 
     async def wait(self, timeout: float | None = None) -> bool:
         """Wait for process exit and return `False` on timeout."""
         try:
-            await asyncio.wait_for(self.proc.wait(), timeout=timeout)
-            await self.output.wait_for_finish()
+            await asyncio.wait_for(self._process.wait(), timeout=timeout)
+            await self._output.wait_for_finish()
             return True
         except asyncio.TimeoutError:
             return False
@@ -84,29 +85,29 @@ class ProcessHandle:
         if not self.is_running:
             return
 
-        self.proc.terminate()
+        self._process.terminate()
         await self.wait(timeout=5.0)
         if not self.is_running:
             return
 
-        self.proc.kill()
+        self._process.kill()
         await self.wait(timeout=5.0)
 
 
 async def start_process(
+    *,
     args: Sequence[str],
     stdin_input: str | None = None,
     env: dict[str, str] | None = None,
 ) -> ProcessHandle:
     """Start a process and return a handle to it."""
-
     stdin = asyncio.subprocess.PIPE if stdin_input is not None else asyncio.subprocess.DEVNULL
 
     merged_env = os.environ.copy()
     if env:
         merged_env.update(env)
 
-    proc = await asyncio.create_subprocess_exec(
+    process = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
@@ -114,14 +115,24 @@ async def start_process(
         env=merged_env,
     )
 
-    assert proc.stdout is not None
-    output = OutputBuffer(proc.stdout)
+    assert process.stdout is not None
+    output = OutputBuffer(process.stdout)
 
     if stdin_input is not None:
-        assert proc.stdin is not None
-        proc.stdin.write(stdin_input.encode())
-        await proc.stdin.drain()
-        proc.stdin.close()
-        await proc.stdin.wait_closed()
+        assert process.stdin is not None
+        process.stdin.write(stdin_input.encode())
+        await process.stdin.drain()
+        process.stdin.close()
+        await process.stdin.wait_closed()
 
-    return ProcessHandle(proc, output)
+    return ProcessHandle(process=process, output=output)
+
+
+def truncate_output(result: str, truncate_at: int) -> str:
+    """Trim long output and append a note that records the original length."""
+    if len(result) > truncate_at:
+        note = f"\n\n[truncated output at: {truncate_at}, full length: {len(result)}]"
+        truncated = result[: max(0, truncate_at - len(note))]
+        return truncated + note
+
+    return result

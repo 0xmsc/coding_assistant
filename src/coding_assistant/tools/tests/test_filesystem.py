@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from coding_assistant.mcp.filesystem import edit_file, write_file
+from coding_assistant.tools.filesystem import edit_file, write_file
 
 
 @pytest.mark.asyncio
