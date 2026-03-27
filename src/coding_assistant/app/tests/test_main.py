@@ -11,6 +11,7 @@ from coding_assistant.app.cli import (
     DefaultAgentBundle,
     DeltaRenderer,
     ParagraphBuffer,
+    _format_tool_call_markdown,
     _drive_agent,
     build_default_agent_config,
     run_cli,
@@ -155,11 +156,41 @@ def test_delta_renderer_prints_markdown_paragraphs() -> None:
     assert [block.markup for block in markdown_blocks] == ["First paragraph", "Second paragraph"]
 
 
-@pytest.mark.asyncio
-async def test_drive_agent_prints_tool_names_before_execution() -> None:
+def test_format_tool_call_markdown_formats_multiline_arguments() -> None:
     tool_call = ToolCall(
         id="call-1",
-        function=FunctionCall(name="mock_tool", arguments="{}"),
+        function=FunctionCall(
+            name="shell_execute",
+            arguments='{"command": "echo hello\\npwd", "background": false}',
+        ),
+    )
+
+    formatted = _format_tool_call_markdown(tool_call)
+
+    assert "### `shell_execute(command, background=false)`" in formatted
+    assert "**command:**" in formatted
+    assert "```bash\necho hello\npwd\n```" in formatted
+
+
+def test_format_tool_call_markdown_hides_edit_payload_values() -> None:
+    tool_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(
+            name="filesystem_edit_file",
+            arguments='{"path": "script.sh", "old_text": "old", "new_text": "new"}',
+        ),
+    )
+
+    formatted = _format_tool_call_markdown(tool_call)
+
+    assert formatted == '### `filesystem_edit_file(path="script.sh", old_text, new_text)`'
+
+
+@pytest.mark.asyncio
+async def test_drive_agent_prints_formatted_tool_call_before_execution() -> None:
+    tool_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="mock_tool", arguments='{"count": 2}'),
     )
     tool_boundary = AwaitingTools(
         history=[
@@ -195,4 +226,4 @@ async def test_drive_agent_prints_tool_names_before_execution() -> None:
     assert len(panels) == 1
     assert panels[0].title == "Running Tool"
     assert isinstance(panels[0].renderable, Markdown)
-    assert panels[0].renderable.markup == "- `mock_tool`"
+    assert panels[0].renderable.markup == "### `mock_tool(count=2)`"
