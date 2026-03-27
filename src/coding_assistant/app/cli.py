@@ -12,11 +12,12 @@ from rich import print as rich_print
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from coding_assistant.agent import run_agent
-from coding_assistant.history import build_system_prompt
-from coding_assistant.history_store import FileHistoryStore
-from coding_assistant.image import get_image
-from coding_assistant.instructions import get_instructions
+from coding_assistant.app.image import get_image
+from coding_assistant.app.instructions import get_instructions
+from coding_assistant.app.sandbox import sandbox
+from coding_assistant.app.ui import DefaultAnswerUI, PromptToolkitUI, UI
+from coding_assistant.core.agent import run_agent
+from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import (
     BaseMessage,
     SystemMessage,
@@ -24,8 +25,7 @@ from coding_assistant.llm.types import (
     UserMessage,
 )
 from coding_assistant.mcp import __name__ as mcp_package_name
-from coding_assistant.sandbox import sandbox
-from coding_assistant.tool_policy import (
+from coding_assistant.core.tool_policy import (
     ConfirmationToolPolicy,
     DirectToolExecutor,
     NullToolPolicy,
@@ -34,14 +34,13 @@ from coding_assistant.tool_policy import (
     ToolExecutor,
     ToolPolicy,
 )
-from coding_assistant.tools.mcp import (
+from coding_assistant.integrations.mcp_client import (
     MCPServer,
     MCPServerConfig,
     get_mcp_servers_from_config,
     get_mcp_wrapped_tools,
     print_mcp_tools,
 )
-from coding_assistant.ui import DefaultAnswerUI, PromptToolkitUI, UI
 
 
 @dataclass(slots=True)
@@ -62,7 +61,6 @@ class DefaultAgentBundle:
     tools: list[Tool]
     instructions: str
     mcp_servers: list[MCPServer]
-    history_store: FileHistoryStore
 
 
 class DeltaRenderer:
@@ -143,8 +141,7 @@ async def create_default_agent(
     *,
     config: DefaultAgentConfig,
 ) -> AsyncIterator[DefaultAgentBundle]:
-    """Resolve instructions, tools, and history storage for a default agent run."""
-    history_store = FileHistoryStore(config.working_directory)
+    """Resolve instructions and tools for a default agent run."""
     server_configs = (
         *config.mcp_server_configs,
         _get_default_mcp_server_config(config.skills_directories, config.mcp_env),
@@ -161,7 +158,6 @@ async def create_default_agent(
             tools=tools,
             instructions=instructions,
             mcp_servers=servers,
-            history_store=history_store,
         )
 
 
@@ -198,12 +194,7 @@ async def run_cli(args: Namespace) -> None:
             rich_print(Panel(Markdown(bundle.instructions), title="Instructions"))
             return
 
-        history = _load_history(
-            args=args,
-            history_store=bundle.history_store,
-            working_directory=config.working_directory,
-        )
-        current_history = _ensure_initial_history(history=history, instructions=bundle.instructions)
+        current_history = _ensure_initial_history(instructions=bundle.instructions)
         if args.task is not None:
             current_history.append(UserMessage(content=args.task))
 
@@ -212,32 +203,14 @@ async def run_cli(args: Namespace) -> None:
             model=args.model,
             tools=bundle.tools,
             tool_executor=tool_executor,
-            history_store=bundle.history_store,
             ui=ui,
             interactive=args.task is None or args.ask_user,
         )
 
 
-def _load_history(
-    *,
-    args: Namespace,
-    history_store: FileHistoryStore,
-    working_directory: Path,
-) -> list[BaseMessage] | None:
-    """Load persisted history according to the selected resume flags."""
-    if args.resume_file is not None:
-        file_store = FileHistoryStore(working_directory, path=args.resume_file)
-        return file_store.load()
-
-    if args.resume:
-        return history_store.load()
-
-    return None
-
-
 def _apply_sandbox(*, args: Namespace, config: DefaultAgentConfig) -> None:
     """Apply the CLI sandbox policy before starting the agent."""
-    coding_assistant_root = Path(__file__).resolve().parent
+    coding_assistant_root = Path(__file__).resolve().parent.parent
     readable = [
         *[Path(path).resolve() for path in args.readable_sandbox_directories],
         *[Path(path).resolve() for path in config.skills_directories],
@@ -249,12 +222,9 @@ def _apply_sandbox(*, args: Namespace, config: DefaultAgentConfig) -> None:
 
 def _ensure_initial_history(
     *,
-    history: list[BaseMessage] | None,
     instructions: str,
 ) -> list[BaseMessage]:
-    """Create the initial system prompt when no prior history exists."""
-    if history:
-        return list(history)
+    """Create the initial system prompt for a fresh transcript."""
     return [SystemMessage(content=build_system_prompt(instructions=instructions))]
 
 
@@ -264,7 +234,6 @@ async def _drive_agent(
     model: str,
     tools: list[Tool],
     tool_executor: ToolExecutor,
-    history_store: FileHistoryStore,
     ui: UI,
     interactive: bool,
 ) -> None:
@@ -284,7 +253,6 @@ async def _drive_agent(
 
         if renderer.saw_content:
             renderer.on_delta("\n")
-        history_store.save(current_history)
 
         if not interactive:
             return

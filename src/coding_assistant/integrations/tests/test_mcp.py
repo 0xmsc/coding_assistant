@@ -1,5 +1,5 @@
 from typing import Any
-from coding_assistant.tools.mcp import get_default_env
+from coding_assistant.integrations.mcp_client import get_default_env
 
 
 def test_get_default_env_includes_https_proxy(monkeypatch: Any) -> None:
