@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 
 from coding_assistant import run_agent
-from coding_assistant.agent import AwaitingToolsEvent, AwaitingUserEvent, ContentDeltaEvent, FailedEvent
 from coding_assistant.llm.types import (
     AssistantMessage,
     Completion,
@@ -16,9 +15,11 @@ from coding_assistant.llm.types import (
     SystemMessage,
     Tool,
     ToolCall,
+    ToolMessage,
     Usage,
     UserMessage,
 )
+from coding_assistant.tool_policy import ToolApproved, ToolDenied
 
 
 class ScriptedStreamer:
@@ -40,8 +41,9 @@ class ScriptedStreamer:
 
 
 class MockTool(Tool):
-    def __init__(self, name: str = "mock_tool") -> None:
+    def __init__(self, name: str = "mock_tool", *, result: str = "tool result") -> None:
         self._name = name
+        self._result = result
 
     def name(self) -> str:
         return self._name
@@ -53,7 +55,34 @@ class MockTool(Tool):
         return {"type": "object", "properties": {}, "additionalProperties": False}
 
     async def execute(self, parameters: dict[str, Any]) -> str:
-        return "tool result"
+        return self._result
+
+
+class ErrorTool(Tool):
+    def name(self) -> str:
+        return "error_tool"
+
+    def description(self) -> str:
+        return "Tool that always fails"
+
+    def parameters(self) -> dict[str, Any]:
+        return {"type": "object", "properties": {}, "additionalProperties": False}
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        del parameters
+        raise RuntimeError("tool boom")
+
+
+class DenyingToolExecutor:
+    async def execute(
+        self,
+        *,
+        tool_call_id: str,
+        tool: Tool,
+        arguments: dict[str, Any],
+    ) -> ToolApproved | ToolDenied:
+        del tool_call_id, tool, arguments
+        return ToolDenied(content="Tool execution denied.")
 
 
 def make_system_history() -> list[SystemMessage]:
@@ -61,58 +90,109 @@ def make_system_history() -> list[SystemMessage]:
 
 
 @pytest.mark.asyncio
-async def test_run_agent_waits_for_user_without_a_pending_model_turn() -> None:
-    events = [event async for event in run_agent(history=make_system_history(), model="test-model", tools=[])]
+async def test_run_agent_returns_existing_history_without_pending_model_turn() -> None:
+    history = make_system_history()
 
-    assert events == [AwaitingUserEvent()]
+    result = await run_agent(history=history, model="test-model", tools=[])
 
-
-@pytest.mark.asyncio
-async def test_run_agent_streams_content_then_yields_awaiting_user() -> None:
-    events = [
-        event
-        async for event in run_agent(
-            history=[*make_system_history(), UserMessage(content="Hi")],
-            model="test-model",
-            tools=[],
-            streamer=ScriptedStreamer([AssistantMessage(content="Hello from the assistant")]),
-        )
-    ]
-
-    assert events[0] == ContentDeltaEvent(content="Hello from the assistant")
-    assert events[-1] == AwaitingUserEvent(message=AssistantMessage(content="Hello from the assistant"))
+    assert result == history
 
 
 @pytest.mark.asyncio
-async def test_run_agent_yields_tool_boundary_without_executing_tools() -> None:
+async def test_run_agent_streams_content_and_appends_final_message() -> None:
+    chunks: list[str] = []
+
+    result = await run_agent(
+        history=[*make_system_history(), UserMessage(content="Hi")],
+        model="test-model",
+        tools=[],
+        streamer=ScriptedStreamer([AssistantMessage(content="Hello from the assistant")]),
+        on_content=chunks.append,
+    )
+
+    assert chunks == ["Hello from the assistant"]
+    assert result[-1] == AssistantMessage(content="Hello from the assistant")
+
+
+@pytest.mark.asyncio
+async def test_run_agent_executes_tool_calls_and_continues() -> None:
     external_call = ToolCall(
         id="call-1",
         function=FunctionCall(name="mock_tool", arguments="{}"),
     )
 
-    events = [
-        event
-        async for event in run_agent(
-            history=[*make_system_history(), UserMessage(content="Finish the task")],
-            model="test-model",
-            tools=[MockTool()],
-            streamer=ScriptedStreamer([AssistantMessage(tool_calls=[external_call])]),
-        )
-    ]
+    result = await run_agent(
+        history=[*make_system_history(), UserMessage(content="Finish the task")],
+        model="test-model",
+        tools=[MockTool()],
+        streamer=ScriptedStreamer(
+            [
+                AssistantMessage(tool_calls=[external_call]),
+                AssistantMessage(content="Finished after the tool call"),
+            ]
+        ),
+    )
 
-    assert events == [AwaitingToolsEvent(message=AssistantMessage(tool_calls=[external_call]))]
+    assert result[-3] == AssistantMessage(tool_calls=[external_call])
+    assert result[-2] == ToolMessage(tool_call_id="call-1", name="mock_tool", content="tool result")
+    assert result[-1] == AssistantMessage(content="Finished after the tool call")
 
 
 @pytest.mark.asyncio
-async def test_run_agent_returns_failed_event_when_streamer_crashes() -> None:
-    events = [
-        event
-        async for event in run_agent(
+async def test_run_agent_appends_denied_tool_result_and_continues() -> None:
+    external_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="mock_tool", arguments="{}"),
+    )
+
+    result = await run_agent(
+        history=[*make_system_history(), UserMessage(content="Finish the task")],
+        model="test-model",
+        tools=[MockTool()],
+        tool_executor=DenyingToolExecutor(),
+        streamer=ScriptedStreamer(
+            [
+                AssistantMessage(tool_calls=[external_call]),
+                AssistantMessage(content="I can continue without that tool."),
+            ]
+        ),
+    )
+
+    assert result[-2] == ToolMessage(tool_call_id="call-1", name="mock_tool", content="Tool execution denied.")
+    assert result[-1] == AssistantMessage(content="I can continue without that tool.")
+
+
+@pytest.mark.asyncio
+async def test_run_agent_appends_tool_execution_errors_and_continues() -> None:
+    external_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="error_tool", arguments="{}"),
+    )
+
+    result = await run_agent(
+        history=[*make_system_history(), UserMessage(content="Finish the task")],
+        model="test-model",
+        tools=[ErrorTool()],
+        streamer=ScriptedStreamer(
+            [
+                AssistantMessage(tool_calls=[external_call]),
+                AssistantMessage(content="I recovered from the tool error."),
+            ]
+        ),
+    )
+
+    assert result[-2] == ToolMessage(
+        tool_call_id="call-1", name="error_tool", content="Error executing tool: tool boom"
+    )
+    assert result[-1] == AssistantMessage(content="I recovered from the tool error.")
+
+
+@pytest.mark.asyncio
+async def test_run_agent_raises_when_streamer_crashes() -> None:
+    with pytest.raises(RuntimeError, match="boom"):
+        await run_agent(
             history=[*make_system_history(), UserMessage(content="Fail")],
             model="test-model",
             tools=[],
             streamer=ScriptedStreamer([RuntimeError("boom")]),
         )
-    ]
-
-    assert events == [FailedEvent(error="boom")]
