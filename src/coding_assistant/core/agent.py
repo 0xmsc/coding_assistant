@@ -18,7 +18,6 @@ from coding_assistant.llm.types import (
     ToolCall,
     ToolMessage,
 )
-from coding_assistant.core.tool_policy import DirectToolExecutor, ToolApproved, ToolDenied, ToolExecutor
 
 
 @dataclass(frozen=True)
@@ -71,18 +70,16 @@ def _should_wait_for_user(history: Sequence[BaseMessage]) -> bool:
 def _build_tools(
     *,
     tools: Sequence[Tool],
-    tool_executor: ToolExecutor,
 ) -> list[Tool]:
-    """Add built-in tools and wire redirect execution through the executor."""
+    """Add built-in tools and wire redirect execution through direct execution."""
     base_tools = [CompactConversationTool(), *tools]
     base_tools_by_name = {tool.name(): tool for tool in base_tools}
 
-    async def execute_redirected_tool(tool_name: str, arguments: dict[str, Any]) -> ToolApproved | ToolDenied:
+    async def execute_redirected_tool(tool_name: str, arguments: dict[str, Any]) -> str:
         target_tool = base_tools_by_name.get(tool_name)
         if target_tool is None:
             raise RuntimeError(f"Tool '{tool_name}' is not available for redirection.")
-        return await tool_executor.execute(
-            tool_call_id="",
+        return await _execute_resolved_tool(
             tool=target_tool,
             arguments=arguments,
         )
@@ -119,12 +116,23 @@ async def _consume_completion(
     return completion_message
 
 
+async def _execute_resolved_tool(
+    *,
+    tool: Tool,
+    arguments: dict[str, Any],
+) -> str:
+    """Run one resolved tool and require a text result."""
+    result = await tool.execute(arguments)
+    if not isinstance(result, str):
+        raise TypeError(f"Tool '{tool.name()}' did not return text.")
+    return result
+
+
 async def _execute_tool_call(
     *,
     history: list[BaseMessage],
     tool_call: ToolCall,
     tools_by_name: dict[str, Tool],
-    tool_executor: ToolExecutor,
 ) -> tuple[list[BaseMessage], str]:
     """Execute one tool call and return any updated history plus result text."""
     tool_name = tool_call.function.name
@@ -142,23 +150,18 @@ async def _execute_tool_call(
         return history, f"Tool '{tool_name}' not found."
 
     try:
-        execution_result = await tool_executor.execute(
-            tool_call_id=tool_call.id,
+        result = await _execute_resolved_tool(
             tool=tool,
             arguments=arguments,
         )
     except Exception as exc:
         return history, f"Error executing tool: {exc}"
 
-    if isinstance(execution_result, ToolDenied):
-        return history, execution_result.content
-
-    assert isinstance(execution_result, ToolApproved)
     if tool_name == "compact_conversation":
-        compacted_history = compact_history(history, execution_result.content)
+        compacted_history = compact_history(history, result)
         return compacted_history, "Conversation compacted and history reset."
 
-    return history, execution_result.content
+    return history, result
 
 
 async def run_agent_until_boundary(
@@ -177,7 +180,7 @@ async def run_agent_until_boundary(
     if _should_wait_for_user(current_history):
         return AwaitingUser(history=current_history)
 
-    all_tools = _build_tools(tools=tools, tool_executor=DirectToolExecutor())
+    all_tools = _build_tools(tools=tools)
     message = await _consume_completion(
         history=current_history,
         tools=all_tools,
@@ -195,12 +198,10 @@ async def execute_tool_calls(
     *,
     boundary: AwaitingTools,
     tools: Sequence[Tool],
-    tool_executor: ToolExecutor | None = None,
 ) -> list[BaseMessage]:
     """Execute one tool boundary and append the resulting tool messages."""
     current_history = list(boundary.history)
-    resolved_tool_executor = tool_executor or DirectToolExecutor()
-    all_tools = _build_tools(tools=tools, tool_executor=resolved_tool_executor)
+    all_tools = _build_tools(tools=tools)
     tools_by_name = {tool.name(): tool for tool in all_tools}
 
     for tool_call in boundary.message.tool_calls:
@@ -208,7 +209,6 @@ async def execute_tool_calls(
             history=current_history,
             tool_call=tool_call,
             tools_by_name=tools_by_name,
-            tool_executor=resolved_tool_executor,
         )
         current_history.append(
             ToolMessage(
@@ -226,7 +226,6 @@ async def run_agent(
     history: Sequence[BaseMessage],
     model: str,
     tools: Sequence[Tool],
-    tool_executor: ToolExecutor | None = None,
     streamer: Any = openai_stream_completion,
     on_content: Callable[[str], None] | None = None,
 ) -> list[BaseMessage]:
@@ -249,5 +248,4 @@ async def run_agent(
         current_history = await execute_tool_calls(
             boundary=boundary,
             tools=tools,
-            tool_executor=tool_executor,
         )

@@ -8,7 +8,6 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion, WordCompleter
 from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
-from prompt_toolkit.shortcuts import create_confirm_session
 from rich import print
 from rich.console import Console
 from rich.rule import Rule
@@ -24,11 +23,6 @@ class UI(ABC):
     @abstractmethod
     async def ask(self, prompt_text: str, default: str | None = None) -> str:
         """Ask the user for free-form text with an optional default."""
-        pass
-
-    @abstractmethod
-    async def confirm(self, prompt_text: str) -> bool:
-        """Ask the user for a yes/no confirmation."""
         pass
 
     @abstractmethod
@@ -71,12 +65,6 @@ class PromptToolkitUI(UI):
         print(prompt_text)
         return await self._session.prompt_async("> ", default=default or "")
 
-    async def confirm(self, prompt_text: str) -> bool:
-        """Render an interactive confirmation prompt."""
-        Console().bell()
-        print(Rule(style="dim"))
-        return await create_confirm_session(prompt_text).prompt_async()
-
     async def prompt(self, words: list[str] | None = None) -> str:
         """Prompt for general input with optional slash-command completion."""
         Console().bell()
@@ -92,11 +80,6 @@ class DefaultAnswerUI(UI):
         """Return a canned answer when interactive input is unavailable."""
         logger.info(f"Skipping user input for prompt: {prompt_text}")
         return default or "UI is not available. Assume the user gave the most sensible answer."
-
-    async def confirm(self, prompt_text: str) -> bool:
-        """Auto-confirm prompts in non-interactive mode."""
-        logger.info(f"Skipping user confirmation for prompt: {prompt_text}")
-        return True
 
     async def prompt(self, words: list[str] | None = None) -> str:
         """Return a canned free-form input in non-interactive mode."""
