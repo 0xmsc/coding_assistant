@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from json import JSONDecodeError
 from typing import Any
 
@@ -18,6 +19,24 @@ from coding_assistant.llm.types import (
 )
 from coding_assistant.tool_policy import DirectToolExecutor, ToolApproved, ToolDenied, ToolExecutor
 from coding_assistant.tools.builtin import CompactConversationTool, RedirectToolCallTool
+
+
+@dataclass(frozen=True)
+class AwaitingUser:
+    """Boundary returned when the caller should provide the next user input."""
+
+    history: list[BaseMessage]
+
+
+@dataclass(frozen=True)
+class AwaitingTools:
+    """Boundary returned when the caller should handle assistant tool calls."""
+
+    history: list[BaseMessage]
+    message: AssistantMessage
+
+
+AgentBoundary = AwaitingUser | AwaitingTools
 
 
 def _parse_tool_call_arguments(tool_call: ToolCall) -> tuple[dict[str, Any] | None, str | None]:
@@ -142,6 +161,66 @@ async def _execute_tool_call(
     return history, execution_result.content
 
 
+async def run_agent_until_boundary(
+    *,
+    history: Sequence[BaseMessage],
+    model: str,
+    tools: Sequence[Tool],
+    streamer: Any = openai_stream_completion,
+    on_content: Callable[[str], None] | None = None,
+) -> AgentBoundary:
+    """Advance the transcript until the next explicit caller-owned boundary."""
+    current_history = list(history)
+    if not current_history:
+        raise ValueError("run_agent_until_boundary requires a non-empty history.")
+
+    if _should_wait_for_user(current_history):
+        return AwaitingUser(history=current_history)
+
+    all_tools = _build_tools(tools=tools, tool_executor=DirectToolExecutor())
+    message = await _consume_completion(
+        history=current_history,
+        tools=all_tools,
+        model=model,
+        streamer=streamer,
+        on_content=on_content,
+    )
+    current_history.append(message)
+    if message.tool_calls:
+        return AwaitingTools(history=current_history, message=message)
+    return AwaitingUser(history=current_history)
+
+
+async def execute_tool_calls(
+    *,
+    boundary: AwaitingTools,
+    tools: Sequence[Tool],
+    tool_executor: ToolExecutor | None = None,
+) -> list[BaseMessage]:
+    """Execute one tool boundary and append the resulting tool messages."""
+    current_history = list(boundary.history)
+    resolved_tool_executor = tool_executor or DirectToolExecutor()
+    all_tools = _build_tools(tools=tools, tool_executor=resolved_tool_executor)
+    tools_by_name = {tool.name(): tool for tool in all_tools}
+
+    for tool_call in boundary.message.tool_calls:
+        current_history, result = await _execute_tool_call(
+            history=current_history,
+            tool_call=tool_call,
+            tools_by_name=tools_by_name,
+            tool_executor=resolved_tool_executor,
+        )
+        current_history.append(
+            ToolMessage(
+                tool_call_id=tool_call.id,
+                name=tool_call.function.name,
+                content=result,
+            )
+        )
+
+    return current_history
+
+
 async def run_agent(
     *,
     history: Sequence[BaseMessage],
@@ -156,36 +235,19 @@ async def run_agent(
     if not current_history:
         raise ValueError("run_agent requires a non-empty history.")
 
-    if _should_wait_for_user(current_history):
-        return current_history
-
-    resolved_tool_executor = tool_executor or DirectToolExecutor()
-    all_tools = _build_tools(tools=tools, tool_executor=resolved_tool_executor)
-    tools_by_name = {tool.name(): tool for tool in all_tools}
-
     while True:
-        message = await _consume_completion(
+        boundary = await run_agent_until_boundary(
             history=current_history,
-            tools=all_tools,
             model=model,
+            tools=tools,
             streamer=streamer,
             on_content=on_content,
         )
-        current_history.append(message)
-        if not message.tool_calls:
-            return current_history
+        if isinstance(boundary, AwaitingUser):
+            return boundary.history
 
-        for tool_call in message.tool_calls:
-            current_history, result = await _execute_tool_call(
-                history=current_history,
-                tool_call=tool_call,
-                tools_by_name=tools_by_name,
-                tool_executor=resolved_tool_executor,
-            )
-            current_history.append(
-                ToolMessage(
-                    tool_call_id=tool_call.id,
-                    name=tool_call.function.name,
-                    content=result,
-                )
-            )
+        current_history = await execute_tool_calls(
+            boundary=boundary,
+            tools=tools,
+            tool_executor=tool_executor,
+        )

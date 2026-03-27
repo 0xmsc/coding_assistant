@@ -1,4 +1,11 @@
-from coding_assistant.agent import run_agent
+from coding_assistant.agent import AwaitingTools, AwaitingUser, execute_tool_calls, run_agent, run_agent_until_boundary
 from coding_assistant.history import compact_history
 
-__all__ = ["compact_history", "run_agent"]
+__all__ = [
+    "AwaitingTools",
+    "AwaitingUser",
+    "compact_history",
+    "execute_tool_calls",
+    "run_agent",
+    "run_agent_until_boundary",
+]
