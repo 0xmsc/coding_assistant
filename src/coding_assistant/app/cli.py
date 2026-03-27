@@ -6,7 +6,7 @@ from argparse import Namespace
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import AsyncIterator
 
 from rich import print as rich_print
 from rich.markdown import Markdown
@@ -16,7 +16,7 @@ from coding_assistant.app.image import get_image
 from coding_assistant.app.instructions import get_instructions
 from coding_assistant.app.sandbox import sandbox
 from coding_assistant.app.ui import DefaultAnswerUI, PromptToolkitUI, UI
-from coding_assistant.core.agent import run_agent
+from coding_assistant.core.agent import AwaitingTools, execute_tool_calls, run_agent_until_boundary
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import (
     BaseMessage,
@@ -25,15 +25,6 @@ from coding_assistant.llm.types import (
     UserMessage,
 )
 from coding_assistant.mcp import __name__ as mcp_package_name
-from coding_assistant.core.tool_policy import (
-    ConfirmationToolPolicy,
-    DirectToolExecutor,
-    NullToolPolicy,
-    ToolApproved,
-    ToolDenied,
-    ToolExecutor,
-    ToolPolicy,
-)
 from coding_assistant.integrations.mcp_client import (
     MCPServer,
     MCPServerConfig,
@@ -74,35 +65,6 @@ class DeltaRenderer:
         self.saw_content = True
         sys.stdout.write(chunk)
         sys.stdout.flush()
-
-
-class PolicyToolExecutor:
-    """Apply approval policy before delegating to direct tool execution."""
-
-    def __init__(self, *, tool_policy: ToolPolicy) -> None:
-        self._tool_policy = tool_policy
-        self._delegate = DirectToolExecutor()
-
-    async def execute(
-        self,
-        *,
-        tool_call_id: str,
-        tool: Tool,
-        arguments: dict[str, Any],
-    ) -> ToolApproved | ToolDenied:
-        """Run approval checks before executing the resolved tool."""
-        if policy_result := await self._tool_policy.before_tool_execution(
-            tool_call_id=tool_call_id,
-            tool_name=tool.name(),
-            arguments=arguments,
-        ):
-            return ToolDenied(content=policy_result)
-
-        return await self._delegate.execute(
-            tool_call_id=tool_call_id,
-            tool=tool,
-            arguments=arguments,
-        )
 
 
 def build_default_agent_config(args: Namespace) -> DefaultAgentConfig:
@@ -174,27 +136,14 @@ async def run_cli(args: Namespace) -> None:
     else:
         ui = DefaultAnswerUI()
 
-    tool_policy: ToolPolicy
-    if args.tool_confirmation_patterns or args.shell_confirmation_patterns:
-        tool_policy = ConfirmationToolPolicy(
-            ui=ui,
-            tool_confirmation_patterns=list(args.tool_confirmation_patterns),
-            shell_confirmation_patterns=list(args.shell_confirmation_patterns),
-        )
-    else:
-        tool_policy = NullToolPolicy()
-    tool_executor: ToolExecutor = PolicyToolExecutor(tool_policy=tool_policy)
-
     async with create_default_agent(config=config) as bundle:
         if args.print_mcp_tools:
             await print_mcp_tools(bundle.mcp_servers)
             return
 
-        if args.print_instructions:
-            rich_print(Panel(Markdown(bundle.instructions), title="Instructions"))
-            return
-
-        current_history = _ensure_initial_history(instructions=bundle.instructions)
+        system_message = _build_initial_system_message(instructions=bundle.instructions)
+        _print_system_message(system_message)
+        current_history: list[BaseMessage] = [system_message]
         if args.task is not None:
             current_history.append(UserMessage(content=args.task))
 
@@ -202,7 +151,6 @@ async def run_cli(args: Namespace) -> None:
             history=current_history,
             model=args.model,
             tools=bundle.tools,
-            tool_executor=tool_executor,
             ui=ui,
             interactive=args.task is None or args.ask_user,
         )
@@ -220,12 +168,15 @@ def _apply_sandbox(*, args: Namespace, config: DefaultAgentConfig) -> None:
     sandbox(readable_paths=readable, writable_paths=writable, include_defaults=True)
 
 
-def _ensure_initial_history(
-    *,
-    instructions: str,
-) -> list[BaseMessage]:
-    """Create the initial system prompt for a fresh transcript."""
-    return [SystemMessage(content=build_system_prompt(instructions=instructions))]
+def _build_initial_system_message(*, instructions: str) -> SystemMessage:
+    """Build the system message used to seed a fresh transcript."""
+    return SystemMessage(content=build_system_prompt(instructions=instructions))
+
+
+def _print_system_message(message: SystemMessage) -> None:
+    """Render the active system prompt at startup."""
+    assert isinstance(message.content, str)
+    rich_print(Panel(Markdown(message.content), title="System"))
 
 
 async def _drive_agent(
@@ -233,7 +184,6 @@ async def _drive_agent(
     history: list[BaseMessage],
     model: str,
     tools: list[Tool],
-    tool_executor: ToolExecutor,
     ui: UI,
     interactive: bool,
 ) -> None:
@@ -243,17 +193,24 @@ async def _drive_agent(
     current_history = list(history)
     while True:
         renderer = DeltaRenderer()
-        current_history = await run_agent(
+        boundary = await run_agent_until_boundary(
             history=current_history,
             model=model,
             tools=tools,
-            tool_executor=tool_executor,
             on_content=renderer.on_delta,
         )
 
         if renderer.saw_content:
             renderer.on_delta("\n")
 
+        if isinstance(boundary, AwaitingTools):
+            current_history = await execute_tool_calls(
+                boundary=boundary,
+                tools=tools,
+            )
+            continue
+
+        current_history = boundary.history
         if not interactive:
             return
 

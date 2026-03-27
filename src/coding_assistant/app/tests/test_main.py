@@ -1,9 +1,13 @@
+from argparse import Namespace
+from contextlib import asynccontextmanager
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from coding_assistant.app.cli import build_default_agent_config
+from coding_assistant.app.cli import DefaultAgentBundle, build_default_agent_config, run_cli
+from coding_assistant.core.history import build_system_prompt
+from coding_assistant.llm.types import SystemMessage, UserMessage
 from coding_assistant.app.main import main, parse_args
 
 
@@ -76,3 +80,44 @@ def test_help_exits_with_zero() -> None:
         with pytest.raises(SystemExit) as exc_info:
             parse_args()
         assert exc_info.value.code == 0
+
+
+@pytest.mark.asyncio
+async def test_run_cli_prints_system_message_before_running_agent() -> None:
+    args = Namespace(
+        ask_user=False,
+        instructions=[],
+        mcp_env=[],
+        mcp_servers=[],
+        model="gpt-4",
+        print_mcp_tools=False,
+        readable_sandbox_directories=[],
+        sandbox=False,
+        skills_directories=[],
+        task="test task",
+        writable_sandbox_directories=[],
+    )
+
+    @asynccontextmanager
+    async def fake_create_default_agent(*, config: Any) -> Any:
+        del config
+        yield DefaultAgentBundle(
+            tools=[],
+            instructions="Follow the repo instructions.",
+            mcp_servers=[],
+        )
+
+    with (
+        patch("coding_assistant.app.cli.create_default_agent", fake_create_default_agent),
+        patch("coding_assistant.app.cli.rich_print") as mock_print,
+        patch("coding_assistant.app.cli._drive_agent", new=AsyncMock()) as mock_drive_agent,
+    ):
+        await run_cli(args)
+
+    mock_print.assert_called_once()
+    assert mock_drive_agent.await_args is not None
+    history = mock_drive_agent.await_args.kwargs["history"]
+    assert history == [
+        SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
+        UserMessage(content="test task"),
+    ]
