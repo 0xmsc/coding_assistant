@@ -5,13 +5,12 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from rich.markdown import Markdown
-from rich.panel import Panel
 
 from coding_assistant.app.cli import (
     DefaultAgentBundle,
     DeltaRenderer,
     ParagraphBuffer,
-    _format_tool_call_markdown,
+    _format_tool_call_display,
     _drive_agent,
     build_default_agent_config,
     run_cli,
@@ -165,11 +164,10 @@ def test_format_tool_call_markdown_formats_multiline_arguments() -> None:
         ),
     )
 
-    formatted = _format_tool_call_markdown(tool_call)
+    header, body_sections = _format_tool_call_display(tool_call)
 
-    assert "### `shell_execute(command, background=false)`" in formatted
-    assert "**command:**" in formatted
-    assert "```bash\necho hello\npwd\n```" in formatted
+    assert header == "shell_execute(command, background=false)"
+    assert body_sections == [("command", "echo hello\npwd", "bash")]
 
 
 def test_format_tool_call_markdown_hides_edit_payload_values() -> None:
@@ -181,9 +179,10 @@ def test_format_tool_call_markdown_hides_edit_payload_values() -> None:
         ),
     )
 
-    formatted = _format_tool_call_markdown(tool_call)
+    header, body_sections = _format_tool_call_display(tool_call)
 
-    assert formatted == '### `filesystem_edit_file(path="script.sh", old_text, new_text)`'
+    assert header == 'filesystem_edit_file(path="script.sh", old_text, new_text)'
+    assert body_sections == []
 
 
 @pytest.mark.asyncio
@@ -222,8 +221,4 @@ async def test_drive_agent_prints_formatted_tool_call_before_execution() -> None
             interactive=False,
         )
 
-    panels = [call.args[0] for call in mock_print.call_args_list if call.args and isinstance(call.args[0], Panel)]
-    assert len(panels) == 1
-    assert panels[0].title == "Running Tool"
-    assert isinstance(panels[0].renderable, Markdown)
-    assert panels[0].renderable.markup == "### `mock_tool(count=2)`"
+    assert any(call.args == ("[bold yellow]▶[/bold yellow] mock_tool(count=2)",) for call in mock_print.call_args_list)

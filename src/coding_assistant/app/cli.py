@@ -11,6 +11,7 @@ from typing import Any, AsyncIterator
 
 from rich import print as rich_print
 from rich.markdown import Markdown
+from rich.padding import Padding
 from rich.panel import Panel
 
 from coding_assistant.app.image import get_image
@@ -247,37 +248,23 @@ def _print_system_message(message: SystemMessage) -> None:
 
 
 def _print_tool_calls(message: AssistantMessage) -> None:
-    """Render the names of tools the assistant is about to execute."""
-    count = len(message.tool_calls)
-    for index, tool_call in enumerate(message.tool_calls, start=1):
-        title = "Running Tool" if count == 1 else f"Running Tool {index}/{count}"
-        rich_print(
-            Panel.fit(
-                Markdown(_format_tool_call_markdown(tool_call)),
-                title=title,
-                border_style="yellow",
-            )
-        )
+    """Render tool calls in the old dense-progress style."""
+    for tool_call in message.tool_calls:
+        _print_tool_call(tool_call)
 
 
-def _format_tool_call_markdown(tool_call: Any) -> str:
-    """Format one tool call in the old dense-progress style."""
+def _format_tool_call_display(tool_call: Any) -> tuple[str, list[tuple[str, str, str]]]:
+    """Return the tool-call header and multiline sections for display."""
     tool_name = tool_call.function.name or "<missing>"
     parsed_arguments = _parse_tool_arguments_for_display(tool_call.function.arguments)
     if parsed_arguments is None:
-        return "\n\n".join(
-            [
-                f"### `{tool_name}`",
-                "**arguments:**",
-                f"```\n{tool_call.function.arguments}\n```",
-            ]
-        )
+        return f"{tool_name}(arguments)", [("arguments", tool_call.function.arguments, "")]
 
     config = SPECIAL_TOOL_FORMATS.get(tool_name, {})
     hide_value_keys = set(config.get("hide_value", []))
     language_hints: dict[str, str] = dict(config.get("languages", {}))
     header_params: list[str] = []
-    body_sections: list[str] = []
+    body_sections: list[tuple[str, str, str]] = []
     language_override = _get_tool_language_override(tool_name, parsed_arguments)
 
     for key, value in parsed_arguments.items():
@@ -289,21 +276,13 @@ def _format_tool_call_markdown(tool_call: Any) -> str:
             formatted_value = value if isinstance(value, str) else json.dumps(value, indent=2)
             if "\n" in formatted_value:
                 header_params.append(key)
-                body_sections.append(
-                    _format_tool_block(
-                        key=key,
-                        value=formatted_value,
-                        language=language_override or language_hints[key],
-                    )
-                )
+                body_sections.append((key, formatted_value, language_override or language_hints[key]))
                 continue
 
         header_params.append(f"{key}={json.dumps(value)}")
 
     args_suffix = f"({', '.join(header_params)})"
-    sections = [f"### `{tool_name}{args_suffix}`"]
-    sections.extend(body_sections)
-    return "\n\n".join(sections)
+    return f"{tool_name}{args_suffix}", body_sections
 
 
 def _parse_tool_arguments_for_display(arguments: str) -> dict[str, Any] | None:
@@ -317,12 +296,25 @@ def _parse_tool_arguments_for_display(arguments: str) -> dict[str, Any] | None:
     return parsed
 
 
-def _format_tool_block(*, key: str, value: str, language: str) -> str:
-    """Render one multiline tool argument."""
-    if language == "markdown":
-        return f"**{key}:**\n\n{value}"
-    fence = f"```{language}\n{value}\n```" if language else f"```\n{value}\n```"
-    return f"**{key}:**\n\n{fence}"
+def _print_tool_call(tool_call: Any) -> None:
+    """Print one tool call with the old dense-progress layout."""
+    header, body_sections = _format_tool_call_display(tool_call)
+    left_padding = (0, 0, 0, 2)
+
+    rich_print()
+    rich_print(f"[bold yellow]▶[/bold yellow] {header}")
+
+    for key, value, language in body_sections:
+        rich_print()
+        rich_print(Padding(f"[dim]{key}:[/dim]", left_padding))
+        if language == "markdown":
+            rich_print(Padding(Markdown(value), left_padding))
+        else:
+            fence = f"````{language}\n{value}\n````" if language else f"````\n{value}\n````"
+            rich_print(Padding(Markdown(fence), left_padding))
+
+    if body_sections:
+        rich_print()
 
 
 def _get_tool_language_override(tool_name: str, arguments: dict[str, Any]) -> str | None:
