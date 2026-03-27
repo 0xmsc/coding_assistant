@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from coding_assistant import execute_tool_calls, run_agent, run_agent_until_boundary
-from coding_assistant.agent import AwaitingTools, AwaitingUser
+from coding_assistant.core.agent import AwaitingTools, AwaitingUser
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -21,7 +21,7 @@ from coding_assistant.llm.types import (
     Usage,
     UserMessage,
 )
-from coding_assistant.tool_policy import ToolApproved, ToolDenied
+from coding_assistant.core.tool_policy import ToolApproved, ToolDenied
 
 
 class ScriptedStreamer:

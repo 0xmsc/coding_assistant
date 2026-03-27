@@ -1,7 +1,7 @@
 from typing import Any
 import os
 from pathlib import Path
-from coding_assistant.paths import (
+from coding_assistant.infra.paths import (
     get_cache_home,
     get_state_home,
     get_data_home,

@@ -1,7 +1,7 @@
 import pytest
 
 from coding_assistant import compact_history
-from coding_assistant.history import build_system_prompt
+from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import SystemMessage, UserMessage
 
 

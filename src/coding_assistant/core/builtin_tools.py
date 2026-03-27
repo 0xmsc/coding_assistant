@@ -6,8 +6,8 @@ from typing import Any, Awaitable, Callable, Sequence
 
 from pydantic import BaseModel, Field
 
+from coding_assistant.core.tool_policy import ToolApproved, ToolDenied, ToolExecutionResult
 from coding_assistant.llm.types import Tool, ToolDefinition
-from coding_assistant.tool_policy import ToolApproved, ToolDenied, ToolExecutionResult
 
 
 class CompactConversationSchema(BaseModel):

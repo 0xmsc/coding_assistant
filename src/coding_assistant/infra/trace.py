@@ -3,7 +3,7 @@ from pathlib import Path
 import logging
 from typing import Any
 
-from coding_assistant.paths import get_traces_dir
+from coding_assistant.infra.paths import get_traces_dir
 
 _trace_dir: Path | None = None
 _trace_counter = 0

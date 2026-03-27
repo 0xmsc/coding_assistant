@@ -4,14 +4,14 @@ import logging
 import importlib.resources
 from pathlib import Path
 
-from coding_assistant.tools.mcp import MCPServer
+from coding_assistant.integrations.mcp_client import MCPServer
 
 logger = logging.getLogger(__name__)
 
 
 def _load_default_instructions() -> str:
     """Load the built-in instruction document bundled with the package."""
-    path = importlib.resources.files("coding_assistant") / "default_instructions.md"
+    path = importlib.resources.files("coding_assistant.app") / "default_instructions.md"
     try:
         return path.read_text().strip()
     except FileNotFoundError:
