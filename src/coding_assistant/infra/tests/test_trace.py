@@ -1,12 +1,12 @@
 from typing import Any
-import coding_assistant.trace
+import coding_assistant.infra.trace
 import pytest
-from coding_assistant.trace import enable_tracing, trace_enabled, trace_data, trace_json
+from coding_assistant.infra.trace import enable_tracing, trace_enabled, trace_data, trace_json
 
 
 @pytest.fixture(autouse=True)
 def reset_tracing() -> Any:
-    coding_assistant.trace._trace_dir = None
+    coding_assistant.infra.trace._trace_dir = None
 
 
 def test_tracing_toggle(tmp_path: Any) -> Any:

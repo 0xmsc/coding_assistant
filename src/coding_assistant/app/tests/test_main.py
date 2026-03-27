@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from coding_assistant.cli import build_default_agent_config
-from coding_assistant.main import main, parse_args
+from coding_assistant.app.cli import build_default_agent_config
+from coding_assistant.app.main import main, parse_args
 
 
 def test_parse_args_valid() -> None:
@@ -36,7 +36,7 @@ def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
     args.mcp_env = []
     args.instructions = []
 
-    with patch("coding_assistant.cli.os.getcwd", return_value=str(tmp_path)):
+    with patch("coding_assistant.app.cli.os.getcwd", return_value=str(tmp_path)):
         config = build_default_agent_config(args)
 
     assert config.working_directory == tmp_path
@@ -45,8 +45,8 @@ def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
     assert config.user_instructions == ()
 
 
-@patch("coding_assistant.main.run_cli")
-@patch("coding_assistant.main.enable_tracing")
+@patch("coding_assistant.app.main.run_cli")
+@patch("coding_assistant.app.main.enable_tracing")
 def test_main_enables_tracing_when_flag_set(mock_enable_tracing: Any, mock_run_cli: Any) -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--trace"]):
         main()
@@ -54,9 +54,9 @@ def test_main_enables_tracing_when_flag_set(mock_enable_tracing: Any, mock_run_c
         mock_run_cli.assert_called_once()
 
 
-@patch("coding_assistant.main.run_cli")
-@patch("coding_assistant.main.debugpy.wait_for_client")
-@patch("coding_assistant.main.debugpy.listen")
+@patch("coding_assistant.app.main.run_cli")
+@patch("coding_assistant.app.main.debugpy.wait_for_client")
+@patch("coding_assistant.app.main.debugpy.listen")
 def test_main_waits_for_debugger(mock_listen: Any, mock_wait: Any, mock_run_cli: Any) -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--wait-for-debugger"]):
         main()

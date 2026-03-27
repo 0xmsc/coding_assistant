@@ -4,7 +4,7 @@ import subprocess
 from enum import Enum
 
 
-from coding_assistant.sandbox import sandbox
+from coding_assistant.app.sandbox import sandbox
 
 # Use spawn instead of fork to avoid deprecation warnings with multi-threaded pytest
 multiprocessing.set_start_method("spawn", force=True)

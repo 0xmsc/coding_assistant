@@ -1,12 +1,11 @@
 # Coding Assistant
 
-Coding Assistant is a Python-based CLI and embeddable library for coding workflows. It can use MCP tools (filesystem, web fetch/search, Context7, Tavily, etc.), run inside a sandbox, and keep resumable history.
+Coding Assistant is a Python-based CLI and embeddable library for coding workflows. It can use MCP tools (filesystem, web fetch/search, Context7, Tavily, etc.) and run inside a sandbox.
 
 ## Key Features
 
 - Simple `run_agent(history=...)` embedding API with streamed content callbacks
 - Caller-owned history with pure `compact_history(...)` transcript compaction
-- Resumable sessions and conversation summaries stored per-project
 - Built-in MCP server with shell, Python, filesystem, and TODO tools
 - Support for external MCP servers (filesystem, fetch, Context7, Tavily, etc.)
 - Landlock-based filesystem sandbox with readable/writable allowlists
@@ -45,14 +44,6 @@ coding-assistant \
   --task "Refactor all function names to snake_case."
 ```
 
-Resume the last session:
-
-```bash
-coding-assistant \
-  --model "openrouter/anthropic/claude-3.5-sonnet" \
-  --resume
-```
-
 Show available options:
 
 ```bash
@@ -68,7 +59,7 @@ import asyncio
 from typing import Any
 
 from coding_assistant import run_agent
-from coding_assistant.history import build_system_prompt
+from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import SystemMessage, Tool, UserMessage
 
 
@@ -132,7 +123,6 @@ Notes:
 
 - `--model` Select model for the orchestrator agent (required).
 - `--tool-confirmation-patterns` / `--shell-confirmation-patterns` Regex patterns to require user confirmation before tool/shell execution.
-- `--resume` / `--resume-file` Resume from the latest/specific orchestrator history in `.coding_assistant/history/`.
 - `--instructions` Provide extra instructions that are composed with defaults. Can be repeated.
 - `--mcp-env` Environment variables to pass to the default MCP server.
 - `--trace` / `--no-trace` Enable/disable tracing of model requests/responses.
@@ -212,12 +202,6 @@ Example:
 --readable-sandbox-directories /mnt/wsl ~/.ssh ~/.rustup \
 --writable-sandbox-directories "$project_dir" /tmp /dev/shm ~/.cache/coding_assistant
 ```
-
-## History and Resume
-
-- Conversation history and summaries are kept under `.coding_assistant/` in your project.
-- Use `--resume` to continue from the most recent session, or `--resume-file` to select a specific file.
-- The assistant automatically trims old history once it's saved.
 
 ## Shell command execution behavior
 

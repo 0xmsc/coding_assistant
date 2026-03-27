@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from coding_assistant.tool_policy import (
+from coding_assistant.core.tool_policy import (
     ConfirmationToolPolicy,
     DirectToolExecutor,
     ToolApproved,

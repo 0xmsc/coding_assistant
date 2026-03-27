@@ -1,4 +1,4 @@
-- [x] Add low-level boundary result types and `run_agent_until_boundary(...)`.
-- [x] Refactor `run_agent(...)` to loop over the boundary API via a shared tool-execution helper.
-- [x] Update exports, tests, and README for the two-level agent surface.
+- [x] Move runtime modules into `core/`, app modules into `app/`, MCP client code into `integrations/`, and tracing/path helpers into `infra/`.
+- [x] Move tests back under their respective package directories.
+- [x] Remove the top-level `tests/` tree again while keeping imports and discovery working.
 - [x] Run `just test` and `just lint`.

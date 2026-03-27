@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from coding_assistant.tools.mcp import MCPServerConfig, get_mcp_servers_from_config
+from coding_assistant.integrations.mcp_client import MCPServerConfig, get_mcp_servers_from_config
 from fastmcp.mcp_config import StdioMCPServer, RemoteMCPServer
 
 
@@ -11,7 +11,7 @@ async def test_get_mcp_servers_from_config_stdio() -> None:
     config = [MCPServerConfig(name="test-stdio", command="test-cmd", args=["--arg1"])]
     working_dir = Path("/tmp")
 
-    with patch("coding_assistant.tools.mcp._get_mcp_server") as mock_get_server:
+    with patch("coding_assistant.integrations.mcp_client._get_mcp_server") as mock_get_server:
         mock_server = MagicMock()
         mock_server.name = "test-stdio"
 
@@ -33,7 +33,7 @@ async def test_get_mcp_servers_from_config_sse() -> None:
     config = [MCPServerConfig(name="test-sse", url="http://localhost:8000/sse")]
     working_dir = Path("/tmp")
 
-    with patch("coding_assistant.tools.mcp._get_mcp_server") as mock_get_server:
+    with patch("coding_assistant.integrations.mcp_client._get_mcp_server") as mock_get_server:
         mock_server = MagicMock()
         mock_server.name = "test-sse"
         mock_get_server.return_value.__aenter__.return_value = mock_server

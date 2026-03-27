@@ -29,7 +29,7 @@ from coding_assistant.llm.types import (
     AssistantMessage,
     message_to_dict,
 )
-from coding_assistant.trace import trace_json
+from coding_assistant.infra.trace import trace_json
 
 logger = logging.getLogger(__name__)
 

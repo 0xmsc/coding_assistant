@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from json import JSONDecodeError
 from typing import Any
 
-from coding_assistant.history import compact_history
+from coding_assistant.core.builtin_tools import CompactConversationTool, RedirectToolCallTool
+from coding_assistant.core.history import compact_history
 from coding_assistant.llm.openai import stream_completion as openai_stream_completion
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -17,8 +18,7 @@ from coding_assistant.llm.types import (
     ToolCall,
     ToolMessage,
 )
-from coding_assistant.tool_policy import DirectToolExecutor, ToolApproved, ToolDenied, ToolExecutor
-from coding_assistant.tools.builtin import CompactConversationTool, RedirectToolCallTool
+from coding_assistant.core.tool_policy import DirectToolExecutor, ToolApproved, ToolDenied, ToolExecutor
 
 
 @dataclass(frozen=True)

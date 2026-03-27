@@ -2,13 +2,12 @@ import asyncio
 import logging
 import argparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptionalAction
-from pathlib import Path
 
 import debugpy
 
-from coding_assistant.cli import run_cli
-from coding_assistant.paths import get_log_file
-from coding_assistant.trace import enable_tracing, get_default_trace_dir
+from coding_assistant.app.cli import run_cli
+from coding_assistant.infra.paths import get_log_file
+from coding_assistant.infra.trace import enable_tracing, get_default_trace_dir
 
 logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
@@ -43,17 +42,6 @@ def parse_args() -> argparse.Namespace:
         "--task",
         type=str,
         help="Initial task to seed the conversation before the agent runs.",
-    )
-    parser.add_argument(
-        "--resume",
-        action="store_true",
-        help="Resume from the latest orchestrator history file in .coding_assistant/history/.",
-    )
-    parser.add_argument(
-        "--resume-file",
-        type=Path,
-        default=None,
-        help="Resume from a specific orchestrator history file.",
     )
     parser.add_argument("--print-mcp-tools", action="store_true", help="Print all available tools from MCP servers.")
     parser.add_argument(

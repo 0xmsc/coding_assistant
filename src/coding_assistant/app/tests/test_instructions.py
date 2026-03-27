@@ -3,8 +3,8 @@ from pathlib import Path
 
 from typing import cast
 
-from coding_assistant.instructions import get_instructions
-from coding_assistant.tools.mcp import MCPServer
+from coding_assistant.app.instructions import get_instructions
+from coding_assistant.integrations.mcp_client import MCPServer
 
 
 def _get_project_root() -> Path:

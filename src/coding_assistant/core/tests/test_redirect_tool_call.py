@@ -5,8 +5,8 @@ from typing import Any
 import pytest
 
 from coding_assistant.llm.types import Tool
-from coding_assistant.tool_policy import ToolApproved, ToolDenied
-from coding_assistant.tools.builtin import RedirectToolCallTool
+from coding_assistant.core.builtin_tools import RedirectToolCallTool
+from coding_assistant.core.tool_policy import ToolApproved, ToolDenied
 
 
 class MockTextTool(Tool):

@@ -13,7 +13,7 @@ from rich import print
 from rich.console import Console
 from rich.rule import Rule
 
-from coding_assistant.paths import get_app_cache_dir
+from coding_assistant.infra.paths import get_app_cache_dir
 
 logger = logging.getLogger(__name__)
 
