@@ -107,7 +107,9 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`run_agent(...)` owns the assistant/tool loop. If you need approvals or denials above raw tools, pass a custom `tool_executor` that can return a typed denial result before the tool runs.
+`run_agent(...)` is the convenience wrapper that owns the assistant/tool loop. If you need approvals or denials above raw tools, pass a custom `tool_executor` that can return a typed denial result before the tool runs.
+
+If you want explicit control boundaries, use `run_agent_until_boundary(...)` and `execute_tool_calls(...)`. The lower-level API returns `AwaitingUser` or `AwaitingTools`, and the helper can execute one returned tool boundary through the same typed executor contract.
 
 ### Advanced Examples
 
