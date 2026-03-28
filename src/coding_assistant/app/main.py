@@ -38,11 +38,6 @@ def setup_logging() -> None:
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the coding assistant executable."""
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant CLI")
-    parser.add_argument(
-        "--task",
-        type=str,
-        help="Initial task to seed the conversation before the agent runs.",
-    )
     parser.add_argument("--print-mcp-tools", action="store_true", help="Print all available tools from MCP servers.")
     parser.add_argument("--model", type=str, required=True, help="Model to use for the orchestrator agent.")
     parser.add_argument(
@@ -69,13 +64,6 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="Enable tracing of model requests and responses to a session folder in $XDG_STATE_HOME/coding-assistant/traces.",
     )
-    parser.add_argument(
-        "--ask-user",
-        action=BooleanOptionalAction,
-        default=True,
-        help="Enable/disable asking the user for input in runs started with --task.",
-    )
-
     parser.add_argument(
         "--skills-directories",
         nargs="*",

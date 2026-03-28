@@ -1,6 +1,6 @@
 from typing import Any, cast
 from prompt_toolkit.document import Document
-from coding_assistant.app.ui import SlashCompleter
+from coding_assistant.app.cli import SlashCompleter
 
 
 def test_slash_completer() -> None:
