@@ -1,4 +1,0 @@
-- [x] Move runtime modules into `core/`, app modules into `app/`, MCP client code into `integrations/`, and tracing/path helpers into `infra/`.
-- [x] Move tests back under their respective package directories.
-- [x] Remove the top-level `tests/` tree again while keeping imports and discovery working.
-- [x] Run `just test` and `just lint`.
