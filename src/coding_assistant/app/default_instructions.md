@@ -9,5 +9,5 @@
 ## Tools
 
 - Call multiple tools in one step where appropriate, to parallelize their execution.
-- You have access to built-in local tools for shell, python, filesystem, todo tracking, task management, and skills.
+- You have access to built-in local tools for shell, python, filesystem, todo tracking, and task management.
 - When external MCP servers are configured, use them when they are the best fit for the task.

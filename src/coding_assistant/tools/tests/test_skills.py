@@ -7,7 +7,6 @@ from coding_assistant.tools.skills import (
     Skill,
     create_skill_tools,
     format_skills_instructions,
-    load_builtin_skills,
     load_skills_from_directory,
     parse_skill_file,
 )
@@ -68,16 +67,6 @@ def test_parse_skill_file_missing_fields(tmp_path: Any) -> None:
     assert skill is None
 
 
-def test_load_builtin_skills() -> None:
-    skills = load_builtin_skills()
-
-    # We should have at least the develop skill we just added
-    assert len(skills) >= 1
-
-    names = {s.name for s in skills}
-    assert "develop" in names
-
-
 def test_create_skill_tools(tmp_path: Any) -> None:
     # Create a CLI skill
     cli_skills_dir = tmp_path / "cli_skills"
@@ -88,11 +77,17 @@ def test_create_skill_tools(tmp_path: Any) -> None:
     tools, skills = create_skill_tools(skills_directories=[cli_skills_dir])
     instr = format_skills_instructions(skills)
 
-    assert "develop" in instr
     assert "my_cli_skill" in instr
     assert "skills_list_resources" in instr
     assert "skills_read" in instr
     assert {tool.name() for tool in tools} == {"skills_list_resources", "skills_read"}
+
+
+def test_create_skill_tools_without_configured_skills() -> None:
+    tools, skills = create_skill_tools(skills_directories=[])
+
+    assert tools == []
+    assert skills == []
 
 
 @pytest.mark.asyncio
@@ -115,17 +110,3 @@ async def test_skills_tools(tmp_path: Any) -> None:
 
     main_content = await read_tool.execute({"name": "myskill"})
     assert "content" in main_content
-
-
-def test_builtin_skills_parsing_content() -> None:
-    # Verify that the placeholder skill has the expected structure
-    skills = load_builtin_skills()
-    general_skill = next(s for s in skills if s.name == "develop")
-
-    assert "General principles" in general_skill.description
-
-    # Verify it has the moved content
-    assert "SKILL.md" in general_skill.resources
-    content = (general_skill.root / "SKILL.md").read_text()
-    assert "## Core Principles" in content
-    assert "## File Operations" in content
