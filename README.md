@@ -36,14 +36,6 @@ uv sync
 
 ## Quickstart
 
-Run a one-shot task:
-
-```bash
-coding-assistant \
-  --model "openrouter/anthropic/claude-3.5-sonnet" \
-  --task "Refactor all function names to snake_case."
-```
-
 Start an interactive session:
 
 ```bash
@@ -108,16 +100,14 @@ If you want streaming or explicit boundary control, use `run_agent_event_stream(
 ## CLI Highlights
 
 - `--model` selects the model to use. Required.
-- `--task` seeds a one-shot or non-interactive run.
 - `--instructions` appends custom instructions.
 - `--mcp-servers` configures external MCP servers as JSON strings.
 - `--print-mcp-tools` prints the discovered MCP tools and exits.
 - `--trace` writes model request and response traces.
 - `--wait-for-debugger` waits for a debugger on port `1234`.
-- `--ask-user` controls whether `--task` runs prompt for follow-up input.
 - `--skills-directories` loads optional skill directories.
 
-Interactive prompting is enabled by default when no `--task` is provided.
+The CLI is interactive.
 
 The interactive CLI also supports:
 
@@ -156,7 +146,6 @@ Example:
 ```bash
 coding-assistant \
   --model "openrouter/openai/gpt-4o-mini" \
-  --task "Say Hello World" \
   --mcp-servers \
     '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
     '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}'

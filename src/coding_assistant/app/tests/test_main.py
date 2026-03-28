@@ -16,23 +16,21 @@ from coding_assistant.app.main import main, parse_args
 
 
 def test_parse_args_valid() -> None:
-    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--task", "test"]):
+    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4"]):
         args = parse_args()
         assert args.model == "gpt-4"
-        assert args.task == "test"
 
 
 def test_parse_args_defaults() -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "gpt-4"]):
         args = parse_args()
-        assert args.ask_user is True
+        assert args.skills_directories == []
 
 
 def test_parse_args_with_multiple_flags() -> None:
-    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--trace", "--no-ask-user"]):
+    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--trace"]):
         args = parse_args()
         assert args.trace is True
-        assert args.ask_user is False
 
 
 def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
@@ -79,13 +77,11 @@ def test_help_exits_with_zero() -> None:
 @pytest.mark.asyncio
 async def test_run_cli_prints_system_message_before_running_agent() -> None:
     args = Namespace(
-        ask_user=False,
         instructions=[],
         mcp_servers=[],
         model="gpt-4",
         print_mcp_tools=False,
         skills_directories=[],
-        task="test task",
         trace=False,
         wait_for_debugger=False,
     )
@@ -111,7 +107,6 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     history = mock_drive_agent.await_args.kwargs["history"]
     assert history == [
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
-        UserMessage(content="test task"),
     ]
 
 
@@ -198,12 +193,13 @@ async def test_drive_agent_prints_formatted_tool_call_before_execution() -> None
         patch("coding_assistant.app.cli.execute_tool_calls", new=AsyncMock(return_value=tool_boundary.history)),
         patch("coding_assistant.app.output.rich_print") as mock_print,
     ):
+        ui = Mock()
+        ui.prompt = AsyncMock(return_value="/exit")
         await _drive_agent(
             history=[SystemMessage(content="System"), UserMessage(content="Do the task")],
             model="gpt-4",
             tools=[],
-            ui=Mock(),
-            interactive=False,
+            prompt_user=ui.prompt,
         )
 
     assert any(call.args == ("[bold yellow]▶[/bold yellow] mock_tool(count=2)",) for call in mock_print.call_args_list)

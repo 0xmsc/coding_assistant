@@ -1,20 +1,22 @@
 from __future__ import annotations
 
 import os
+import re
 from argparse import Namespace
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Iterable
 
 from coding_assistant.app.image import get_image
 from coding_assistant.app.instructions import get_instructions
 from coding_assistant.app.output import DeltaRenderer, print_system_message, print_tool_calls
-from coding_assistant.app.ui import DefaultAnswerUI, PromptToolkitUI, UI
 from coding_assistant.core.agent import run_agent_event_stream
 from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.core.tool_calls import execute_tool_calls
+from coding_assistant.infra.paths import get_app_cache_dir
 from coding_assistant.llm.types import (
     BaseMessage,
     ContentDeltaEvent,
@@ -22,6 +24,14 @@ from coding_assistant.llm.types import (
     Tool,
     UserMessage,
 )
+from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import CompleteEvent, Completer, Completion, WordCompleter
+from prompt_toolkit.document import Document
+from prompt_toolkit.history import FileHistory
+from rich import print
+from rich.console import Console
+from rich.rule import Rule
+
 from coding_assistant.tools import create_local_tool_bundle
 from coding_assistant.integrations.mcp_client import (
     MCPServer,
@@ -49,6 +59,19 @@ class DefaultAgentBundle:
     tools: list[Tool]
     instructions: str
     mcp_servers: list[MCPServer]
+
+
+class SlashCompleter(Completer):
+    """Autocomplete only slash-prefixed commands."""
+
+    def __init__(self, words: list[str]):
+        self.pattern = re.compile(r"/[a-zA-Z0-9_]*")
+        self.word_completer = WordCompleter(words, pattern=self.pattern)
+
+    def get_completions(self, document: Document, complete_event: CompleteEvent) -> Iterable[Completion]:
+        """Yield slash-command completions when the prompt starts with `/`."""
+        if document.text_before_cursor.startswith("/"):
+            yield from self.word_completer.get_completions(document, complete_event)
 
 
 def build_default_agent_config(args: Namespace) -> DefaultAgentConfig:
@@ -92,14 +115,12 @@ async def create_default_agent(
 
 
 async def run_cli(args: Namespace) -> None:
-    """Run the interactive or single-shot CLI entry point."""
+    """Run the interactive CLI entry point."""
     config = build_default_agent_config(args)
+    prompt_session = _create_prompt_session()
 
-    ui: UI
-    if args.task is None or args.ask_user:
-        ui = PromptToolkitUI()
-    else:
-        ui = DefaultAnswerUI()
+    async def prompt_user(words: list[str] | None = None) -> str:
+        return await _prompt_with_session(prompt_session, words=words)
 
     async with create_default_agent(config=config) as bundle:
         if args.print_mcp_tools:
@@ -109,15 +130,12 @@ async def run_cli(args: Namespace) -> None:
         system_message = _build_initial_system_message(instructions=bundle.instructions)
         print_system_message(system_message)
         current_history: list[BaseMessage] = [system_message]
-        if args.task is not None:
-            current_history.append(UserMessage(content=args.task))
 
         await _drive_agent(
             history=current_history,
             model=args.model,
             tools=bundle.tools,
-            ui=ui,
-            interactive=args.task is None or args.ask_user,
+            prompt_user=prompt_user,
         )
 
 
@@ -131,10 +149,9 @@ async def _drive_agent(
     history: list[BaseMessage],
     model: str,
     tools: list[Tool],
-    ui: UI,
-    interactive: bool,
+    prompt_user: Callable[[list[str] | None], Awaitable[str]],
 ) -> None:
-    """Drive one or more `run_agent` turns until the CLI should exit."""
+    """Drive the interactive agent loop until the CLI should exit."""
     command_names = ["/exit", "/help", "/compact", "/image"]
 
     current_history = list(history)
@@ -165,11 +182,8 @@ async def _drive_agent(
             continue
 
         current_history = boundary.history
-        if not interactive:
-            return
-
         while True:
-            answer = await ui.prompt(words=command_names)
+            answer = await prompt_user(command_names)
             stripped = answer.strip()
             if stripped == "/exit":
                 return
@@ -195,3 +209,22 @@ async def _drive_agent(
 
             current_history.append(UserMessage(content=answer))
             break
+
+
+def _create_prompt_session() -> PromptSession[str]:
+    """Create the prompt-toolkit session used by the interactive CLI."""
+    history_dir = get_app_cache_dir()
+    history_dir.mkdir(parents=True, exist_ok=True)
+    history_file = history_dir / "history"
+    return PromptSession(
+        history=FileHistory(str(history_file)),
+        enable_open_in_editor=True,
+    )
+
+
+async def _prompt_with_session(prompt_session: PromptSession[str], *, words: list[str] | None = None) -> str:
+    """Prompt for input with optional slash-command completion."""
+    Console().bell()
+    print(Rule(style="dim"))
+    completer = SlashCompleter(words) if words else None
+    return await prompt_session.prompt_async("> ", completer=completer, complete_while_typing=True)
