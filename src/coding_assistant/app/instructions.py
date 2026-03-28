@@ -1,21 +1,32 @@
 from __future__ import annotations
 
 import logging
-import importlib.resources
 from pathlib import Path
 
 from coding_assistant.integrations.mcp_client import MCPServer
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_INSTRUCTIONS = """
+# Global instructions
+
+## General
+
+- Output text in markdown formatting, where appropriate.
+- Do not install any software before asking the user.
+- Do not run any binary using `uvx` or `npx` before asking the user.
+
+## Tools
+
+- Call multiple tools in one step where appropriate, to parallelize their execution.
+- You have access to built-in local tools for shell, python, filesystem, todo tracking, and task management.
+- When external MCP servers are configured, use them when they are the best fit for the task.
+""".strip()
+
 
 def _load_default_instructions() -> str:
-    """Load the built-in instruction document bundled with the package."""
-    path = importlib.resources.files("coding_assistant.app") / "default_instructions.md"
-    try:
-        return path.read_text().strip()
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Could not find default_instructions.md at {path}")
+    """Return the built-in instruction document bundled with the package."""
+    return DEFAULT_INSTRUCTIONS
 
 
 def get_instructions(
