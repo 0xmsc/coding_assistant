@@ -42,7 +42,7 @@ def parse_skill_file(content: str, source_info: str, root: Path) -> Skill | None
 def load_skills_from_root(root_directory: Path) -> list[Skill]:
     """Load all skills from the immediate child directories of a root."""
     skills: list[Skill] = []
-    for skill_directory in root_directory.iterdir():
+    for skill_directory in sorted(root_directory.iterdir(), key=lambda path: path.name):
         if not skill_directory.is_dir():
             continue
 
@@ -177,10 +177,18 @@ def create_skill_tools(*, skills_directories: Sequence[Path]) -> tuple[list[Tool
     if not skills:
         return [], []
 
-    skills_by_name = {skill.name: skill for skill in skills}
+    skills_by_name: dict[str, Skill] = {}
+    for skill in skills:
+        existing_skill = skills_by_name.get(skill.name)
+        if existing_skill is not None:
+            raise RuntimeError(
+                f"Duplicate skill name '{skill.name}' found in '{existing_skill.root}' and '{skill.root}'. "
+                "Skill names must be unique."
+            )
+        skills_by_name[skill.name] = skill
 
     tools: list[Tool] = [
         SkillsListResourcesTool(skills_by_name=skills_by_name),
         SkillsReadTool(skills_by_name=skills_by_name),
     ]
-    return tools, skills
+    return tools, list(skills_by_name.values())

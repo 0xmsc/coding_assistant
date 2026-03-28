@@ -32,7 +32,7 @@ from rich import print
 from rich.console import Console
 from rich.rule import Rule
 
-from coding_assistant.tools import create_local_tool_bundle
+from coding_assistant.tools.local_bundle import create_local_tool_bundle
 from coding_assistant.integrations.mcp_client import (
     MCPServer,
     MCPServerConfig,
