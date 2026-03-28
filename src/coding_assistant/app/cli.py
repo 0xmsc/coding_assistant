@@ -11,13 +11,10 @@ from coding_assistant.app.image import get_image
 from coding_assistant.app.instructions import get_instructions
 from coding_assistant.app.output import DeltaRenderer, print_system_message, print_tool_calls
 from coding_assistant.app.ui import DefaultAnswerUI, PromptToolkitUI, UI
-from coding_assistant.core.agent import (
-    AwaitingTools,
-    AwaitingUser,
-    execute_tool_calls,
-    run_agent_event_stream,
-)
+from coding_assistant.core.agent import run_agent_event_stream
+from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
 from coding_assistant.core.history import build_system_prompt
+from coding_assistant.core.tool_calls import execute_tool_calls
 from coding_assistant.llm.types import (
     BaseMessage,
     ContentDeltaEvent,
@@ -143,7 +140,7 @@ async def _drive_agent(
     current_history = list(history)
     while True:
         renderer = DeltaRenderer()
-        boundary: AwaitingUser | AwaitingTools | None = None
+        boundary: AwaitingUser | AwaitingToolCalls | None = None
         async for event in run_agent_event_stream(
             history=current_history,
             model=model,
@@ -152,14 +149,14 @@ async def _drive_agent(
             if isinstance(event, ContentDeltaEvent):
                 renderer.on_delta(event.content)
                 continue
-            if isinstance(event, (AwaitingUser, AwaitingTools)):
+            if isinstance(event, (AwaitingUser, AwaitingToolCalls)):
                 boundary = event
 
         renderer.finish()
         if boundary is None:
             raise RuntimeError("run_agent_event_stream stopped without yielding a boundary.")
 
-        if isinstance(boundary, AwaitingTools):
+        if isinstance(boundary, AwaitingToolCalls):
             print_tool_calls(boundary.message)
             current_history = await execute_tool_calls(
                 boundary=boundary,

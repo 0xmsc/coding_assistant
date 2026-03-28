@@ -5,13 +5,9 @@ from typing import Any
 
 import pytest
 
-from coding_assistant.core.agent import (
-    AwaitingTools,
-    AwaitingUser,
-    execute_tool_calls,
-    run_agent,
-    run_agent_event_stream,
-)
+from coding_assistant.core.agent import run_agent, run_agent_event_stream
+from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
+from coding_assistant.core.tool_calls import execute_tool_calls
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -180,7 +176,7 @@ async def test_run_agent_event_stream_yields_tool_boundary_without_executing() -
                 usage=Usage(tokens=10, cost=0.0),
             )
         ),
-        AwaitingTools(
+        AwaitingToolCalls(
             history=[
                 *make_system_history(),
                 UserMessage(content="Finish the task"),
@@ -211,7 +207,7 @@ async def test_run_agent_event_stream_recovers_pending_tool_boundary_from_histor
         )
     ]
 
-    assert events == [AwaitingTools(history=history)]
+    assert events == [AwaitingToolCalls(history=history)]
 
 
 @pytest.mark.asyncio
@@ -225,7 +221,7 @@ async def test_execute_tool_calls_returns_new_history_without_mutating_boundary_
         UserMessage(content="Finish the task"),
         AssistantMessage(tool_calls=[external_call]),
     ]
-    boundary = AwaitingTools(
+    boundary = AwaitingToolCalls(
         history=boundary_history,
     )
 
@@ -249,7 +245,7 @@ async def test_execute_tool_calls_compacts_history_without_orphan_tool_message()
         id="call-1",
         function=FunctionCall(name="compact_conversation", arguments='{"summary": "summary text"}'),
     )
-    boundary = AwaitingTools(
+    boundary = AwaitingToolCalls(
         history=[
             *make_system_history(),
             UserMessage(content="Finish the task"),
