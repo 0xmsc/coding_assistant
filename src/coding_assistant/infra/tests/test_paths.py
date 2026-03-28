@@ -2,6 +2,8 @@ from typing import Any
 import os
 from pathlib import Path
 from coding_assistant.infra.paths import (
+    get_builtin_instructions_dir,
+    get_builtin_skills_dir,
     get_cache_home,
     get_state_home,
     get_data_home,
@@ -67,3 +69,12 @@ def test_get_app_cache_dir(monkeypatch: Any) -> None:
 def test_get_app_state_dir(monkeypatch: Any) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", "/tmp/state")
     assert get_app_state_dir() == Path("/tmp/state/coding_assistant")
+
+
+def test_builtin_content_directories_exist() -> None:
+    assert (get_builtin_instructions_dir() / "global.md").is_file()
+    assert (get_builtin_instructions_dir() / "local_tools.md").is_file()
+    assert (get_builtin_skills_dir() / "brainstorm" / "SKILL.md").is_file()
+    assert (get_builtin_skills_dir() / "develop" / "SKILL.md").is_file()
+    assert (get_builtin_skills_dir() / "plan" / "SKILL.md").is_file()
+    assert (get_builtin_skills_dir() / "todo" / "SKILL.md").is_file()

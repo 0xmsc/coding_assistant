@@ -10,7 +10,7 @@ Coding Assistant is a Python-based CLI and embeddable library for coding workflo
 - Built-in local shell, Python, filesystem, TODO, and background-task tools.
 - Support for external MCP servers over stdio or SSE.
 - Prompt-toolkit powered interactive CLI.
-- Optional externally supplied skill directories.
+- Bundled default instructions and skills, plus optional extra skill directories.
 - No built-in sandboxing; run it inside an external sandbox if you need isolation.
 
 ## Requirements
@@ -105,7 +105,7 @@ If you want streaming or explicit boundary control, use `run_agent_event_stream(
 - `--print-mcp-tools` prints the discovered MCP tools and exits.
 - `--trace` writes model request and response traces.
 - `--wait-for-debugger` waits for a debugger on port `1234`.
-- `--skills-directories` loads optional skill directories.
+- `--skills-directories` loads additional skill directories.
 
 The CLI is interactive.
 
@@ -165,9 +165,14 @@ The core runtime also adds internal helper tools such as `compact_conversation` 
 
 ## Skills
 
-Coding Assistant no longer ships bundled skills.
+Coding Assistant ships bundled skills by default:
 
-If you want skills, point the CLI at one or more directories with `--skills-directories`. Each skill directory should contain child directories with a `SKILL.md` file:
+- `brainstorm`
+- `develop`
+- `plan`
+- `todo`
+
+You can add more skills with `--skills-directories`. Each additional skill directory should contain child directories with a `SKILL.md` file:
 
 ```text
 skills-root/
@@ -179,12 +184,14 @@ skills-root/
     └── SKILL.md
 ```
 
-When skill directories are configured, the agent gets:
+The default CLI exposes these skill tools:
 
 - `skills_list_resources`
 - `skills_read`
 
-Those tools expose only the files inside the configured skill directories.
+Those tools expose only the files inside the bundled and configured skill directories.
+
+Skill names must be unique across bundled and user-provided skills. The CLI fails fast on collisions and reports the conflicting directories.
 
 ## External Sandboxing
 
