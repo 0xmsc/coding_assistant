@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 import re
+import asyncio
 from argparse import Namespace
-from collections.abc import Awaitable, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable, Coroutine
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator, Iterable
@@ -12,17 +13,23 @@ from typing import AsyncIterator, Iterable
 from coding_assistant.app.image import get_image
 from coding_assistant.app.instructions import get_instructions
 from coding_assistant.app.output import DeltaRenderer, print_system_message, print_tool_calls
-from coding_assistant.core.agent import run_agent_event_stream
-from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
 from coding_assistant.core.history import build_system_prompt
-from coding_assistant.core.tool_calls import execute_tool_calls
+from coding_assistant.app.session_host import (
+    RunCancelledEvent,
+    RunFailedEvent,
+    RunFinishedEvent,
+    SessionHost,
+    StateChangedEvent,
+    ToolCallsEvent,
+)
 from coding_assistant.infra.paths import get_app_cache_dir
 from coding_assistant.llm.types import (
     BaseMessage,
+    CompletionEvent,
     ContentDeltaEvent,
+    ReasoningDeltaEvent,
+    StatusEvent,
     SystemMessage,
-    Tool,
-    UserMessage,
 )
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion, WordCompleter
@@ -40,6 +47,9 @@ from coding_assistant.integrations.mcp_client import (
     get_mcp_wrapped_tools,
     print_mcp_tools,
 )
+from coding_assistant.remote.server import start_worker_server
+from coding_assistant.tools.workers import WorkerManager
+from coding_assistant.llm.types import Tool
 
 
 @dataclass(slots=True)
@@ -59,6 +69,7 @@ class DefaultAgentBundle:
     tools: list[Tool]
     instructions: str
     mcp_servers: list[MCPServer]
+    worker_manager: WorkerManager
 
 
 class SlashCompleter(Completer):
@@ -111,6 +122,7 @@ async def create_default_agent(
             tools=[*local_tool_bundle.tools, *external_tools],
             instructions=instructions,
             mcp_servers=servers,
+            worker_manager=local_tool_bundle.worker_manager,
         )
 
 
@@ -130,13 +142,24 @@ async def run_cli(args: Namespace) -> None:
         system_message = _build_initial_system_message(instructions=bundle.instructions)
         print_system_message(system_message)
         current_history: list[BaseMessage] = [system_message]
-
-        await _drive_agent(
+        session_host = SessionHost(
             history=current_history,
             model=args.model,
             tools=bundle.tools,
-            prompt_user=prompt_user,
         )
+
+        async with start_worker_server(
+            session_host=session_host,
+            cwd=config.working_directory,
+        ) as worker_server:
+            bundle.worker_manager.set_local_endpoint(worker_server.endpoint)
+            try:
+                await _drive_agent(
+                    session_host=session_host,
+                    prompt_user=prompt_user,
+                )
+            finally:
+                await bundle.worker_manager.close()
 
 
 def _build_initial_system_message(*, instructions: str) -> SystemMessage:
@@ -146,69 +169,69 @@ def _build_initial_system_message(*, instructions: str) -> SystemMessage:
 
 async def _drive_agent(
     *,
-    history: list[BaseMessage],
-    model: str,
-    tools: list[Tool],
-    prompt_user: Callable[[list[str] | None], Awaitable[str]],
+    session_host: SessionHost,
+    prompt_user: Callable[[list[str] | None], Coroutine[object, object, str]],
 ) -> None:
     """Drive the interactive agent loop until the CLI should exit."""
     command_names = ["/exit", "/help", "/compact", "/image"]
+    renderer = DeltaRenderer()
 
-    current_history = list(history)
-    while True:
-        renderer = DeltaRenderer()
-        boundary: AwaitingUser | AwaitingToolCalls | None = None
-        async for event in run_agent_event_stream(
-            history=current_history,
-            model=model,
-            tools=tools,
-        ):
+    async with session_host.subscribe() as queue:
+        while True:
+            state = session_host.state
+            if state.promptable and not state.remote_connected:
+                answer = await _prompt_without_remote_controller(
+                    session_host=session_host,
+                    prompt_user=prompt_user,
+                    words=command_names,
+                )
+                if answer is None:
+                    continue
+                stripped = answer.strip()
+                if stripped == "/exit":
+                    renderer.finish()
+                    return
+                if stripped == "/help":
+                    print("Available commands:\n  /exit\n  /help\n  /compact\n  /image <path-or-url>")
+                    continue
+                if stripped == "/compact":
+                    await session_host.submit_local_prompt(
+                        "Immediately compact our conversation so far by using the `compact_conversation` tool."
+                    )
+                    continue
+                if stripped.startswith("/image"):
+                    parts = stripped.split(maxsplit=1)
+                    if len(parts) < 2:
+                        print("/image requires a path or URL argument.")
+                        continue
+                    data_url = await get_image(parts[1])
+                    image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
+                    await session_host.submit_local_prompt(image_content)
+                    continue
+
+                await session_host.submit_local_prompt(answer)
+                continue
+
+            event = await queue.get()
             if isinstance(event, ContentDeltaEvent):
                 renderer.on_delta(event.content)
                 continue
-            if isinstance(event, (AwaitingUser, AwaitingToolCalls)):
-                boundary = event
-
-        renderer.finish()
-        if boundary is None:
-            raise RuntimeError("run_agent_event_stream stopped without yielding a boundary.")
-
-        if isinstance(boundary, AwaitingToolCalls):
-            print_tool_calls(boundary.message)
-            current_history = await execute_tool_calls(
-                boundary=boundary,
-                tools=tools,
-            )
-            continue
-
-        current_history = boundary.history
-        while True:
-            answer = await prompt_user(command_names)
-            stripped = answer.strip()
-            if stripped == "/exit":
-                return
-            if stripped == "/help":
-                print("Available commands:\n  /exit\n  /help\n  /compact\n  /image <path-or-url>")
+            if isinstance(event, ToolCallsEvent):
+                renderer.finish()
+                print_tool_calls(event.message)
                 continue
-            if stripped == "/compact":
-                current_history.append(
-                    UserMessage(
-                        content="Immediately compact our conversation so far by using the `compact_conversation` tool."
-                    )
-                )
-                break
-            if stripped.startswith("/image"):
-                parts = stripped.split(maxsplit=1)
-                if len(parts) < 2:
-                    print("/image requires a path or URL argument.")
-                    continue
-                data_url = await get_image(parts[1])
-                image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
-                current_history.append(UserMessage(content=image_content))
-                break
-
-            current_history.append(UserMessage(content=answer))
-            break
+            if isinstance(event, RunFinishedEvent):
+                renderer.finish()
+                continue
+            if isinstance(event, RunCancelledEvent):
+                renderer.finish()
+                continue
+            if isinstance(event, RunFailedEvent):
+                renderer.finish()
+                print(f"[bold red]Run failed:[/bold red] {event.error}")
+                continue
+            if isinstance(event, (StateChangedEvent, ReasoningDeltaEvent, StatusEvent, CompletionEvent)):
+                continue
 
 
 def _create_prompt_session() -> PromptSession[str]:
@@ -228,3 +251,37 @@ async def _prompt_with_session(prompt_session: PromptSession[str], *, words: lis
     print(Rule(style="dim"))
     completer = SlashCompleter(words) if words else None
     return await prompt_session.prompt_async("> ", completer=completer, complete_while_typing=True)
+
+
+async def _prompt_without_remote_controller(
+    *,
+    session_host: SessionHost,
+    prompt_user: Callable[[list[str] | None], Coroutine[object, object, str]],
+    words: list[str] | None,
+) -> str | None:
+    prompt_task: asyncio.Task[str] = asyncio.create_task(prompt_user(words))
+    remote_task: asyncio.Task[None] = asyncio.create_task(session_host.wait_for_remote_connection())
+    done, pending = await asyncio.wait(
+        {prompt_task, remote_task},
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+
+    for task in pending:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+    if remote_task in done:
+        prompt_task.cancel()
+        try:
+            await prompt_task
+        except asyncio.CancelledError:
+            pass
+        return None
+
+    remote_task.cancel()
+    try:
+        await remote_task
+    except asyncio.CancelledError:
+        pass
+    return await prompt_task

@@ -1,18 +1,43 @@
+import asyncio
 from argparse import Namespace
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import Any
-from collections.abc import AsyncIterator
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from rich.markdown import Markdown
 
-from coding_assistant.app.cli import DefaultAgentBundle, _drive_agent, build_default_agent_config, run_cli
-from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display
-from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
-from coding_assistant.core.history import build_system_prompt
-from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, UserMessage
+from coding_assistant.app.cli import (
+    DefaultAgentBundle,
+    _prompt_without_remote_controller,
+    build_default_agent_config,
+    run_cli,
+)
 from coding_assistant.app.main import main, parse_args
+from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display
+from coding_assistant.core.history import build_system_prompt
+from coding_assistant.llm.types import FunctionCall, SystemMessage, ToolCall
+
+
+class FakeWorkerManager:
+    def __init__(self) -> None:
+        self.local_endpoint: str | None = None
+        self.closed = False
+
+    def set_local_endpoint(self, endpoint: str) -> None:
+        self.local_endpoint = endpoint
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class FakePromptSessionHost:
+    def __init__(self) -> None:
+        self.remote_connected = asyncio.Event()
+
+    async def wait_for_remote_connection(self) -> None:
+        await self.remote_connected.wait()
 
 
 def test_parse_args_valid() -> None:
@@ -85,6 +110,7 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         trace=False,
         wait_for_debugger=False,
     )
+    worker_manager = FakeWorkerManager()
 
     @asynccontextmanager
     async def fake_create_default_agent(*, config: Any) -> Any:
@@ -93,10 +119,17 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
             tools=[],
             instructions="Follow the repo instructions.",
             mcp_servers=[],
+            worker_manager=worker_manager,  # type: ignore[arg-type]
         )
+
+    @asynccontextmanager
+    async def fake_start_worker_server(*, session_host: Any, cwd: Any) -> Any:
+        del session_host, cwd
+        yield SimpleNamespace(endpoint="ws://127.0.0.1:43210")
 
     with (
         patch("coding_assistant.app.cli.create_default_agent", fake_create_default_agent),
+        patch("coding_assistant.app.cli.start_worker_server", fake_start_worker_server),
         patch("coding_assistant.app.cli.print_system_message") as mock_print_system,
         patch("coding_assistant.app.cli._drive_agent", new=AsyncMock()) as mock_drive_agent,
     ):
@@ -104,10 +137,53 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
 
     mock_print_system.assert_called_once()
     assert mock_drive_agent.await_args is not None
-    history = mock_drive_agent.await_args.kwargs["history"]
-    assert history == [
+    session_host = mock_drive_agent.await_args.kwargs["session_host"]
+    assert session_host.history == [
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
     ]
+    assert worker_manager.local_endpoint == "ws://127.0.0.1:43210"
+    assert worker_manager.closed is True
+
+
+@pytest.mark.asyncio
+async def test_prompt_without_remote_controller_returns_prompt_when_user_finishes_first() -> None:
+    session_host = FakePromptSessionHost()
+
+    async def prompt_user(words: list[str] | None) -> str:
+        assert words == ["/exit"]
+        return "hello"
+
+    result = await _prompt_without_remote_controller(
+        session_host=session_host,  # type: ignore[arg-type]
+        prompt_user=prompt_user,
+        words=["/exit"],
+    )
+
+    assert result == "hello"
+
+
+@pytest.mark.asyncio
+async def test_prompt_without_remote_controller_returns_none_when_remote_connects_first() -> None:
+    session_host = FakePromptSessionHost()
+    prompt_started = asyncio.Event()
+
+    async def prompt_user(words: list[str] | None) -> str:
+        del words
+        prompt_started.set()
+        await asyncio.Future()
+        return ""
+
+    task = asyncio.create_task(
+        _prompt_without_remote_controller(
+            session_host=session_host,  # type: ignore[arg-type]
+            prompt_user=prompt_user,
+            words=["/exit"],
+        )
+    )
+    await prompt_started.wait()
+    session_host.remote_connected.set()
+
+    assert await asyncio.wait_for(task, timeout=1) is None
 
 
 def test_paragraph_buffer_respects_code_fences() -> None:
@@ -160,46 +236,3 @@ def test_format_tool_call_markdown_hides_edit_payload_values() -> None:
 
     assert header == 'filesystem_edit_file(path="script.sh", old_text, new_text)'
     assert body_sections == []
-
-
-@pytest.mark.asyncio
-async def test_drive_agent_prints_formatted_tool_call_before_execution() -> None:
-    tool_call = ToolCall(
-        id="call-1",
-        function=FunctionCall(name="mock_tool", arguments='{"count": 2}'),
-    )
-    tool_boundary = AwaitingToolCalls(
-        history=[
-            SystemMessage(content="System"),
-            UserMessage(content="Do the task"),
-            AssistantMessage(tool_calls=[tool_call]),
-        ],
-    )
-
-    boundaries: list[AwaitingUser | AwaitingToolCalls] = [
-        tool_boundary,
-        AwaitingUser(history=[SystemMessage(content="System"), AssistantMessage(content="Done")]),
-    ]
-
-    async def fake_run_agent_event_stream(**kwargs: Any) -> AsyncIterator[AwaitingUser | AwaitingToolCalls]:
-        del kwargs
-        yield boundaries.pop(0)
-
-    with (
-        patch(
-            "coding_assistant.app.cli.run_agent_event_stream",
-            new=fake_run_agent_event_stream,
-        ),
-        patch("coding_assistant.app.cli.execute_tool_calls", new=AsyncMock(return_value=tool_boundary.history)),
-        patch("coding_assistant.app.output.rich_print") as mock_print,
-    ):
-        ui = Mock()
-        ui.prompt = AsyncMock(return_value="/exit")
-        await _drive_agent(
-            history=[SystemMessage(content="System"), UserMessage(content="Do the task")],
-            model="gpt-4",
-            tools=[],
-            prompt_user=ui.prompt,
-        )
-
-    assert any(call.args == ("[bold yellow]▶[/bold yellow] mock_tool(count=2)",) for call in mock_print.call_args_list)
