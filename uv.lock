@@ -268,7 +268,6 @@ dependencies = [
     { name = "httpx" },
     { name = "httpx-sse" },
     { name = "json5" },
-    { name = "landlock" },
     { name = "pillow" },
     { name = "prompt-toolkit" },
     { name = "pydantic" },
@@ -299,7 +298,6 @@ requires-dist = [
     { name = "httpx" },
     { name = "httpx-sse" },
     { name = "json5" },
-    { name = "landlock" },
     { name = "pillow" },
     { name = "prompt-toolkit" },
     { name = "pydantic" },
@@ -797,15 +795,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/43/4b/674af6ef2f97d56f0ab5153bf0bfa28ccb6c3ed4d1babf4305449668807b/keyring-25.7.0.tar.gz", hash = "sha256:fe01bd85eb3f8fb3dd0405defdeac9a5b4f6f0439edbb3149577f244a2e8245b", size = 63516, upload-time = "2025-11-16T16:26:09.482Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/81/db/e655086b7f3a705df045bf0933bdd9c2f79bb3c97bfef1384598bb79a217/keyring-25.7.0-py3-none-any.whl", hash = "sha256:be4a0b195f149690c166e850609a477c532ddbfbaed96a404d4e43f8d5e2689f", size = 39160, upload-time = "2025-11-16T16:26:08.402Z" },
-]
-
-[[package]]
-name = "landlock"
-version = "1.0.0.dev5"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/79/e2/ad65eb9afcde46eb055dce9b7003b372b1de19da94acf800a2e352ba5ae1/landlock-1.0.0.dev5.tar.gz", hash = "sha256:e82d511992be24986c51e3c9d2bfcc956833c2f82f95004216262aa4e2d50a2e", size = 7115, upload-time = "2025-05-03T16:51:57.738Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/45/c0/5cff902d2ff3df3db965e0b36208017569abf4a93ed30fe9ffafbf171c95/landlock-1.0.0.dev5-py3-none-any.whl", hash = "sha256:6d72357f5dc23d64b3b3d976672b61af736281b8d34a5825c1a61b602f2df815", size = 7969, upload-time = "2025-05-03T16:51:56.798Z" },
 ]
 
 [[package]]
