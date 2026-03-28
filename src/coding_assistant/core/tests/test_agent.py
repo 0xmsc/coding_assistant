@@ -8,7 +8,6 @@ import pytest
 from coding_assistant.core.agent import (
     AwaitingTools,
     AwaitingUser,
-    BoundaryEvent,
     execute_tool_calls,
     run_agent,
     run_agent_event_stream,
@@ -18,7 +17,7 @@ from coding_assistant.llm.types import (
     BaseMessage,
     Completion,
     CompletionEvent,
-    ContentDeltaEvent as LLMContentDeltaEvent,
+    ContentDeltaEvent,
     FunctionCall,
     SystemMessage,
     Tool,
@@ -42,7 +41,7 @@ class ScriptedStreamer:
             raise action
 
         if isinstance(action.content, str) and action.content:
-            yield LLMContentDeltaEvent(content=action.content)
+            yield ContentDeltaEvent(content=action.content)
 
         yield CompletionEvent(completion=Completion(message=action, usage=Usage(tokens=10, cost=0.0)))
 
@@ -121,7 +120,7 @@ async def test_run_agent_event_stream_yields_existing_boundary_without_pending_m
         )
     ]
 
-    assert events == [BoundaryEvent(boundary=AwaitingUser(history=history))]
+    assert events == [AwaitingUser(history=history)]
 
 
 @pytest.mark.asyncio
@@ -139,21 +138,19 @@ async def test_run_agent_event_stream_yields_content_completion_and_boundary() -
     ]
 
     assert events == [
-        LLMContentDeltaEvent(content="Hello from the assistant"),
+        ContentDeltaEvent(content="Hello from the assistant"),
         CompletionEvent(
             completion=Completion(
                 message=AssistantMessage(content="Hello from the assistant"),
                 usage=Usage(tokens=10, cost=0.0),
             )
         ),
-        BoundaryEvent(
-            boundary=AwaitingUser(
-                history=[
-                    *make_system_history(),
-                    UserMessage(content="Hi"),
-                    AssistantMessage(content="Hello from the assistant"),
-                ]
-            )
+        AwaitingUser(
+            history=[
+                *make_system_history(),
+                UserMessage(content="Hi"),
+                AssistantMessage(content="Hello from the assistant"),
+            ]
         ),
     ]
     assert history == [*make_system_history(), UserMessage(content="Hi")]
@@ -183,14 +180,12 @@ async def test_run_agent_event_stream_yields_tool_boundary_without_executing() -
                 usage=Usage(tokens=10, cost=0.0),
             )
         ),
-        BoundaryEvent(
-            boundary=AwaitingTools(
-                history=[
-                    *make_system_history(),
-                    UserMessage(content="Finish the task"),
-                    AssistantMessage(tool_calls=[external_call]),
-                ],
-            )
+        AwaitingTools(
+            history=[
+                *make_system_history(),
+                UserMessage(content="Finish the task"),
+                AssistantMessage(tool_calls=[external_call]),
+            ],
         ),
     ]
 
@@ -216,7 +211,7 @@ async def test_run_agent_event_stream_recovers_pending_tool_boundary_from_histor
         )
     ]
 
-    assert events == [BoundaryEvent(boundary=AwaitingTools(history=history))]
+    assert events == [AwaitingTools(history=history)]
 
 
 @pytest.mark.asyncio
