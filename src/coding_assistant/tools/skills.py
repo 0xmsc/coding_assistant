@@ -4,12 +4,11 @@ import importlib.resources
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import frontmatter  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
-from coding_assistant.tools.base import StructuredTool
 from coding_assistant.llm.types import Tool
 
 logger = logging.getLogger(__name__)
@@ -130,19 +129,47 @@ class SkillsReadInput(BaseModel):
     )
 
 
-def create_skill_tools(*, skills_directories: Sequence[Path]) -> tuple[list[Tool], list[Skill]]:
-    """Create the skill-inspection tools and return them with the loaded skills."""
-    skills = load_all_skills(skills_directories=skills_directories)
-    skills_by_name = {skill.name: skill for skill in skills}
+class SkillsListResourcesTool(Tool):
+    """List the readable files for one loaded skill."""
 
-    async def list_resources(validated: SkillsListResourcesInput) -> str:
-        skill = skills_by_name.get(validated.name)
+    def __init__(self, *, skills_by_name: dict[str, Skill]) -> None:
+        self._skills_by_name = skills_by_name
+
+    def name(self) -> str:
+        return "skills_list_resources"
+
+    def description(self) -> str:
+        return "List the files that are available inside one skill."
+
+    def parameters(self) -> dict[str, Any]:
+        return SkillsListResourcesInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = SkillsListResourcesInput.model_validate(parameters)
+        skill = self._skills_by_name.get(validated.name)
         if skill is None:
             return "Skill not found."
         return "\n".join(f"- {resource}" for resource in skill.resources)
 
-    async def read(validated: SkillsReadInput) -> str:
-        skill = skills_by_name.get(validated.name)
+
+class SkillsReadTool(Tool):
+    """Read one skill file that has been explicitly exposed."""
+
+    def __init__(self, *, skills_by_name: dict[str, Skill]) -> None:
+        self._skills_by_name = skills_by_name
+
+    def name(self) -> str:
+        return "skills_read"
+
+    def description(self) -> str:
+        return "Read a skill's `SKILL.md` file or one of its resource files."
+
+    def parameters(self) -> dict[str, Any]:
+        return SkillsReadInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = SkillsReadInput.model_validate(parameters)
+        skill = self._skills_by_name.get(validated.name)
         if skill is None:
             return f"Error: Skill '{validated.name}' not found."
 
@@ -155,18 +182,14 @@ def create_skill_tools(*, skills_directories: Sequence[Path]) -> tuple[list[Tool
         except Exception as exc:
             return f"Error: Could not read resource '{resource}' in skill '{validated.name}': {exc}"
 
+
+def create_skill_tools(*, skills_directories: Sequence[Path]) -> tuple[list[Tool], list[Skill]]:
+    """Create the skill-inspection tools and return them with the loaded skills."""
+    skills = load_all_skills(skills_directories=skills_directories)
+    skills_by_name = {skill.name: skill for skill in skills}
+
     tools: list[Tool] = [
-        StructuredTool(
-            name="skills_list_resources",
-            description="List the files that are available inside one skill.",
-            schema_model=SkillsListResourcesInput,
-            handler=list_resources,
-        ),
-        StructuredTool(
-            name="skills_read",
-            description="Read a skill's `SKILL.md` file or one of its resource files.",
-            schema_model=SkillsReadInput,
-            handler=read,
-        ),
+        SkillsListResourcesTool(skills_by_name=skills_by_name),
+        SkillsReadTool(skills_by_name=skills_by_name),
     ]
     return tools, skills

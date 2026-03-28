@@ -181,7 +181,6 @@ async def test_drive_agent_prints_formatted_tool_call_before_execution() -> None
             UserMessage(content="Do the task"),
             AssistantMessage(tool_calls=[tool_call]),
         ],
-        message=AssistantMessage(tool_calls=[tool_call]),
     )
 
     with (

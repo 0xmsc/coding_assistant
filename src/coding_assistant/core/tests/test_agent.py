@@ -74,7 +74,7 @@ class ErrorTool(Tool):
         raise RuntimeError("tool boom")
 
 
-class StructuredTool(Tool):
+class NonTextTool(Tool):
     def name(self) -> str:
         return "structured_tool"
 
@@ -114,9 +114,10 @@ async def test_run_agent_until_boundary_returns_existing_history_without_pending
 @pytest.mark.asyncio
 async def test_run_agent_until_boundary_streams_content_and_returns_awaiting_user() -> None:
     chunks: list[str] = []
+    history = [*make_system_history(), UserMessage(content="Hi")]
 
     result = await run_agent_until_boundary(
-        history=[*make_system_history(), UserMessage(content="Hi")],
+        history=history,
         model="test-model",
         tools=[],
         streamer=ScriptedStreamer([AssistantMessage(content="Hello from the assistant")]),
@@ -131,6 +132,7 @@ async def test_run_agent_until_boundary_streams_content_and_returns_awaiting_use
             AssistantMessage(content="Hello from the assistant"),
         ]
     )
+    assert history == [*make_system_history(), UserMessage(content="Hi")]
 
 
 @pytest.mark.asyncio
@@ -153,23 +155,43 @@ async def test_run_agent_until_boundary_returns_tool_boundary_without_executing(
             UserMessage(content="Finish the task"),
             AssistantMessage(tool_calls=[external_call]),
         ],
-        message=AssistantMessage(tool_calls=[external_call]),
     )
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_calls_appends_tool_messages_for_a_boundary() -> None:
+async def test_run_agent_until_boundary_recovers_pending_tool_boundary_from_history() -> None:
     external_call = ToolCall(
         id="call-1",
         function=FunctionCall(name="mock_tool", arguments="{}"),
     )
+    history = [
+        *make_system_history(),
+        UserMessage(content="Finish the task"),
+        AssistantMessage(tool_calls=[external_call]),
+    ]
+
+    result = await run_agent_until_boundary(
+        history=history,
+        model="test-model",
+        tools=[MockTool()],
+    )
+
+    assert result == AwaitingTools(history=history)
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_calls_returns_new_history_without_mutating_boundary_history() -> None:
+    external_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="mock_tool", arguments="{}"),
+    )
+    boundary_history = [
+        *make_system_history(),
+        UserMessage(content="Finish the task"),
+        AssistantMessage(tool_calls=[external_call]),
+    ]
     boundary = AwaitingTools(
-        history=[
-            *make_system_history(),
-            UserMessage(content="Finish the task"),
-            AssistantMessage(tool_calls=[external_call]),
-        ],
-        message=AssistantMessage(tool_calls=[external_call]),
+        history=boundary_history,
     )
 
     result = await execute_tool_calls(
@@ -178,6 +200,37 @@ async def test_execute_tool_calls_appends_tool_messages_for_a_boundary() -> None
     )
 
     assert result[-1] == ToolMessage(tool_call_id="call-1", name="mock_tool", content="tool result")
+    assert boundary_history == [
+        *make_system_history(),
+        UserMessage(content="Finish the task"),
+        AssistantMessage(tool_calls=[external_call]),
+    ]
+    assert result is not boundary_history
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_calls_compacts_history_without_orphan_tool_message() -> None:
+    compact_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="compact_conversation", arguments='{"summary": "summary text"}'),
+    )
+    boundary = AwaitingTools(
+        history=[
+            *make_system_history(),
+            UserMessage(content="Finish the task"),
+            AssistantMessage(tool_calls=[compact_call]),
+        ],
+    )
+
+    result = await execute_tool_calls(
+        boundary=boundary,
+        tools=[],
+    )
+
+    assert result == [
+        *make_system_history(),
+        UserMessage(content="A summary of your conversation until now:\n\nsummary text\n\nPlease continue your work."),
+    ]
 
 
 @pytest.mark.asyncio
@@ -230,7 +283,7 @@ async def test_run_agent_appends_non_text_tool_errors_and_continues() -> None:
     result = await run_agent(
         history=[*make_system_history(), UserMessage(content="Finish the task")],
         model="test-model",
-        tools=[StructuredTool()],
+        tools=[NonTextTool()],
         streamer=ScriptedStreamer(
             [
                 AssistantMessage(tool_calls=[external_call]),

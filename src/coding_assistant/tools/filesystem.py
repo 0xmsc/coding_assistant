@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import difflib
 from pathlib import Path
+from typing import Any
 
 import aiofiles
 from pydantic import BaseModel, Field
 
-from coding_assistant.tools.base import StructuredTool
 from coding_assistant.llm.types import Tool
 
 
@@ -23,6 +23,45 @@ class FilesystemEditFileInput(BaseModel):
         default=False,
         description="If true, replace every occurrence of `old_text` instead of requiring a unique match.",
     )
+
+
+class FilesystemWriteFileTool(Tool):
+    """Create or overwrite a file with caller-provided content."""
+
+    def name(self) -> str:
+        return "filesystem_write_file"
+
+    def description(self) -> str:
+        return "Create or overwrite a file with the exact content you provide."
+
+    def parameters(self) -> dict[str, Any]:
+        return FilesystemWriteFileInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = FilesystemWriteFileInput.model_validate(parameters)
+        return await write_file(Path(validated.path), validated.content)
+
+
+class FilesystemEditFileTool(Tool):
+    """Apply one validated text replacement to a file."""
+
+    def name(self) -> str:
+        return "filesystem_edit_file"
+
+    def description(self) -> str:
+        return "Apply a targeted text replacement to a file and return the resulting unified diff."
+
+    def parameters(self) -> dict[str, Any]:
+        return FilesystemEditFileInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = FilesystemEditFileInput.model_validate(parameters)
+        return await edit_file(
+            Path(validated.path),
+            validated.old_text,
+            validated.new_text,
+            replace_all=validated.replace_all,
+        )
 
 
 async def write_file(path: Path, content: str) -> str:
@@ -65,29 +104,7 @@ async def edit_file(path: Path, old_text: str, new_text: str, replace_all: bool 
 
 def create_filesystem_tools() -> list[Tool]:
     """Create the local filesystem tools."""
-
-    async def execute_write(validated: FilesystemWriteFileInput) -> str:
-        return await write_file(Path(validated.path), validated.content)
-
-    async def execute_edit(validated: FilesystemEditFileInput) -> str:
-        return await edit_file(
-            Path(validated.path),
-            validated.old_text,
-            validated.new_text,
-            replace_all=validated.replace_all,
-        )
-
     return [
-        StructuredTool(
-            name="filesystem_write_file",
-            description="Create or overwrite a file with the exact content you provide.",
-            schema_model=FilesystemWriteFileInput,
-            handler=execute_write,
-        ),
-        StructuredTool(
-            name="filesystem_edit_file",
-            description="Apply a targeted text replacement to a file and return the resulting unified diff.",
-            schema_model=FilesystemEditFileInput,
-            handler=execute_edit,
-        ),
+        FilesystemWriteFileTool(),
+        FilesystemEditFileTool(),
     ]

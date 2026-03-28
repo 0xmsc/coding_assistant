@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-from coding_assistant.tools.base import StructuredTool
+from coding_assistant.llm.types import Tool
 from coding_assistant.tools.process import start_process, truncate_output
 from coding_assistant.tools.tasks import TaskManager
-from coding_assistant.llm.types import Tool
 
 
 class ShellExecuteInput(BaseModel):
@@ -26,16 +27,29 @@ class ShellExecuteInput(BaseModel):
     )
 
 
-def create_shell_tools(*, manager: TaskManager) -> list[Tool]:
-    """Create the local shell execution tool."""
+class ShellExecuteTool(Tool):
+    """Execute shell commands through the local task manager."""
 
-    async def execute(validated: ShellExecuteInput) -> str:
+    def __init__(self, *, manager: TaskManager) -> None:
+        self._manager = manager
+
+    def name(self) -> str:
+        return "shell_execute"
+
+    def description(self) -> str:
+        return "Execute a shell command using bash and return combined stdout and stderr."
+
+    def parameters(self) -> dict[str, Any]:
+        return ShellExecuteInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = ShellExecuteInput.model_validate(parameters)
         command = validated.command.strip()
 
         try:
             handle = await start_process(args=["bash", "-c", command])
             task_name = f"shell: {command[:30]}..."
-            task_id = manager.register_task(task_name, handle)
+            task_id = self._manager.register_task(task_name, handle)
 
             if validated.background:
                 return f"Task started in background with ID: {task_id}"
@@ -60,11 +74,7 @@ def create_shell_tools(*, manager: TaskManager) -> list[Tool]:
         except Exception as exc:
             return f"Error: {exc}"
 
-    return [
-        StructuredTool(
-            name="shell_execute",
-            description="Execute a shell command using bash and return combined stdout and stderr.",
-            schema_model=ShellExecuteInput,
-            handler=execute,
-        )
-    ]
+
+def create_shell_tools(*, manager: TaskManager) -> list[Tool]:
+    """Create the local shell execution tool."""
+    return [ShellExecuteTool(manager=manager)]

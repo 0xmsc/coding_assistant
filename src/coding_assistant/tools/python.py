@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-from coding_assistant.tools.base import StructuredTool
+from coding_assistant.llm.types import Tool
 from coding_assistant.tools.process import start_process, truncate_output
 from coding_assistant.tools.tasks import TaskManager
-from coding_assistant.llm.types import Tool
 
 
 class PythonExecuteInput(BaseModel):
@@ -21,10 +22,26 @@ class PythonExecuteInput(BaseModel):
     )
 
 
-def create_python_tools(*, manager: TaskManager) -> list[Tool]:
-    """Create the local Python execution tool."""
+class PythonExecuteTool(Tool):
+    """Execute Python snippets through the local task manager."""
 
-    async def execute(validated: PythonExecuteInput) -> str:
+    def __init__(self, *, manager: TaskManager) -> None:
+        self._manager = manager
+
+    def name(self) -> str:
+        return "python_execute"
+
+    def description(self) -> str:
+        return (
+            "Execute Python code using `uv run -q -`. Supports multi-line scripts and PEP 723 inline "
+            "dependency metadata."
+        )
+
+    def parameters(self) -> dict[str, Any]:
+        return PythonExecuteInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = PythonExecuteInput.model_validate(parameters)
         code = validated.code.strip()
 
         try:
@@ -33,7 +50,7 @@ def create_python_tools(*, manager: TaskManager) -> list[Tool]:
                 stdin_input=code,
                 env={},
             )
-            task_id = manager.register_task("python script", handle)
+            task_id = self._manager.register_task("python script", handle)
 
             if validated.background:
                 return f"Task started in background with ID: {task_id}"
@@ -57,14 +74,7 @@ def create_python_tools(*, manager: TaskManager) -> list[Tool]:
         except Exception as exc:
             return f"Error executing script: {exc}"
 
-    return [
-        StructuredTool(
-            name="python_execute",
-            description=(
-                "Execute Python code using `uv run -q -`. Supports multi-line scripts and PEP 723 inline "
-                "dependency metadata."
-            ),
-            schema_model=PythonExecuteInput,
-            handler=execute,
-        )
-    ]
+
+def create_python_tools(*, manager: TaskManager) -> list[Tool]:
+    """Create the local Python execution tool."""
+    return [PythonExecuteTool(manager=manager)]
