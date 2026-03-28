@@ -38,6 +38,26 @@ def get_config_home() -> Path:
     return Path.home() / ".config"
 
 
+def get_package_root() -> Path:
+    """Return the root directory of the installed Python package."""
+    return Path(__file__).resolve().parent.parent
+
+
+def get_builtin_root() -> Path:
+    """Return the root directory of bundled instructions and skills."""
+    return get_package_root() / "builtin"
+
+
+def get_builtin_instructions_dir() -> Path:
+    """Return the directory containing bundled instruction documents."""
+    return get_builtin_root() / "instructions"
+
+
+def get_builtin_skills_dir() -> Path:
+    """Return the directory containing bundled skills."""
+    return get_builtin_root() / "skills"
+
+
 def get_app_cache_dir() -> Path:
     """Return the application's cache directory path."""
     return get_cache_home() / "coding_assistant"

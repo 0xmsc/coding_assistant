@@ -68,7 +68,7 @@ def parse_args() -> argparse.Namespace:
         "--skills-directories",
         nargs="*",
         default=[],
-        help="Paths to directories containing Agent Skills (with SKILL.md files).",
+        help="Paths to additional directories containing Agent Skills (with SKILL.md files).",
     )
 
     return parser.parse_args()

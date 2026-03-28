@@ -90,6 +90,21 @@ def test_create_skill_tools_without_configured_skills() -> None:
     assert skills == []
 
 
+def test_create_skill_tools_raises_on_duplicate_skill_names(tmp_path: Any) -> None:
+    first_root = tmp_path / "first"
+    first_root.mkdir()
+    (first_root / "develop").mkdir()
+    (first_root / "develop" / "SKILL.md").write_text("---\nname: develop\ndescription: First\n---\n")
+
+    second_root = tmp_path / "second"
+    second_root.mkdir()
+    (second_root / "develop").mkdir()
+    (second_root / "develop" / "SKILL.md").write_text("---\nname: develop\ndescription: Second\n---\n")
+
+    with pytest.raises(RuntimeError, match="Duplicate skill name 'develop'"):
+        create_skill_tools(skills_directories=[first_root, second_root])
+
+
 @pytest.mark.asyncio
 async def test_skills_tools(tmp_path: Any) -> None:
     skill_dir = tmp_path / "myskill"
