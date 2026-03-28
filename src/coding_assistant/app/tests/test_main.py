@@ -19,7 +19,6 @@ def test_parse_args_valid() -> None:
         args = parse_args()
         assert args.model == "gpt-4"
         assert args.task == "test"
-        assert args.sandbox is True
 
 
 def test_parse_args_defaults() -> None:
@@ -29,10 +28,9 @@ def test_parse_args_defaults() -> None:
 
 
 def test_parse_args_with_multiple_flags() -> None:
-    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--trace", "--no-sandbox", "--no-ask-user"]):
+    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--trace", "--no-ask-user"]):
         args = parse_args()
         assert args.trace is True
-        assert args.sandbox is False
         assert args.ask_user is False
 
 
@@ -85,11 +83,10 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         mcp_servers=[],
         model="gpt-4",
         print_mcp_tools=False,
-        readable_sandbox_directories=[],
-        sandbox=False,
         skills_directories=[],
         task="test task",
-        writable_sandbox_directories=[],
+        trace=False,
+        wait_for_debugger=False,
     )
 
     @asynccontextmanager

@@ -10,7 +10,6 @@ from typing import AsyncIterator
 from coding_assistant.app.image import get_image
 from coding_assistant.app.instructions import get_instructions
 from coding_assistant.app.output import DeltaRenderer, print_system_message, print_tool_calls
-from coding_assistant.app.sandbox import sandbox
 from coding_assistant.app.ui import DefaultAnswerUI, PromptToolkitUI, UI
 from coding_assistant.core.agent import AwaitingTools, execute_tool_calls, run_agent_until_boundary
 from coding_assistant.core.history import build_system_prompt
@@ -93,9 +92,6 @@ async def run_cli(args: Namespace) -> None:
     """Run the interactive or single-shot CLI entry point."""
     config = build_default_agent_config(args)
 
-    if args.sandbox:
-        _apply_sandbox(args=args, config=config)
-
     ui: UI
     if args.task is None or args.ask_user:
         ui = PromptToolkitUI()
@@ -120,18 +116,6 @@ async def run_cli(args: Namespace) -> None:
             ui=ui,
             interactive=args.task is None or args.ask_user,
         )
-
-
-def _apply_sandbox(*, args: Namespace, config: DefaultAgentConfig) -> None:
-    """Apply the CLI sandbox policy before starting the agent."""
-    coding_assistant_root = Path(__file__).resolve().parent.parent
-    readable = [
-        *[Path(path).resolve() for path in args.readable_sandbox_directories],
-        *[Path(path).resolve() for path in config.skills_directories],
-        coding_assistant_root,
-    ]
-    writable = [*([Path(path).resolve() for path in args.writable_sandbox_directories]), config.working_directory]
-    sandbox(readable_paths=readable, writable_paths=writable, include_defaults=True)
 
 
 def _build_initial_system_message(*, instructions: str) -> SystemMessage:

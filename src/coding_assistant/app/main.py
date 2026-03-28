@@ -52,24 +52,6 @@ def parse_args() -> argparse.Namespace:
         help="Custom instructions for the agent.",
     )
     parser.add_argument(
-        "--readable-sandbox-directories",
-        nargs="*",
-        default=[],
-        help="Additional directories to include in the sandbox.",
-    )
-    parser.add_argument(
-        "--writable-sandbox-directories",
-        nargs="*",
-        default=[],
-        help="Additional directories to include in the sandbox.",
-    )
-    parser.add_argument(
-        "--sandbox",
-        action=BooleanOptionalAction,
-        default=True,
-        help="Enable sandboxing.",
-    )
-    parser.add_argument(
         "--mcp-servers",
         nargs="*",
         default=[],

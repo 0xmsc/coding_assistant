@@ -9,7 +9,6 @@ authors = []
 dependencies = [
     "rich",
     "requests",
-    "landlock",
     "pydantic",
     "debugpy",
     "prompt-toolkit",
@@ -51,7 +50,6 @@ ignore = ["E501"]
 [project.scripts]
 coding-assistant = "coding_assistant.app.main:main"
 coding-assistant-cli = "coding_assistant.app.main:main"
-sandbox = "coding_assistant.app.sandbox:main"
 
 [build-system]
 requires = ["hatchling"]
