@@ -93,10 +93,7 @@ def format_skills_instructions(skills: list[Skill]) -> str:
             "- Use `skills_read(name=...)` to read the `SKILL.md` of a skill.",
             "- Use `skills_read(name=..., resource=...)` to read specific resources or scripts of a skill.",
             "- If a skill could match the users task, you must read it.",
-            "- You **must** read the `develop` skill before performing any of the following tasks:",
-            "  - exploring or editing a codebase.",
-            "  - performing git operations.",
-            "  - doing any other development-related task.",
+            "- Before implementation work, read any relevant development skill that is available.",
         ]
     )
     return "\n".join(lines)

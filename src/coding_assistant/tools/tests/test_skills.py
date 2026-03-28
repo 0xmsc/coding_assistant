@@ -93,15 +93,15 @@ def test_create_skill_tools_without_configured_skills() -> None:
 def test_create_skill_tools_raises_on_duplicate_skill_names(tmp_path: Any) -> None:
     first_root = tmp_path / "first"
     first_root.mkdir()
-    (first_root / "develop").mkdir()
-    (first_root / "develop" / "SKILL.md").write_text("---\nname: develop\ndescription: First\n---\n")
+    (first_root / "example").mkdir()
+    (first_root / "example" / "SKILL.md").write_text("---\nname: example\ndescription: First\n---\n")
 
     second_root = tmp_path / "second"
     second_root.mkdir()
-    (second_root / "develop").mkdir()
-    (second_root / "develop" / "SKILL.md").write_text("---\nname: develop\ndescription: Second\n---\n")
+    (second_root / "example").mkdir()
+    (second_root / "example" / "SKILL.md").write_text("---\nname: example\ndescription: Second\n---\n")
 
-    with pytest.raises(RuntimeError, match="Duplicate skill name 'develop'"):
+    with pytest.raises(RuntimeError, match="Duplicate skill name 'example'"):
         create_skill_tools(skills_directories=[first_root, second_root])
 
 
