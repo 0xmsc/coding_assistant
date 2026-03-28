@@ -23,9 +23,9 @@ class LocalToolBundle:
     instructions: str
 
 
-def load_local_tool_instructions() -> str:
+def load_tool_instructions() -> str:
     """Return the bundled instruction document for local tools."""
-    return (get_builtin_instructions_dir() / "local_tools.md").read_text(encoding="utf-8").strip()
+    return (get_builtin_instructions_dir() / "tools.md").read_text(encoding="utf-8").strip()
 
 
 def create_local_tool_bundle(*, skills_directories: Sequence[Path]) -> LocalToolBundle:
@@ -34,7 +34,7 @@ def create_local_tool_bundle(*, skills_directories: Sequence[Path]) -> LocalTool
     todo_manager = TodoManager()
 
     skill_tools, skills = create_skill_tools(skills_directories=[get_builtin_skills_dir(), *skills_directories])
-    instructions = load_local_tool_instructions()
+    instructions = load_tool_instructions()
     skill_instructions = format_skills_instructions(skills)
     if skill_instructions:
         instructions = f"{instructions}\n\n{skill_instructions}"

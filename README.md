@@ -165,12 +165,11 @@ The core runtime also adds internal helper tools such as `compact_conversation` 
 
 ## Skills
 
-Coding Assistant ships bundled skills by default:
+Coding Assistant currently ships one bundled example skill:
 
-- `brainstorm`
-- `develop`
-- `plan`
-- `todo`
+- `example`
+
+It exists to demonstrate the packaged skill mechanism and expected `SKILL.md` layout. Replace or remove it once the project has real builtin skills.
 
 You can add more skills with `--skills-directories`. Each additional skill directory should contain child directories with a `SKILL.md` file:
 

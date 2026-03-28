@@ -73,8 +73,5 @@ def test_get_app_state_dir(monkeypatch: Any) -> None:
 
 def test_builtin_content_directories_exist() -> None:
     assert (get_builtin_instructions_dir() / "global.md").is_file()
-    assert (get_builtin_instructions_dir() / "local_tools.md").is_file()
-    assert (get_builtin_skills_dir() / "brainstorm" / "SKILL.md").is_file()
-    assert (get_builtin_skills_dir() / "develop" / "SKILL.md").is_file()
-    assert (get_builtin_skills_dir() / "plan" / "SKILL.md").is_file()
-    assert (get_builtin_skills_dir() / "todo" / "SKILL.md").is_file()
+    assert (get_builtin_instructions_dir() / "tools.md").is_file()
+    assert (get_builtin_skills_dir() / "example" / "SKILL.md").is_file()
