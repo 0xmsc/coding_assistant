@@ -11,15 +11,22 @@ from coding_assistant.app.image import get_image
 from coding_assistant.app.instructions import get_instructions
 from coding_assistant.app.output import DeltaRenderer, print_system_message, print_tool_calls
 from coding_assistant.app.ui import DefaultAnswerUI, PromptToolkitUI, UI
-from coding_assistant.core.agent import AwaitingTools, execute_tool_calls, run_agent_until_boundary
+from coding_assistant.core.agent import (
+    AwaitingTools,
+    AwaitingUser,
+    BoundaryEvent,
+    execute_tool_calls,
+    run_agent_event_stream,
+)
 from coding_assistant.core.history import build_system_prompt
-from coding_assistant.tools import create_local_tool_bundle
 from coding_assistant.llm.types import (
     BaseMessage,
+    ContentDeltaEvent,
     SystemMessage,
     Tool,
     UserMessage,
 )
+from coding_assistant.tools import create_local_tool_bundle
 from coding_assistant.integrations.mcp_client import (
     MCPServer,
     MCPServerConfig,
@@ -137,14 +144,21 @@ async def _drive_agent(
     current_history = list(history)
     while True:
         renderer = DeltaRenderer()
-        boundary = await run_agent_until_boundary(
+        boundary: AwaitingUser | AwaitingTools | None = None
+        async for event in run_agent_event_stream(
             history=current_history,
             model=model,
             tools=tools,
-            on_content=renderer.on_delta,
-        )
+        ):
+            if isinstance(event, ContentDeltaEvent):
+                renderer.on_delta(event.content)
+                continue
+            if isinstance(event, BoundaryEvent):
+                boundary = event.boundary
 
         renderer.finish()
+        if boundary is None:
+            raise RuntimeError("run_agent_event_stream stopped without yielding a boundary.")
 
         if isinstance(boundary, AwaitingTools):
             print_tool_calls(boundary.message)
