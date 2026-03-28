@@ -20,6 +20,7 @@ dependencies = [
     "aiofiles",
     "python-frontmatter",
     "Pillow",
+    "websockets",
 ]
 
 [dependency-groups]

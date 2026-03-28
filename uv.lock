@@ -274,6 +274,7 @@ dependencies = [
     { name = "python-frontmatter" },
     { name = "requests" },
     { name = "rich" },
+    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
@@ -304,6 +305,7 @@ requires-dist = [
     { name = "python-frontmatter" },
     { name = "requests" },
     { name = "rich" },
+    { name = "websockets" },
 ]
 
 [package.metadata.requires-dev]
