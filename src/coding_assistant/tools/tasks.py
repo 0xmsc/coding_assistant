@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.tools.base import StructuredTool
 from coding_assistant.tools.process import ProcessHandle, truncate_output
 from coding_assistant.llm.types import Tool
 
@@ -87,11 +87,31 @@ class TaskIdInput(BaseModel):
     task_id: int = Field(description="Numeric ID of the background task.")
 
 
-def create_task_tools(*, manager: TaskManager) -> list[Tool]:
-    """Create tools for listing and managing background tasks."""
+def _format_task_status(task: Task) -> str:
+    """Return the user-visible status string for one tracked task."""
+    if task.handle.is_running:
+        return "running"
+    return f"finished (Exit code: {task.handle.exit_code})"
 
-    async def list_tasks(_: EmptyInput) -> str:
-        tasks = manager.list_tasks()
+
+class TasksListTasksTool(Tool):
+    """List all tracked background tasks."""
+
+    def __init__(self, *, manager: TaskManager) -> None:
+        self._manager = manager
+
+    def name(self) -> str:
+        return "tasks_list_tasks"
+
+    def description(self) -> str:
+        return "List all tracked background tasks with their IDs and current status."
+
+    def parameters(self) -> dict[str, Any]:
+        return EmptyInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        EmptyInput.model_validate(parameters)
+        tasks = self._manager.list_tasks()
         if not tasks:
             return "No tasks found."
 
@@ -101,8 +121,25 @@ def create_task_tools(*, manager: TaskManager) -> list[Tool]:
             lines.append(f"ID: {task.id} | Name: {task.name} | Status: {status}")
         return "\n".join(lines)
 
-    async def get_output(validated: TasksGetOutputInput) -> str:
-        task = manager.get_task(validated.task_id)
+
+class TasksGetOutputTool(Tool):
+    """Read the captured output for one background task."""
+
+    def __init__(self, *, manager: TaskManager) -> None:
+        self._manager = manager
+
+    def name(self) -> str:
+        return "tasks_get_output"
+
+    def description(self) -> str:
+        return "Read the captured output for one background task."
+
+    def parameters(self) -> dict[str, Any]:
+        return TasksGetOutputInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = TasksGetOutputInput.model_validate(parameters)
+        task = self._manager.get_task(validated.task_id)
         if task is None:
             return f"Error: Task {validated.task_id} not found."
 
@@ -110,67 +147,92 @@ def create_task_tools(*, manager: TaskManager) -> list[Tool]:
             await task.handle.wait(timeout=validated.timeout)
 
         result = f"Task {validated.task_id} ({task.name})\n"
-        if task.handle.is_running:
-            result += "Status: running\n"
-        else:
-            result += f"Status: finished (Exit code: {task.handle.exit_code})\n"
+        result += f"Status: {_format_task_status(task)}\n"
 
         output = truncate_output(task.handle.consume_text(), validated.truncate_at)
         return f"{result}\n\n{output}"
 
-    async def get_status(validated: TaskIdInput) -> str:
-        task = manager.get_task(validated.task_id)
+
+class TasksGetStatusTool(Tool):
+    """Return the status of one background task without consuming output."""
+
+    def __init__(self, *, manager: TaskManager) -> None:
+        self._manager = manager
+
+    def name(self) -> str:
+        return "tasks_get_status"
+
+    def description(self) -> str:
+        return "Get the current status of one background task without reading its output."
+
+    def parameters(self) -> dict[str, Any]:
+        return TaskIdInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = TaskIdInput.model_validate(parameters)
+        task = self._manager.get_task(validated.task_id)
         if task is None:
             return f"Error: Task {validated.task_id} not found."
 
-        status = "running" if task.handle.is_running else f"finished (Exit code: {task.handle.exit_code})"
-        return f"Task {validated.task_id} ({task.name}) | Status: {status}"
+        return f"Task {validated.task_id} ({task.name}) | Status: {_format_task_status(task)}"
 
-    async def kill_task(validated: TaskIdInput) -> str:
-        task = manager.get_task(validated.task_id)
+
+class TasksKillTaskTool(Tool):
+    """Terminate a running background task."""
+
+    def __init__(self, *, manager: TaskManager) -> None:
+        self._manager = manager
+
+    def name(self) -> str:
+        return "tasks_kill_task"
+
+    def description(self) -> str:
+        return "Terminate a running background task."
+
+    def parameters(self) -> dict[str, Any]:
+        return TaskIdInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = TaskIdInput.model_validate(parameters)
+        task = self._manager.get_task(validated.task_id)
         if task is None:
             return f"Error: Task {validated.task_id} not found."
 
         await task.handle.terminate()
         return f"Task {validated.task_id} has been terminated."
 
-    async def remove_task(validated: TaskIdInput) -> str:
-        task = manager.get_task(validated.task_id)
+
+class TasksRemoveTaskTool(Tool):
+    """Remove one task from the retained task history."""
+
+    def __init__(self, *, manager: TaskManager) -> None:
+        self._manager = manager
+
+    def name(self) -> str:
+        return "tasks_remove_task"
+
+    def description(self) -> str:
+        return "Remove a task from the retained task history."
+
+    def parameters(self) -> dict[str, Any]:
+        return TaskIdInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = TaskIdInput.model_validate(parameters)
+        task = self._manager.get_task(validated.task_id)
         if task is None:
             return f"Error: Task {validated.task_id} not found."
 
-        manager.remove_task(validated.task_id)
+        self._manager.remove_task(validated.task_id)
         return f"Task {validated.task_id} removed from history."
 
+
+def create_task_tools(*, manager: TaskManager) -> list[Tool]:
+    """Create tools for listing and managing background tasks."""
     return [
-        StructuredTool(
-            name="tasks_list_tasks",
-            description="List all tracked background tasks with their IDs and current status.",
-            schema_model=EmptyInput,
-            handler=list_tasks,
-        ),
-        StructuredTool(
-            name="tasks_get_output",
-            description="Read the captured output for one background task.",
-            schema_model=TasksGetOutputInput,
-            handler=get_output,
-        ),
-        StructuredTool(
-            name="tasks_get_status",
-            description="Get the current status of one background task without reading its output.",
-            schema_model=TaskIdInput,
-            handler=get_status,
-        ),
-        StructuredTool(
-            name="tasks_kill_task",
-            description="Terminate a running background task.",
-            schema_model=TaskIdInput,
-            handler=kill_task,
-        ),
-        StructuredTool(
-            name="tasks_remove_task",
-            description="Remove a task from the retained task history.",
-            schema_model=TaskIdInput,
-            handler=remove_task,
-        ),
+        TasksListTasksTool(manager=manager),
+        TasksGetOutputTool(manager=manager),
+        TasksGetStatusTool(manager=manager),
+        TasksKillTaskTool(manager=manager),
+        TasksRemoveTaskTool(manager=manager),
     ]
