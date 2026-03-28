@@ -1,47 +1,53 @@
 # Coding Assistant
 
-Coding Assistant is a Python-based CLI and embeddable library for coding workflows. It can use MCP tools (filesystem, web fetch/search, Context7, Tavily, etc.) and run inside a sandbox.
+Coding Assistant is a Python-based CLI and embeddable library for coding workflows. It combines a boundary-based agent loop, built-in local tools, and optional external MCP servers.
 
 ## Key Features
 
-- Boundary-based core API with `run_agent_until_boundary(...)`
-- Simple `run_agent(history=...)` convenience wrapper
-- Caller-owned history with pure `compact_history(...)` transcript compaction
-- Built-in local shell, Python, filesystem, TODO, task, and skills tools
-- Support for external MCP servers (filesystem, fetch, Context7, Tavily, etc.)
-- Landlock-based filesystem sandbox with readable/writable allowlists
-- Prompt-toolkit powered interactive CLI
-- Interactive mode enabled by default for conversations
-- Configurable via CLI flags (models, instructions, sandbox, MCP, etc.)
+- Boundary-based core API with `run_agent_until_boundary(...)`.
+- Simple `run_agent(history=...)` convenience wrapper.
+- Caller-owned history with `compact_history(...)`.
+- Built-in local shell, Python, filesystem, TODO, and background-task tools.
+- Support for external MCP servers over stdio or SSE.
+- Prompt-toolkit powered interactive CLI.
+- Optional externally supplied skill directories.
+- No built-in sandboxing; run it inside an external sandbox if you need isolation.
 
 ## Requirements
 
-- Python 3.12+
-- uv (recommended) or pip for running/installing
-
-- Optional: External MCP servers if you want to extend functionality
-  - Node.js/npm for `npx` (for NPM-based MCP servers)
-  - Network access to fetch packages
-- API keys as needed by your chosen model/tooling, e.g.:
-  - `OPENAI_API_KEY` (or other OpenAI-compatible provider keys like `OPENROUTER_API_KEY`)
-  - Additional keys for external MCP servers (e.g., `TAVILY_API_KEY`)
+- Python 3.12+.
+- `uv` is recommended for installation and running.
+- API keys for your chosen OpenAI-compatible provider, for example `OPENAI_API_KEY` or `OPENROUTER_API_KEY`.
+- Optional dependencies for external MCP servers, such as Node.js/npm for NPM-based servers.
 
 ## Installation
 
-Using uv (recommended):
+Using `uv`:
 
 ```bash
 uv tool install coding-assistant-cli
 ```
 
+For local development:
+
+```bash
+uv sync
+```
+
 ## Quickstart
 
-The easiest way to run is with the uv command:
+Run a one-shot task:
 
 ```bash
 coding-assistant \
   --model "openrouter/anthropic/claude-3.5-sonnet" \
   --task "Refactor all function names to snake_case."
+```
+
+Start an interactive session:
+
+```bash
+coding-assistant --model "openai/gpt-5-mini"
 ```
 
 Show available options:
@@ -98,46 +104,34 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-`run_agent(...)` is the convenience wrapper that owns the assistant/tool loop and executes tools directly.
+If you want explicit control boundaries, use `run_agent_until_boundary(...)` and `execute_tool_calls(...)`. The lower-level API returns `AwaitingUser` or `AwaitingTools`, so callers can own the surrounding loop while still reusing tool execution.
 
-If you want explicit control boundaries, use `run_agent_until_boundary(...)` and `execute_tool_calls(...)`. The lower-level API returns `AwaitingUser` or `AwaitingTools`, and callers can own the surrounding loop while still using the helper to execute one returned tool boundary.
+## CLI Highlights
 
-### Advanced Examples
+- `--model` selects the model to use. Required.
+- `--task` seeds a one-shot or non-interactive run.
+- `--instructions` appends custom instructions.
+- `--mcp-servers` configures external MCP servers as JSON strings.
+- `--print-mcp-tools` prints the discovered MCP tools and exits.
+- `--trace` writes model request and response traces.
+- `--wait-for-debugger` waits for a debugger on port `1234`.
+- `--ask-user` controls whether `--task` runs prompt for follow-up input.
+- `--skills-directories` loads optional skill directories.
 
-You can invoke the CLI with additional MCP servers (stdio or SSE/remote) alongside the built-in local tools.
+Interactive prompting is enabled by default when no `--task` is provided.
 
-```bash
-coding-assistant \
-  --model "openrouter/openai/gpt-4o-mini" \
-  --task "Say 'Hello World'" \
-  --mcp-servers \
-    '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
-    '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}'
-```
+The interactive CLI also supports:
 
-Notes:
-- This tool uses OpenAI-compatible APIs. Use any provider/model you have keys for (e.g., set `OPENROUTER_API_KEY` for OpenRouter).
-- The `--mcp-servers` values are JSON strings; arguments support variable substitution for `{home_directory}` and `{working_directory}`.
-
-## Usage Highlights
-
-- `--model` Select model for the orchestrator agent (required).
-- `--instructions` Provide extra instructions that are composed with defaults. Can be repeated.
-- `--trace` / `--no-trace` Enable/disable tracing of model requests/responses.
-- `--sandbox` / `--no-sandbox` Enable/disable Landlock-based sandboxing (default: **enabled**).
-- `--wait-for-debugger` Wait for a debugger (debugpy) to attach on port 1234.
-- `--ask-user` / `--no-ask-user` Enable/disable follow-up user prompts in runs started with `--task` (default: **enabled**).
-- `--skills-directories` Paths to directories containing Agent Skills (with SKILL.md files).
-
-Note: Interactive prompting is enabled by default when no `--task` is provided.
-
-Run `coding-assistant --help` to see all options.
+- `/exit`
+- `/help`
+- `/compact`
+- `/image <path-or-url>`
 
 ## MCP Servers
 
-Pass MCP servers with repeated `--mcp-servers` flags as JSON strings. Support is provided for both stdio-based servers and remote servers via SSE (Server-Sent Events).
+Pass MCP servers with repeated `--mcp-servers` flags as JSON strings. Both stdio-based servers and remote SSE servers are supported.
 
-### Stdio Server
+Example stdio server:
 
 ```json
 {
@@ -147,7 +141,7 @@ Pass MCP servers with repeated `--mcp-servers` flags as JSON strings. Support is
 }
 ```
 
-### Remote Server (SSE)
+Example SSE server:
 
 ```json
 {
@@ -156,126 +150,91 @@ Pass MCP servers with repeated `--mcp-servers` flags as JSON strings. Support is
 }
 ```
 
-### Built-in Local Tools
-
-The main binary includes the following built-in tools by default:
-
-- **shell**: `shell_execute` — Execute shell commands with timeout and output truncation
-- **python**: `python_execute` — Execute Python code with timeout and output truncation
-- **filesystem**: `filesystem_write_file`, `filesystem_edit_file` — Write new files or apply targeted edits
-- **todo**: `todo_add`, `todo_list_todos`, `todo_complete` — Simple in-memory TODO list management
-- **tasks**: `tasks_list_tasks`, `tasks_get_status`, `tasks_get_output`, `tasks_kill_task`, `tasks_remove_task` — Manage background tasks
-- **skills**: `skills_list_resources`, `skills_read` — Discover and read agent skills and their resources
-
-### External MCP Servers (Optional)
-
-You can add external MCP servers to extend functionality. Examples include:
-
-- **filesystem**: `@modelcontextprotocol/server-filesystem` (NPM) — Additional filesystem operations
-- **fetch**: `mcp-server-fetch` (uvx) — Web fetching capabilities
-- **context7**: `@upstash/context7-mcp` (NPM) — Context management
-- **tavily**: `tavily-mcp` (needs `TAVILY_API_KEY`) — Web search
-
-To use these, add them via `--mcp-servers` flags as shown in the examples above.
-
-You can print all discovered tools from configured external MCP servers:
-
-```bash
-coding-assistant --print-mcp-tools --mcp-servers '...'
-```
-
-## Sandbox
-
-When enabled (default), the assistant applies Landlock restrictions. By default it adds:
-- Readable directories: your active virtual environment and any passed via `--readable-sandbox-directories`.
-- Writable directories: the current working directory and any passed via `--writable-sandbox-directories`.
-
-Use these flags to widen access if needed when working across multiple directories or mounts.
+Arguments support variable substitution for `{home_directory}` and `{working_directory}`.
 
 Example:
+
 ```bash
---readable-sandbox-directories /mnt/wsl ~/.ssh ~/.rustup \
---writable-sandbox-directories "$project_dir" /tmp /dev/shm ~/.cache/coding_assistant
+coding-assistant \
+  --model "openrouter/openai/gpt-4o-mini" \
+  --task "Say Hello World" \
+  --mcp-servers \
+    '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
+    '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}'
 ```
 
-## Shell command execution behavior
+## Built-In Local Tools
 
-The built-in tools `shell_execute` and `python_execute`:
-- Support multi-line scripts
-- Merge stderr into stdout and return plain text (no JSON envelope)
-- Prefix output with `Exit code: N` only when the command/code exits non-zero
-- Support `truncate_at` parameter to limit combined output size and append a note when truncation occurs
-- Support `timeout` parameter (default: 30 seconds)
-- Interactive commands (e.g., `git rebase -i`) are not supported and will block
+The default CLI includes these local tools:
 
-## Development
+- `shell_execute` for running shell commands.
+- `python_execute` for running Python snippets.
+- `filesystem_write_file` and `filesystem_edit_file` for targeted file changes.
+- `todo_add`, `todo_list_todos`, and `todo_complete` for TODO tracking.
+- `tasks_list_tasks`, `tasks_get_status`, `tasks_get_output`, `tasks_kill_task`, and `tasks_remove_task` for background task management.
 
-- Run tests:
-
-  ```bash
-  just test
-  ```
-
-  Run integration tests:
-
-  ```bash
-  just test-integration
-  ```
-
-  or manually:
-
-  ```bash
-  uv run pytest -n auto -m "not slow"
-  ```
-
-- Run linting/formatting/type-checking:
-
-  ```bash
-  just lint
-  ```
-
-- Handy `just` recipes: `test`, `lint` (see `justfile`).
+The core runtime also adds internal helper tools such as `compact_conversation` and `redirect_tool_call`.
 
 ## Skills
 
-Coding Assistant includes a skills system that provides specialized workflows, tool integrations, and domain expertise for common tasks. Skills transform the general-purpose agent into a specialized one by bundling instructions, scripts, references, and assets.
+Coding Assistant no longer ships bundled skills.
 
-### Available Skills
+If you want skills, point the CLI at one or more directories with `--skills-directories`. Each skill directory should contain child directories with a `SKILL.md` file:
 
-The following skills are available:
-
-- **plan** - Guidelines for iteratively planning tasks and changes before implementation. Use this when the user requests a non-trivial task or when you need to align on a complex implementation strategy.
-
-- **develop** - General principles for exploring, developing, editing, and refactoring code. Use for codebase analysis, implementation tasks, and code quality improvements.
-
-- **commit** - Helps write conventional commit messages, create atomic commits, and follow git best practices. Use when the agent needs to help with git commits, commit message writing, or git workflow guidance.
-
-- **review-code** - Provides a structured workflow for planning and executing code reviews like a senior engineer. Use when asked to review code, PRs, or plan a code review task.
-
-- **edit-skill** - Guide for creating and editing Agent Skills. Use this skill when you need to create or modify a skill to extend the agent's capabilities with specialized knowledge, workflows, or tool integrations.
-
-- **advanced-tool-usage** - Guidelines for multi-stage tool orchestration and handling large data using 'redirect_tool_call'. Use this when you need to process large amounts of data without exhausting the context window or when building complex data pipelines.
-
-### How Skills Work
-
-Skills use a progressive disclosure system:
-
-1. **Metadata** (name + description) - Always loaded, ~100 words
-2. **SKILL.md body** - Loaded when skill triggers, <500 lines
-3. **Bundled resources** - Loaded as needed (scripts, references, assets)
-
-When a skill's context matches the current task, it loads automatically, providing specialized instructions and tools.
-
-### Skill Structure
-
-Skills are organized as directories containing:
-
+```text
+skills-root/
+├── my-skill/
+│   ├── SKILL.md
+│   ├── references/
+│   └── scripts/
+└── another-skill/
+    └── SKILL.md
 ```
-skill-name/
-├── SKILL.md          # Required: instructions + metadata
-├── scripts/          # Optional: executable code
-├── references/       # Optional: documentation
-└── assets/           # Optional: templates/resources
+
+When skill directories are configured, the agent gets:
+
+- `skills_list_resources`
+- `skills_read`
+
+Those tools expose only the files inside the configured skill directories.
+
+## External Sandboxing
+
+Built-in sandboxing has been removed from this project. If you want filesystem isolation, run the assistant inside an external sandbox such as `bubblewrap`.
+
+See [docs/sandboxing.md](docs/sandboxing.md) for a minimal `bubblewrap` example.
+
+## Shell And Python Tool Behavior
+
+The built-in `shell_execute` and `python_execute` tools:
+
+- support multi-line scripts,
+- merge stderr into stdout,
+- prefix output with an exit-code header only for non-zero exits,
+- support `truncate_at` to limit output size,
+- support `timeout` with a default of 30 seconds,
+- can hand long-running work off to the background task manager.
+
+Interactive terminal programs such as `git rebase -i` are not supported.
+
+## Development
+
+Run tests:
+
+```bash
+just test
+```
+
+Run linting, formatting, and type checks:
+
+```bash
+just lint
+```
+
+There is also an integration test target:
+
+```bash
+just test-integration
 ```
 
 ## License

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.resources
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -67,26 +66,12 @@ def load_skills_from_root(root_directory: Path) -> list[Skill]:
     return skills
 
 
-def load_builtin_skills() -> list[Skill]:
-    """Load the skills bundled with the coding assistant package."""
-    files = importlib.resources.files("coding_assistant") / "skills"
-    return load_skills_from_root(Path(str(files)))
-
-
 def load_skills_from_directory(skills_directory: Path) -> list[Skill]:
     """Load skills from one user-provided skills directory."""
     if not skills_directory.exists() or not skills_directory.is_dir():
         logger.warning(f"Skills directory does not exist or is not a directory: {skills_directory}")
         return []
     return load_skills_from_root(skills_directory)
-
-
-def load_all_skills(*, skills_directories: Sequence[Path]) -> list[Skill]:
-    """Load built-in skills plus all configured extra skills."""
-    all_skills = load_builtin_skills()
-    for directory in skills_directories:
-        all_skills.extend(load_skills_from_directory(directory))
-    return all_skills
 
 
 def format_skills_instructions(skills: list[Skill]) -> str:
@@ -184,8 +169,14 @@ class SkillsReadTool(Tool):
 
 
 def create_skill_tools(*, skills_directories: Sequence[Path]) -> tuple[list[Tool], list[Skill]]:
-    """Create the skill-inspection tools and return them with the loaded skills."""
-    skills = load_all_skills(skills_directories=skills_directories)
+    """Create skill-inspection tools for the configured skill directories."""
+    skills: list[Skill] = []
+    for directory in skills_directories:
+        skills.extend(load_skills_from_directory(directory))
+
+    if not skills:
+        return [], []
+
     skills_by_name = {skill.name: skill for skill in skills}
 
     tools: list[Tool] = [
