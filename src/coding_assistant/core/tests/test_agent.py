@@ -5,8 +5,14 @@ from typing import Any
 
 import pytest
 
-from coding_assistant import execute_tool_calls, run_agent, run_agent_until_boundary
-from coding_assistant.core.agent import AwaitingTools, AwaitingUser
+from coding_assistant.core.agent import (
+    AwaitingTools,
+    AwaitingUser,
+    BoundaryEvent,
+    execute_tool_calls,
+    run_agent,
+    run_agent_event_stream,
+)
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -103,63 +109,94 @@ async def test_run_agent_returns_existing_history_without_pending_model_turn() -
 
 
 @pytest.mark.asyncio
-async def test_run_agent_until_boundary_returns_existing_history_without_pending_model_turn() -> None:
+async def test_run_agent_event_stream_yields_existing_boundary_without_pending_model_turn() -> None:
     history = make_system_history()
 
-    result = await run_agent_until_boundary(history=history, model="test-model", tools=[])
+    events = [
+        event
+        async for event in run_agent_event_stream(
+            history=history,
+            model="test-model",
+            tools=[],
+        )
+    ]
 
-    assert result == AwaitingUser(history=history)
+    assert events == [BoundaryEvent(boundary=AwaitingUser(history=history))]
 
 
 @pytest.mark.asyncio
-async def test_run_agent_until_boundary_streams_content_and_returns_awaiting_user() -> None:
-    chunks: list[str] = []
+async def test_run_agent_event_stream_yields_content_completion_and_boundary() -> None:
     history = [*make_system_history(), UserMessage(content="Hi")]
 
-    result = await run_agent_until_boundary(
-        history=history,
-        model="test-model",
-        tools=[],
-        streamer=ScriptedStreamer([AssistantMessage(content="Hello from the assistant")]),
-        on_content=chunks.append,
-    )
+    events = [
+        event
+        async for event in run_agent_event_stream(
+            history=history,
+            model="test-model",
+            tools=[],
+            streamer=ScriptedStreamer([AssistantMessage(content="Hello from the assistant")]),
+        )
+    ]
 
-    assert chunks == ["Hello from the assistant"]
-    assert result == AwaitingUser(
-        history=[
-            *make_system_history(),
-            UserMessage(content="Hi"),
-            AssistantMessage(content="Hello from the assistant"),
-        ]
-    )
+    assert events == [
+        LLMContentDeltaEvent(content="Hello from the assistant"),
+        CompletionEvent(
+            completion=Completion(
+                message=AssistantMessage(content="Hello from the assistant"),
+                usage=Usage(tokens=10, cost=0.0),
+            )
+        ),
+        BoundaryEvent(
+            boundary=AwaitingUser(
+                history=[
+                    *make_system_history(),
+                    UserMessage(content="Hi"),
+                    AssistantMessage(content="Hello from the assistant"),
+                ]
+            )
+        ),
+    ]
     assert history == [*make_system_history(), UserMessage(content="Hi")]
 
 
 @pytest.mark.asyncio
-async def test_run_agent_until_boundary_returns_tool_boundary_without_executing() -> None:
+async def test_run_agent_event_stream_yields_tool_boundary_without_executing() -> None:
     external_call = ToolCall(
         id="call-1",
         function=FunctionCall(name="mock_tool", arguments="{}"),
     )
 
-    result = await run_agent_until_boundary(
-        history=[*make_system_history(), UserMessage(content="Finish the task")],
-        model="test-model",
-        tools=[MockTool()],
-        streamer=ScriptedStreamer([AssistantMessage(tool_calls=[external_call])]),
-    )
+    events = [
+        event
+        async for event in run_agent_event_stream(
+            history=[*make_system_history(), UserMessage(content="Finish the task")],
+            model="test-model",
+            tools=[MockTool()],
+            streamer=ScriptedStreamer([AssistantMessage(tool_calls=[external_call])]),
+        )
+    ]
 
-    assert result == AwaitingTools(
-        history=[
-            *make_system_history(),
-            UserMessage(content="Finish the task"),
-            AssistantMessage(tool_calls=[external_call]),
-        ],
-    )
+    assert events == [
+        CompletionEvent(
+            completion=Completion(
+                message=AssistantMessage(tool_calls=[external_call]),
+                usage=Usage(tokens=10, cost=0.0),
+            )
+        ),
+        BoundaryEvent(
+            boundary=AwaitingTools(
+                history=[
+                    *make_system_history(),
+                    UserMessage(content="Finish the task"),
+                    AssistantMessage(tool_calls=[external_call]),
+                ],
+            )
+        ),
+    ]
 
 
 @pytest.mark.asyncio
-async def test_run_agent_until_boundary_recovers_pending_tool_boundary_from_history() -> None:
+async def test_run_agent_event_stream_recovers_pending_tool_boundary_from_history() -> None:
     external_call = ToolCall(
         id="call-1",
         function=FunctionCall(name="mock_tool", arguments="{}"),
@@ -170,13 +207,16 @@ async def test_run_agent_until_boundary_recovers_pending_tool_boundary_from_hist
         AssistantMessage(tool_calls=[external_call]),
     ]
 
-    result = await run_agent_until_boundary(
-        history=history,
-        model="test-model",
-        tools=[MockTool()],
-    )
+    events = [
+        event
+        async for event in run_agent_event_stream(
+            history=history,
+            model="test-model",
+            tools=[MockTool()],
+        )
+    ]
 
-    assert result == AwaitingTools(history=history)
+    assert events == [BoundaryEvent(boundary=AwaitingTools(history=history))]
 
 
 @pytest.mark.asyncio
@@ -234,18 +274,14 @@ async def test_execute_tool_calls_compacts_history_without_orphan_tool_message()
 
 
 @pytest.mark.asyncio
-async def test_run_agent_streams_content_and_appends_final_message() -> None:
-    chunks: list[str] = []
-
+async def test_run_agent_returns_final_history_after_event_stream() -> None:
     result = await run_agent(
         history=[*make_system_history(), UserMessage(content="Hi")],
         model="test-model",
         tools=[],
         streamer=ScriptedStreamer([AssistantMessage(content="Hello from the assistant")]),
-        on_content=chunks.append,
     )
 
-    assert chunks == ["Hello from the assistant"]
     assert result[-1] == AssistantMessage(content="Hello from the assistant")
 
 
