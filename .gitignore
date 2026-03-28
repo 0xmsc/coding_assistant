@@ -1,4 +1,5 @@
 .direnv
+.agent
 .envrc
 __pycache__
 .vscode
