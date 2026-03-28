@@ -103,7 +103,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-If you want streaming or explicit boundary control, use `run_agent_event_stream(...)`. It yields normal LLM stream events and ends with a terminal `BoundaryEvent`, whose `boundary` is either `AwaitingUser` or `AwaitingTools`. You can then call `execute_tool_calls(...)` when the boundary requests tools.
+If you want streaming or explicit boundary control, use `run_agent_event_stream(...)`. It yields concrete LLM events and ends with either `AwaitingUser` or `AwaitingTools`. You can then call `execute_tool_calls(...)` when the boundary requests tools.
 
 ## CLI Highlights
 

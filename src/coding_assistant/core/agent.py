@@ -13,7 +13,9 @@ from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
     CompletionEvent,
-    LLMEvent,
+    ContentDeltaEvent,
+    ReasoningDeltaEvent,
+    StatusEvent,
     Tool,
     ToolCall,
     ToolMessage,
@@ -43,16 +45,6 @@ class AwaitingTools:
 
 
 AgentBoundary = AwaitingUser | AwaitingTools
-
-
-@dataclass(frozen=True)
-class BoundaryEvent:
-    """Terminal event emitted when the agent reaches a caller-owned boundary."""
-
-    boundary: AgentBoundary
-
-
-AgentEvent = LLMEvent | BoundaryEvent
 
 
 def _parse_tool_call_arguments(tool_call: ToolCall) -> tuple[dict[str, Any] | None, str | None]:
@@ -215,8 +207,8 @@ async def run_agent(
             tools=tools,
             streamer=streamer,
         ):
-            if isinstance(event, BoundaryEvent):
-                boundary = event.boundary
+            if isinstance(event, (AwaitingUser, AwaitingTools)):
+                boundary = event
 
         if boundary is None:
             raise RuntimeError("run_agent_event_stream stopped without yielding a boundary.")
@@ -245,15 +237,17 @@ async def run_agent_event_stream(
     model: str,
     tools: Sequence[Tool],
     streamer: Any = openai_stream_completion,
-) -> AsyncIterator[AgentEvent]:
-    """Yield streamed LLM events and end with a terminal boundary event."""
+) -> AsyncIterator[
+    ContentDeltaEvent | ReasoningDeltaEvent | StatusEvent | CompletionEvent | AwaitingUser | AwaitingTools
+]:
+    """Yield streamed LLM events and end with a terminal boundary object."""
     current_history = list(history)
     if not current_history:
         raise ValueError("run_agent_event_stream requires a non-empty history.")
 
     immediate_boundary = _get_boundary(current_history)
     if immediate_boundary is not None:
-        yield BoundaryEvent(boundary=immediate_boundary)
+        yield immediate_boundary
         return
 
     all_tools = _build_tools(tools=tools)
@@ -274,4 +268,4 @@ async def run_agent_event_stream(
     boundary = _get_boundary(current_history)
     if boundary is None:
         raise RuntimeError("run_agent_event_stream did not reach a boundary after the completion.")
-    yield BoundaryEvent(boundary=boundary)
+    yield boundary
