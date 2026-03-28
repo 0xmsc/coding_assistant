@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.tools.base import StructuredTool
 from coding_assistant.llm.types import Tool
 
 
@@ -78,35 +78,70 @@ class TodoCompleteInput(BaseModel):
     )
 
 
+class TodoAddTool(Tool):
+    """Add items to the in-memory TODO list."""
+
+    def __init__(self, *, manager: TodoManager) -> None:
+        self._manager = manager
+
+    def name(self) -> str:
+        return "todo_add"
+
+    def description(self) -> str:
+        return "Add one or more TODO items and return the updated TODO list."
+
+    def parameters(self) -> dict[str, Any]:
+        return TodoAddInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = TodoAddInput.model_validate(parameters)
+        return self._manager.add(validated.descriptions)
+
+
+class TodoListTool(Tool):
+    """Return the current TODO list."""
+
+    def __init__(self, *, manager: TodoManager) -> None:
+        self._manager = manager
+
+    def name(self) -> str:
+        return "todo_list_todos"
+
+    def description(self) -> str:
+        return "Return the current TODO list."
+
+    def parameters(self) -> dict[str, Any]:
+        return EmptyInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        EmptyInput.model_validate(parameters)
+        return self._manager.list_todos()
+
+
+class TodoCompleteTool(Tool):
+    """Mark one TODO item complete."""
+
+    def __init__(self, *, manager: TodoManager) -> None:
+        self._manager = manager
+
+    def name(self) -> str:
+        return "todo_complete"
+
+    def description(self) -> str:
+        return "Mark a TODO item complete and optionally record its result."
+
+    def parameters(self) -> dict[str, Any]:
+        return TodoCompleteInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        validated = TodoCompleteInput.model_validate(parameters)
+        return self._manager.complete(validated.task_id, validated.result)
+
+
 def create_todo_tools(*, manager: TodoManager) -> list[Tool]:
     """Create tools for managing the in-memory TODO list."""
-
-    async def add(validated: TodoAddInput) -> str:
-        return manager.add(validated.descriptions)
-
-    async def list_todos(_: EmptyInput) -> str:
-        return manager.list_todos()
-
-    async def complete(validated: TodoCompleteInput) -> str:
-        return manager.complete(validated.task_id, validated.result)
-
     return [
-        StructuredTool(
-            name="todo_add",
-            description="Add one or more TODO items and return the updated TODO list.",
-            schema_model=TodoAddInput,
-            handler=add,
-        ),
-        StructuredTool(
-            name="todo_list_todos",
-            description="Return the current TODO list.",
-            schema_model=EmptyInput,
-            handler=list_todos,
-        ),
-        StructuredTool(
-            name="todo_complete",
-            description="Mark a TODO item complete and optionally record its result.",
-            schema_model=TodoCompleteInput,
-            handler=complete,
-        ),
+        TodoAddTool(manager=manager),
+        TodoListTool(manager=manager),
+        TodoCompleteTool(manager=manager),
     ]
