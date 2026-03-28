@@ -4,7 +4,7 @@ Coding Assistant is a Python-based CLI and embeddable library for coding workflo
 
 ## Key Features
 
-- Boundary-based core API with `run_agent_until_boundary(...)`.
+- Async event-stream API via `run_agent_event_stream(...)`.
 - Simple `run_agent(history=...)` convenience wrapper.
 - Caller-owned history with `compact_history(...)`.
 - Built-in local shell, Python, filesystem, TODO, and background-task tools.
@@ -58,13 +58,13 @@ coding-assistant --help
 
 ## Embedding
 
-The simplest Python surface is `run_agent(...)`. You pass in history, model, and executable tools; the function streams assistant output through `on_content` and returns the updated transcript after executing any requested tools.
+The simplest Python surface is `run_agent(...)`. You pass in history, model, and executable tools, and it returns the updated transcript after executing any requested tools.
 
 ```python
 import asyncio
 from typing import Any
 
-from coding_assistant import run_agent
+from coding_assistant.core.agent import run_agent
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import SystemMessage, Tool, UserMessage
 
@@ -97,14 +97,13 @@ async def main() -> None:
         history=history,
         model="openai/gpt-5-mini",
         tools=[LookupDocsTool()],
-        on_content=lambda chunk: print(chunk, end="", flush=True),
     )
 
 
 asyncio.run(main())
 ```
 
-If you want explicit control boundaries, use `run_agent_until_boundary(...)` and `execute_tool_calls(...)`. The lower-level API returns `AwaitingUser` or `AwaitingTools`, so callers can own the surrounding loop while still reusing tool execution.
+If you want streaming or explicit boundary control, use `run_agent_event_stream(...)`. It yields normal LLM stream events and ends with a terminal `BoundaryEvent`, whose `boundary` is either `AwaitingUser` or `AwaitingTools`. You can then call `execute_tool_calls(...)` when the boundary requests tools.
 
 ## CLI Highlights
 

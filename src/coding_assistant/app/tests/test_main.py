@@ -1,6 +1,7 @@
 from argparse import Namespace
 from contextlib import asynccontextmanager
 from typing import Any
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -8,7 +9,7 @@ from rich.markdown import Markdown
 
 from coding_assistant.app.cli import DefaultAgentBundle, _drive_agent, build_default_agent_config, run_cli
 from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display
-from coding_assistant.core.agent import AwaitingTools, AwaitingUser
+from coding_assistant.core.agent import AwaitingTools, AwaitingUser, BoundaryEvent
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, UserMessage
 from coding_assistant.app.main import main, parse_args
@@ -180,15 +181,19 @@ async def test_drive_agent_prints_formatted_tool_call_before_execution() -> None
         ],
     )
 
+    boundaries: list[AwaitingUser | AwaitingTools] = [
+        tool_boundary,
+        AwaitingUser(history=[SystemMessage(content="System"), AssistantMessage(content="Done")]),
+    ]
+
+    async def fake_run_agent_event_stream(**kwargs: Any) -> AsyncIterator[BoundaryEvent]:
+        del kwargs
+        yield BoundaryEvent(boundary=boundaries.pop(0))
+
     with (
         patch(
-            "coding_assistant.app.cli.run_agent_until_boundary",
-            new=AsyncMock(
-                side_effect=[
-                    tool_boundary,
-                    AwaitingUser(history=[SystemMessage(content="System"), AssistantMessage(content="Done")]),
-                ]
-            ),
+            "coding_assistant.app.cli.run_agent_event_stream",
+            new=fake_run_agent_event_stream,
         ),
         patch("coding_assistant.app.cli.execute_tool_calls", new=AsyncMock(return_value=tool_boundary.history)),
         patch("coding_assistant.app.output.rich_print") as mock_print,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from json import JSONDecodeError
 from typing import Any
@@ -13,7 +13,7 @@ from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
     CompletionEvent,
-    ContentDeltaEvent,
+    LLMEvent,
     Tool,
     ToolCall,
     ToolMessage,
@@ -43,6 +43,16 @@ class AwaitingTools:
 
 
 AgentBoundary = AwaitingUser | AwaitingTools
+
+
+@dataclass(frozen=True)
+class BoundaryEvent:
+    """Terminal event emitted when the agent reaches a caller-owned boundary."""
+
+    boundary: AgentBoundary
+
+
+AgentEvent = LLMEvent | BoundaryEvent
 
 
 def _parse_tool_call_arguments(tool_call: ToolCall) -> tuple[dict[str, Any] | None, str | None]:
@@ -106,31 +116,6 @@ def _build_tools(
     return _validate_tools([*base_tools, redirect_tool])
 
 
-async def _consume_completion(
-    *,
-    history: list[BaseMessage],
-    tools: list[Tool],
-    model: str,
-    streamer: Any,
-    on_content: Callable[[str], None] | None,
-) -> AssistantMessage:
-    """Read one streamed completion and return the final assistant message."""
-    completion_message: AssistantMessage | None = None
-    async for event in streamer(
-        history,
-        model=model,
-        tools=tools,
-    ):
-        if isinstance(event, ContentDeltaEvent) and on_content is not None:
-            on_content(event.content)
-        elif isinstance(event, CompletionEvent):
-            completion_message = event.completion.message
-
-    if completion_message is None:
-        raise RuntimeError("Streamer stopped without yielding a completion.")
-    return completion_message
-
-
 async def _execute_resolved_tool(
     *,
     tool: Tool,
@@ -179,39 +164,6 @@ async def _execute_tool_call(
     return history, result
 
 
-async def run_agent_until_boundary(
-    *,
-    history: Sequence[BaseMessage],
-    model: str,
-    tools: Sequence[Tool],
-    streamer: Any = openai_stream_completion,
-    on_content: Callable[[str], None] | None = None,
-) -> AgentBoundary:
-    """Advance the transcript until the next explicit caller-owned boundary."""
-    current_history = list(history)
-    if not current_history:
-        raise ValueError("run_agent_until_boundary requires a non-empty history.")
-
-    if _get_pending_tool_message(current_history) is not None:
-        return AwaitingTools(history=current_history)
-
-    if _should_wait_for_user(current_history):
-        return AwaitingUser(history=current_history)
-
-    all_tools = _build_tools(tools=tools)
-    message = await _consume_completion(
-        history=current_history,
-        tools=all_tools,
-        model=model,
-        streamer=streamer,
-        on_content=on_content,
-    )
-    current_history.append(message)
-    if message.tool_calls:
-        return AwaitingTools(history=current_history)
-    return AwaitingUser(history=current_history)
-
-
 async def execute_tool_calls(
     *,
     boundary: AwaitingTools,
@@ -249,7 +201,6 @@ async def run_agent(
     model: str,
     tools: Sequence[Tool],
     streamer: Any = openai_stream_completion,
-    on_content: Callable[[str], None] | None = None,
 ) -> list[BaseMessage]:
     """Advance the transcript until the assistant yields back to the caller."""
     current_history = list(history)
@@ -257,13 +208,19 @@ async def run_agent(
         raise ValueError("run_agent requires a non-empty history.")
 
     while True:
-        boundary = await run_agent_until_boundary(
+        boundary: AgentBoundary | None = None
+        async for event in run_agent_event_stream(
             history=current_history,
             model=model,
             tools=tools,
             streamer=streamer,
-            on_content=on_content,
-        )
+        ):
+            if isinstance(event, BoundaryEvent):
+                boundary = event.boundary
+
+        if boundary is None:
+            raise RuntimeError("run_agent_event_stream stopped without yielding a boundary.")
+
         if isinstance(boundary, AwaitingUser):
             return boundary.history
 
@@ -271,3 +228,50 @@ async def run_agent(
             boundary=boundary,
             tools=tools,
         )
+
+
+def _get_boundary(history: list[BaseMessage]) -> AgentBoundary | None:
+    """Return the current caller-owned boundary when one already exists."""
+    if _get_pending_tool_message(history) is not None:
+        return AwaitingTools(history=history)
+    if _should_wait_for_user(history):
+        return AwaitingUser(history=history)
+    return None
+
+
+async def run_agent_event_stream(
+    *,
+    history: Sequence[BaseMessage],
+    model: str,
+    tools: Sequence[Tool],
+    streamer: Any = openai_stream_completion,
+) -> AsyncIterator[AgentEvent]:
+    """Yield streamed LLM events and end with a terminal boundary event."""
+    current_history = list(history)
+    if not current_history:
+        raise ValueError("run_agent_event_stream requires a non-empty history.")
+
+    immediate_boundary = _get_boundary(current_history)
+    if immediate_boundary is not None:
+        yield BoundaryEvent(boundary=immediate_boundary)
+        return
+
+    all_tools = _build_tools(tools=tools)
+    completion_message: AssistantMessage | None = None
+    async for event in streamer(
+        current_history,
+        model=model,
+        tools=all_tools,
+    ):
+        yield event
+        if isinstance(event, CompletionEvent):
+            completion_message = event.completion.message
+
+    if completion_message is None:
+        raise RuntimeError("Streamer stopped without yielding a completion.")
+
+    current_history.append(completion_message)
+    boundary = _get_boundary(current_history)
+    if boundary is None:
+        raise RuntimeError("run_agent_event_stream did not reach a boundary after the completion.")
+    yield BoundaryEvent(boundary=boundary)
