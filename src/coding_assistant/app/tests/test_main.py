@@ -9,7 +9,7 @@ from rich.markdown import Markdown
 
 from coding_assistant.app.cli import DefaultAgentBundle, _drive_agent, build_default_agent_config, run_cli
 from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display
-from coding_assistant.core.agent import AwaitingTools, AwaitingUser
+from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, UserMessage
 from coding_assistant.app.main import main, parse_args
@@ -173,7 +173,7 @@ async def test_drive_agent_prints_formatted_tool_call_before_execution() -> None
         id="call-1",
         function=FunctionCall(name="mock_tool", arguments='{"count": 2}'),
     )
-    tool_boundary = AwaitingTools(
+    tool_boundary = AwaitingToolCalls(
         history=[
             SystemMessage(content="System"),
             UserMessage(content="Do the task"),
@@ -181,12 +181,12 @@ async def test_drive_agent_prints_formatted_tool_call_before_execution() -> None
         ],
     )
 
-    boundaries: list[AwaitingUser | AwaitingTools] = [
+    boundaries: list[AwaitingUser | AwaitingToolCalls] = [
         tool_boundary,
         AwaitingUser(history=[SystemMessage(content="System"), AssistantMessage(content="Done")]),
     ]
 
-    async def fake_run_agent_event_stream(**kwargs: Any) -> AsyncIterator[AwaitingUser | AwaitingTools]:
+    async def fake_run_agent_event_stream(**kwargs: Any) -> AsyncIterator[AwaitingUser | AwaitingToolCalls]:
         del kwargs
         yield boundaries.pop(0)
 
