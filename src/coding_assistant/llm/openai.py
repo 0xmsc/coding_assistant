@@ -19,7 +19,6 @@ from coding_assistant.llm.types import (
     ContentDeltaEvent,
     Usage,
     BaseMessage,
-    LLMEvent,
     ReasoningDeltaEvent,
     StatusLevel,
     StatusEvent,
@@ -181,7 +180,7 @@ async def _try_completion(
     tools: Sequence[ToolDefinition],
     model: str,
     reasoning_effort: Literal["low", "medium", "high"] | None,
-) -> AsyncIterator[LLMEvent]:
+) -> AsyncIterator[ReasoningDeltaEvent | ContentDeltaEvent | CompletionEvent]:
     """Perform one streaming chat completion request against the provider."""
     base_url, api_key = _get_base_url_and_api_key()
     headers = {
@@ -257,7 +256,7 @@ async def stream_completion(
     messages: Sequence[BaseMessage],
     tools: Sequence[ToolDefinition],
     model: str,
-) -> AsyncIterator[LLMEvent]:
+) -> AsyncIterator[ContentDeltaEvent | ReasoningDeltaEvent | StatusEvent | CompletionEvent]:
     """Retry transient HTTP failures before surfacing the completion error."""
     model, reasoning_effort = _parse_model_and_reasoning(model)
 

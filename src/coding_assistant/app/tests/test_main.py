@@ -9,7 +9,7 @@ from rich.markdown import Markdown
 
 from coding_assistant.app.cli import DefaultAgentBundle, _drive_agent, build_default_agent_config, run_cli
 from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display
-from coding_assistant.core.agent import AwaitingTools, AwaitingUser, BoundaryEvent
+from coding_assistant.core.agent import AwaitingTools, AwaitingUser
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, UserMessage
 from coding_assistant.app.main import main, parse_args
@@ -186,9 +186,9 @@ async def test_drive_agent_prints_formatted_tool_call_before_execution() -> None
         AwaitingUser(history=[SystemMessage(content="System"), AssistantMessage(content="Done")]),
     ]
 
-    async def fake_run_agent_event_stream(**kwargs: Any) -> AsyncIterator[BoundaryEvent]:
+    async def fake_run_agent_event_stream(**kwargs: Any) -> AsyncIterator[AwaitingUser | AwaitingTools]:
         del kwargs
-        yield BoundaryEvent(boundary=boundaries.pop(0))
+        yield boundaries.pop(0)
 
     with (
         patch(

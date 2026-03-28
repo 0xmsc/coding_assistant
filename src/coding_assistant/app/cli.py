@@ -14,7 +14,6 @@ from coding_assistant.app.ui import DefaultAnswerUI, PromptToolkitUI, UI
 from coding_assistant.core.agent import (
     AwaitingTools,
     AwaitingUser,
-    BoundaryEvent,
     execute_tool_calls,
     run_agent_event_stream,
 )
@@ -153,8 +152,8 @@ async def _drive_agent(
             if isinstance(event, ContentDeltaEvent):
                 renderer.on_delta(event.content)
                 continue
-            if isinstance(event, BoundaryEvent):
-                boundary = event.boundary
+            if isinstance(event, (AwaitingUser, AwaitingTools)):
+                boundary = event
 
         renderer.finish()
         if boundary is None:
