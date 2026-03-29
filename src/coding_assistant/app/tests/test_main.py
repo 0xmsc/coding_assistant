@@ -1,5 +1,4 @@
 from argparse import Namespace
-from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
@@ -7,13 +6,13 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from rich.markdown import Markdown
 
-from coding_assistant.app.cli import _drive_agent, run_cli
+from coding_assistant.app.cli import _handle_prompt_submission, run_cli
 from coding_assistant.app.default_agent import DefaultAgentBundle, build_default_agent_config
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display, print_tool_calls
-from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
+from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.core.history import build_system_prompt
-from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, UserMessage
+from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
 
 
 def test_parse_args_valid() -> None:
@@ -116,17 +115,19 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
 
     with (
         patch("coding_assistant.app.cli.create_default_agent", fake_create_default_agent),
-        patch("coding_assistant.app.cli.print_system_message") as mock_print_system,
-        patch("coding_assistant.app.cli._drive_agent", new=AsyncMock()) as mock_drive_agent,
+        patch("coding_assistant.app.cli._run_prompt_loop", new=AsyncMock()) as mock_prompt_loop,
+        patch("coding_assistant.app.cli.run_session_output", new=AsyncMock()) as mock_run_session_output,
     ):
         await run_cli(args)
 
-    mock_print_system.assert_called_once()
-    assert mock_drive_agent.await_args is not None
-    history = mock_drive_agent.await_args.kwargs["history"]
-    assert history == [
+    assert mock_prompt_loop.await_args is not None
+    session = mock_prompt_loop.await_args.kwargs["session"]
+    assert isinstance(session, AgentSession)
+    assert session.history == [
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
     ]
+    assert mock_run_session_output.await_args is not None
+    assert mock_run_session_output.await_args.kwargs["session"] is session
 
 
 def test_paragraph_buffer_respects_code_fences() -> None:
@@ -224,43 +225,35 @@ def test_format_tool_call_markdown_hides_edit_payload_values() -> None:
 
 
 @pytest.mark.asyncio
-async def test_drive_agent_prints_formatted_tool_call_before_execution() -> None:
-    tool_call = ToolCall(
-        id="call-1",
-        function=FunctionCall(name="mock_tool", arguments='{"count": 2}'),
+async def test_handle_prompt_submission_queues_priority_prompt() -> None:
+    session = Mock()
+    session.enqueue_prompt = AsyncMock(return_value=True)
+
+    should_exit = await _handle_prompt_submission(session=session, answer="/priority fix this next")
+
+    assert should_exit is False
+    session.enqueue_prompt.assert_awaited_once_with("fix this next", priority=True)
+
+
+@pytest.mark.asyncio
+async def test_handle_prompt_submission_interrupts_current_run() -> None:
+    session = Mock()
+    session.interrupt_and_enqueue = AsyncMock(return_value=True)
+
+    should_exit = await _handle_prompt_submission(session=session, answer="/interrupt stop and do this instead")
+
+    assert should_exit is False
+    session.interrupt_and_enqueue.assert_awaited_once_with("stop and do this instead")
+
+
+@pytest.mark.asyncio
+async def test_handle_prompt_submission_compact_enqueues_compaction_prompt() -> None:
+    session = Mock()
+    session.enqueue_prompt = AsyncMock(return_value=True)
+
+    should_exit = await _handle_prompt_submission(session=session, answer="/compact")
+
+    assert should_exit is False
+    session.enqueue_prompt.assert_awaited_once_with(
+        "Immediately compact our conversation so far by using the `compact_conversation` tool."
     )
-    tool_boundary = AwaitingToolCalls(
-        history=[
-            SystemMessage(content="System"),
-            UserMessage(content="Do the task"),
-            AssistantMessage(tool_calls=[tool_call]),
-        ],
-    )
-
-    boundaries: list[AwaitingUser | AwaitingToolCalls] = [
-        tool_boundary,
-        AwaitingUser(history=[SystemMessage(content="System"), AssistantMessage(content="Done")]),
-    ]
-
-    async def fake_run_agent_event_stream(**kwargs: Any) -> AsyncIterator[AwaitingUser | AwaitingToolCalls]:
-        del kwargs
-        yield boundaries.pop(0)
-
-    with (
-        patch(
-            "coding_assistant.app.cli.run_agent_event_stream",
-            new=fake_run_agent_event_stream,
-        ),
-        patch("coding_assistant.app.cli.execute_tool_calls", new=AsyncMock(return_value=tool_boundary.history)),
-        patch("coding_assistant.app.output.rich_print") as mock_print,
-    ):
-        ui = Mock()
-        ui.prompt = AsyncMock(return_value="/exit")
-        await _drive_agent(
-            history=[SystemMessage(content="System"), UserMessage(content="Do the task")],
-            model="gpt-4",
-            tools=[],
-            prompt_user=ui.prompt,
-        )
-
-    assert any(call.args == ("[bold yellow]▶[/bold yellow] mock_tool(count=2)",) for call in mock_print.call_args_list)

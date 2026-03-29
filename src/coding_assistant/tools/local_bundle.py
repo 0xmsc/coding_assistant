@@ -18,6 +18,7 @@ WORKER_TOOL_INSTRUCTIONS = """
 ## Workers
 
 - Use worker tools to connect to, prompt, wait on, cancel, and disconnect from worker endpoints printed by `coding-assistant --worker`.
+- When prompting a worker, choose `mode="queue"` for normal FIFO work, `mode="priority"` to move ahead of already queued prompts, or `mode="interrupt"` to cancel the current run and run your prompt next.
 """.strip()
 
 

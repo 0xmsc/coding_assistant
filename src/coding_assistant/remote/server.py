@@ -8,6 +8,15 @@ from dataclasses import dataclass
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
+from coding_assistant.core.agent_session import (
+    AgentSession,
+    AgentSessionEvent,
+    RunCancelledEvent,
+    RunFailedEvent,
+    RunFinishedEvent,
+    StateChangedEvent,
+    ToolCallsEvent,
+)
 from coding_assistant.llm.types import ContentDeltaEvent
 from coding_assistant.remote.protocol import (
     CancelCommand,
@@ -25,15 +34,6 @@ from coding_assistant.remote.protocol import (
     message_to_json,
     parse_supervisor_message,
 )
-from coding_assistant.remote.worker_session import (
-    RunCancelledEvent,
-    RunFailedEvent,
-    RunFinishedEvent,
-    StateChangedEvent,
-    ToolCallsEvent,
-    WorkerSession,
-    WorkerSessionEvent,
-)
 
 
 @dataclass(frozen=True)
@@ -49,8 +49,8 @@ class RemoteOutput:
     def __init__(self, *, websocket: ServerConnection) -> None:
         self._websocket = websocket
 
-    async def run(self, session: WorkerSession) -> None:
-        """Subscribe to worker-session events and forward the wire-compatible ones."""
+    async def run(self, session: AgentSession) -> None:
+        """Subscribe to session events and forward the wire-compatible ones."""
         async with session.subscribe() as queue:
             while True:
                 event = await queue.get()
@@ -61,7 +61,7 @@ class RemoteOutput:
 
 
 def _session_event_to_message(
-    event: WorkerSessionEvent,
+    event: AgentSessionEvent,
 ) -> (
     StateMessage
     | ContentDeltaMessage
@@ -77,6 +77,7 @@ def _session_event_to_message(
             promptable=event.state.promptable,
             remote_connected=True,
             running=event.state.running,
+            queued_prompt_count=event.state.queued_prompt_count,
         )
     if isinstance(event, ContentDeltaEvent):
         return ContentDeltaMessage(content=event.content)
@@ -102,12 +103,20 @@ def _session_event_to_message(
 
 async def _handle_supervisor_message(
     websocket: ServerConnection,
-    session: WorkerSession,
+    session: AgentSession,
     message: PromptCommand | CancelCommand,
 ) -> None:
     """Execute one supervisor command and send its immediate accepted/not-ready reply."""
     if isinstance(message, PromptCommand):
-        if await session.submit_prompt(message.prompt):
+        if message.mode == "interrupt":
+            accepted = await session.interrupt_and_enqueue(message.prompt)
+        else:
+            accepted = await session.enqueue_prompt(
+                message.prompt,
+                priority=message.mode == "priority",
+            )
+
+        if accepted:
             await websocket.send(message_to_json(CommandAcceptedMessage(request_id=message.request_id)))
         else:
             state = session.state
@@ -118,6 +127,7 @@ async def _handle_supervisor_message(
                         promptable=state.promptable,
                         remote_connected=True,
                         running=state.running,
+                        queued_prompt_count=state.queued_prompt_count,
                     )
                 )
             )
@@ -136,6 +146,7 @@ async def _handle_supervisor_message(
                 promptable=state.promptable,
                 remote_connected=True,
                 running=state.running,
+                queued_prompt_count=state.queued_prompt_count,
             )
         )
     )
@@ -144,7 +155,7 @@ async def _handle_supervisor_message(
 @asynccontextmanager
 async def start_worker_server(
     *,
-    session: WorkerSession,
+    session: AgentSession,
 ) -> AsyncIterator[WorkerServer]:
     """Serve one controlling supervisor connection at a time for a worker session."""
     connection_lock = asyncio.Lock()
@@ -172,7 +183,7 @@ async def start_worker_server(
             sender_task.cancel()
             with suppress(asyncio.CancelledError):
                 await sender_task
-            await session.cancel_current_run()
+            await session.cancel_current_run(discard_pending_prompts=True)
             async with connection_lock:
                 if active_connection is websocket:
                     active_connection = None
