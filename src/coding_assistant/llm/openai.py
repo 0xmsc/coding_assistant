@@ -33,14 +33,6 @@ from coding_assistant.infra.trace import trace_json
 logger = logging.getLogger(__name__)
 
 
-def fix_input_schema(input_schema: dict[str, Any]) -> None:
-    """Remove schema features that some OpenAI-compatible providers reject."""
-    for prop in input_schema.get("properties", {}).values():
-        fmt = prop.get("format")
-        if fmt == "uri":
-            prop.pop("format", None)
-
-
 async def _get_tools_payload(tools: Sequence[ToolDefinition]) -> list[dict[str, Any]]:
     """Convert tool definitions into the provider request payload."""
     result: list[dict[str, Any]] = []
@@ -252,6 +244,35 @@ async def _try_completion(
     )
 
 
+@functools.cache
+def _parse_model_and_reasoning(
+    model: str,
+) -> tuple[str, Literal["low", "medium", "high"] | None]:
+    """Split `model (effort)` syntax into the provider model and reasoning effort."""
+    s = model.strip()
+    m = re.match(r"^(.+?) \(([^)]*)\)$", s)
+
+    if not m:
+        return s, None
+
+    base = m.group(1).strip()
+    effort = m.group(2).strip().lower()
+
+    if effort not in ("low", "medium", "high"):
+        raise ValueError(f"Invalid reasoning effort level {effort} in {model}")
+
+    effort = cast(Literal["low", "medium", "high"], effort)
+    return base, effort
+
+
+def fix_input_schema(input_schema: dict[str, Any]) -> None:
+    """Remove schema features that some OpenAI-compatible providers reject."""
+    for prop in input_schema.get("properties", {}).values():
+        fmt = prop.get("format")
+        if fmt == "uri":
+            prop.pop("format", None)
+
+
 async def stream_completion(
     messages: Sequence[BaseMessage],
     tools: Sequence[ToolDefinition],
@@ -275,24 +296,3 @@ async def stream_completion(
                 level=StatusLevel.WARNING,
             )
             await asyncio.sleep(0.5 + attempt)
-
-
-@functools.cache
-def _parse_model_and_reasoning(
-    model: str,
-) -> tuple[str, Literal["low", "medium", "high"] | None]:
-    """Split `model (effort)` syntax into the provider model and reasoning effort."""
-    s = model.strip()
-    m = re.match(r"^(.+?) \(([^)]*)\)$", s)
-
-    if not m:
-        return s, None
-
-    base = m.group(1).strip()
-    effort = m.group(2).strip().lower()
-
-    if effort not in ("low", "medium", "high"):
-        raise ValueError(f"Invalid reasoning effort level {effort} in {model}")
-
-    effort = cast(Literal["low", "medium", "high"], effort)
-    return base, effort

@@ -19,6 +19,33 @@ class WorkerRecord:
     started_at: str
 
 
+def _read_record(record_path: Path) -> WorkerRecord | None:
+    try:
+        payload = json.loads(record_path.read_text(encoding="utf-8"))
+        record = WorkerRecord(
+            endpoint=payload["endpoint"],
+            pid=int(payload["pid"]),
+            cwd=payload["cwd"],
+            started_at=payload["started_at"],
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+    if not _process_is_alive(record.pid):
+        return None
+    return record
+
+
+def _process_is_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def get_worker_records_dir() -> Path:
     return get_app_state_dir() / "workers"
 
@@ -59,30 +86,3 @@ async def advertise_worker(*, endpoint: str, cwd: Path) -> AsyncIterator[WorkerR
     finally:
         with suppress(FileNotFoundError):
             record_path.unlink()
-
-
-def _read_record(record_path: Path) -> WorkerRecord | None:
-    try:
-        payload = json.loads(record_path.read_text(encoding="utf-8"))
-        record = WorkerRecord(
-            endpoint=payload["endpoint"],
-            pid=int(payload["pid"]),
-            cwd=payload["cwd"],
-            started_at=payload["started_at"],
-        )
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
-        return None
-
-    if not _process_is_alive(record.pid):
-        return None
-    return record
-
-
-def _process_is_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True

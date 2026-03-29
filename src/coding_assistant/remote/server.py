@@ -43,40 +43,6 @@ class WorkerServer:
     endpoint: str
 
 
-@asynccontextmanager
-async def start_worker_server(
-    *,
-    session_host: SessionHost,
-    cwd: Path,
-) -> AsyncIterator[WorkerServer]:
-    async def handle_connection(websocket: ServerConnection) -> None:
-        if not await session_host.attach_remote_controller():
-            await websocket.send(message_to_json(ErrorMessage(message="Worker is already remotely controlled.")))
-            await websocket.close()
-            return
-
-        async with session_host.subscribe() as queue:
-            sender_task = asyncio.create_task(_forward_session_events(websocket, queue))
-            try:
-                async for raw_message in websocket:
-                    message = parse_supervisor_message(raw_message)
-                    await _handle_supervisor_message(websocket, session_host, message)
-            except ConnectionClosed:
-                pass
-            finally:
-                sender_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await sender_task
-                await session_host.detach_remote_controller()
-
-    async with serve(handle_connection, "127.0.0.1", 0) as server:
-        socket = server.sockets[0]
-        port = socket.getsockname()[1]
-        endpoint = f"ws://127.0.0.1:{port}"
-        async with advertise_worker(endpoint=endpoint, cwd=cwd):
-            yield WorkerServer(endpoint=endpoint)
-
-
 async def _forward_session_events(
     websocket: ServerConnection,
     queue: asyncio.Queue[SessionEvent],
@@ -160,3 +126,37 @@ async def _handle_supervisor_message(
             )
         )
     )
+
+
+@asynccontextmanager
+async def start_worker_server(
+    *,
+    session_host: SessionHost,
+    cwd: Path,
+) -> AsyncIterator[WorkerServer]:
+    async def handle_connection(websocket: ServerConnection) -> None:
+        if not await session_host.attach_remote_controller():
+            await websocket.send(message_to_json(ErrorMessage(message="Worker is already remotely controlled.")))
+            await websocket.close()
+            return
+
+        async with session_host.subscribe() as queue:
+            sender_task = asyncio.create_task(_forward_session_events(websocket, queue))
+            try:
+                async for raw_message in websocket:
+                    message = parse_supervisor_message(raw_message)
+                    await _handle_supervisor_message(websocket, session_host, message)
+            except ConnectionClosed:
+                pass
+            finally:
+                sender_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await sender_task
+                await session_host.detach_remote_controller()
+
+    async with serve(handle_connection, "127.0.0.1", 0) as server:
+        socket = server.sockets[0]
+        port = socket.getsockname()[1]
+        endpoint = f"ws://127.0.0.1:{port}"
+        async with advertise_worker(endpoint=endpoint, cwd=cwd):
+            yield WorkerServer(endpoint=endpoint)

@@ -11,61 +11,6 @@ from coding_assistant.core.history import compact_history
 from coding_assistant.llm.types import BaseMessage, Tool, ToolCall, ToolMessage
 
 
-def build_tools(
-    *,
-    tools: Sequence[Tool],
-) -> list[Tool]:
-    """Add built-in tools and validate the resulting tool set."""
-    base_tools = [CompactConversationTool(), *tools]
-    base_tools_by_name = {tool.name(): tool for tool in base_tools}
-
-    async def execute_redirected_tool(tool_name: str, arguments: dict[str, Any]) -> str:
-        target_tool = base_tools_by_name.get(tool_name)
-        if target_tool is None:
-            raise RuntimeError(f"Tool '{tool_name}' is not available for redirection.")
-        return await _execute_resolved_tool(
-            tool=target_tool,
-            arguments=arguments,
-        )
-
-    redirect_tool = RedirectToolCallTool(
-        tools=base_tools,
-        execute_tool=execute_redirected_tool,
-    )
-    return _validate_tools([*base_tools, redirect_tool])
-
-
-async def execute_tool_calls(
-    *,
-    boundary: AwaitingToolCalls,
-    tools: Sequence[Tool],
-) -> list[BaseMessage]:
-    """Execute one tool-call boundary and append the resulting tool messages."""
-    current_history = list(boundary.history)
-    all_tools = build_tools(tools=tools)
-    tools_by_name = {tool.name(): tool for tool in all_tools}
-
-    for tool_call in boundary.message.tool_calls:
-        current_history, result = await _execute_tool_call(
-            history=current_history,
-            tool_call=tool_call,
-            tools_by_name=tools_by_name,
-        )
-
-        if result is None:
-            break
-
-        current_history.append(
-            ToolMessage(
-                tool_call_id=tool_call.id,
-                name=tool_call.function.name,
-                content=result,
-            )
-        )
-
-    return current_history
-
-
 def _parse_tool_call_arguments(tool_call: ToolCall) -> tuple[dict[str, Any] | None, str | None]:
     """Decode tool arguments into a JSON object or return a user-visible error."""
     try:
@@ -136,3 +81,58 @@ async def _execute_tool_call(
         return compacted_history, None
 
     return history, result
+
+
+def build_tools(
+    *,
+    tools: Sequence[Tool],
+) -> list[Tool]:
+    """Add built-in tools and validate the resulting tool set."""
+    base_tools = [CompactConversationTool(), *tools]
+    base_tools_by_name = {tool.name(): tool for tool in base_tools}
+
+    async def execute_redirected_tool(tool_name: str, arguments: dict[str, Any]) -> str:
+        target_tool = base_tools_by_name.get(tool_name)
+        if target_tool is None:
+            raise RuntimeError(f"Tool '{tool_name}' is not available for redirection.")
+        return await _execute_resolved_tool(
+            tool=target_tool,
+            arguments=arguments,
+        )
+
+    redirect_tool = RedirectToolCallTool(
+        tools=base_tools,
+        execute_tool=execute_redirected_tool,
+    )
+    return _validate_tools([*base_tools, redirect_tool])
+
+
+async def execute_tool_calls(
+    *,
+    boundary: AwaitingToolCalls,
+    tools: Sequence[Tool],
+) -> list[BaseMessage]:
+    """Execute one tool-call boundary and append the resulting tool messages."""
+    current_history = list(boundary.history)
+    all_tools = build_tools(tools=tools)
+    tools_by_name = {tool.name(): tool for tool in all_tools}
+
+    for tool_call in boundary.message.tool_calls:
+        current_history, result = await _execute_tool_call(
+            history=current_history,
+            tool_call=tool_call,
+            tools_by_name=tools_by_name,
+        )
+
+        if result is None:
+            break
+
+        current_history.append(
+            ToolMessage(
+                tool_call_id=tool_call.id,
+                name=tool_call.function.name,
+                content=result,
+            )
+        )
+
+    return current_history

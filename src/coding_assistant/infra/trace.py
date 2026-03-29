@@ -11,6 +11,17 @@ _trace_counter = 0
 logger = logging.getLogger(__name__)
 
 
+def _get_trace_path(name: str) -> Path:
+    """Allocate the next numbered trace path for a new artifact."""
+    global _trace_counter
+    if _trace_dir is None:
+        raise RuntimeError("Tracing is not enabled")
+
+    _trace_counter += 1
+    path = _trace_dir / f"{_trace_counter:03d}_{name}"
+    return path
+
+
 def get_default_trace_dir() -> Path:
     """Return the default directory used for per-run trace artifacts."""
     return get_traces_dir()
@@ -34,17 +45,6 @@ def enable_tracing(directory: Path, clear: bool = False) -> None:
 def trace_enabled() -> bool:
     """Return whether tracing is currently enabled."""
     return _trace_dir is not None
-
-
-def _get_trace_path(name: str) -> Path:
-    """Allocate the next numbered trace path for a new artifact."""
-    global _trace_counter
-    if _trace_dir is None:
-        raise RuntimeError("Tracing is not enabled")
-
-    _trace_counter += 1
-    path = _trace_dir / f"{_trace_counter:03d}_{name}"
-    return path
 
 
 def trace_data(name: str, content: str) -> None:

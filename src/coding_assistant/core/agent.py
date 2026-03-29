@@ -27,6 +27,15 @@ def _should_wait_for_user(history: Sequence[BaseMessage]) -> bool:
     return history[-1].role not in {"user", "tool"}
 
 
+def _get_boundary(history: list[BaseMessage]) -> AgentBoundary | None:
+    """Return the current caller-owned boundary when one already exists."""
+    if get_pending_tool_call_message(history) is not None:
+        return AwaitingToolCalls(history=history)
+    if _should_wait_for_user(history):
+        return AwaitingUser(history=history)
+    return None
+
+
 async def run_agent(
     *,
     history: Sequence[BaseMessage],
@@ -60,15 +69,6 @@ async def run_agent(
             boundary=boundary,
             tools=tools,
         )
-
-
-def _get_boundary(history: list[BaseMessage]) -> AgentBoundary | None:
-    """Return the current caller-owned boundary when one already exists."""
-    if get_pending_tool_call_message(history) is not None:
-        return AwaitingToolCalls(history=history)
-    if _should_wait_for_user(history):
-        return AwaitingUser(history=history)
-    return None
 
 
 async def run_agent_event_stream(
