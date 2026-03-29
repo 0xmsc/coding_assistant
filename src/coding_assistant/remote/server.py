@@ -9,15 +9,6 @@ from pathlib import Path
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
-from coding_assistant.app.worker_session import (
-    RunCancelledEvent,
-    RunFailedEvent,
-    RunFinishedEvent,
-    StateChangedEvent,
-    ToolCallsEvent,
-    WorkerSession,
-    WorkerSessionEvent,
-)
 from coding_assistant.llm.types import ContentDeltaEvent
 from coding_assistant.remote.discovery import advertise_worker
 from coding_assistant.remote.protocol import (
@@ -35,6 +26,15 @@ from coding_assistant.remote.protocol import (
     ToolCallsMessage,
     message_to_json,
     parse_supervisor_message,
+)
+from coding_assistant.remote.worker_session import (
+    RunCancelledEvent,
+    RunFailedEvent,
+    RunFinishedEvent,
+    StateChangedEvent,
+    ToolCallsEvent,
+    WorkerSession,
+    WorkerSessionEvent,
 )
 
 

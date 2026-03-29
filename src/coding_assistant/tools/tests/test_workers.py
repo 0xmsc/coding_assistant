@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 
-from coding_assistant.app.worker_session import WorkerSession
 from coding_assistant.llm.types import (
     AssistantMessage,
     Completion,
@@ -16,6 +15,7 @@ from coding_assistant.llm.types import (
     Usage,
 )
 from coding_assistant.remote.server import start_worker_server
+from coding_assistant.remote.worker_session import WorkerSession
 from coding_assistant.tools.workers import WorkerToolRuntime
 
 
