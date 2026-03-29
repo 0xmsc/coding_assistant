@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from argparse import Namespace
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Iterable
 
 from coding_assistant.app.default_agent import (
     build_default_agent_config,
@@ -10,22 +11,20 @@ from coding_assistant.app.default_agent import (
     create_default_agent,
 )
 from coding_assistant.app.image import get_image
-from coding_assistant.app.output import DeltaRenderer, print_system_message, print_tool_calls
-from coding_assistant.core.agent import run_agent_event_stream
-from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
-from coding_assistant.core.tool_calls import execute_tool_calls
+from coding_assistant.app.output import run_session_output
+from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.infra.paths import get_app_cache_dir
 from coding_assistant.integrations.mcp_client import print_mcp_tools
-from coding_assistant.llm.types import BaseMessage, ContentDeltaEvent, Tool, UserMessage
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import CompleteEvent, Completer, Completion, WordCompleter
 from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.patch_stdout import patch_stdout
 from rich import print
 from rich.console import Console
 from rich.rule import Rule
 
-CLI_COMMAND_NAMES = ["/exit", "/help", "/compact", "/image"]
+CLI_COMMAND_NAMES = ["/exit", "/help", "/compact", "/image", "/priority", "/interrupt"]
 
 
 class SlashCompleter(Completer):
@@ -46,91 +45,24 @@ async def run_cli(args: Namespace) -> None:
     config = build_default_agent_config(args)
     prompt_session = _create_prompt_session()
 
-    async def prompt_user(words: list[str] | None = None) -> str:
-        return await _prompt_with_session(prompt_session, words=words)
-
     async with create_default_agent(config=config) as bundle:
         if args.print_mcp_tools:
             await print_mcp_tools(bundle.mcp_servers)
             return
 
         system_message = build_initial_system_message(instructions=bundle.instructions)
-        print_system_message(system_message)
-        current_history: list[BaseMessage] = [system_message]
-
-        await _drive_agent(
-            history=current_history,
+        session = AgentSession(
+            history=[system_message],
             model=args.model,
             tools=bundle.tools,
-            prompt_user=prompt_user,
         )
-
-
-async def _drive_agent(
-    *,
-    history: list[BaseMessage],
-    model: str,
-    tools: list[Tool],
-    prompt_user: Callable[[list[str] | None], Awaitable[str]],
-) -> None:
-    """Drive the interactive agent loop until the CLI should exit."""
-    current_history = list(history)
-    while True:
-        renderer = DeltaRenderer()
-        boundary: AwaitingUser | AwaitingToolCalls | None = None
-        async for event in run_agent_event_stream(
-            history=current_history,
-            model=model,
-            tools=tools,
-        ):
-            if isinstance(event, ContentDeltaEvent):
-                renderer.on_delta(event.content)
-                continue
-            if isinstance(event, (AwaitingUser, AwaitingToolCalls)):
-                boundary = event
-
-        if boundary is None:
-            renderer.finish()
-            raise RuntimeError("run_agent_event_stream stopped without yielding a boundary.")
-
-        if isinstance(boundary, AwaitingToolCalls):
-            renderer.finish(trailing_blank_line=False)
-            print_tool_calls(boundary.message)
-            current_history = await execute_tool_calls(
-                boundary=boundary,
-                tools=tools,
-            )
-            continue
-
-        renderer.finish()
-        current_history = boundary.history
-        while True:
-            answer = await prompt_user(CLI_COMMAND_NAMES)
-            stripped = answer.strip()
-            if stripped == "/exit":
-                return
-            if stripped == "/help":
-                print("Available commands:\n  /exit\n  /help\n  /compact\n  /image <path-or-url>")
-                continue
-            if stripped == "/compact":
-                current_history.append(
-                    UserMessage(
-                        content="Immediately compact our conversation so far by using the `compact_conversation` tool."
-                    )
-                )
-                break
-            if stripped.startswith("/image"):
-                parts = stripped.split(maxsplit=1)
-                if len(parts) < 2:
-                    print("/image requires a path or URL argument.")
-                    continue
-                data_url = await get_image(parts[1])
-                image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
-                current_history.append(UserMessage(content=image_content))
-                break
-
-            current_history.append(UserMessage(content=answer))
-            break
+        output_task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
+        try:
+            await _run_prompt_loop(session=session, prompt_session=prompt_session)
+        finally:
+            await session.close()
+            output_task.cancel()
+            await asyncio.gather(output_task, return_exceptions=True)
 
 
 def _create_prompt_session() -> PromptSession[str]:
@@ -150,3 +82,66 @@ async def _prompt_with_session(prompt_session: PromptSession[str], *, words: lis
     print(Rule(style="dim"))
     completer = SlashCompleter(words) if words else None
     return await prompt_session.prompt_async("> ", completer=completer, complete_while_typing=True)
+
+
+async def _run_prompt_loop(*, session: AgentSession, prompt_session: PromptSession[str]) -> None:
+    """Keep a local prompt open and translate answers into session actions."""
+    with patch_stdout():
+        while True:
+            answer = await _prompt_with_session(prompt_session, words=CLI_COMMAND_NAMES)
+            if await _handle_prompt_submission(session=session, answer=answer):
+                return
+
+
+async def _handle_prompt_submission(*, session: AgentSession, answer: str) -> bool:
+    """Handle one prompt line and return true when the CLI should exit."""
+    stripped = answer.strip()
+    if stripped == "/exit":
+        return True
+    if stripped == "/help":
+        print(
+            "Available commands:\n"
+            "  /exit\n"
+            "  /help\n"
+            "  /compact\n"
+            "  /image <path-or-url>\n"
+            "  /priority <prompt>\n"
+            "  /interrupt <prompt>"
+        )
+        return False
+    if stripped == "/compact":
+        return not await session.enqueue_prompt(
+            "Immediately compact our conversation so far by using the `compact_conversation` tool."
+        )
+    if stripped.startswith("/image"):
+        parts = stripped.split(maxsplit=1)
+        if len(parts) < 2:
+            print("/image requires a path or URL argument.")
+            return False
+        data_url = await get_image(parts[1])
+        image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
+        return not await session.enqueue_prompt(image_content)
+    if stripped.startswith("/priority"):
+        priority_prompt = _extract_command_argument(answer=answer, command="/priority")
+        if priority_prompt is None:
+            print("/priority requires prompt text.")
+            return False
+        return not await session.enqueue_prompt(priority_prompt, priority=True)
+    if stripped.startswith("/interrupt"):
+        interrupt_prompt = _extract_command_argument(answer=answer, command="/interrupt")
+        if interrupt_prompt is None:
+            print("/interrupt requires prompt text.")
+            return False
+        return not await session.interrupt_and_enqueue(interrupt_prompt)
+
+    return not await session.enqueue_prompt(answer)
+
+
+def _extract_command_argument(*, answer: str, command: str) -> str | None:
+    """Return the trailing argument text for one slash command."""
+    if not answer.startswith(command):
+        return None
+    argument = answer[len(command) :].strip()
+    if not argument:
+        return None
+    return argument

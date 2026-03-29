@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 import pytest
 
+from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.llm.types import (
     AssistantMessage,
     Completion,
@@ -13,45 +15,46 @@ from coding_assistant.llm.types import (
     ContentDeltaEvent,
     SystemMessage,
     Usage,
+    UserMessage,
 )
 from coding_assistant.remote.server import start_worker_server
-from coding_assistant.remote.worker_session import WorkerSession
 from coding_assistant.tools.workers import WorkerToolRuntime
 
 
-class ScriptedStreamer:
-    def __init__(self, script: list[AssistantMessage]) -> None:
-        self.script = list(script)
+@dataclass
+class StreamStep:
+    message: AssistantMessage
+    started_event: asyncio.Event | None = None
+    release_event: asyncio.Event | None = None
+
+
+class ControlledStreamer:
+    def __init__(self, steps: list[StreamStep]) -> None:
+        self.steps = list(steps)
+        self.prompts: list[str | list[dict[str, Any]]] = []
 
     async def __call__(self, messages: Any, tools: Any, model: Any) -> AsyncIterator[object]:
-        del messages, tools, model
-        if not self.script:
+        del tools, model
+        if not self.steps:
             raise AssertionError("Streamer script exhausted.")
 
-        action = self.script.pop(0)
-        if isinstance(action.content, str) and action.content:
-            yield ContentDeltaEvent(content=action.content)
-
-        yield CompletionEvent(completion=Completion(message=action, usage=Usage(tokens=10, cost=0.0)))
-
-
-class BlockingStreamer:
-    def __init__(self) -> None:
-        self.started = asyncio.Event()
-
-    async def __call__(self, messages: Any, tools: Any, model: Any) -> AsyncIterator[object]:
-        del messages, tools, model
-        self.started.set()
-        yield ContentDeltaEvent(content="Working...")
-        await asyncio.Future()
+        self.prompts.append(_get_latest_user_content(messages))
+        step = self.steps.pop(0)
+        if step.started_event is not None:
+            step.started_event.set()
+        if isinstance(step.message.content, str) and step.message.content:
+            yield ContentDeltaEvent(content=step.message.content)
+        if step.release_event is not None:
+            await step.release_event.wait()
+        yield CompletionEvent(completion=Completion(message=step.message, usage=Usage(tokens=10, cost=0.0)))
 
 
 def make_system_history() -> list[SystemMessage]:
     return [SystemMessage(content="# Instructions\n\nTest instructions")]
 
 
-def make_worker_session(*, completion_streamer: Any) -> WorkerSession:
-    return WorkerSession(
+def make_agent_session(*, completion_streamer: Any) -> AgentSession:
+    return AgentSession(
         history=make_system_history(),
         model="test-model",
         tools=[],
@@ -59,10 +62,19 @@ def make_worker_session(*, completion_streamer: Any) -> WorkerSession:
     )
 
 
+def _get_latest_user_content(messages: list[object]) -> str | list[dict[str, Any]]:
+    for message in reversed(messages):
+        if isinstance(message, UserMessage):
+            return message.content
+    raise AssertionError("No user prompt found in streamer call.")
+
+
 @pytest.mark.asyncio
 async def test_worker_runtime_connects_prompts_and_waits_for_completion() -> None:
-    session = make_worker_session(
-        completion_streamer=ScriptedStreamer([AssistantMessage(content="Finished the delegated task")]),
+    session = make_agent_session(
+        completion_streamer=ControlledStreamer(
+            [StreamStep(message=AssistantMessage(content="Finished the delegated task"))]
+        ),
     )
     worker_runtime = WorkerToolRuntime()
 
@@ -78,12 +90,24 @@ async def test_worker_runtime_connects_prompts_and_waits_for_completion() -> Non
         assert wait_result == f"Worker {worker_server.endpoint} finished:\nFinished the delegated task"
 
     await worker_runtime.close()
+    await session.close()
 
 
 @pytest.mark.asyncio
-async def test_worker_runtime_rejects_prompt_while_worker_is_busy_and_can_cancel() -> None:
-    streamer = BlockingStreamer()
-    session = make_worker_session(completion_streamer=streamer)
+async def test_worker_runtime_queues_prompt_while_worker_is_busy() -> None:
+    first_started = asyncio.Event()
+    first_release = asyncio.Event()
+    streamer = ControlledStreamer(
+        [
+            StreamStep(
+                message=AssistantMessage(content="First result"),
+                started_event=first_started,
+                release_event=first_release,
+            ),
+            StreamStep(message=AssistantMessage(content="Second result")),
+        ]
+    )
+    session = make_agent_session(completion_streamer=streamer)
     worker_runtime = WorkerToolRuntime()
 
     async with start_worker_server(session=session) as worker_server:
@@ -92,26 +116,115 @@ async def test_worker_runtime_rejects_prompt_while_worker_is_busy_and_can_cancel
             f"Prompt sent to worker {worker_server.endpoint}."
         )
 
-        await asyncio.wait_for(streamer.started.wait(), timeout=1)
+        await asyncio.wait_for(first_started.wait(), timeout=1)
 
         prompt_result = await worker_runtime.prompt(worker_server.endpoint, "Please do something else.")
-        assert prompt_result == (
-            f"Worker {worker_server.endpoint} is not ready for a prompt. promptable=False running=True"
-        )
+        assert prompt_result == f"Prompt sent to worker {worker_server.endpoint}."
 
-        cancel_result = await worker_runtime.cancel(worker_server.endpoint)
-        assert cancel_result == f"Cancelled the current run on worker {worker_server.endpoint}."
+        first_release.set()
 
-        wait_result = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
-        assert wait_result == f"Worker {worker_server.endpoint} cancelled its current run."
+        first_wait = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
+        second_wait = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
+
+        assert first_wait == f"Worker {worker_server.endpoint} finished:\nFirst result"
+        assert second_wait == f"Worker {worker_server.endpoint} finished:\nSecond result"
 
     await worker_runtime.close()
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_priority_prompt_runs_before_existing_queue() -> None:
+    first_started = asyncio.Event()
+    first_release = asyncio.Event()
+    streamer = ControlledStreamer(
+        [
+            StreamStep(
+                message=AssistantMessage(content="First result"),
+                started_event=first_started,
+                release_event=first_release,
+            ),
+            StreamStep(message=AssistantMessage(content="Priority result")),
+            StreamStep(message=AssistantMessage(content="Second result")),
+        ]
+    )
+    session = make_agent_session(completion_streamer=streamer)
+    worker_runtime = WorkerToolRuntime()
+
+    async with start_worker_server(session=session) as worker_server:
+        assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
+        assert (
+            await worker_runtime.prompt(worker_server.endpoint, "first")
+            == f"Prompt sent to worker {worker_server.endpoint}."
+        )
+        await asyncio.wait_for(first_started.wait(), timeout=1)
+
+        assert await worker_runtime.prompt(worker_server.endpoint, "second") == (
+            f"Prompt sent to worker {worker_server.endpoint}."
+        )
+        assert await worker_runtime.prompt(worker_server.endpoint, "priority", mode="priority") == (
+            f"Priority prompt sent to worker {worker_server.endpoint}."
+        )
+
+        first_release.set()
+
+        wait_results = [
+            await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1) for _ in range(3)
+        ]
+
+        assert wait_results == [
+            f"Worker {worker_server.endpoint} finished:\nFirst result",
+            f"Worker {worker_server.endpoint} finished:\nPriority result",
+            f"Worker {worker_server.endpoint} finished:\nSecond result",
+        ]
+
+    await worker_runtime.close()
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_interrupt_prompt_cancels_current_run_and_runs_new_prompt_next() -> None:
+    first_started = asyncio.Event()
+    never_release = asyncio.Event()
+    streamer = ControlledStreamer(
+        [
+            StreamStep(
+                message=AssistantMessage(content="Working..."),
+                started_event=first_started,
+                release_event=never_release,
+            ),
+            StreamStep(message=AssistantMessage(content="Interrupt result")),
+        ]
+    )
+    session = make_agent_session(completion_streamer=streamer)
+    worker_runtime = WorkerToolRuntime()
+
+    async with start_worker_server(session=session) as worker_server:
+        assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
+        assert (
+            await worker_runtime.prompt(worker_server.endpoint, "first")
+            == f"Prompt sent to worker {worker_server.endpoint}."
+        )
+        await asyncio.wait_for(first_started.wait(), timeout=1)
+
+        assert await worker_runtime.prompt(worker_server.endpoint, "interrupt", mode="interrupt") == (
+            f"Interrupt prompt sent to worker {worker_server.endpoint}."
+        )
+
+        cancel_wait = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
+        finish_wait = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
+
+        assert cancel_wait == f"Worker {worker_server.endpoint} cancelled its current run."
+        assert finish_wait == f"Worker {worker_server.endpoint} finished:\nInterrupt result"
+
+    await worker_runtime.close()
+    await session.close()
 
 
 @pytest.mark.asyncio
 async def test_worker_runtime_second_connection_is_rejected_for_controlled_worker() -> None:
-    session = make_worker_session(
-        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+    session = make_agent_session(
+        completion_streamer=ControlledStreamer([StreamStep(message=AssistantMessage(content="unused"))]),
     )
     first_runtime = WorkerToolRuntime()
     second_runtime = WorkerToolRuntime()
@@ -126,12 +239,13 @@ async def test_worker_runtime_second_connection_is_rejected_for_controlled_worke
 
     await first_runtime.close()
     await second_runtime.close()
+    await session.close()
 
 
 @pytest.mark.asyncio
 async def test_worker_runtime_wait_returns_disconnect_once_then_reports_not_connected() -> None:
-    session = make_worker_session(
-        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+    session = make_agent_session(
+        completion_streamer=ControlledStreamer([StreamStep(message=AssistantMessage(content="unused"))]),
     )
     worker_runtime = WorkerToolRuntime()
 
@@ -148,12 +262,13 @@ async def test_worker_runtime_wait_returns_disconnect_once_then_reports_not_conn
         assert second_wait_result == f"Worker {worker_server.endpoint} is not connected."
 
     await worker_runtime.close()
+    await session.close()
 
 
 @pytest.mark.asyncio
 async def test_worker_runtime_wait_any_returns_pending_disconnect_after_last_connection_closes() -> None:
-    session = make_worker_session(
-        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+    session = make_agent_session(
+        completion_streamer=ControlledStreamer([StreamStep(message=AssistantMessage(content="unused"))]),
     )
     worker_runtime = WorkerToolRuntime()
 
@@ -170,3 +285,4 @@ async def test_worker_runtime_wait_any_returns_pending_disconnect_after_last_con
         assert second_wait_result == "No connected workers."
 
     await worker_runtime.close()
+    await session.close()

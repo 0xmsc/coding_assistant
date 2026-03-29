@@ -21,6 +21,7 @@ class StateMessage(BaseModel):
     promptable: bool
     remote_connected: bool
     running: bool
+    queued_prompt_count: int = 0
 
 
 class ContentDeltaMessage(BaseModel):
@@ -72,6 +73,7 @@ class NotReadyMessage(BaseModel):
     promptable: bool
     remote_connected: bool
     running: bool
+    queued_prompt_count: int = 0
 
 
 class ErrorMessage(BaseModel):
@@ -88,6 +90,7 @@ class PromptCommand(BaseModel):
     type: Literal["prompt"] = "prompt"
     request_id: str
     prompt: str
+    mode: Literal["queue", "priority", "interrupt"] = "queue"
 
 
 class CancelCommand(BaseModel):

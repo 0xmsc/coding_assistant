@@ -9,7 +9,16 @@ from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.panel import Panel
 
+from coding_assistant.core.agent_session import (
+    AgentSession,
+    RunCancelledEvent,
+    RunFailedEvent,
+    RunFinishedEvent,
+    StateChangedEvent,
+    ToolCallsEvent,
+)
 from coding_assistant.llm.types import AssistantMessage, SystemMessage, ToolCall
+from coding_assistant.llm.types import CompletionEvent, ContentDeltaEvent, ReasoningDeltaEvent, StatusEvent
 
 
 SPECIAL_TOOL_FORMATS: dict[str, dict[str, Any]] = {
@@ -150,6 +159,38 @@ def print_tool_calls(message: AssistantMessage) -> None:
     """Render tool calls in the old dense-progress style."""
     for tool_call in message.tool_calls:
         _print_tool_call(tool_call)
+
+
+async def run_session_output(*, session: AgentSession, system_message: SystemMessage) -> None:
+    """Render one session's streamed events to the local terminal."""
+    renderer = DeltaRenderer()
+    print_system_message(system_message)
+
+    async with session.subscribe() as queue:
+        try:
+            while True:
+                event = await queue.get()
+                if isinstance(event, ContentDeltaEvent):
+                    renderer.on_delta(event.content)
+                    continue
+                if isinstance(event, ToolCallsEvent):
+                    renderer.finish(trailing_blank_line=False)
+                    print_tool_calls(event.message)
+                    continue
+                if isinstance(event, RunFinishedEvent):
+                    renderer.finish()
+                    continue
+                if isinstance(event, RunCancelledEvent):
+                    renderer.finish()
+                    continue
+                if isinstance(event, RunFailedEvent):
+                    renderer.finish()
+                    rich_print(f"[bold red]Run failed:[/bold red] {event.error}")
+                    continue
+                if isinstance(event, (StateChangedEvent, ReasoningDeltaEvent, StatusEvent, CompletionEvent)):
+                    continue
+        finally:
+            renderer.finish()
 
 
 def format_tool_call_display(tool_call: ToolCall) -> tuple[str, list[tuple[str, str, str]]]:

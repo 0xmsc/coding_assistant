@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from typing import Literal
 from uuid import uuid4
 
 from websockets.asyncio.client import ClientConnection, connect
@@ -64,12 +65,17 @@ class RemoteWorkerConnection:
             raise
         return connection
 
-    async def prompt(self, prompt: str) -> CommandAcceptedMessage | NotReadyMessage | ErrorMessage:
+    async def prompt(
+        self,
+        prompt: str,
+        *,
+        mode: Literal["queue", "priority", "interrupt"] = "queue",
+    ) -> CommandAcceptedMessage | NotReadyMessage | ErrorMessage:
         """Send one prompt command and wait for the worker's direct reply."""
         request_id = uuid4().hex
         return await self._send_request(
             request_id=request_id,
-            message=PromptCommand(request_id=request_id, prompt=prompt),
+            message=PromptCommand(request_id=request_id, prompt=prompt, mode=mode),
         )
 
     async def cancel(self) -> CommandAcceptedMessage | NotReadyMessage | ErrorMessage:

@@ -28,6 +28,7 @@ class WorkerSnapshot:
     promptable: bool = False
     remote_connected: bool = False
     running: bool = False
+    queued_prompt_count: int = 0
     last_update: str = ""
 
 
@@ -54,6 +55,8 @@ class _WorkerManager:
         lines = []
         for endpoint, snapshot in sorted(self._snapshots.items()):
             status = "running" if snapshot.running else "promptable" if snapshot.promptable else "idle"
+            if snapshot.queued_prompt_count:
+                status = f"{status}, {snapshot.queued_prompt_count} queued"
             suffix = f" -> {snapshot.last_update}" if snapshot.last_update else ""
             lines.append(f"- {endpoint} [{status}]{suffix}")
         return "\n".join(lines)
@@ -84,18 +87,25 @@ class _WorkerManager:
         await connection.close()
         return f"Disconnected from worker {endpoint}."
 
-    async def prompt(self, endpoint: str, prompt: str) -> str:
+    async def prompt(
+        self, endpoint: str, prompt: str, *, mode: Literal["queue", "priority", "interrupt"] = "queue"
+    ) -> str:
         connection = self._connections.get(endpoint)
         if connection is None:
             return f"Worker {endpoint} is not connected."
 
-        response = await connection.prompt(prompt)
+        response = await connection.prompt(prompt, mode=mode)
         if isinstance(response, CommandAcceptedMessage):
+            if mode == "priority":
+                return f"Priority prompt sent to worker {endpoint}."
+            if mode == "interrupt":
+                return f"Interrupt prompt sent to worker {endpoint}."
             return f"Prompt sent to worker {endpoint}."
         if isinstance(response, NotReadyMessage):
             return (
                 f"Worker {endpoint} is not ready for a prompt. "
-                f"promptable={response.promptable} running={response.running}"
+                f"promptable={response.promptable} running={response.running} "
+                f"queued={response.queued_prompt_count}"
             )
         return f"Worker {endpoint} rejected the prompt: {response.message}"
 
@@ -139,6 +149,7 @@ class _WorkerManager:
             snapshot.promptable = message.promptable
             snapshot.remote_connected = message.remote_connected
             snapshot.running = message.running
+            snapshot.queued_prompt_count = message.queued_prompt_count
             return
 
         if isinstance(message, ContentDeltaMessage):
@@ -224,8 +235,10 @@ class WorkerToolRuntime:
     async def disconnect(self, endpoint: str) -> str:
         return await self._manager.disconnect(endpoint)
 
-    async def prompt(self, endpoint: str, prompt: str) -> str:
-        return await self._manager.prompt(endpoint, prompt)
+    async def prompt(
+        self, endpoint: str, prompt: str, *, mode: Literal["queue", "priority", "interrupt"] = "queue"
+    ) -> str:
+        return await self._manager.prompt(endpoint, prompt, mode=mode)
 
     async def cancel(self, endpoint: str) -> str:
         return await self._manager.cancel(endpoint)
@@ -270,6 +283,10 @@ class WorkerConnectInput(BaseModel):
 class WorkerPromptInput(BaseModel):
     endpoint: str = Field(description="The websocket endpoint of the worker to prompt.")
     prompt: str = Field(description="The prompt to send to the worker.")
+    mode: Literal["queue", "priority", "interrupt"] = Field(
+        default="queue",
+        description="How to schedule the prompt: queue normally, queue with priority, or interrupt the current run.",
+    )
 
 
 class WorkerWaitInput(BaseModel):
@@ -324,14 +341,14 @@ class WorkerPromptTool(Tool):
         return "worker_prompt"
 
     def description(self) -> str:
-        return "Send a prompt to one connected worker when it is ready."
+        return "Send a prompt to one connected worker, optionally as a priority or interrupting prompt."
 
     def parameters(self) -> dict[str, Any]:
         return WorkerPromptInput.model_json_schema()
 
     async def execute(self, parameters: dict[str, Any]) -> str:
         validated = WorkerPromptInput.model_validate(parameters)
-        return await self._runtime.prompt(validated.endpoint, validated.prompt)
+        return await self._runtime.prompt(validated.endpoint, validated.prompt, mode=validated.mode)
 
 
 class WorkerWaitTool(Tool):
