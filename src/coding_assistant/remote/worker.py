@@ -81,7 +81,7 @@ async def run_worker(args: Namespace) -> None:
         # Let the renderer subscribe before the worker starts accepting prompts.
         await asyncio.sleep(0)
         try:
-            async with start_worker_server(session=session, cwd=config.working_directory) as worker_server:
+            async with start_worker_server(session=session) as worker_server:
                 print(f"Worker endpoint: {worker_server.endpoint}")
                 await asyncio.Future()
         finally:

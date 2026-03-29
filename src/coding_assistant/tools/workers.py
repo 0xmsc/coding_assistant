@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 
 from coding_assistant.llm.types import Tool
 from coding_assistant.remote.client import RemoteWorkerConnection
-from coding_assistant.remote.discovery import WorkerRecord, list_worker_records
 from coding_assistant.remote.protocol import (
     CommandAcceptedMessage,
     ContentDeltaMessage,
@@ -216,15 +215,6 @@ class WorkerToolRuntime:
         self._manager = _WorkerManager()
         self.tools = _create_worker_tools(runtime=self)
 
-    def discover_records(self) -> list[WorkerRecord]:
-        return list_worker_records()
-
-    def format_discovered_workers(self) -> str:
-        records = self.discover_records()
-        if not records:
-            return "No workers discovered."
-        return "\n".join(f"- {record.endpoint} (pid={record.pid}, cwd={record.cwd})" for record in records)
-
     def format_connected_workers(self) -> str:
         return self._manager.format_connected_workers()
 
@@ -290,24 +280,6 @@ class WorkerDisconnectInput(BaseModel):
     endpoint: str = Field(description="The websocket endpoint of the worker to disconnect from.")
 
 
-class WorkerDiscoverTool(Tool):
-    def __init__(self, *, runtime: WorkerToolRuntime) -> None:
-        self._runtime = runtime
-
-    def name(self) -> str:
-        return "worker_discover"
-
-    def description(self) -> str:
-        return "List local worker endpoints that can be connected to."
-
-    def parameters(self) -> dict[str, Any]:
-        return EmptyInput.model_json_schema()
-
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        EmptyInput.model_validate(parameters)
-        return self._runtime.format_discovered_workers()
-
-
 class WorkerConnectTool(Tool):
     def __init__(self, *, runtime: WorkerToolRuntime) -> None:
         self._runtime = runtime
@@ -316,7 +288,7 @@ class WorkerConnectTool(Tool):
         return "worker_connect"
 
     def description(self) -> str:
-        return "Connect to one discovered worker endpoint."
+        return "Connect to one worker websocket endpoint."
 
     def parameters(self) -> dict[str, Any]:
         return WorkerConnectInput.model_json_schema()
@@ -436,7 +408,6 @@ class WorkerDisconnectTool(Tool):
 
 def _create_worker_tools(*, runtime: WorkerToolRuntime) -> list[Tool]:
     return [
-        WorkerDiscoverTool(runtime=runtime),
         WorkerConnectTool(runtime=runtime),
         WorkersListTool(runtime=runtime),
         WorkerPromptTool(runtime=runtime),

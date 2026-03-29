@@ -247,9 +247,8 @@ async def test_run_worker_starts_worker_server_without_worker_tools_and_with_loc
         )
 
     @asynccontextmanager
-    async def fake_start_worker_server(*, session: Any, cwd: Any) -> Any:
+    async def fake_start_worker_server(*, session: Any) -> Any:
         captured["session"] = session
-        captured["cwd"] = cwd
         yield WorkerServer(endpoint="ws://127.0.0.1:1234")
 
     async def fake_run_worker_output(*, session: Any, system_message: Any) -> None:
@@ -273,7 +272,6 @@ async def test_run_worker_starts_worker_server_without_worker_tools_and_with_loc
 
     assert captured["config"] == config
     assert captured["include_worker_tools"] is False
-    assert captured["cwd"] == tmp_path
     assert isinstance(captured["session"], WorkerSession)
     assert captured["session"].history == [
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
