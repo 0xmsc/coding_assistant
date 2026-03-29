@@ -16,10 +16,10 @@ from coding_assistant.app.cli import (
     run_cli,
 )
 from coding_assistant.app.main import main, parse_args
-from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display
+from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display, print_tool_calls
 from coding_assistant.app.session_host import PromptSubmissionResult
 from coding_assistant.core.history import build_system_prompt
-from coding_assistant.llm.types import FunctionCall, SystemMessage, ToolCall
+from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
 
 
 class FakeLocalToolRuntime:
@@ -234,6 +234,33 @@ def test_delta_renderer_prints_markdown_paragraphs() -> None:
         call.args[0] for call in mock_print.call_args_list if call.args and isinstance(call.args[0], Markdown)
     ]
     assert [block.markup for block in markdown_blocks] == ["First paragraph", "Second paragraph"]
+
+
+def test_delta_renderer_avoids_double_spacing_before_tool_calls() -> None:
+    renderer = DeltaRenderer()
+    tool_call_message = AssistantMessage(
+        tool_calls=[
+            ToolCall(
+                id="call-1",
+                function=FunctionCall(
+                    name="shell_execute",
+                    arguments='{"command": "cat README.md"}',
+                ),
+            )
+        ]
+    )
+
+    with patch("coding_assistant.app.output.rich_print") as mock_print:
+        renderer.on_delta("Can you read README.md?")
+        renderer.finish(trailing_blank_line=False)
+        print_tool_calls(tool_call_message)
+
+    assert len(mock_print.call_args_list) == 4
+    assert mock_print.call_args_list[0].args == ()
+    assert isinstance(mock_print.call_args_list[1].args[0], Markdown)
+    assert mock_print.call_args_list[1].args[0].markup == "Can you read README.md?"
+    assert mock_print.call_args_list[2].args == ()
+    assert mock_print.call_args_list[3].args == ('[bold yellow]▶[/bold yellow] shell_execute(command="cat README.md")',)
 
 
 def test_format_tool_call_markdown_formats_multiline_arguments() -> None:

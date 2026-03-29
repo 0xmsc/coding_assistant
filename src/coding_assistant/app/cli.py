@@ -147,7 +147,7 @@ async def _drive_agent(
                 renderer.on_delta(event.content)
                 continue
             if isinstance(event, ToolCallsEvent):
-                renderer.finish()
+                renderer.finish(trailing_blank_line=False)
                 print_tool_calls(event.message)
                 continue
             if isinstance(event, RunFinishedEvent):
