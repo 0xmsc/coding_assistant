@@ -85,84 +85,6 @@ class SlashCompleter(Completer):
             yield from self.word_completer.get_completions(document, complete_event)
 
 
-def build_default_agent_config(args: Namespace) -> DefaultAgentConfig:
-    """Translate CLI arguments into the default agent configuration."""
-    working_directory = Path(os.getcwd())
-    mcp_server_configs = tuple(MCPServerConfig.model_validate_json(item) for item in args.mcp_servers)
-    return DefaultAgentConfig(
-        working_directory=working_directory,
-        mcp_server_configs=mcp_server_configs,
-        skills_directories=tuple(args.skills_directories),
-        user_instructions=tuple(args.instructions),
-    )
-
-
-@asynccontextmanager
-async def create_default_agent(
-    *,
-    config: DefaultAgentConfig,
-) -> AsyncIterator[DefaultAgentBundle]:
-    """Resolve instructions and tools for a default agent run."""
-    local_tool_bundle = create_local_tool_bundle(
-        skills_directories=[Path(path).resolve() for path in config.skills_directories]
-    )
-
-    async with get_mcp_servers_from_config(
-        list(config.mcp_server_configs),
-        working_directory=config.working_directory,
-    ) as servers:
-        external_tools = await get_mcp_wrapped_tools(servers)
-        instructions = get_instructions(
-            working_directory=config.working_directory,
-            user_instructions=list(config.user_instructions),
-            extra_sections=[local_tool_bundle.instructions],
-            mcp_servers=servers,
-        )
-        yield DefaultAgentBundle(
-            tools=[*local_tool_bundle.tools, *external_tools],
-            instructions=instructions,
-            mcp_servers=servers,
-            set_local_worker_endpoint=local_tool_bundle.set_local_worker_endpoint,
-            close_tools=local_tool_bundle.close,
-        )
-
-
-async def run_cli(args: Namespace) -> None:
-    """Run the interactive CLI entry point."""
-    config = build_default_agent_config(args)
-    prompt_session = _create_prompt_session()
-
-    async def prompt_user(words: list[str] | None = None) -> str:
-        return await _prompt_with_session(prompt_session, words=words)
-
-    async with create_default_agent(config=config) as bundle:
-        if args.print_mcp_tools:
-            await print_mcp_tools(bundle.mcp_servers)
-            return
-
-        system_message = _build_initial_system_message(instructions=bundle.instructions)
-        print_system_message(system_message)
-        current_history: list[BaseMessage] = [system_message]
-        session_host = SessionHost(
-            history=current_history,
-            model=args.model,
-            tools=bundle.tools,
-        )
-
-        async with start_worker_server(
-            session_host=session_host,
-            cwd=config.working_directory,
-        ) as worker_server:
-            bundle.set_local_worker_endpoint(worker_server.endpoint)
-            try:
-                await _drive_agent(
-                    session_host=session_host,
-                    prompt_user=prompt_user,
-                )
-            finally:
-                await bundle.close_tools()
-
-
 def _build_initial_system_message(*, instructions: str) -> SystemMessage:
     """Build the system message used to seed a fresh transcript."""
     return SystemMessage(content=build_system_prompt(instructions=instructions))
@@ -308,3 +230,81 @@ async def _prompt_without_remote_controller(
     except asyncio.CancelledError:
         pass
     return await prompt_task
+
+
+def build_default_agent_config(args: Namespace) -> DefaultAgentConfig:
+    """Translate CLI arguments into the default agent configuration."""
+    working_directory = Path(os.getcwd())
+    mcp_server_configs = tuple(MCPServerConfig.model_validate_json(item) for item in args.mcp_servers)
+    return DefaultAgentConfig(
+        working_directory=working_directory,
+        mcp_server_configs=mcp_server_configs,
+        skills_directories=tuple(args.skills_directories),
+        user_instructions=tuple(args.instructions),
+    )
+
+
+@asynccontextmanager
+async def create_default_agent(
+    *,
+    config: DefaultAgentConfig,
+) -> AsyncIterator[DefaultAgentBundle]:
+    """Resolve instructions and tools for a default agent run."""
+    local_tool_bundle = create_local_tool_bundle(
+        skills_directories=[Path(path).resolve() for path in config.skills_directories]
+    )
+
+    async with get_mcp_servers_from_config(
+        list(config.mcp_server_configs),
+        working_directory=config.working_directory,
+    ) as servers:
+        external_tools = await get_mcp_wrapped_tools(servers)
+        instructions = get_instructions(
+            working_directory=config.working_directory,
+            user_instructions=list(config.user_instructions),
+            extra_sections=[local_tool_bundle.instructions],
+            mcp_servers=servers,
+        )
+        yield DefaultAgentBundle(
+            tools=[*local_tool_bundle.tools, *external_tools],
+            instructions=instructions,
+            mcp_servers=servers,
+            set_local_worker_endpoint=local_tool_bundle.set_local_worker_endpoint,
+            close_tools=local_tool_bundle.close,
+        )
+
+
+async def run_cli(args: Namespace) -> None:
+    """Run the interactive CLI entry point."""
+    config = build_default_agent_config(args)
+    prompt_session = _create_prompt_session()
+
+    async def prompt_user(words: list[str] | None = None) -> str:
+        return await _prompt_with_session(prompt_session, words=words)
+
+    async with create_default_agent(config=config) as bundle:
+        if args.print_mcp_tools:
+            await print_mcp_tools(bundle.mcp_servers)
+            return
+
+        system_message = _build_initial_system_message(instructions=bundle.instructions)
+        print_system_message(system_message)
+        current_history: list[BaseMessage] = [system_message]
+        session_host = SessionHost(
+            history=current_history,
+            model=args.model,
+            tools=bundle.tools,
+        )
+
+        async with start_worker_server(
+            session_host=session_host,
+            cwd=config.working_directory,
+        ) as worker_server:
+            bundle.set_local_worker_endpoint(worker_server.endpoint)
+            try:
+                await _drive_agent(
+                    session_host=session_host,
+                    prompt_user=prompt_user,
+                )
+            finally:
+                await bundle.close_tools()

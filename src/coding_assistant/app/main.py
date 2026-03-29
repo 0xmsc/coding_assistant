@@ -13,6 +13,15 @@ logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
 
 
+async def _main(args: argparse.Namespace) -> None:
+    """Run the CLI and translate Ctrl-C into a clean shutdown."""
+    logger.info(f"Starting Coding Assistant with arguments {args}")
+    try:
+        await run_cli(args)
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+
+
 def setup_logging() -> None:
     """Setup logging to file only."""
     log_file = get_log_file()
@@ -72,15 +81,6 @@ def parse_args() -> argparse.Namespace:
     )
 
     return parser.parse_args()
-
-
-async def _main(args: argparse.Namespace) -> None:
-    """Run the CLI and translate Ctrl-C into a clean shutdown."""
-    logger.info(f"Starting Coding Assistant with arguments {args}")
-    try:
-        await run_cli(args)
-    except KeyboardInterrupt:
-        logger.info("Interrupted by user")
 
 
 def main() -> None:

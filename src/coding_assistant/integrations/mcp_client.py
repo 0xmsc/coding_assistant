@@ -83,6 +83,39 @@ class MCPWrappedTool(Tool):
         return str(content)
 
 
+DEFAULT_VARS = [
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "NO_PROXY",
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "LANG",
+    "LC_ALL",
+    "TERM",
+]
+
+
+@asynccontextmanager
+async def _get_mcp_server(
+    name: str,
+    config: StdioMCPServer | RemoteMCPServer,
+    prefix: str | None = None,
+) -> AsyncGenerator[MCPServer, None]:
+    """Open and initialize one MCP server connection."""
+    client = Client(config.to_transport(), name=name)
+    async with client:
+        result = await client.initialize()
+        yield MCPServer(
+            name=name,
+            client=client,
+            instructions=result.instructions,
+            prefix=prefix,
+        )
+
+
 async def get_mcp_wrapped_tools(mcp_servers: list[MCPServer]) -> list[Tool]:
     """List and wrap all tools exposed by the active MCP servers."""
     wrapped: list[Tool] = []
@@ -103,21 +136,6 @@ async def get_mcp_wrapped_tools(mcp_servers: list[MCPServer]) -> list[Tool]:
     return wrapped
 
 
-DEFAULT_VARS = [
-    "HTTPS_PROXY",
-    "HTTP_PROXY",
-    "NO_PROXY",
-    "PATH",
-    "HOME",
-    "USER",
-    "LOGNAME",
-    "SHELL",
-    "LANG",
-    "LC_ALL",
-    "TERM",
-]
-
-
 def get_default_env() -> dict[str, str]:
     """Return the safe default environment passed through to MCP subprocesses."""
     default_env: dict[str, str] = dict()
@@ -125,24 +143,6 @@ def get_default_env() -> dict[str, str]:
         if var in os.environ:
             default_env[var] = os.environ[var]
     return default_env
-
-
-@asynccontextmanager
-async def _get_mcp_server(
-    name: str,
-    config: StdioMCPServer | RemoteMCPServer,
-    prefix: str | None = None,
-) -> AsyncGenerator[MCPServer, None]:
-    """Open and initialize one MCP server connection."""
-    client = Client(config.to_transport(), name=name)
-    async with client:
-        result = await client.initialize()
-        yield MCPServer(
-            name=name,
-            client=client,
-            instructions=result.instructions,
-            prefix=prefix,
-        )
 
 
 @asynccontextmanager
