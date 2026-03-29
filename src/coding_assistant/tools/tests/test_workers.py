@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 
-from coding_assistant.app.session_control import CLI_CONTROLLER
 from coding_assistant.app.session_runtime import SessionRuntime
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -51,14 +50,24 @@ def make_system_history() -> list[SystemMessage]:
     return [SystemMessage(content="# Instructions\n\nTest instructions")]
 
 
+class PassiveController:
+    async def run(self, session: Any) -> None:
+        del session
+        await asyncio.Future()
+
+
 def make_session_runtime(*, completion_streamer: Any) -> SessionRuntime:
     return SessionRuntime(
         history=make_system_history(),
         model="test-model",
         tools=[],
-        default_controller=CLI_CONTROLLER,
+        default_controller=PassiveController(),
         completion_streamer=completion_streamer,
     )
+
+
+def make_remote_controller() -> PassiveController:
+    return PassiveController()
 
 
 @pytest.mark.asyncio
@@ -72,7 +81,11 @@ async def test_worker_runtime_excludes_and_rejects_the_local_worker_endpoint(
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_runtime, cwd=tmp_path) as worker_server:
+    async with start_worker_server(
+        session=session_runtime,
+        controller=make_remote_controller(),
+        cwd=tmp_path,
+    ) as worker_server:
         worker_runtime.set_local_worker_endpoint(worker_server.endpoint)
 
         assert worker_runtime.discover_records() == []
@@ -92,7 +105,11 @@ async def test_worker_runtime_discovers_connects_prompts_and_waits_for_completio
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_runtime, cwd=tmp_path) as worker_server:
+    async with start_worker_server(
+        session=session_runtime,
+        controller=make_remote_controller(),
+        cwd=tmp_path,
+    ) as worker_server:
         discovered = worker_runtime.discover_records()
         assert [record.endpoint for record in discovered] == [worker_server.endpoint]
 
@@ -119,7 +136,11 @@ async def test_worker_runtime_rejects_prompt_while_worker_is_busy_and_can_cancel
     session_runtime = make_session_runtime(completion_streamer=streamer)
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_runtime, cwd=tmp_path) as worker_server:
+    async with start_worker_server(
+        session=session_runtime,
+        controller=make_remote_controller(),
+        cwd=tmp_path,
+    ) as worker_server:
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert await worker_runtime.prompt(worker_server.endpoint, "Please start working.") == (
             f"Prompt sent to worker {worker_server.endpoint}."
@@ -153,7 +174,11 @@ async def test_worker_runtime_second_connection_is_rejected_for_controlled_worke
     first_runtime = WorkerToolRuntime()
     second_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_runtime, cwd=tmp_path) as worker_server:
+    async with start_worker_server(
+        session=session_runtime,
+        controller=make_remote_controller(),
+        cwd=tmp_path,
+    ) as worker_server:
         assert await first_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
 
         second_result = await second_runtime.connect(worker_server.endpoint)
@@ -176,7 +201,11 @@ async def test_worker_runtime_wait_returns_disconnect_once_then_reports_not_conn
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_runtime, cwd=tmp_path) as worker_server:
+    async with start_worker_server(
+        session=session_runtime,
+        controller=make_remote_controller(),
+        cwd=tmp_path,
+    ) as worker_server:
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert await worker_runtime.disconnect(worker_server.endpoint) == (
             f"Disconnected from worker {worker_server.endpoint}."
@@ -202,7 +231,11 @@ async def test_worker_runtime_wait_any_returns_pending_disconnect_after_last_con
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_runtime, cwd=tmp_path) as worker_server:
+    async with start_worker_server(
+        session=session_runtime,
+        controller=make_remote_controller(),
+        cwd=tmp_path,
+    ) as worker_server:
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert await worker_runtime.disconnect(worker_server.endpoint) == (
             f"Disconnected from worker {worker_server.endpoint}."

@@ -18,7 +18,7 @@ from coding_assistant.app.cli import (
 )
 from coding_assistant.app.main import main, parse_args, run_session_runtime
 from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display, print_tool_calls
-from coding_assistant.app.session_control import CLI_CONTROLLER, PromptSubmissionResult
+from coding_assistant.app.session_control import PromptSubmissionResult
 from coding_assistant.app.session_runtime import SessionRuntime
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
@@ -38,22 +38,26 @@ class FakeLocalToolRuntime:
 
 
 class FakePromptSession:
-    def __init__(self) -> None:
+    def __init__(self, expected_controller: object) -> None:
+        self.expected_controller = expected_controller
         self.controller_changed = asyncio.Event()
 
-    async def wait_for_controller_change(self, *, controller: str) -> str:
-        assert controller == CLI_CONTROLLER
+    async def wait_for_controller_change(self, *, controller: object) -> object:
+        assert controller is self.expected_controller
         await self.controller_changed.wait()
-        return "remote"
+        return object()
 
 
 class FakePromptSubmissionSession:
-    def __init__(self, result: PromptSubmissionResult) -> None:
+    def __init__(self, result: PromptSubmissionResult, expected_controller: object) -> None:
         self.result = result
+        self.expected_controller = expected_controller
         self.submitted_content: list[str | list[dict[str, object]]] = []
 
-    async def submit_prompt(self, *, controller: str, content: str | list[dict[str, object]]) -> PromptSubmissionResult:
-        assert controller == CLI_CONTROLLER
+    async def submit_prompt(
+        self, *, controller: object, content: str | list[dict[str, object]]
+    ) -> PromptSubmissionResult:
+        assert controller is self.expected_controller
         self.submitted_content.append(content)
         return self.result
 
@@ -162,10 +166,10 @@ async def test_run_session_runtime_builds_runtime_with_default_adapters() -> Non
     assert session_runtime.history == [
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
     ]
-    assert session_runtime.state.controller == CLI_CONTROLLER
     assert len(captured_controllers) == 2
     assert isinstance(captured_controllers[0], CliController)
     assert isinstance(captured_controllers[1], RemoteController)
+    assert session_runtime.is_active_controller(captured_controllers[0]) is True
     assert len(captured_outputs) == 1
     assert isinstance(captured_outputs[0], CliOutput)
     assert local_tool_runtime.local_endpoint is None
@@ -174,7 +178,8 @@ async def test_run_session_runtime_builds_runtime_with_default_adapters() -> Non
 
 @pytest.mark.asyncio
 async def test_prompt_without_remote_controller_returns_prompt_when_user_finishes_first() -> None:
-    session = FakePromptSession()
+    controller = object()
+    session = FakePromptSession(expected_controller=controller)
 
     async def prompt_user(words: list[str] | None) -> str:
         assert words == ["/exit"]
@@ -182,7 +187,7 @@ async def test_prompt_without_remote_controller_returns_prompt_when_user_finishe
 
     result = await _prompt_while_controller_is_active(
         session=session,  # type: ignore[arg-type]
-        controller=CLI_CONTROLLER,
+        controller=controller,  # type: ignore[arg-type]
         prompt_user=prompt_user,
         words=["/exit"],
     )
@@ -192,7 +197,8 @@ async def test_prompt_without_remote_controller_returns_prompt_when_user_finishe
 
 @pytest.mark.asyncio
 async def test_prompt_without_remote_controller_returns_none_when_remote_connects_first() -> None:
-    session = FakePromptSession()
+    controller = object()
+    session = FakePromptSession(expected_controller=controller)
     prompt_started = asyncio.Event()
 
     async def prompt_user(words: list[str] | None) -> str:
@@ -204,7 +210,7 @@ async def test_prompt_without_remote_controller_returns_none_when_remote_connect
     task = asyncio.create_task(
         _prompt_while_controller_is_active(
             session=session,  # type: ignore[arg-type]
-            controller=CLI_CONTROLLER,
+            controller=controller,  # type: ignore[arg-type]
             prompt_user=prompt_user,
             words=["/exit"],
         )
@@ -217,12 +223,16 @@ async def test_prompt_without_remote_controller_returns_none_when_remote_connect
 
 @pytest.mark.asyncio
 async def test_submit_local_prompt_or_warn_reports_remote_takeover() -> None:
-    session = FakePromptSubmissionSession(PromptSubmissionResult(accepted=False, reason="inactive_controller"))
+    controller = object()
+    session = FakePromptSubmissionSession(
+        PromptSubmissionResult(accepted=False, reason="inactive_controller"),
+        expected_controller=controller,
+    )
 
     with patch("coding_assistant.app.cli.print") as mock_print:
         result = await _submit_prompt_or_warn(
             session=session,  # type: ignore[arg-type]
-            controller=CLI_CONTROLLER,
+            controller=controller,  # type: ignore[arg-type]
             content="hello",
         )
 
