@@ -49,6 +49,7 @@ class RemoteWorkerConnection:
         on_event: Callable[[WorkerToSupervisorMessage], Awaitable[None]],
         on_disconnect: Callable[[str], Awaitable[None]],
     ) -> RemoteWorkerConnection:
+        """Open a worker connection and wait for its initial state handshake."""
         websocket = await connect(endpoint)
         connection = cls(
             endpoint=endpoint,
@@ -64,6 +65,7 @@ class RemoteWorkerConnection:
         return connection
 
     async def prompt(self, prompt: str) -> CommandAcceptedMessage | NotReadyMessage | ErrorMessage:
+        """Send one prompt command and wait for the worker's direct reply."""
         request_id = uuid4().hex
         return await self._send_request(
             request_id=request_id,
@@ -71,6 +73,7 @@ class RemoteWorkerConnection:
         )
 
     async def cancel(self) -> CommandAcceptedMessage | NotReadyMessage | ErrorMessage:
+        """Request cancellation of the active worker run."""
         request_id = uuid4().hex
         return await self._send_request(
             request_id=request_id,
@@ -78,6 +81,7 @@ class RemoteWorkerConnection:
         )
 
     async def close(self) -> None:
+        """Close the websocket and wait for receive-loop cleanup to finish."""
         await self._websocket.close()
         with suppress(asyncio.CancelledError):
             await self._receive_task
@@ -88,6 +92,7 @@ class RemoteWorkerConnection:
         request_id: str,
         message: PromptCommand | CancelCommand,
     ) -> CommandAcceptedMessage | NotReadyMessage | ErrorMessage:
+        """Track one in-flight command until the matching response arrives."""
         future: asyncio.Future[CommandAcceptedMessage | NotReadyMessage | ErrorMessage] = (
             asyncio.get_running_loop().create_future()
         )
@@ -97,6 +102,7 @@ class RemoteWorkerConnection:
         return await future
 
     async def _receive_loop(self) -> None:
+        """Route replies to callers and forward streamed worker events to callbacks."""
         try:
             async for raw_message in self._websocket:
                 message = parse_worker_message(raw_message)

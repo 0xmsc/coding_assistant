@@ -7,12 +7,16 @@ from pydantic import BaseModel
 
 
 class ToolCallPayload(BaseModel):
+    """Serialized form of one tool call emitted by a worker."""
+
     id: str
     name: str
     arguments: str
 
 
 class StateMessage(BaseModel):
+    """Current promptability/running snapshot for one worker."""
+
     type: Literal["state"] = "state"
     promptable: bool
     remote_connected: bool
@@ -20,35 +24,49 @@ class StateMessage(BaseModel):
 
 
 class ContentDeltaMessage(BaseModel):
+    """Incremental assistant text streamed from a worker run."""
+
     type: Literal["content_delta"] = "content_delta"
     content: str
 
 
 class ToolCallsMessage(BaseModel):
+    """Notification that the worker emitted tool calls."""
+
     type: Literal["tool_calls"] = "tool_calls"
     tool_calls: list[ToolCallPayload]
 
 
 class RunFinishedMessage(BaseModel):
+    """Terminal message for a completed worker run."""
+
     type: Literal["run_finished"] = "run_finished"
     summary: str
 
 
 class RunCancelledMessage(BaseModel):
+    """Terminal message for a cancelled worker run."""
+
     type: Literal["run_cancelled"] = "run_cancelled"
 
 
 class RunFailedMessage(BaseModel):
+    """Terminal message for a worker run that failed with an exception."""
+
     type: Literal["run_failed"] = "run_failed"
     error: str
 
 
 class CommandAcceptedMessage(BaseModel):
+    """Acknowledgement for a prompt or cancel command."""
+
     type: Literal["command_accepted"] = "command_accepted"
     request_id: str
 
 
 class NotReadyMessage(BaseModel):
+    """Command rejection carrying the worker state that caused the rejection."""
+
     type: Literal["not_ready"] = "not_ready"
     request_id: str
     promptable: bool
@@ -57,18 +75,24 @@ class NotReadyMessage(BaseModel):
 
 
 class ErrorMessage(BaseModel):
+    """Protocol-level error response that is not tied to a state transition."""
+
     type: Literal["error"] = "error"
     message: str
     request_id: str | None = None
 
 
 class PromptCommand(BaseModel):
+    """Supervisor request to start a worker run from a prompt."""
+
     type: Literal["prompt"] = "prompt"
     request_id: str
     prompt: str
 
 
 class CancelCommand(BaseModel):
+    """Supervisor request to cancel the active worker run."""
+
     type: Literal["cancel"] = "cancel"
     request_id: str
 
@@ -89,6 +113,7 @@ SupervisorToWorkerMessage = PromptCommand | CancelCommand
 
 
 def parse_worker_message(data: str | bytes) -> WorkerToSupervisorMessage:
+    """Parse one inbound worker-to-supervisor JSON message."""
     if isinstance(data, bytes):
         data = data.decode("utf-8")
     payload = json.loads(data)
@@ -115,6 +140,7 @@ def parse_worker_message(data: str | bytes) -> WorkerToSupervisorMessage:
 
 
 def parse_supervisor_message(data: str | bytes) -> SupervisorToWorkerMessage:
+    """Parse one inbound supervisor-to-worker JSON message."""
     if isinstance(data, bytes):
         data = data.decode("utf-8")
     payload = json.loads(data)
@@ -127,4 +153,5 @@ def parse_supervisor_message(data: str | bytes) -> SupervisorToWorkerMessage:
 
 
 def message_to_json(message: WorkerToSupervisorMessage | SupervisorToWorkerMessage) -> str:
+    """Serialize a protocol model to the websocket payload format."""
     return message.model_dump_json()

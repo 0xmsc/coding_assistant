@@ -38,6 +38,8 @@ from coding_assistant.remote.worker_session import (
 
 @dataclass(frozen=True)
 class WorkerServer:
+    """Handle returned by the server context, exposing the chosen endpoint."""
+
     endpoint: str
 
 
@@ -48,6 +50,7 @@ class RemoteOutput:
         self._websocket = websocket
 
     async def run(self, session: WorkerSession) -> None:
+        """Subscribe to worker-session events and forward the wire-compatible ones."""
         async with session.subscribe() as queue:
             while True:
                 event = await queue.get()
@@ -68,6 +71,7 @@ def _session_event_to_message(
     | RunFailedMessage
     | None
 ):
+    """Translate internal session events into protocol messages for the supervisor."""
     if isinstance(event, StateChangedEvent):
         return StateMessage(
             promptable=event.state.promptable,
@@ -101,6 +105,7 @@ async def _handle_supervisor_message(
     session: WorkerSession,
     message: PromptCommand | CancelCommand,
 ) -> None:
+    """Execute one supervisor command and send its immediate accepted/not-ready reply."""
     if isinstance(message, PromptCommand):
         if await session.submit_prompt(message.prompt):
             await websocket.send(message_to_json(CommandAcceptedMessage(request_id=message.request_id)))
@@ -141,10 +146,12 @@ async def start_worker_server(
     *,
     session: WorkerSession,
 ) -> AsyncIterator[WorkerServer]:
+    """Serve one controlling supervisor connection at a time for a worker session."""
     connection_lock = asyncio.Lock()
     active_connection: ServerConnection | None = None
 
     async def handle_connection(websocket: ServerConnection) -> None:
+        """Own one websocket connection for as long as it is the active controller."""
         nonlocal active_connection
 
         async with connection_lock:

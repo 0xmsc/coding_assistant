@@ -26,22 +26,30 @@ CompletionStreamer = Callable[[Sequence[BaseMessage], Sequence[Tool], str], Asyn
 
 @dataclass(frozen=True)
 class WorkerState:
+    """Snapshot of whether the worker can accept a prompt and whether it is running."""
+
     promptable: bool
     running: bool
 
 
 @dataclass(frozen=True)
 class StateChangedEvent:
+    """Published whenever the worker's promptability or running state changes."""
+
     state: WorkerState
 
 
 @dataclass(frozen=True)
 class ToolCallsEvent:
+    """Published before tool calls are executed so observers can render them."""
+
     message: AssistantMessage
 
 
 @dataclass(frozen=True)
 class RunFinishedEvent:
+    """Published when a remote prompt finishes and the worker becomes idle again."""
+
     summary: str
 
 
@@ -52,6 +60,8 @@ class RunCancelledEvent:
 
 @dataclass(frozen=True)
 class RunFailedEvent:
+    """Published when the worker run aborts due to an unexpected exception."""
+
     error: str
 
 
@@ -88,6 +98,7 @@ class WorkerSession:
 
     @property
     def state(self) -> WorkerState:
+        """Return the current public state snapshot for this worker."""
         return WorkerState(
             promptable=self._run_task is None,
             running=self._run_task is not None,
@@ -95,12 +106,15 @@ class WorkerSession:
 
     @property
     def history(self) -> list[BaseMessage]:
+        """Return a copy of the worker transcript accumulated so far."""
         return list(self._history)
 
     def subscribe(self) -> AbstractAsyncContextManager[asyncio.Queue[WorkerSessionEvent]]:
+        """Create an event subscription that immediately receives the current state."""
         return self._subscribe()
 
     async def submit_prompt(self, content: str | list[dict[str, Any]]) -> bool:
+        """Start a new remote-controlled run if the worker is currently idle."""
         if self._run_task is not None:
             return False
 
@@ -110,6 +124,7 @@ class WorkerSession:
         return True
 
     async def cancel_current_run(self) -> bool:
+        """Cancel the active run and publish cancellation if one exists."""
         run_task = self._run_task
         if run_task is None:
             return False
@@ -125,6 +140,7 @@ class WorkerSession:
 
     @asynccontextmanager
     async def _subscribe(self) -> AsyncIterator[asyncio.Queue[WorkerSessionEvent]]:
+        """Register a queue-based subscriber for worker events."""
         queue: asyncio.Queue[WorkerSessionEvent] = asyncio.Queue()
         self._subscribers.append(queue)
         queue.put_nowait(StateChangedEvent(state=self.state))
@@ -135,6 +151,7 @@ class WorkerSession:
                 self._subscribers.remove(queue)
 
     async def _run_until_boundary(self) -> None:
+        """Drive the agent until it reaches the next user boundary or fails."""
         current_history = list(self._history)
         try:
             while True:
@@ -176,14 +193,17 @@ class WorkerSession:
             await self._publish_state()
 
     async def _publish_state(self) -> None:
+        """Broadcast the latest worker state to all subscribers."""
         self._publish_event(StateChangedEvent(state=self.state))
 
     def _publish_event(self, event: WorkerSessionEvent) -> None:
+        """Fan out one event to every live subscriber queue."""
         for queue in list(self._subscribers):
             queue.put_nowait(event)
 
 
 def _get_latest_assistant_summary(history: Sequence[BaseMessage]) -> str:
+    """Extract the latest assistant text to summarize a completed run."""
     for message in reversed(history):
         if isinstance(message, AssistantMessage) and message.content:
             return message.content
