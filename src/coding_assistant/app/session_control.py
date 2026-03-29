@@ -15,20 +15,10 @@ from coding_assistant.llm.types import (
 )
 
 
-SessionControllerName = Literal["cli", "remote"]
-CLI_CONTROLLER: SessionControllerName = "cli"
-REMOTE_CONTROLLER: SessionControllerName = "remote"
-
-
 @dataclass(frozen=True)
 class SessionState:
     promptable: bool
-    controller: SessionControllerName
     running: bool
-
-    @property
-    def remote_connected(self) -> bool:
-        return self.controller == REMOTE_CONTROLLER
 
 
 @dataclass(frozen=True)
@@ -75,10 +65,24 @@ class PromptSubmissionResult:
     reason: Literal["accepted", "inactive_controller", "not_ready"]
 
 
+class SessionController(Protocol):
+    async def run(self, session: SessionControlSurface) -> None:
+        """Drive one input source against the shared session runtime."""
+
+        ...
+
+
+class SessionOutput(Protocol):
+    async def run(self, session: SessionControlSurface) -> None:
+        """Observe and render or forward session events."""
+
+        ...
+
+
 class SessionControlSurface(Protocol):
     @property
     def state(self) -> SessionState:
-        """Return the current promptability, controller ownership, and run status."""
+        """Return the current promptability and run status."""
 
         ...
 
@@ -93,12 +97,17 @@ class SessionControlSurface(Protocol):
 
         ...
 
-    async def wait_for_controller_change(self, *, controller: SessionControllerName) -> SessionControllerName:
+    def is_active_controller(self, controller: SessionController) -> bool:
+        """Return whether `controller` currently owns input."""
+
+        ...
+
+    async def wait_for_controller_change(self, *, controller: SessionController) -> SessionController:
         """Wait until the active controller differs from `controller` and return the new owner."""
 
         ...
 
-    async def activate_controller(self, controller: SessionControllerName) -> bool:
+    async def activate_controller(self, controller: SessionController) -> bool:
         """Switch input ownership to `controller`; return `False` if it already owns input."""
 
         ...
@@ -111,7 +120,7 @@ class SessionControlSurface(Protocol):
     async def submit_prompt(
         self,
         *,
-        controller: SessionControllerName,
+        controller: SessionController,
         content: str | list[dict[str, Any]],
     ) -> PromptSubmissionResult:
         """Submit a prompt if `controller` still owns input, reporting why rejection happened."""
@@ -125,19 +134,5 @@ class SessionControlSurface(Protocol):
 
     def request_shutdown(self) -> None:
         """Request shutdown of the surrounding session runtime."""
-
-        ...
-
-
-class SessionController(Protocol):
-    async def run(self, session: SessionControlSurface) -> None:
-        """Drive one input source against the shared session runtime."""
-
-        ...
-
-
-class SessionOutput(Protocol):
-    async def run(self, session: SessionControlSurface) -> None:
-        """Observe and render or forward session events."""
 
         ...

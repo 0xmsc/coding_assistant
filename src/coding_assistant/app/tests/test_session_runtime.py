@@ -7,10 +7,9 @@ from typing import Any
 import pytest
 
 from coding_assistant.app.session_control import (
-    CLI_CONTROLLER,
-    REMOTE_CONTROLLER,
     RunCancelledEvent,
     RunFinishedEvent,
+    SessionController,
     SessionEvent,
     StateChangedEvent,
 )
@@ -57,13 +56,25 @@ def make_system_history() -> list[BaseMessage]:
     return [SystemMessage(content="# Instructions\n\nTest instructions")]
 
 
-def make_session_runtime(*, completion_streamer: Any) -> SessionRuntime:
-    return SessionRuntime(
-        history=make_system_history(),
-        model="test-model",
-        tools=[],
-        default_controller=CLI_CONTROLLER,
-        completion_streamer=completion_streamer,
+class PassiveController:
+    async def run(self, session: Any) -> None:
+        del session
+        await asyncio.Future()
+
+
+def make_session_runtime(*, completion_streamer: Any) -> tuple[SessionRuntime, SessionController, SessionController]:
+    cli_controller = PassiveController()
+    remote_controller = PassiveController()
+    return (
+        SessionRuntime(
+            history=make_system_history(),
+            model="test-model",
+            tools=[],
+            default_controller=cli_controller,
+            completion_streamer=completion_streamer,
+        ),
+        cli_controller,
+        remote_controller,
     )
 
 
@@ -86,7 +97,7 @@ async def wait_for_matching_event(
 
 @pytest.mark.asyncio
 async def test_session_runtime_runs_local_prompt_and_updates_history() -> None:
-    session_runtime = make_session_runtime(
+    session_runtime, cli_controller, _remote_controller = make_session_runtime(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="Hello from the worker")]),
     )
 
@@ -94,7 +105,7 @@ async def test_session_runtime_runs_local_prompt_and_updates_history() -> None:
         initial_state = await wait_for_event(queue, StateChangedEvent)
         assert isinstance(initial_state, StateChangedEvent)
 
-        result = await session_runtime.submit_prompt(controller=CLI_CONTROLLER, content="Hi")
+        result = await session_runtime.submit_prompt(controller=cli_controller, content="Hi")
         assert result.accepted is True
 
         finished_event = await wait_for_event(queue, RunFinishedEvent)
@@ -103,20 +114,19 @@ async def test_session_runtime_runs_local_prompt_and_updates_history() -> None:
     assert finished_event.summary == "Hello from the worker"
     assert session_runtime.history[-1] == AssistantMessage(content="Hello from the worker")
     assert session_runtime.state.promptable is True
-    assert session_runtime.state.controller == CLI_CONTROLLER
-    assert session_runtime.state.remote_connected is False
     assert session_runtime.state.running is False
+    assert session_runtime.is_active_controller(cli_controller) is True
 
 
 @pytest.mark.asyncio
 async def test_session_runtime_rejects_local_prompt_when_remote_controller_is_connected() -> None:
-    session_runtime = make_session_runtime(
+    session_runtime, cli_controller, remote_controller = make_session_runtime(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
 
-    assert await session_runtime.activate_controller(REMOTE_CONTROLLER) is True
+    assert await session_runtime.activate_controller(remote_controller) is True
 
-    result = await session_runtime.submit_prompt(controller=CLI_CONTROLLER, content="Hi")
+    result = await session_runtime.submit_prompt(controller=cli_controller, content="Hi")
 
     assert result.accepted is False
     assert result.reason == "inactive_controller"
@@ -124,12 +134,12 @@ async def test_session_runtime_rejects_local_prompt_when_remote_controller_is_co
 
 @pytest.mark.asyncio
 async def test_session_runtime_rejects_new_prompt_while_run_is_in_flight() -> None:
-    session_runtime = make_session_runtime(completion_streamer=BlockingStreamer())
+    session_runtime, cli_controller, _remote_controller = make_session_runtime(completion_streamer=BlockingStreamer())
 
-    first_result = await session_runtime.submit_prompt(controller=CLI_CONTROLLER, content="Hi")
+    first_result = await session_runtime.submit_prompt(controller=cli_controller, content="Hi")
     assert first_result.accepted is True
 
-    second_result = await session_runtime.submit_prompt(controller=CLI_CONTROLLER, content="Again")
+    second_result = await session_runtime.submit_prompt(controller=cli_controller, content="Again")
 
     assert second_result.accepted is False
     assert second_result.reason == "not_ready"
@@ -141,13 +151,13 @@ async def test_session_runtime_rejects_new_prompt_while_run_is_in_flight() -> No
 @pytest.mark.asyncio
 async def test_session_runtime_activate_default_controller_cancels_run_and_restores_local_input() -> None:
     streamer = BlockingStreamer()
-    session_runtime = make_session_runtime(completion_streamer=streamer)
+    session_runtime, cli_controller, remote_controller = make_session_runtime(completion_streamer=streamer)
 
     async with session_runtime.subscribe() as queue:
         await wait_for_event(queue, StateChangedEvent)
-        assert await session_runtime.activate_controller(REMOTE_CONTROLLER) is True
+        assert await session_runtime.activate_controller(remote_controller) is True
 
-        prompt_result = await session_runtime.submit_prompt(controller=REMOTE_CONTROLLER, content="Do the task")
+        prompt_result = await session_runtime.submit_prompt(controller=remote_controller, content="Do the task")
         assert prompt_result.accepted is True
 
         await asyncio.wait_for(streamer.started.wait(), timeout=1)
@@ -158,26 +168,25 @@ async def test_session_runtime_activate_default_controller_cancels_run_and_resto
 
         state_event = await wait_for_matching_event(
             queue,
-            lambda event: isinstance(event, StateChangedEvent) and not event.state.remote_connected,
+            lambda event: isinstance(event, StateChangedEvent) and event.state.promptable and not event.state.running,
         )
         assert isinstance(state_event, StateChangedEvent)
         assert state_event.state.promptable is True
-        assert state_event.state.controller == CLI_CONTROLLER
-        assert state_event.state.remote_connected is False
         assert state_event.state.running is False
+        assert session_runtime.is_active_controller(cli_controller) is True
 
 
 @pytest.mark.asyncio
 async def test_session_runtime_wait_for_controller_change_returns_new_controller() -> None:
-    session_runtime = make_session_runtime(
+    session_runtime, cli_controller, remote_controller = make_session_runtime(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
 
-    wait_task = asyncio.create_task(session_runtime.wait_for_controller_change(controller=CLI_CONTROLLER))
+    wait_task = asyncio.create_task(session_runtime.wait_for_controller_change(controller=cli_controller))
 
-    assert await session_runtime.activate_controller(REMOTE_CONTROLLER) is True
+    assert await session_runtime.activate_controller(remote_controller) is True
 
-    assert await asyncio.wait_for(wait_task, timeout=1) == REMOTE_CONTROLLER
+    assert await asyncio.wait_for(wait_task, timeout=1) is remote_controller
 
 
 class ShutdownController:
@@ -196,7 +205,7 @@ class RecordingOutput:
 
 @pytest.mark.asyncio
 async def test_session_runtime_run_starts_outputs_before_controllers_and_stops_on_shutdown() -> None:
-    session_runtime = make_session_runtime(
+    session_runtime, _cli_controller, _remote_controller = make_session_runtime(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
     output = RecordingOutput()

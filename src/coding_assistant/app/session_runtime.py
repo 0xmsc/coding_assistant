@@ -11,7 +11,6 @@ from coding_assistant.app.session_control import (
     RunFailedEvent,
     RunFinishedEvent,
     SessionController,
-    SessionControllerName,
     SessionEvent,
     SessionOutput,
     SessionState,
@@ -36,7 +35,7 @@ class SessionRuntime:
         history: Sequence[BaseMessage],
         model: str,
         tools: Sequence[Tool],
-        default_controller: SessionControllerName,
+        default_controller: SessionController,
         completion_streamer: CompletionStreamer | None = None,
     ) -> None:
         self._history = list(history)
@@ -52,11 +51,10 @@ class SessionRuntime:
 
     @property
     def state(self) -> SessionState:
-        """Return promptability and who currently owns input."""
+        """Return promptability and whether the agent is currently running."""
 
         return SessionState(
             promptable=self._run_task is None,
-            controller=self._active_controller,
             running=self._run_task is not None,
         )
 
@@ -71,17 +69,22 @@ class SessionRuntime:
 
         return self._subscribe()
 
-    async def wait_for_controller_change(self, *, controller: SessionControllerName) -> SessionControllerName:
+    def is_active_controller(self, controller: SessionController) -> bool:
+        """Report whether `controller` currently owns input."""
+
+        return self._active_controller is controller
+
+    async def wait_for_controller_change(self, *, controller: SessionController) -> SessionController:
         """Block until input ownership moves away from `controller`."""
 
         async with self._state_condition:
-            await self._state_condition.wait_for(lambda: self._active_controller != controller)
+            await self._state_condition.wait_for(lambda: self._active_controller is not controller)
             return self._active_controller
 
-    async def activate_controller(self, controller: SessionControllerName) -> bool:
+    async def activate_controller(self, controller: SessionController) -> bool:
         """Transfer input ownership to `controller` if it is not already active."""
 
-        if self._active_controller == controller:
+        if self._active_controller is controller:
             return False
 
         self._active_controller = controller
@@ -91,10 +94,14 @@ class SessionRuntime:
     async def activate_default_controller(self, *, cancel_current_run: bool = False) -> None:
         """Restore the default controller, optionally cancelling the current run first."""
 
-        if cancel_current_run and self._active_controller != self._default_controller and self._run_task is not None:
+        if (
+            cancel_current_run
+            and self._active_controller is not self._default_controller
+            and self._run_task is not None
+        ):
             await self.cancel_current_run()
 
-        if self._active_controller == self._default_controller:
+        if self._active_controller is self._default_controller:
             return
 
         self._active_controller = self._default_controller
@@ -103,12 +110,12 @@ class SessionRuntime:
     async def submit_prompt(
         self,
         *,
-        controller: SessionControllerName,
+        controller: SessionController,
         content: str | list[dict[str, Any]],
     ) -> PromptSubmissionResult:
         """Accept a prompt only from the controller that currently owns input."""
 
-        if controller != self._active_controller:
+        if controller is not self._active_controller:
             return PromptSubmissionResult(accepted=False, reason="inactive_controller")
         return await self._submit_prompt(content)
 

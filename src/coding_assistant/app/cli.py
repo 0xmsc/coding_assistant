@@ -14,12 +14,11 @@ from coding_assistant.app.image import get_image
 from coding_assistant.app.instructions import get_instructions
 from coding_assistant.app.output import DeltaRenderer, print_system_message, print_tool_calls
 from coding_assistant.app.session_control import (
-    CLI_CONTROLLER,
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
     SessionControlSurface,
-    SessionControllerName,
+    SessionController,
     StateChangedEvent,
     ToolCallsEvent,
 )
@@ -124,10 +123,10 @@ class CliController:
         async with session.subscribe() as queue:
             while True:
                 state = session.state
-                if state.promptable and state.controller == CLI_CONTROLLER:
+                if state.promptable and session.is_active_controller(self):
                     answer = await _prompt_while_controller_is_active(
                         session=session,
-                        controller=CLI_CONTROLLER,
+                        controller=self,
                         prompt_user=self._prompt_user,
                         words=CLI_COMMAND_NAMES,
                     )
@@ -137,7 +136,7 @@ class CliController:
                         answer=answer,
                         submit_prompt_or_warn=lambda content: _submit_prompt_or_warn(
                             session=session,
-                            controller=CLI_CONTROLLER,
+                            controller=self,
                             content=content,
                         ),
                     ):
@@ -219,7 +218,7 @@ async def handle_cli_input(
 async def _submit_prompt_or_warn(
     *,
     session: SessionControlSurface,
-    controller: SessionControllerName,
+    controller: SessionController,
     content: str | list[dict[str, Any]],
 ) -> bool:
     """Submit a prompt from the local UI and print a user-facing rejection reason."""
@@ -237,7 +236,7 @@ async def _submit_prompt_or_warn(
 async def _prompt_while_controller_is_active(
     *,
     session: SessionControlSurface,
-    controller: SessionControllerName,
+    controller: SessionController,
     prompt_user: Callable[[list[str] | None], Coroutine[object, object, str]],
     words: list[str] | None,
 ) -> str | None:

@@ -10,11 +10,11 @@ from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
 from coding_assistant.app.session_control import (
-    REMOTE_CONTROLLER,
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
     SessionControlSurface,
+    SessionController,
     SessionEvent,
     StateChangedEvent,
     ToolCallsEvent,
@@ -57,7 +57,7 @@ class RemoteController:
         self._set_local_worker_endpoint = set_local_worker_endpoint
 
     async def run(self, session: SessionControlSurface) -> None:
-        async with start_worker_server(session=session, cwd=self._cwd) as worker_server:
+        async with start_worker_server(session=session, controller=self, cwd=self._cwd) as worker_server:
             self._set_local_worker_endpoint(worker_server.endpoint)
             await asyncio.Future()
 
@@ -92,7 +92,7 @@ def _session_event_to_message(
     if isinstance(event, StateChangedEvent):
         return StateMessage(
             promptable=event.state.promptable,
-            remote_connected=event.state.remote_connected,
+            remote_connected=True,
             running=event.state.running,
         )
     if isinstance(event, ContentDeltaEvent):
@@ -120,10 +120,11 @@ def _session_event_to_message(
 async def _handle_supervisor_message(
     websocket: ServerConnection,
     session: SessionControlSurface,
+    controller: SessionController,
     message: PromptCommand | CancelCommand,
 ) -> None:
     if isinstance(message, PromptCommand):
-        result = await session.submit_prompt(controller=REMOTE_CONTROLLER, content=message.prompt)
+        result = await session.submit_prompt(controller=controller, content=message.prompt)
         if result.accepted:
             await websocket.send(message_to_json(CommandAcceptedMessage(request_id=message.request_id)))
         else:
@@ -133,7 +134,7 @@ async def _handle_supervisor_message(
                     NotReadyMessage(
                         request_id=message.request_id,
                         promptable=state.promptable,
-                        remote_connected=state.remote_connected,
+                        remote_connected=True,
                         running=state.running,
                     )
                 )
@@ -151,7 +152,7 @@ async def _handle_supervisor_message(
             NotReadyMessage(
                 request_id=message.request_id,
                 promptable=state.promptable,
-                remote_connected=state.remote_connected,
+                remote_connected=True,
                 running=state.running,
             )
         )
@@ -162,10 +163,11 @@ async def _handle_supervisor_message(
 async def start_worker_server(
     *,
     session: SessionControlSurface,
+    controller: SessionController,
     cwd: Path,
 ) -> AsyncIterator[WorkerServer]:
     async def handle_connection(websocket: ServerConnection) -> None:
-        if not await session.activate_controller(REMOTE_CONTROLLER):
+        if not await session.activate_controller(controller):
             await websocket.send(message_to_json(ErrorMessage(message="Worker is already remotely controlled.")))
             await websocket.close()
             return
@@ -174,7 +176,7 @@ async def start_worker_server(
         try:
             async for raw_message in websocket:
                 message = parse_supervisor_message(raw_message)
-                await _handle_supervisor_message(websocket, session, message)
+                await _handle_supervisor_message(websocket, session, controller, message)
         except ConnectionClosed:
             pass
         finally:

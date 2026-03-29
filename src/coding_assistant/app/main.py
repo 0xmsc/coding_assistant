@@ -14,7 +14,7 @@ from coding_assistant.app.cli import (
     build_default_agent_config,
     create_default_agent,
 )
-from coding_assistant.app.session_control import CLI_CONTROLLER, SessionController, SessionOutput
+from coding_assistant.app.session_control import SessionController, SessionOutput
 from coding_assistant.app.session_runtime import SessionRuntime
 from coding_assistant.integrations.mcp_client import print_mcp_tools
 from coding_assistant.remote.server import RemoteController
@@ -49,18 +49,20 @@ async def run_session_runtime(args: argparse.Namespace) -> None:
             return
 
         system_message = _build_initial_system_message(instructions=bundle.instructions)
+        cli_controller = CliController(prompt_user=prompt_user)
+        remote_controller = RemoteController(
+            cwd=config.working_directory,
+            set_local_worker_endpoint=bundle.set_local_worker_endpoint,
+        )
         runtime = SessionRuntime(
             history=[system_message],
             model=args.model,
             tools=bundle.tools,
-            default_controller=CLI_CONTROLLER,
+            default_controller=cli_controller,
         )
         controllers: list[SessionController] = [
-            CliController(prompt_user=prompt_user),
-            RemoteController(
-                cwd=config.working_directory,
-                set_local_worker_endpoint=bundle.set_local_worker_endpoint,
-            ),
+            cli_controller,
+            remote_controller,
         ]
         outputs: list[SessionOutput] = [CliOutput(system_message=system_message)]
 
