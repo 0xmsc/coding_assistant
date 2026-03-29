@@ -80,10 +80,12 @@ class DeltaRenderer:
 
     def finish(self, *, trailing_blank_line: bool = True) -> None:
         """Flush any remaining buffered content at the end of a turn."""
+        had_content = self.saw_content
         if flushed := self._buffer.flush():
             self._print_markdown(flushed)
-        if self.saw_content and trailing_blank_line:
+        if had_content and trailing_blank_line:
             rich_print()
+        self.saw_content = False
 
     def _print_markdown(self, content: str) -> None:
         rich_print()
