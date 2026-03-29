@@ -39,6 +39,7 @@ from prompt_toolkit.history import FileHistory
 from rich import print
 from rich.console import Console
 from rich.rule import Rule
+
 CLI_COMMAND_NAMES = ["/exit", "/help", "/compact", "/image"]
 
 
