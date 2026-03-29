@@ -28,6 +28,8 @@ PromptContent = str | list[dict[str, Any]]
 
 @dataclass(frozen=True)
 class SessionState:
+    """Snapshot of whether the session can accept or is running work."""
+
     promptable: bool
     running: bool
     queued_prompt_count: int
@@ -35,16 +37,22 @@ class SessionState:
 
 @dataclass(frozen=True)
 class StateChangedEvent:
+    """Event emitted whenever the session state snapshot changes."""
+
     state: SessionState
 
 
 @dataclass(frozen=True)
 class ToolCallsEvent:
+    """Event emitted when the current run pauses for tool execution."""
+
     message: AssistantMessage
 
 
 @dataclass(frozen=True)
 class RunFinishedEvent:
+    """Event emitted after a completed run is committed to history."""
+
     summary: str
 
 
@@ -55,6 +63,8 @@ class RunCancelledEvent:
 
 @dataclass(frozen=True)
 class RunFailedEvent:
+    """Event emitted when a run fails with an exception."""
+
     error: str
 
 
@@ -107,6 +117,7 @@ class AgentSession:
 
     @property
     def state(self) -> SessionState:
+        """Return the current promptability, run state, and queued prompt count."""
         return SessionState(
             promptable=not self._closed,
             running=self._current_run_task is not None,
@@ -115,12 +126,15 @@ class AgentSession:
 
     @property
     def history(self) -> list[BaseMessage]:
+        """Return a copy of the committed transcript history."""
         return list(self._history)
 
     def subscribe(self) -> AbstractAsyncContextManager[asyncio.Queue[AgentSessionEvent]]:
+        """Subscribe to streamed session events and receive an initial state snapshot."""
         return self._subscribe()
 
     async def enqueue_prompt(self, content: PromptContent, *, priority: bool = False) -> bool:
+        """Queue one prompt, optionally ahead of already queued work."""
         async with self._mutation_lock:
             if self._closed:
                 return False
@@ -134,6 +148,7 @@ class AgentSession:
         return True
 
     async def interrupt_and_enqueue(self, content: PromptContent) -> bool:
+        """Cancel the active run and make this prompt the next prompt consumed."""
         async with self._mutation_lock:
             if self._closed:
                 return False
@@ -148,6 +163,7 @@ class AgentSession:
         return True
 
     async def cancel_current_run(self, *, discard_pending_prompts: bool = False) -> bool:
+        """Cancel the active run, optionally clearing prompts that have not started yet."""
         async with self._mutation_lock:
             run_task = self._current_run_task
             had_pending_prompts = bool(self._pending_prompts)
@@ -166,6 +182,7 @@ class AgentSession:
         return True
 
     async def close(self) -> None:
+        """Stop the session loop and cancel any active or queued work."""
         async with self._mutation_lock:
             if self._closed:
                 return
@@ -277,6 +294,7 @@ class AgentSession:
 
 
 def _get_latest_assistant_summary(history: Sequence[BaseMessage]) -> str:
+    """Return the newest non-empty assistant text from committed history."""
     for message in reversed(history):
         if isinstance(message, AssistantMessage) and message.content:
             return message.content
