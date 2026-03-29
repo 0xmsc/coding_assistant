@@ -4,15 +4,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
-from coding_assistant.llm.types import Tool
 from coding_assistant.infra.paths import get_builtin_instructions_dir, get_builtin_skills_dir
-
+from coding_assistant.llm.types import Tool
 from coding_assistant.tools.filesystem import create_filesystem_tools
 from coding_assistant.tools.python import create_python_tools
 from coding_assistant.tools.shell import create_shell_tools
 from coding_assistant.tools.skills import create_skill_tools, format_skills_instructions
 from coding_assistant.tools.tasks import TaskManager, create_task_tools
 from coding_assistant.tools.todo import TodoManager, create_todo_tools
+from coding_assistant.tools.workers import WorkerToolRuntime
+
+WORKER_TOOL_INSTRUCTIONS = """
+## Workers
+
+- Use worker tools to discover, connect to, prompt, wait on, cancel, and disconnect from local worker endpoints.
+""".strip()
 
 
 @dataclass(slots=True)
@@ -21,6 +27,12 @@ class LocalToolBundle:
 
     tools: list[Tool]
     instructions: str
+    _worker_runtime: WorkerToolRuntime | None = None
+
+    async def close(self) -> None:
+        if self._worker_runtime is None:
+            return
+        await self._worker_runtime.close()
 
 
 def load_tool_instructions() -> str:
@@ -28,18 +40,25 @@ def load_tool_instructions() -> str:
     return (get_builtin_instructions_dir() / "tools.md").read_text(encoding="utf-8").strip()
 
 
-def create_local_tool_bundle(*, skills_directories: Sequence[Path]) -> LocalToolBundle:
+def create_local_tool_bundle(
+    *,
+    skills_directories: Sequence[Path],
+    include_worker_tools: bool = True,
+) -> LocalToolBundle:
     """Build the in-process tool bundle used by the default CLI."""
     task_manager = TaskManager()
     todo_manager = TodoManager()
+    worker_runtime = WorkerToolRuntime() if include_worker_tools else None
 
     skill_tools, skills = create_skill_tools(skills_directories=[get_builtin_skills_dir(), *skills_directories])
     instructions = load_tool_instructions()
+    if include_worker_tools:
+        instructions = f"{instructions}\n\n{WORKER_TOOL_INSTRUCTIONS}"
     skill_instructions = format_skills_instructions(skills)
     if skill_instructions:
         instructions = f"{instructions}\n\n{skill_instructions}"
 
-    tools = [
+    tools: list[Tool] = [
         *create_todo_tools(manager=todo_manager),
         *create_shell_tools(manager=task_manager),
         *create_python_tools(manager=task_manager),
@@ -47,4 +66,12 @@ def create_local_tool_bundle(*, skills_directories: Sequence[Path]) -> LocalTool
         *create_task_tools(manager=task_manager),
         *skill_tools,
     ]
-    return LocalToolBundle(tools=tools, instructions=instructions)
+
+    if worker_runtime is not None:
+        tools.extend(worker_runtime.tools)
+
+    return LocalToolBundle(
+        tools=tools,
+        instructions=instructions,
+        _worker_runtime=worker_runtime,
+    )

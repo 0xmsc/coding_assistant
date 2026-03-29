@@ -213,15 +213,11 @@ class WorkerToolRuntime:
     """Worker-tool runtime that hides supervisor-side connection management."""
 
     def __init__(self) -> None:
-        self._local_worker_endpoint: str | None = None
         self._manager = _WorkerManager()
         self.tools = _create_worker_tools(runtime=self)
 
-    def set_local_worker_endpoint(self, endpoint: str) -> None:
-        self._local_worker_endpoint = endpoint
-
     def discover_records(self) -> list[WorkerRecord]:
-        return list_worker_records(exclude_endpoint=self._local_worker_endpoint)
+        return list_worker_records()
 
     def format_discovered_workers(self) -> str:
         records = self.discover_records()
@@ -233,8 +229,6 @@ class WorkerToolRuntime:
         return self._manager.format_connected_workers()
 
     async def connect(self, endpoint: str) -> str:
-        if self._local_worker_endpoint is not None and endpoint == self._local_worker_endpoint:
-            return "Cannot connect to the current worker endpoint."
         return await self._manager.connect(endpoint)
 
     async def disconnect(self, endpoint: str) -> str:
