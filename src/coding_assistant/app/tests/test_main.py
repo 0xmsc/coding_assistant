@@ -10,14 +10,18 @@ from rich.markdown import Markdown
 
 from coding_assistant.app.cli import (
     DefaultAgentBundle,
-    _prompt_without_remote_controller,
-    _submit_local_prompt_or_warn,
     build_default_agent_config,
-    run_cli,
+    handle_cli_input,
 )
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display, print_tool_calls
-from coding_assistant.app.session_host import PromptSubmissionResult
+from coding_assistant.app.session_app import (
+    SessionApp,
+    _prompt_while_controller_is_active,
+    _submit_prompt_or_warn,
+    run_session_app,
+)
+from coding_assistant.app.session_host import CLI_CONTROLLER, PromptSubmissionResult, SessionHost
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
 
@@ -36,10 +40,12 @@ class FakeLocalToolRuntime:
 
 class FakePromptSessionHost:
     def __init__(self) -> None:
-        self.remote_connected = asyncio.Event()
+        self.controller_changed = asyncio.Event()
 
-    async def wait_for_remote_connection(self) -> None:
-        await self.remote_connected.wait()
+    async def wait_for_controller_change(self, *, controller: str) -> str:
+        assert controller == CLI_CONTROLLER
+        await self.controller_changed.wait()
+        return "remote"
 
 
 class FakeLocalSubmitSessionHost:
@@ -47,7 +53,8 @@ class FakeLocalSubmitSessionHost:
         self.result = result
         self.submitted_content: list[str | list[dict[str, object]]] = []
 
-    async def submit_local_prompt(self, content: str | list[dict[str, object]]) -> PromptSubmissionResult:
+    async def submit_prompt(self, *, controller: str, content: str | list[dict[str, object]]) -> PromptSubmissionResult:
+        assert controller == CLI_CONTROLLER
         self.submitted_content.append(content)
         return self.result
 
@@ -84,24 +91,24 @@ def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
     assert config.user_instructions == ()
 
 
-@patch("coding_assistant.app.main.run_cli")
+@patch("coding_assistant.app.main.run_session_app")
 @patch("coding_assistant.app.main.enable_tracing")
-def test_main_enables_tracing_when_flag_set(mock_enable_tracing: Any, mock_run_cli: Any) -> None:
+def test_main_enables_tracing_when_flag_set(mock_enable_tracing: Any, mock_run_session_app: Any) -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--trace"]):
         main()
         mock_enable_tracing.assert_called_once()
-        mock_run_cli.assert_called_once()
+        mock_run_session_app.assert_called_once()
 
 
-@patch("coding_assistant.app.main.run_cli")
+@patch("coding_assistant.app.main.run_session_app")
 @patch("coding_assistant.app.main.debugpy.wait_for_client")
 @patch("coding_assistant.app.main.debugpy.listen")
-def test_main_waits_for_debugger(mock_listen: Any, mock_wait: Any, mock_run_cli: Any) -> None:
+def test_main_waits_for_debugger(mock_listen: Any, mock_wait: Any, mock_run_session_app: Any) -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--wait-for-debugger"]):
         main()
         mock_listen.assert_called_once_with(1234)
         mock_wait.assert_called_once()
-        mock_run_cli.assert_called_once()
+        mock_run_session_app.assert_called_once()
 
 
 def test_help_exits_with_zero() -> None:
@@ -112,7 +119,7 @@ def test_help_exits_with_zero() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_cli_prints_system_message_before_running_agent() -> None:
+async def test_run_session_app_builds_session_app_with_system_history() -> None:
     args = Namespace(
         instructions=[],
         mcp_servers=[],
@@ -135,25 +142,69 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
             close_tools=local_tool_runtime.close,
         )
 
-    @asynccontextmanager
-    async def fake_start_worker_server(*, session_host: Any, cwd: Any) -> Any:
-        del session_host, cwd
-        yield SimpleNamespace(endpoint="ws://127.0.0.1:43210")
+    captured: dict[str, SessionApp] = {}
+
+    async def fake_run(self: SessionApp) -> None:
+        captured["app"] = self
 
     with (
-        patch("coding_assistant.app.cli.create_default_agent", fake_create_default_agent),
-        patch("coding_assistant.app.cli.start_worker_server", fake_start_worker_server),
-        patch("coding_assistant.app.cli.print_system_message") as mock_print_system,
-        patch("coding_assistant.app.cli._drive_agent", new=AsyncMock()) as mock_drive_agent,
+        patch("coding_assistant.app.session_app.create_default_agent", fake_create_default_agent),
+        patch("coding_assistant.app.session_app.SessionApp.run", new=fake_run),
     ):
-        await run_cli(args)
+        await run_session_app(args)
 
-    mock_print_system.assert_called_once()
-    assert mock_drive_agent.await_args is not None
-    session_host = mock_drive_agent.await_args.kwargs["session_host"]
-    assert session_host.history == [
+    session_app = captured["app"]
+    assert session_app.history == [
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
     ]
+    assert session_app.state.controller == CLI_CONTROLLER
+    assert local_tool_runtime.local_endpoint is None
+    assert local_tool_runtime.closed is False
+
+
+@pytest.mark.asyncio
+async def test_session_app_run_prints_system_message_before_driving_cli(tmp_path: Any) -> None:
+    local_tool_runtime = FakeLocalToolRuntime()
+    system_message = SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions."))
+    session = SessionHost(
+        history=[system_message],
+        model="gpt-4",
+        tools=[],
+    )
+
+    async def prompt_user(words: list[str] | None = None) -> str:
+        del words
+        return "/exit"
+
+    app = SessionApp(
+        system_message=system_message,
+        session=session,
+        prompt_user=prompt_user,
+        working_directory=tmp_path,
+        set_local_worker_endpoint=local_tool_runtime.set_local_worker_endpoint,
+        close_tools=local_tool_runtime.close,
+    )
+
+    @asynccontextmanager
+    async def fake_start_worker_server(*, session: Any, cwd: Any) -> Any:
+        assert session is app
+        assert cwd == tmp_path
+        yield SimpleNamespace(endpoint="ws://127.0.0.1:43210")
+
+    captured: dict[str, SessionApp] = {}
+
+    async def fake_drive_cli(self: SessionApp) -> None:
+        captured["app"] = self
+
+    with (
+        patch("coding_assistant.app.session_app.start_worker_server", fake_start_worker_server),
+        patch("coding_assistant.app.session_app.print_system_message") as mock_print_system,
+        patch.object(SessionApp, "_drive_cli", new=fake_drive_cli),
+    ):
+        await app.run()
+
+    mock_print_system.assert_called_once_with(system_message)
+    assert captured["app"] is app
     assert local_tool_runtime.local_endpoint == "ws://127.0.0.1:43210"
     assert local_tool_runtime.closed is True
 
@@ -166,8 +217,9 @@ async def test_prompt_without_remote_controller_returns_prompt_when_user_finishe
         assert words == ["/exit"]
         return "hello"
 
-    result = await _prompt_without_remote_controller(
-        session_host=session_host,  # type: ignore[arg-type]
+    result = await _prompt_while_controller_is_active(
+        session=session_host,  # type: ignore[arg-type]
+        controller=CLI_CONTROLLER,
         prompt_user=prompt_user,
         words=["/exit"],
     )
@@ -187,31 +239,73 @@ async def test_prompt_without_remote_controller_returns_none_when_remote_connect
         return ""
 
     task = asyncio.create_task(
-        _prompt_without_remote_controller(
-            session_host=session_host,  # type: ignore[arg-type]
+        _prompt_while_controller_is_active(
+            session=session_host,  # type: ignore[arg-type]
+            controller=CLI_CONTROLLER,
             prompt_user=prompt_user,
             words=["/exit"],
         )
     )
     await prompt_started.wait()
-    session_host.remote_connected.set()
+    session_host.controller_changed.set()
 
     assert await asyncio.wait_for(task, timeout=1) is None
 
 
 @pytest.mark.asyncio
 async def test_submit_local_prompt_or_warn_reports_remote_takeover() -> None:
-    session_host = FakeLocalSubmitSessionHost(PromptSubmissionResult(accepted=False, reason="remote_connected"))
+    session_host = FakeLocalSubmitSessionHost(PromptSubmissionResult(accepted=False, reason="inactive_controller"))
 
-    with patch("coding_assistant.app.cli.print") as mock_print:
-        result = await _submit_local_prompt_or_warn(
-            session_host=session_host,  # type: ignore[arg-type]
+    with patch("coding_assistant.app.session_app.print") as mock_print:
+        result = await _submit_prompt_or_warn(
+            session=session_host,  # type: ignore[arg-type]
+            controller=CLI_CONTROLLER,
             content="hello",
         )
 
     assert result is False
     assert session_host.submitted_content == ["hello"]
     mock_print.assert_called_once_with("Remote control took ownership before the local prompt was submitted.")
+
+
+@pytest.mark.asyncio
+async def test_handle_cli_input_prints_help_without_submitting() -> None:
+    renderer = AsyncMock()
+    submitted: list[str | list[dict[str, object]]] = []
+
+    async def fake_submit(content: str | list[dict[str, object]]) -> bool:
+        submitted.append(content)
+        return True
+
+    with patch("coding_assistant.app.cli.print") as mock_print:
+        result = await handle_cli_input(
+            answer="/help",
+            renderer=renderer,
+            submit_prompt_or_warn=fake_submit,
+        )
+
+    assert result is False
+    assert submitted == []
+    mock_print.assert_called_once_with("Available commands:\n  /exit\n  /help\n  /compact\n  /image <path-or-url>")
+
+
+@pytest.mark.asyncio
+async def test_handle_cli_input_compact_submits_compaction_prompt() -> None:
+    renderer = AsyncMock()
+    submitted: list[str | list[dict[str, object]]] = []
+
+    async def fake_submit(content: str | list[dict[str, object]]) -> bool:
+        submitted.append(content)
+        return True
+
+    result = await handle_cli_input(
+        answer="/compact",
+        renderer=renderer,
+        submit_prompt_or_warn=fake_submit,
+    )
+
+    assert result is False
+    assert submitted == ["Immediately compact our conversation so far by using the `compact_conversation` tool."]
 
 
 def test_paragraph_buffer_respects_code_fences() -> None:

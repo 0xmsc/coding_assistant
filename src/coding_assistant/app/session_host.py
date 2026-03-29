@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Sequence
-from contextlib import asynccontextmanager, suppress
+from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
 from coding_assistant.core.agent import run_agent_event_stream
@@ -22,11 +22,25 @@ from coding_assistant.llm.types import (
 )
 
 
+SessionControllerName = Literal["cli", "remote"]
+CLI_CONTROLLER: SessionControllerName = "cli"
+REMOTE_CONTROLLER: SessionControllerName = "remote"
+
+CompletionStreamer = Callable[
+    [Sequence[BaseMessage], Sequence[Tool], str],
+    AsyncIterator[object],
+]
+
+
 @dataclass(frozen=True)
 class SessionState:
     promptable: bool
-    remote_connected: bool
+    controller: SessionControllerName
     running: bool
+
+    @property
+    def remote_connected(self) -> bool:
+        return self.controller == REMOTE_CONTROLLER
 
 
 @dataclass(frozen=True)
@@ -70,7 +84,32 @@ SessionEvent = (
 @dataclass(frozen=True)
 class PromptSubmissionResult:
     accepted: bool
-    reason: Literal["accepted", "not_ready", "remote_connected"]
+    reason: Literal["accepted", "inactive_controller", "not_ready"]
+
+
+class SessionControlSurface(Protocol):
+    @property
+    def state(self) -> SessionState: ...
+
+    @property
+    def history(self) -> list[BaseMessage]: ...
+
+    def subscribe(self) -> AbstractAsyncContextManager[asyncio.Queue[SessionEvent]]: ...
+
+    async def wait_for_controller_change(self, *, controller: SessionControllerName) -> SessionControllerName: ...
+
+    async def activate_controller(self, controller: SessionControllerName) -> bool: ...
+
+    async def restore_cli_controller(self) -> None: ...
+
+    async def submit_prompt(
+        self,
+        *,
+        controller: SessionControllerName,
+        content: str | list[dict[str, Any]],
+    ) -> PromptSubmissionResult: ...
+
+    async def cancel_current_run(self) -> bool: ...
 
 
 class SessionHost:
@@ -82,14 +121,14 @@ class SessionHost:
         history: Sequence[BaseMessage],
         model: str,
         tools: Sequence[Tool],
-        streamer: Any | None = None,
+        completion_streamer: CompletionStreamer | None = None,
     ) -> None:
         self._history = list(history)
         self._model = model
         self._tools = list(tools)
-        self._streamer = streamer
+        self._completion_streamer = completion_streamer
         self._run_task: asyncio.Task[None] | None = None
-        self._remote_connected = False
+        self._active_controller = CLI_CONTROLLER
         self._subscribers: list[asyncio.Queue[SessionEvent]] = []
         self._state_condition = asyncio.Condition()
 
@@ -97,7 +136,7 @@ class SessionHost:
     def state(self) -> SessionState:
         return SessionState(
             promptable=self._run_task is None,
-            remote_connected=self._remote_connected,
+            controller=self._active_controller,
             running=self._run_task is not None,
         )
 
@@ -116,34 +155,37 @@ class SessionHost:
             with suppress(ValueError):
                 self._subscribers.remove(queue)
 
-    async def wait_for_remote_connection(self) -> None:
+    async def wait_for_controller_change(self, *, controller: SessionControllerName) -> SessionControllerName:
         async with self._state_condition:
-            await self._state_condition.wait_for(lambda: self._remote_connected)
+            await self._state_condition.wait_for(lambda: self._active_controller != controller)
+            return self._active_controller
 
-    async def attach_remote_controller(self) -> bool:
-        if self._remote_connected:
+    async def activate_controller(self, controller: SessionControllerName) -> bool:
+        if self._active_controller == controller:
             return False
 
-        self._remote_connected = True
+        self._active_controller = controller
         await self._publish_state()
         return True
 
-    async def detach_remote_controller(self) -> None:
-        if self._run_task is not None:
+    async def restore_cli_controller(self) -> None:
+        if self._active_controller != CLI_CONTROLLER and self._run_task is not None:
             await self.cancel_current_run()
 
-        if not self._remote_connected:
+        if self._active_controller == CLI_CONTROLLER:
             return
 
-        self._remote_connected = False
+        self._active_controller = CLI_CONTROLLER
         await self._publish_state()
 
-    async def submit_local_prompt(self, content: str | list[dict[str, Any]]) -> PromptSubmissionResult:
-        if self._remote_connected:
-            return PromptSubmissionResult(accepted=False, reason="remote_connected")
-        return await self._submit_prompt(content)
-
-    async def submit_remote_prompt(self, content: str | list[dict[str, Any]]) -> PromptSubmissionResult:
+    async def submit_prompt(
+        self,
+        *,
+        controller: SessionControllerName,
+        content: str | list[dict[str, Any]],
+    ) -> PromptSubmissionResult:
+        if controller != self._active_controller:
+            return PromptSubmissionResult(accepted=False, reason="inactive_controller")
         return await self._submit_prompt(content)
 
     async def cancel_current_run(self) -> bool:
@@ -178,7 +220,7 @@ class SessionHost:
                     history=current_history,
                     model=self._model,
                     tools=self._tools,
-                    streamer=self._streamer or openai_stream_completion,
+                    streamer=self._completion_streamer or openai_stream_completion,
                 ):
                     if isinstance(event, (AwaitingUser, AwaitingToolCalls)):
                         boundary = event

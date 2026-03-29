@@ -10,11 +10,12 @@ from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
 from coding_assistant.app.session_host import (
+    REMOTE_CONTROLLER,
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
+    SessionControlSurface,
     SessionEvent,
-    SessionHost,
     StateChangedEvent,
     ToolCallsEvent,
 )
@@ -89,15 +90,15 @@ async def _forward_session_events(
 
 async def _handle_supervisor_message(
     websocket: ServerConnection,
-    session_host: SessionHost,
+    session: SessionControlSurface,
     message: PromptCommand | CancelCommand,
 ) -> None:
     if isinstance(message, PromptCommand):
-        result = await session_host.submit_remote_prompt(message.prompt)
+        result = await session.submit_prompt(controller=REMOTE_CONTROLLER, content=message.prompt)
         if result.accepted:
             await websocket.send(message_to_json(CommandAcceptedMessage(request_id=message.request_id)))
         else:
-            state = session_host.state
+            state = session.state
             await websocket.send(
                 message_to_json(
                     NotReadyMessage(
@@ -110,12 +111,12 @@ async def _handle_supervisor_message(
             )
         return
 
-    cancelled = await session_host.cancel_current_run()
+    cancelled = await session.cancel_current_run()
     if cancelled:
         await websocket.send(message_to_json(CommandAcceptedMessage(request_id=message.request_id)))
         return
 
-    state = session_host.state
+    state = session.state
     await websocket.send(
         message_to_json(
             NotReadyMessage(
@@ -131,28 +132,28 @@ async def _handle_supervisor_message(
 @asynccontextmanager
 async def start_worker_server(
     *,
-    session_host: SessionHost,
+    session: SessionControlSurface,
     cwd: Path,
 ) -> AsyncIterator[WorkerServer]:
     async def handle_connection(websocket: ServerConnection) -> None:
-        if not await session_host.attach_remote_controller():
+        if not await session.activate_controller(REMOTE_CONTROLLER):
             await websocket.send(message_to_json(ErrorMessage(message="Worker is already remotely controlled.")))
             await websocket.close()
             return
 
-        async with session_host.subscribe() as queue:
+        async with session.subscribe() as queue:
             sender_task = asyncio.create_task(_forward_session_events(websocket, queue))
             try:
                 async for raw_message in websocket:
                     message = parse_supervisor_message(raw_message)
-                    await _handle_supervisor_message(websocket, session_host, message)
+                    await _handle_supervisor_message(websocket, session, message)
             except ConnectionClosed:
                 pass
             finally:
                 sender_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await sender_task
-                await session_host.detach_remote_controller()
+                await session.restore_cli_controller()
 
     async with serve(handle_connection, "127.0.0.1", 0) as server:
         socket = server.sockets[0]

@@ -60,11 +60,11 @@ async def test_worker_runtime_excludes_and_rejects_the_local_worker_endpoint(
         history=make_system_history(),
         model="test-model",
         tools=[],
-        streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
         worker_runtime.set_local_worker_endpoint(worker_server.endpoint)
 
         assert worker_runtime.discover_records() == []
@@ -83,11 +83,11 @@ async def test_worker_runtime_discovers_connects_prompts_and_waits_for_completio
         history=make_system_history(),
         model="test-model",
         tools=[],
-        streamer=ScriptedStreamer([AssistantMessage(content="Finished the delegated task")]),
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="Finished the delegated task")]),
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
         discovered = worker_runtime.discover_records()
         assert [record.endpoint for record in discovered] == [worker_server.endpoint]
 
@@ -115,11 +115,11 @@ async def test_worker_runtime_rejects_prompt_while_worker_is_busy_and_can_cancel
         history=make_system_history(),
         model="test-model",
         tools=[],
-        streamer=streamer,
+        completion_streamer=streamer,
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert await worker_runtime.prompt(worker_server.endpoint, "Please start working.") == (
             f"Prompt sent to worker {worker_server.endpoint}."
@@ -151,12 +151,12 @@ async def test_worker_runtime_second_connection_is_rejected_for_controlled_worke
         history=make_system_history(),
         model="test-model",
         tools=[],
-        streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
     first_runtime = WorkerToolRuntime()
     second_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
         assert await first_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
 
         second_result = await second_runtime.connect(worker_server.endpoint)
@@ -178,11 +178,11 @@ async def test_worker_runtime_wait_returns_disconnect_once_then_reports_not_conn
         history=make_system_history(),
         model="test-model",
         tools=[],
-        streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert await worker_runtime.disconnect(worker_server.endpoint) == (
             f"Disconnected from worker {worker_server.endpoint}."
@@ -207,11 +207,11 @@ async def test_worker_runtime_wait_any_returns_pending_disconnect_after_last_con
         history=make_system_history(),
         model="test-model",
         tools=[],
-        streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert await worker_runtime.disconnect(worker_server.endpoint) == (
             f"Disconnected from worker {worker_server.endpoint}."
