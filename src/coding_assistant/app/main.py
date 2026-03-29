@@ -5,7 +5,19 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptio
 
 import debugpy
 
-from coding_assistant.app.session_app import run_session_app
+from coding_assistant.app.cli import (
+    CliController,
+    CliOutput,
+    _build_initial_system_message,
+    _create_prompt_session,
+    _prompt_with_session,
+    build_default_agent_config,
+    create_default_agent,
+)
+from coding_assistant.app.session_control import CLI_CONTROLLER, SessionController, SessionOutput
+from coding_assistant.app.session_runtime import SessionRuntime
+from coding_assistant.integrations.mcp_client import print_mcp_tools
+from coding_assistant.remote.server import RemoteController
 from coding_assistant.infra.paths import get_log_file
 from coding_assistant.infra.trace import enable_tracing, get_default_trace_dir
 
@@ -17,9 +29,45 @@ async def _main(args: argparse.Namespace) -> None:
     """Run the CLI and translate Ctrl-C into a clean shutdown."""
     logger.info(f"Starting Coding Assistant with arguments {args}")
     try:
-        await run_session_app(args)
+        await run_session_runtime(args)
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
+
+
+async def run_session_runtime(args: argparse.Namespace) -> None:
+    """Build the local session runtime plus its controllers and outputs, then run it."""
+
+    config = build_default_agent_config(args)
+    prompt_session = _create_prompt_session()
+
+    async def prompt_user(words: list[str] | None = None) -> str:
+        return await _prompt_with_session(prompt_session, words=words)
+
+    async with create_default_agent(config=config) as bundle:
+        if args.print_mcp_tools:
+            await print_mcp_tools(bundle.mcp_servers)
+            return
+
+        system_message = _build_initial_system_message(instructions=bundle.instructions)
+        runtime = SessionRuntime(
+            history=[system_message],
+            model=args.model,
+            tools=bundle.tools,
+            default_controller=CLI_CONTROLLER,
+        )
+        controllers: list[SessionController] = [
+            CliController(prompt_user=prompt_user),
+            RemoteController(
+                cwd=config.working_directory,
+                set_local_worker_endpoint=bundle.set_local_worker_endpoint,
+            ),
+        ]
+        outputs: list[SessionOutput] = [CliOutput(system_message=system_message)]
+
+        try:
+            await runtime.run(controllers=controllers, outputs=outputs)
+        finally:
+            await bundle.close_tools()
 
 
 def setup_logging() -> None:

@@ -1,30 +1,28 @@
 import asyncio
 from argparse import Namespace
 from contextlib import asynccontextmanager
-from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from rich.markdown import Markdown
 
 from coding_assistant.app.cli import (
+    CliController,
+    CliOutput,
+    _prompt_while_controller_is_active,
+    _submit_prompt_or_warn,
     DefaultAgentBundle,
     build_default_agent_config,
     handle_cli_input,
 )
-from coding_assistant.app.main import main, parse_args
+from coding_assistant.app.main import main, parse_args, run_session_runtime
 from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display, print_tool_calls
-from coding_assistant.app.session_app import (
-    CLI_CONTROLLER,
-    PromptSubmissionResult,
-    SessionApp,
-    _prompt_while_controller_is_active,
-    _submit_prompt_or_warn,
-    run_session_app,
-)
+from coding_assistant.app.session_control import CLI_CONTROLLER, PromptSubmissionResult
+from coding_assistant.app.session_runtime import SessionRuntime
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
+from coding_assistant.remote.server import RemoteController
 
 
 class FakeLocalToolRuntime:
@@ -92,24 +90,24 @@ def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
     assert config.user_instructions == ()
 
 
-@patch("coding_assistant.app.main.run_session_app")
+@patch("coding_assistant.app.main.run_session_runtime")
 @patch("coding_assistant.app.main.enable_tracing")
-def test_main_enables_tracing_when_flag_set(mock_enable_tracing: Any, mock_run_session_app: Any) -> None:
+def test_main_enables_tracing_when_flag_set(mock_enable_tracing: Any, mock_run_session_runtime: Any) -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--trace"]):
         main()
         mock_enable_tracing.assert_called_once()
-        mock_run_session_app.assert_called_once()
+        mock_run_session_runtime.assert_called_once()
 
 
-@patch("coding_assistant.app.main.run_session_app")
+@patch("coding_assistant.app.main.run_session_runtime")
 @patch("coding_assistant.app.main.debugpy.wait_for_client")
 @patch("coding_assistant.app.main.debugpy.listen")
-def test_main_waits_for_debugger(mock_listen: Any, mock_wait: Any, mock_run_session_app: Any) -> None:
+def test_main_waits_for_debugger(mock_listen: Any, mock_wait: Any, mock_run_session_runtime: Any) -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--wait-for-debugger"]):
         main()
         mock_listen.assert_called_once_with(1234)
         mock_wait.assert_called_once()
-        mock_run_session_app.assert_called_once()
+        mock_run_session_runtime.assert_called_once()
 
 
 def test_help_exits_with_zero() -> None:
@@ -120,7 +118,7 @@ def test_help_exits_with_zero() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_session_app_builds_session_app_with_system_history() -> None:
+async def test_run_session_runtime_builds_runtime_with_default_adapters() -> None:
     args = Namespace(
         instructions=[],
         mcp_servers=[],
@@ -143,67 +141,34 @@ async def test_run_session_app_builds_session_app_with_system_history() -> None:
             close_tools=local_tool_runtime.close,
         )
 
-    captured: dict[str, SessionApp] = {}
+    captured_runtime: SessionRuntime | None = None
+    captured_controllers: list[object] = []
+    captured_outputs: list[object] = []
 
-    async def fake_run(self: SessionApp) -> None:
-        captured["app"] = self
+    async def fake_run(self: SessionRuntime, *, controllers: Any, outputs: Any) -> None:
+        nonlocal captured_runtime, captured_controllers, captured_outputs
+        captured_runtime = self
+        captured_controllers = list(controllers)
+        captured_outputs = list(outputs)
 
     with (
-        patch("coding_assistant.app.session_app.create_default_agent", fake_create_default_agent),
-        patch("coding_assistant.app.session_app.SessionApp.run", new=fake_run),
+        patch("coding_assistant.app.main.create_default_agent", fake_create_default_agent),
+        patch("coding_assistant.app.main.SessionRuntime.run", new=fake_run),
     ):
-        await run_session_app(args)
+        await run_session_runtime(args)
 
-    session_app = captured["app"]
-    assert session_app.history == [
+    session_runtime = captured_runtime
+    assert isinstance(session_runtime, SessionRuntime)
+    assert session_runtime.history == [
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
     ]
-    assert session_app.state.controller == CLI_CONTROLLER
+    assert session_runtime.state.controller == CLI_CONTROLLER
+    assert len(captured_controllers) == 2
+    assert isinstance(captured_controllers[0], CliController)
+    assert isinstance(captured_controllers[1], RemoteController)
+    assert len(captured_outputs) == 1
+    assert isinstance(captured_outputs[0], CliOutput)
     assert local_tool_runtime.local_endpoint is None
-    assert local_tool_runtime.closed is False
-
-
-@pytest.mark.asyncio
-async def test_session_app_run_prints_system_message_before_driving_cli(tmp_path: Any) -> None:
-    local_tool_runtime = FakeLocalToolRuntime()
-    system_message = SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions."))
-
-    async def prompt_user(words: list[str] | None = None) -> str:
-        del words
-        return "/exit"
-
-    app = SessionApp(
-        system_message=system_message,
-        history=[system_message],
-        model="gpt-4",
-        tools=[],
-        prompt_user=prompt_user,
-        working_directory=tmp_path,
-        set_local_worker_endpoint=local_tool_runtime.set_local_worker_endpoint,
-        close_tools=local_tool_runtime.close,
-    )
-
-    @asynccontextmanager
-    async def fake_start_worker_server(*, session: Any, cwd: Any) -> Any:
-        assert session is app
-        assert cwd == tmp_path
-        yield SimpleNamespace(endpoint="ws://127.0.0.1:43210")
-
-    captured: dict[str, SessionApp] = {}
-
-    async def fake_drive_cli(self: SessionApp) -> None:
-        captured["app"] = self
-
-    with (
-        patch("coding_assistant.remote.server.start_worker_server", fake_start_worker_server),
-        patch("coding_assistant.app.session_app.print_system_message") as mock_print_system,
-        patch.object(SessionApp, "_drive_cli", new=fake_drive_cli),
-    ):
-        await app.run()
-
-    mock_print_system.assert_called_once_with(system_message)
-    assert captured["app"] is app
-    assert local_tool_runtime.local_endpoint == "ws://127.0.0.1:43210"
     assert local_tool_runtime.closed is True
 
 
@@ -254,7 +219,7 @@ async def test_prompt_without_remote_controller_returns_none_when_remote_connect
 async def test_submit_local_prompt_or_warn_reports_remote_takeover() -> None:
     session = FakePromptSubmissionSession(PromptSubmissionResult(accepted=False, reason="inactive_controller"))
 
-    with patch("coding_assistant.app.session_app.print") as mock_print:
+    with patch("coding_assistant.app.cli.print") as mock_print:
         result = await _submit_prompt_or_warn(
             session=session,  # type: ignore[arg-type]
             controller=CLI_CONTROLLER,
@@ -268,7 +233,6 @@ async def test_submit_local_prompt_or_warn_reports_remote_takeover() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_cli_input_prints_help_without_submitting() -> None:
-    renderer = AsyncMock()
     submitted: list[str | list[dict[str, object]]] = []
 
     async def fake_submit(content: str | list[dict[str, object]]) -> bool:
@@ -278,7 +242,6 @@ async def test_handle_cli_input_prints_help_without_submitting() -> None:
     with patch("coding_assistant.app.cli.print") as mock_print:
         result = await handle_cli_input(
             answer="/help",
-            renderer=renderer,
             submit_prompt_or_warn=fake_submit,
         )
 
@@ -289,7 +252,6 @@ async def test_handle_cli_input_prints_help_without_submitting() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_cli_input_compact_submits_compaction_prompt() -> None:
-    renderer = AsyncMock()
     submitted: list[str | list[dict[str, object]]] = []
 
     async def fake_submit(content: str | list[dict[str, object]]) -> bool:
@@ -298,7 +260,6 @@ async def test_handle_cli_input_compact_submits_compaction_prompt() -> None:
 
     result = await handle_cli_input(
         answer="/compact",
-        renderer=renderer,
         submit_prompt_or_warn=fake_submit,
     )
 
