@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from coding_assistant.app.session_host import SessionHost
+from coding_assistant.app.session_app import SessionApp
 from coding_assistant.llm.types import (
     AssistantMessage,
     Completion,
@@ -50,21 +51,42 @@ def make_system_history() -> list[SystemMessage]:
     return [SystemMessage(content="# Instructions\n\nTest instructions")]
 
 
+def make_session_app(*, working_directory: Path, completion_streamer: Any) -> SessionApp:
+    system_message = SystemMessage(content="# Instructions\n\nTest instructions")
+
+    async def prompt_user(words: list[str] | None = None) -> str:
+        del words
+        return "/exit"
+
+    async def close_tools() -> None:
+        return None
+
+    return SessionApp(
+        system_message=system_message,
+        history=[system_message],
+        model="test-model",
+        tools=[],
+        prompt_user=prompt_user,
+        working_directory=working_directory,
+        set_local_worker_endpoint=lambda endpoint: None,
+        close_tools=close_tools,
+        completion_streamer=completion_streamer,
+    )
+
+
 @pytest.mark.asyncio
 async def test_worker_runtime_excludes_and_rejects_the_local_worker_endpoint(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    session_host = SessionHost(
-        history=make_system_history(),
-        model="test-model",
-        tools=[],
+    session_app = make_session_app(
+        working_directory=tmp_path,
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_app, cwd=tmp_path) as worker_server:
         worker_runtime.set_local_worker_endpoint(worker_server.endpoint)
 
         assert worker_runtime.discover_records() == []
@@ -79,15 +101,13 @@ async def test_worker_runtime_discovers_connects_prompts_and_waits_for_completio
     tmp_path: Any,
 ) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    session_host = SessionHost(
-        history=make_system_history(),
-        model="test-model",
-        tools=[],
+    session_app = make_session_app(
+        working_directory=tmp_path,
         completion_streamer=ScriptedStreamer([AssistantMessage(content="Finished the delegated task")]),
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_app, cwd=tmp_path) as worker_server:
         discovered = worker_runtime.discover_records()
         assert [record.endpoint for record in discovered] == [worker_server.endpoint]
 
@@ -111,15 +131,10 @@ async def test_worker_runtime_rejects_prompt_while_worker_is_busy_and_can_cancel
 ) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
     streamer = BlockingStreamer()
-    session_host = SessionHost(
-        history=make_system_history(),
-        model="test-model",
-        tools=[],
-        completion_streamer=streamer,
-    )
+    session_app = make_session_app(working_directory=tmp_path, completion_streamer=streamer)
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_app, cwd=tmp_path) as worker_server:
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert await worker_runtime.prompt(worker_server.endpoint, "Please start working.") == (
             f"Prompt sent to worker {worker_server.endpoint}."
@@ -147,16 +162,14 @@ async def test_worker_runtime_second_connection_is_rejected_for_controlled_worke
     tmp_path: Any,
 ) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    session_host = SessionHost(
-        history=make_system_history(),
-        model="test-model",
-        tools=[],
+    session_app = make_session_app(
+        working_directory=tmp_path,
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
     first_runtime = WorkerToolRuntime()
     second_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_app, cwd=tmp_path) as worker_server:
         assert await first_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
 
         second_result = await second_runtime.connect(worker_server.endpoint)
@@ -174,15 +187,13 @@ async def test_worker_runtime_wait_returns_disconnect_once_then_reports_not_conn
     tmp_path: Any,
 ) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    session_host = SessionHost(
-        history=make_system_history(),
-        model="test-model",
-        tools=[],
+    session_app = make_session_app(
+        working_directory=tmp_path,
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_app, cwd=tmp_path) as worker_server:
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert await worker_runtime.disconnect(worker_server.endpoint) == (
             f"Disconnected from worker {worker_server.endpoint}."
@@ -203,15 +214,13 @@ async def test_worker_runtime_wait_any_returns_pending_disconnect_after_last_con
     tmp_path: Any,
 ) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
-    session_host = SessionHost(
-        history=make_system_history(),
-        model="test-model",
-        tools=[],
+    session_app = make_session_app(
+        working_directory=tmp_path,
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
     worker_runtime = WorkerToolRuntime()
 
-    async with start_worker_server(session=session_host, cwd=tmp_path) as worker_server:
+    async with start_worker_server(session=session_app, cwd=tmp_path) as worker_server:
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert await worker_runtime.disconnect(worker_server.endpoint) == (
             f"Disconnected from worker {worker_server.endpoint}."

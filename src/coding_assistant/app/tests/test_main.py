@@ -16,12 +16,13 @@ from coding_assistant.app.cli import (
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display, print_tool_calls
 from coding_assistant.app.session_app import (
+    CLI_CONTROLLER,
+    PromptSubmissionResult,
     SessionApp,
     _prompt_while_controller_is_active,
     _submit_prompt_or_warn,
     run_session_app,
 )
-from coding_assistant.app.session_host import CLI_CONTROLLER, PromptSubmissionResult, SessionHost
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
 
@@ -38,7 +39,7 @@ class FakeLocalToolRuntime:
         self.closed = True
 
 
-class FakePromptSessionHost:
+class FakePromptSession:
     def __init__(self) -> None:
         self.controller_changed = asyncio.Event()
 
@@ -48,7 +49,7 @@ class FakePromptSessionHost:
         return "remote"
 
 
-class FakeLocalSubmitSessionHost:
+class FakePromptSubmissionSession:
     def __init__(self, result: PromptSubmissionResult) -> None:
         self.result = result
         self.submitted_content: list[str | list[dict[str, object]]] = []
@@ -166,11 +167,6 @@ async def test_run_session_app_builds_session_app_with_system_history() -> None:
 async def test_session_app_run_prints_system_message_before_driving_cli(tmp_path: Any) -> None:
     local_tool_runtime = FakeLocalToolRuntime()
     system_message = SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions."))
-    session = SessionHost(
-        history=[system_message],
-        model="gpt-4",
-        tools=[],
-    )
 
     async def prompt_user(words: list[str] | None = None) -> str:
         del words
@@ -178,7 +174,9 @@ async def test_session_app_run_prints_system_message_before_driving_cli(tmp_path
 
     app = SessionApp(
         system_message=system_message,
-        session=session,
+        history=[system_message],
+        model="gpt-4",
+        tools=[],
         prompt_user=prompt_user,
         working_directory=tmp_path,
         set_local_worker_endpoint=local_tool_runtime.set_local_worker_endpoint,
@@ -197,7 +195,7 @@ async def test_session_app_run_prints_system_message_before_driving_cli(tmp_path
         captured["app"] = self
 
     with (
-        patch("coding_assistant.app.session_app.start_worker_server", fake_start_worker_server),
+        patch("coding_assistant.remote.server.start_worker_server", fake_start_worker_server),
         patch("coding_assistant.app.session_app.print_system_message") as mock_print_system,
         patch.object(SessionApp, "_drive_cli", new=fake_drive_cli),
     ):
@@ -211,14 +209,14 @@ async def test_session_app_run_prints_system_message_before_driving_cli(tmp_path
 
 @pytest.mark.asyncio
 async def test_prompt_without_remote_controller_returns_prompt_when_user_finishes_first() -> None:
-    session_host = FakePromptSessionHost()
+    session = FakePromptSession()
 
     async def prompt_user(words: list[str] | None) -> str:
         assert words == ["/exit"]
         return "hello"
 
     result = await _prompt_while_controller_is_active(
-        session=session_host,  # type: ignore[arg-type]
+        session=session,  # type: ignore[arg-type]
         controller=CLI_CONTROLLER,
         prompt_user=prompt_user,
         words=["/exit"],
@@ -229,7 +227,7 @@ async def test_prompt_without_remote_controller_returns_prompt_when_user_finishe
 
 @pytest.mark.asyncio
 async def test_prompt_without_remote_controller_returns_none_when_remote_connects_first() -> None:
-    session_host = FakePromptSessionHost()
+    session = FakePromptSession()
     prompt_started = asyncio.Event()
 
     async def prompt_user(words: list[str] | None) -> str:
@@ -240,31 +238,31 @@ async def test_prompt_without_remote_controller_returns_none_when_remote_connect
 
     task = asyncio.create_task(
         _prompt_while_controller_is_active(
-            session=session_host,  # type: ignore[arg-type]
+            session=session,  # type: ignore[arg-type]
             controller=CLI_CONTROLLER,
             prompt_user=prompt_user,
             words=["/exit"],
         )
     )
     await prompt_started.wait()
-    session_host.controller_changed.set()
+    session.controller_changed.set()
 
     assert await asyncio.wait_for(task, timeout=1) is None
 
 
 @pytest.mark.asyncio
 async def test_submit_local_prompt_or_warn_reports_remote_takeover() -> None:
-    session_host = FakeLocalSubmitSessionHost(PromptSubmissionResult(accepted=False, reason="inactive_controller"))
+    session = FakePromptSubmissionSession(PromptSubmissionResult(accepted=False, reason="inactive_controller"))
 
     with patch("coding_assistant.app.session_app.print") as mock_print:
         result = await _submit_prompt_or_warn(
-            session=session_host,  # type: ignore[arg-type]
+            session=session,  # type: ignore[arg-type]
             controller=CLI_CONTROLLER,
             content="hello",
         )
 
     assert result is False
-    assert session_host.submitted_content == ["hello"]
+    assert session.submitted_content == ["hello"]
     mock_print.assert_called_once_with("Remote control took ownership before the local prompt was submitted.")
 
 

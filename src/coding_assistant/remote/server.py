@@ -9,7 +9,7 @@ from pathlib import Path
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
-from coding_assistant.app.session_host import (
+from coding_assistant.app.session_app import (
     REMOTE_CONTROLLER,
     RunCancelledEvent,
     RunFailedEvent,
