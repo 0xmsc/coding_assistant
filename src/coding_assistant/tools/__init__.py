@@ -11,7 +11,7 @@ from coding_assistant.tools.shell import create_shell_tools
 from coding_assistant.tools.skills import create_skill_tools, format_skills_instructions
 from coding_assistant.tools.tasks import TaskManager, create_task_tools
 from coding_assistant.tools.todo import TodoManager, create_todo_tools
-from coding_assistant.tools.workers import WorkerManager, create_worker_tools
+from coding_assistant.tools.workers import WorkerToolRuntime
 
 LOCAL_TOOL_INSTRUCTIONS = """
 # Local tools
@@ -58,14 +58,20 @@ class LocalToolBundle:
 
     tools: list[Tool]
     instructions: str
-    worker_manager: WorkerManager
+    _worker_runtime: WorkerToolRuntime
+
+    def set_local_worker_endpoint(self, endpoint: str) -> None:
+        self._worker_runtime.set_local_worker_endpoint(endpoint)
+
+    async def close(self) -> None:
+        await self._worker_runtime.close()
 
 
 def create_local_tool_bundle(*, skills_directories: Sequence[Path]) -> LocalToolBundle:
     """Build the in-process tool bundle used by the default CLI."""
     task_manager = TaskManager()
     todo_manager = TodoManager()
-    worker_manager = WorkerManager()
+    worker_runtime = WorkerToolRuntime()
 
     skill_tools, skills = create_skill_tools(skills_directories=skills_directories)
     instructions = LOCAL_TOOL_INSTRUCTIONS
@@ -79,11 +85,11 @@ def create_local_tool_bundle(*, skills_directories: Sequence[Path]) -> LocalTool
         *create_python_tools(manager=task_manager),
         *create_filesystem_tools(),
         *create_task_tools(manager=task_manager),
-        *create_worker_tools(manager=worker_manager),
+        *worker_runtime.tools,
         *skill_tools,
     ]
     return LocalToolBundle(
         tools=tools,
         instructions=instructions,
-        worker_manager=worker_manager,
+        _worker_runtime=worker_runtime,
     )

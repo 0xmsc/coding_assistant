@@ -39,27 +39,14 @@ class WorkerMeaningfulEvent:
     summary: str = ""
 
 
-class WorkerManager:
-    """Track discovered workers plus active supervisor-side connections."""
+class _WorkerManager:
+    """Track active supervisor-side connections to other workers."""
 
     def __init__(self) -> None:
-        self._local_endpoint: str | None = None
         self._connections: dict[str, RemoteWorkerConnection] = {}
         self._snapshots: dict[str, WorkerSnapshot] = {}
         self._worker_queues: dict[str, asyncio.Queue[WorkerMeaningfulEvent]] = {}
         self._any_queue: asyncio.Queue[WorkerMeaningfulEvent] = asyncio.Queue()
-
-    def set_local_endpoint(self, endpoint: str) -> None:
-        self._local_endpoint = endpoint
-
-    def format_discovered_workers(self) -> str:
-        records = self.discover_records()
-        if not records:
-            return "No workers discovered."
-        return "\n".join(f"- {record.endpoint} (pid={record.pid}, cwd={record.cwd})" for record in records)
-
-    def discover_records(self) -> list[WorkerRecord]:
-        return list_worker_records(exclude_endpoint=self._local_endpoint)
 
     def format_connected_workers(self) -> str:
         if not self._connections:
@@ -73,8 +60,6 @@ class WorkerManager:
         return "\n".join(lines)
 
     async def connect(self, endpoint: str) -> str:
-        if self._local_endpoint is not None and endpoint == self._local_endpoint:
-            return "Cannot connect to the current worker endpoint."
         if endpoint in self._connections:
             return f"Already connected to worker {endpoint}."
         try:
@@ -131,11 +116,15 @@ class WorkerManager:
         queue = self._worker_queues.get(endpoint)
         if queue is None:
             return f"Worker {endpoint} is not connected."
+        if endpoint not in self._connections and queue.empty():
+            self._worker_queues.pop(endpoint, None)
+            return f"Worker {endpoint} is not connected."
         event = await queue.get()
+        self._cleanup_idle_queue(endpoint)
         return _format_meaningful_event(event)
 
     async def wait_any(self) -> str:
-        if not self._connections:
+        if self._any_queue.empty() and not self._connections:
             return "No connected workers."
         event = await self._any_queue.get()
         return _format_meaningful_event(event)
@@ -211,6 +200,61 @@ class WorkerManager:
         await queue.put(event)
         await self._any_queue.put(event)
 
+    def _cleanup_idle_queue(self, endpoint: str) -> None:
+        queue = self._worker_queues.get(endpoint)
+        if queue is None:
+            return
+        if endpoint in self._connections or not queue.empty():
+            return
+        self._worker_queues.pop(endpoint, None)
+
+
+class WorkerToolRuntime:
+    """Worker-tool runtime that hides supervisor-side connection management."""
+
+    def __init__(self) -> None:
+        self._local_worker_endpoint: str | None = None
+        self._manager = _WorkerManager()
+        self.tools = _create_worker_tools(runtime=self)
+
+    def set_local_worker_endpoint(self, endpoint: str) -> None:
+        self._local_worker_endpoint = endpoint
+
+    def discover_records(self) -> list[WorkerRecord]:
+        return list_worker_records(exclude_endpoint=self._local_worker_endpoint)
+
+    def format_discovered_workers(self) -> str:
+        records = self.discover_records()
+        if not records:
+            return "No workers discovered."
+        return "\n".join(f"- {record.endpoint} (pid={record.pid}, cwd={record.cwd})" for record in records)
+
+    def format_connected_workers(self) -> str:
+        return self._manager.format_connected_workers()
+
+    async def connect(self, endpoint: str) -> str:
+        if self._local_worker_endpoint is not None and endpoint == self._local_worker_endpoint:
+            return "Cannot connect to the current worker endpoint."
+        return await self._manager.connect(endpoint)
+
+    async def disconnect(self, endpoint: str) -> str:
+        return await self._manager.disconnect(endpoint)
+
+    async def prompt(self, endpoint: str, prompt: str) -> str:
+        return await self._manager.prompt(endpoint, prompt)
+
+    async def cancel(self, endpoint: str) -> str:
+        return await self._manager.cancel(endpoint)
+
+    async def wait(self, endpoint: str) -> str:
+        return await self._manager.wait(endpoint)
+
+    async def wait_any(self) -> str:
+        return await self._manager.wait_any()
+
+    async def close(self) -> None:
+        await self._manager.close()
+
 
 def _truncate_summary(text: str, *, limit: int = 120) -> str:
     stripped = text.strip()
@@ -253,8 +297,8 @@ class WorkerDisconnectInput(BaseModel):
 
 
 class WorkerDiscoverTool(Tool):
-    def __init__(self, *, manager: WorkerManager) -> None:
-        self._manager = manager
+    def __init__(self, *, runtime: WorkerToolRuntime) -> None:
+        self._runtime = runtime
 
     def name(self) -> str:
         return "worker_discover"
@@ -267,12 +311,12 @@ class WorkerDiscoverTool(Tool):
 
     async def execute(self, parameters: dict[str, Any]) -> str:
         EmptyInput.model_validate(parameters)
-        return self._manager.format_discovered_workers()
+        return self._runtime.format_discovered_workers()
 
 
 class WorkerConnectTool(Tool):
-    def __init__(self, *, manager: WorkerManager) -> None:
-        self._manager = manager
+    def __init__(self, *, runtime: WorkerToolRuntime) -> None:
+        self._runtime = runtime
 
     def name(self) -> str:
         return "worker_connect"
@@ -285,12 +329,12 @@ class WorkerConnectTool(Tool):
 
     async def execute(self, parameters: dict[str, Any]) -> str:
         validated = WorkerConnectInput.model_validate(parameters)
-        return await self._manager.connect(validated.endpoint)
+        return await self._runtime.connect(validated.endpoint)
 
 
 class WorkersListTool(Tool):
-    def __init__(self, *, manager: WorkerManager) -> None:
-        self._manager = manager
+    def __init__(self, *, runtime: WorkerToolRuntime) -> None:
+        self._runtime = runtime
 
     def name(self) -> str:
         return "workers_list"
@@ -303,12 +347,12 @@ class WorkersListTool(Tool):
 
     async def execute(self, parameters: dict[str, Any]) -> str:
         EmptyInput.model_validate(parameters)
-        return self._manager.format_connected_workers()
+        return self._runtime.format_connected_workers()
 
 
 class WorkerPromptTool(Tool):
-    def __init__(self, *, manager: WorkerManager) -> None:
-        self._manager = manager
+    def __init__(self, *, runtime: WorkerToolRuntime) -> None:
+        self._runtime = runtime
 
     def name(self) -> str:
         return "worker_prompt"
@@ -321,12 +365,12 @@ class WorkerPromptTool(Tool):
 
     async def execute(self, parameters: dict[str, Any]) -> str:
         validated = WorkerPromptInput.model_validate(parameters)
-        return await self._manager.prompt(validated.endpoint, validated.prompt)
+        return await self._runtime.prompt(validated.endpoint, validated.prompt)
 
 
 class WorkerWaitTool(Tool):
-    def __init__(self, *, manager: WorkerManager) -> None:
-        self._manager = manager
+    def __init__(self, *, runtime: WorkerToolRuntime) -> None:
+        self._runtime = runtime
 
     def name(self) -> str:
         return "worker_wait"
@@ -339,12 +383,12 @@ class WorkerWaitTool(Tool):
 
     async def execute(self, parameters: dict[str, Any]) -> str:
         validated = WorkerWaitInput.model_validate(parameters)
-        return await self._manager.wait(validated.endpoint)
+        return await self._runtime.wait(validated.endpoint)
 
 
 class WorkersWaitAnyTool(Tool):
-    def __init__(self, *, manager: WorkerManager) -> None:
-        self._manager = manager
+    def __init__(self, *, runtime: WorkerToolRuntime) -> None:
+        self._runtime = runtime
 
     def name(self) -> str:
         return "workers_wait_any"
@@ -357,12 +401,12 @@ class WorkersWaitAnyTool(Tool):
 
     async def execute(self, parameters: dict[str, Any]) -> str:
         EmptyInput.model_validate(parameters)
-        return await self._manager.wait_any()
+        return await self._runtime.wait_any()
 
 
 class WorkerCancelTool(Tool):
-    def __init__(self, *, manager: WorkerManager) -> None:
-        self._manager = manager
+    def __init__(self, *, runtime: WorkerToolRuntime) -> None:
+        self._runtime = runtime
 
     def name(self) -> str:
         return "worker_cancel"
@@ -375,12 +419,12 @@ class WorkerCancelTool(Tool):
 
     async def execute(self, parameters: dict[str, Any]) -> str:
         validated = WorkerDisconnectInput.model_validate(parameters)
-        return await self._manager.cancel(validated.endpoint)
+        return await self._runtime.cancel(validated.endpoint)
 
 
 class WorkerDisconnectTool(Tool):
-    def __init__(self, *, manager: WorkerManager) -> None:
-        self._manager = manager
+    def __init__(self, *, runtime: WorkerToolRuntime) -> None:
+        self._runtime = runtime
 
     def name(self) -> str:
         return "worker_disconnect"
@@ -393,17 +437,17 @@ class WorkerDisconnectTool(Tool):
 
     async def execute(self, parameters: dict[str, Any]) -> str:
         validated = WorkerDisconnectInput.model_validate(parameters)
-        return await self._manager.disconnect(validated.endpoint)
+        return await self._runtime.disconnect(validated.endpoint)
 
 
-def create_worker_tools(*, manager: WorkerManager) -> list[Tool]:
+def _create_worker_tools(*, runtime: WorkerToolRuntime) -> list[Tool]:
     return [
-        WorkerDiscoverTool(manager=manager),
-        WorkerConnectTool(manager=manager),
-        WorkersListTool(manager=manager),
-        WorkerPromptTool(manager=manager),
-        WorkerWaitTool(manager=manager),
-        WorkersWaitAnyTool(manager=manager),
-        WorkerCancelTool(manager=manager),
-        WorkerDisconnectTool(manager=manager),
+        WorkerDiscoverTool(runtime=runtime),
+        WorkerConnectTool(runtime=runtime),
+        WorkersListTool(runtime=runtime),
+        WorkerPromptTool(runtime=runtime),
+        WorkerWaitTool(runtime=runtime),
+        WorkersWaitAnyTool(runtime=runtime),
+        WorkerCancelTool(runtime=runtime),
+        WorkerDisconnectTool(runtime=runtime),
     ]

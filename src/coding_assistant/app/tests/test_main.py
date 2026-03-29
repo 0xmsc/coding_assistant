@@ -11,21 +11,23 @@ from rich.markdown import Markdown
 from coding_assistant.app.cli import (
     DefaultAgentBundle,
     _prompt_without_remote_controller,
+    _submit_local_prompt_or_warn,
     build_default_agent_config,
     run_cli,
 )
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display
+from coding_assistant.app.session_host import PromptSubmissionResult
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import FunctionCall, SystemMessage, ToolCall
 
 
-class FakeWorkerManager:
+class FakeLocalToolRuntime:
     def __init__(self) -> None:
         self.local_endpoint: str | None = None
         self.closed = False
 
-    def set_local_endpoint(self, endpoint: str) -> None:
+    def set_local_worker_endpoint(self, endpoint: str) -> None:
         self.local_endpoint = endpoint
 
     async def close(self) -> None:
@@ -38,6 +40,16 @@ class FakePromptSessionHost:
 
     async def wait_for_remote_connection(self) -> None:
         await self.remote_connected.wait()
+
+
+class FakeLocalSubmitSessionHost:
+    def __init__(self, result: PromptSubmissionResult) -> None:
+        self.result = result
+        self.submitted_content: list[str | list[dict[str, object]]] = []
+
+    async def submit_local_prompt(self, content: str | list[dict[str, object]]) -> PromptSubmissionResult:
+        self.submitted_content.append(content)
+        return self.result
 
 
 def test_parse_args_valid() -> None:
@@ -110,7 +122,7 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         trace=False,
         wait_for_debugger=False,
     )
-    worker_manager = FakeWorkerManager()
+    local_tool_runtime = FakeLocalToolRuntime()
 
     @asynccontextmanager
     async def fake_create_default_agent(*, config: Any) -> Any:
@@ -119,7 +131,8 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
             tools=[],
             instructions="Follow the repo instructions.",
             mcp_servers=[],
-            worker_manager=worker_manager,  # type: ignore[arg-type]
+            set_local_worker_endpoint=local_tool_runtime.set_local_worker_endpoint,
+            close_tools=local_tool_runtime.close,
         )
 
     @asynccontextmanager
@@ -141,8 +154,8 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     assert session_host.history == [
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
     ]
-    assert worker_manager.local_endpoint == "ws://127.0.0.1:43210"
-    assert worker_manager.closed is True
+    assert local_tool_runtime.local_endpoint == "ws://127.0.0.1:43210"
+    assert local_tool_runtime.closed is True
 
 
 @pytest.mark.asyncio
@@ -184,6 +197,21 @@ async def test_prompt_without_remote_controller_returns_none_when_remote_connect
     session_host.remote_connected.set()
 
     assert await asyncio.wait_for(task, timeout=1) is None
+
+
+@pytest.mark.asyncio
+async def test_submit_local_prompt_or_warn_reports_remote_takeover() -> None:
+    session_host = FakeLocalSubmitSessionHost(PromptSubmissionResult(accepted=False, reason="remote_connected"))
+
+    with patch("coding_assistant.app.cli.print") as mock_print:
+        result = await _submit_local_prompt_or_warn(
+            session_host=session_host,  # type: ignore[arg-type]
+            content="hello",
+        )
+
+    assert result is False
+    assert session_host.submitted_content == ["hello"]
+    mock_print.assert_called_once_with("Remote control took ownership before the local prompt was submitted.")
 
 
 def test_paragraph_buffer_respects_code_fences() -> None:

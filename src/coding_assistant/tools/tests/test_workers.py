@@ -16,7 +16,7 @@ from coding_assistant.llm.types import (
     Usage,
 )
 from coding_assistant.remote.server import start_worker_server
-from coding_assistant.tools.workers import WorkerManager
+from coding_assistant.tools.workers import WorkerToolRuntime
 
 
 class ScriptedStreamer:
@@ -51,7 +51,30 @@ def make_system_history() -> list[SystemMessage]:
 
 
 @pytest.mark.asyncio
-async def test_worker_manager_discovers_connects_prompts_and_waits_for_completion(
+async def test_worker_runtime_excludes_and_rejects_the_local_worker_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    session_host = SessionHost(
+        history=make_system_history(),
+        model="test-model",
+        tools=[],
+        streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+    )
+    worker_runtime = WorkerToolRuntime()
+
+    async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
+        worker_runtime.set_local_worker_endpoint(worker_server.endpoint)
+
+        assert worker_runtime.discover_records() == []
+        assert await worker_runtime.connect(worker_server.endpoint) == "Cannot connect to the current worker endpoint."
+
+    await worker_runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_discovers_connects_prompts_and_waits_for_completion(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
@@ -62,27 +85,27 @@ async def test_worker_manager_discovers_connects_prompts_and_waits_for_completio
         tools=[],
         streamer=ScriptedStreamer([AssistantMessage(content="Finished the delegated task")]),
     )
-    worker_manager = WorkerManager()
+    worker_runtime = WorkerToolRuntime()
 
     async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
-        discovered = worker_manager.discover_records()
+        discovered = worker_runtime.discover_records()
         assert [record.endpoint for record in discovered] == [worker_server.endpoint]
 
-        connect_result = await worker_manager.connect(worker_server.endpoint)
+        connect_result = await worker_runtime.connect(worker_server.endpoint)
         assert connect_result == f"Connected to worker {worker_server.endpoint}."
-        assert worker_server.endpoint in worker_manager.format_connected_workers()
+        assert worker_server.endpoint in worker_runtime.format_connected_workers()
 
-        prompt_result = await worker_manager.prompt(worker_server.endpoint, "Please finish the task.")
+        prompt_result = await worker_runtime.prompt(worker_server.endpoint, "Please finish the task.")
         assert prompt_result == f"Prompt sent to worker {worker_server.endpoint}."
 
-        wait_result = await asyncio.wait_for(worker_manager.wait(worker_server.endpoint), timeout=1)
+        wait_result = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
         assert wait_result == f"Worker {worker_server.endpoint} finished:\nFinished the delegated task"
 
-    await worker_manager.close()
+    await worker_runtime.close()
 
 
 @pytest.mark.asyncio
-async def test_worker_manager_rejects_prompt_while_worker_is_busy_and_can_cancel(
+async def test_worker_runtime_rejects_prompt_while_worker_is_busy_and_can_cancel(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
@@ -94,32 +117,32 @@ async def test_worker_manager_rejects_prompt_while_worker_is_busy_and_can_cancel
         tools=[],
         streamer=streamer,
     )
-    worker_manager = WorkerManager()
+    worker_runtime = WorkerToolRuntime()
 
     async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
-        assert await worker_manager.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
-        assert await worker_manager.prompt(worker_server.endpoint, "Please start working.") == (
+        assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
+        assert await worker_runtime.prompt(worker_server.endpoint, "Please start working.") == (
             f"Prompt sent to worker {worker_server.endpoint}."
         )
 
         await asyncio.wait_for(streamer.started.wait(), timeout=1)
 
-        prompt_result = await worker_manager.prompt(worker_server.endpoint, "Please do something else.")
+        prompt_result = await worker_runtime.prompt(worker_server.endpoint, "Please do something else.")
         assert prompt_result == (
             f"Worker {worker_server.endpoint} is not ready for a prompt. promptable=False running=True"
         )
 
-        cancel_result = await worker_manager.cancel(worker_server.endpoint)
+        cancel_result = await worker_runtime.cancel(worker_server.endpoint)
         assert cancel_result == f"Cancelled the current run on worker {worker_server.endpoint}."
 
-        wait_result = await asyncio.wait_for(worker_manager.wait(worker_server.endpoint), timeout=1)
+        wait_result = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
         assert wait_result == f"Worker {worker_server.endpoint} cancelled its current run."
 
-    await worker_manager.close()
+    await worker_runtime.close()
 
 
 @pytest.mark.asyncio
-async def test_worker_manager_second_connection_is_rejected_for_controlled_worker(
+async def test_worker_runtime_second_connection_is_rejected_for_controlled_worker(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
@@ -130,16 +153,74 @@ async def test_worker_manager_second_connection_is_rejected_for_controlled_worke
         tools=[],
         streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
-    first_manager = WorkerManager()
-    second_manager = WorkerManager()
+    first_runtime = WorkerToolRuntime()
+    second_runtime = WorkerToolRuntime()
 
     async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
-        assert await first_manager.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
+        assert await first_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
 
-        second_result = await second_manager.connect(worker_server.endpoint)
+        second_result = await second_runtime.connect(worker_server.endpoint)
         assert second_result == (
             f"Failed to connect to worker {worker_server.endpoint}: Worker is already remotely controlled."
         )
 
-    await first_manager.close()
-    await second_manager.close()
+    await first_runtime.close()
+    await second_runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_wait_returns_disconnect_once_then_reports_not_connected(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    session_host = SessionHost(
+        history=make_system_history(),
+        model="test-model",
+        tools=[],
+        streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+    )
+    worker_runtime = WorkerToolRuntime()
+
+    async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
+        assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
+        assert await worker_runtime.disconnect(worker_server.endpoint) == (
+            f"Disconnected from worker {worker_server.endpoint}."
+        )
+
+        wait_result = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
+        assert wait_result == f"Worker {worker_server.endpoint} disconnected."
+
+        second_wait_result = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
+        assert second_wait_result == f"Worker {worker_server.endpoint} is not connected."
+
+    await worker_runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_wait_any_returns_pending_disconnect_after_last_connection_closes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    session_host = SessionHost(
+        history=make_system_history(),
+        model="test-model",
+        tools=[],
+        streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+    )
+    worker_runtime = WorkerToolRuntime()
+
+    async with start_worker_server(session_host=session_host, cwd=tmp_path) as worker_server:
+        assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
+        assert await worker_runtime.disconnect(worker_server.endpoint) == (
+            f"Disconnected from worker {worker_server.endpoint}."
+        )
+
+        wait_result = await asyncio.wait_for(worker_runtime.wait_any(), timeout=1)
+        assert wait_result == f"Worker {worker_server.endpoint} disconnected."
+
+        second_wait_result = await asyncio.wait_for(worker_runtime.wait_any(), timeout=1)
+        assert second_wait_result == "No connected workers."
+
+    await worker_runtime.close()

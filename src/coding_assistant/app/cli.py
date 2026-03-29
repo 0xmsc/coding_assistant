@@ -4,11 +4,11 @@ import os
 import re
 import asyncio
 from argparse import Namespace
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator, Iterable
+from typing import Any, AsyncIterator, Iterable
 
 from coding_assistant.app.image import get_image
 from coding_assistant.app.instructions import get_instructions
@@ -48,7 +48,6 @@ from coding_assistant.integrations.mcp_client import (
     print_mcp_tools,
 )
 from coding_assistant.remote.server import start_worker_server
-from coding_assistant.tools.workers import WorkerManager
 from coding_assistant.llm.types import Tool
 
 
@@ -69,7 +68,8 @@ class DefaultAgentBundle:
     tools: list[Tool]
     instructions: str
     mcp_servers: list[MCPServer]
-    worker_manager: WorkerManager
+    set_local_worker_endpoint: Callable[[str], None]
+    close_tools: Callable[[], Awaitable[None]]
 
 
 class SlashCompleter(Completer):
@@ -122,7 +122,8 @@ async def create_default_agent(
             tools=[*local_tool_bundle.tools, *external_tools],
             instructions=instructions,
             mcp_servers=servers,
-            worker_manager=local_tool_bundle.worker_manager,
+            set_local_worker_endpoint=local_tool_bundle.set_local_worker_endpoint,
+            close_tools=local_tool_bundle.close,
         )
 
 
@@ -152,14 +153,14 @@ async def run_cli(args: Namespace) -> None:
             session_host=session_host,
             cwd=config.working_directory,
         ) as worker_server:
-            bundle.worker_manager.set_local_endpoint(worker_server.endpoint)
+            bundle.set_local_worker_endpoint(worker_server.endpoint)
             try:
                 await _drive_agent(
                     session_host=session_host,
                     prompt_user=prompt_user,
                 )
             finally:
-                await bundle.worker_manager.close()
+                await bundle.close_tools()
 
 
 def _build_initial_system_message(*, instructions: str) -> SystemMessage:
@@ -195,8 +196,9 @@ async def _drive_agent(
                     print("Available commands:\n  /exit\n  /help\n  /compact\n  /image <path-or-url>")
                     continue
                 if stripped == "/compact":
-                    await session_host.submit_local_prompt(
-                        "Immediately compact our conversation so far by using the `compact_conversation` tool."
+                    await _submit_local_prompt_or_warn(
+                        session_host=session_host,
+                        content="Immediately compact our conversation so far by using the `compact_conversation` tool.",
                     )
                     continue
                 if stripped.startswith("/image"):
@@ -206,10 +208,16 @@ async def _drive_agent(
                         continue
                     data_url = await get_image(parts[1])
                     image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
-                    await session_host.submit_local_prompt(image_content)
+                    await _submit_local_prompt_or_warn(
+                        session_host=session_host,
+                        content=image_content,
+                    )
                     continue
 
-                await session_host.submit_local_prompt(answer)
+                await _submit_local_prompt_or_warn(
+                    session_host=session_host,
+                    content=answer,
+                )
                 continue
 
             event = await queue.get()
@@ -232,6 +240,21 @@ async def _drive_agent(
                 continue
             if isinstance(event, (StateChangedEvent, ReasoningDeltaEvent, StatusEvent, CompletionEvent)):
                 continue
+
+
+async def _submit_local_prompt_or_warn(
+    *,
+    session_host: SessionHost,
+    content: str | list[dict[str, Any]],
+) -> bool:
+    result = await session_host.submit_local_prompt(content)
+    if result.accepted:
+        return True
+    if result.reason == "remote_connected":
+        print("Remote control took ownership before the local prompt was submitted.")
+        return False
+    print("The session is not ready for another local prompt yet.")
+    return False
 
 
 def _create_prompt_session() -> PromptSession[str]:
