@@ -11,16 +11,7 @@ from unittest.mock import patch
 import pytest
 from rich.markdown import Markdown
 
-from coding_assistant.app.cli import DefaultAgentBundle, DefaultAgentConfig
-from coding_assistant.app.worker import _run_worker_output, run_worker
-from coding_assistant.app.worker_session import (
-    RunCancelledEvent,
-    RunFinishedEvent,
-    StateChangedEvent,
-    ToolCallsEvent,
-    WorkerSession,
-    WorkerSessionEvent,
-)
+from coding_assistant.app.default_agent import DefaultAgentBundle, DefaultAgentConfig
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -34,6 +25,15 @@ from coding_assistant.llm.types import (
     Usage,
 )
 from coding_assistant.remote.server import WorkerServer
+from coding_assistant.remote.worker import _run_worker_output, run_worker
+from coding_assistant.remote.worker_session import (
+    RunCancelledEvent,
+    RunFinishedEvent,
+    StateChangedEvent,
+    ToolCallsEvent,
+    WorkerSession,
+    WorkerSessionEvent,
+)
 
 
 class ScriptedStreamer:
@@ -156,7 +156,7 @@ async def test_worker_output_renders_system_message_and_streamed_content() -> No
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.worker.print_system_message") as mock_print_system,
+        patch("coding_assistant.remote.worker.print_system_message") as mock_print_system,
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(_run_worker_output(session=session, system_message=system_message))
@@ -198,7 +198,7 @@ async def test_worker_output_prints_tool_calls_without_extra_spacing() -> None:
     )
 
     with (
-        patch("coding_assistant.app.worker.print_system_message"),
+        patch("coding_assistant.remote.worker.print_system_message"),
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(_run_worker_output(session=session, system_message=system_message))
@@ -263,11 +263,11 @@ async def test_run_worker_starts_worker_server_without_worker_tools_and_with_loc
         return future
 
     with (
-        patch("coding_assistant.app.worker.build_default_agent_config", return_value=config),
-        patch("coding_assistant.app.worker.create_default_agent", fake_create_default_agent),
-        patch("coding_assistant.app.worker.start_worker_server", fake_start_worker_server),
-        patch("coding_assistant.app.worker._run_worker_output", new=fake_run_worker_output),
-        patch("coding_assistant.app.worker.asyncio.Future", new=resolved_future),
+        patch("coding_assistant.remote.worker.build_default_agent_config", return_value=config),
+        patch("coding_assistant.remote.worker.create_default_agent", fake_create_default_agent),
+        patch("coding_assistant.remote.worker.start_worker_server", fake_start_worker_server),
+        patch("coding_assistant.remote.worker._run_worker_output", new=fake_run_worker_output),
+        patch("coding_assistant.remote.worker.asyncio.Future", new=resolved_future),
     ):
         await run_worker(args)
 

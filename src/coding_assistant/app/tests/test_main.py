@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from rich.markdown import Markdown
 
-from coding_assistant.app.cli import DefaultAgentBundle, _drive_agent, build_default_agent_config, run_cli
+from coding_assistant.app.cli import _drive_agent, run_cli
+from coding_assistant.app.default_agent import DefaultAgentBundle, build_default_agent_config
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display, print_tool_calls
 from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
@@ -46,7 +47,7 @@ def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
     args.skills_directories = []
     args.instructions = []
 
-    with patch("coding_assistant.app.cli.os.getcwd", return_value=str(tmp_path)):
+    with patch("coding_assistant.app.default_agent.os.getcwd", return_value=str(tmp_path)):
         config = build_default_agent_config(args)
 
     assert config.working_directory == tmp_path

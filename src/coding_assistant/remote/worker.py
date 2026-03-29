@@ -5,20 +5,12 @@ from argparse import Namespace
 
 from rich import print
 
-from coding_assistant.app.cli import (
-    _build_initial_system_message,
+from coding_assistant.app.default_agent import (
     build_default_agent_config,
+    build_initial_system_message,
     create_default_agent,
 )
 from coding_assistant.app.output import DeltaRenderer, print_system_message, print_tool_calls
-from coding_assistant.app.worker_session import (
-    RunCancelledEvent,
-    RunFailedEvent,
-    RunFinishedEvent,
-    StateChangedEvent,
-    ToolCallsEvent,
-    WorkerSession,
-)
 from coding_assistant.integrations.mcp_client import print_mcp_tools
 from coding_assistant.llm.types import (
     CompletionEvent,
@@ -28,6 +20,14 @@ from coding_assistant.llm.types import (
     SystemMessage,
 )
 from coding_assistant.remote.server import start_worker_server
+from coding_assistant.remote.worker_session import (
+    RunCancelledEvent,
+    RunFailedEvent,
+    RunFinishedEvent,
+    StateChangedEvent,
+    ToolCallsEvent,
+    WorkerSession,
+)
 
 
 async def _run_worker_output(*, session: WorkerSession, system_message: SystemMessage) -> None:
@@ -71,7 +71,7 @@ async def run_worker(args: Namespace) -> None:
             await print_mcp_tools(bundle.mcp_servers)
             return
 
-        system_message = _build_initial_system_message(instructions=bundle.instructions)
+        system_message = build_initial_system_message(instructions=bundle.instructions)
         session = WorkerSession(
             history=[system_message],
             model=args.model,

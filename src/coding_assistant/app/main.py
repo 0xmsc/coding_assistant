@@ -6,9 +6,9 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptio
 import debugpy
 
 from coding_assistant.app.cli import run_cli
-from coding_assistant.app.worker import run_worker
 from coding_assistant.infra.paths import get_log_file
 from coding_assistant.infra.trace import enable_tracing, get_default_trace_dir
+from coding_assistant.remote.worker import run_worker
 
 logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
