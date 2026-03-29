@@ -5,7 +5,7 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptio
 
 import debugpy
 
-from coding_assistant.app.cli import run_cli
+from coding_assistant.app.session_app import run_session_app
 from coding_assistant.infra.paths import get_log_file
 from coding_assistant.infra.trace import enable_tracing, get_default_trace_dir
 
@@ -17,7 +17,7 @@ async def _main(args: argparse.Namespace) -> None:
     """Run the CLI and translate Ctrl-C into a clean shutdown."""
     logger.info(f"Starting Coding Assistant with arguments {args}")
     try:
-        await run_cli(args)
+        await run_session_app(args)
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
 
