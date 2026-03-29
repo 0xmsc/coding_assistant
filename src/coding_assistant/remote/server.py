@@ -4,13 +4,11 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
-from pathlib import Path
 
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
 from coding_assistant.llm.types import ContentDeltaEvent
-from coding_assistant.remote.discovery import advertise_worker
 from coding_assistant.remote.protocol import (
     CancelCommand,
     CommandAcceptedMessage,
@@ -142,7 +140,6 @@ async def _handle_supervisor_message(
 async def start_worker_server(
     *,
     session: WorkerSession,
-    cwd: Path,
 ) -> AsyncIterator[WorkerServer]:
     connection_lock = asyncio.Lock()
     active_connection: ServerConnection | None = None
@@ -177,5 +174,4 @@ async def start_worker_server(
         socket = server.sockets[0]
         port = socket.getsockname()[1]
         endpoint = f"ws://127.0.0.1:{port}"
-        async with advertise_worker(endpoint=endpoint, cwd=cwd):
-            yield WorkerServer(endpoint=endpoint)
+        yield WorkerServer(endpoint=endpoint)

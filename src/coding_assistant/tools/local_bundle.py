@@ -17,7 +17,7 @@ from coding_assistant.tools.workers import WorkerToolRuntime
 WORKER_TOOL_INSTRUCTIONS = """
 ## Workers
 
-- Use worker tools to discover, connect to, prompt, wait on, cancel, and disconnect from local worker endpoints.
+- Use worker tools to connect to, prompt, wait on, cancel, and disconnect from worker endpoints printed by `coding-assistant --worker`.
 """.strip()
 
 
