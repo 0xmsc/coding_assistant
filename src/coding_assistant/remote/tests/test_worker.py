@@ -13,7 +13,7 @@ from rich.markdown import Markdown
 
 from coding_assistant.app.default_agent import DefaultAgentBundle, DefaultAgentConfig
 from coding_assistant.app.output import run_session_output
-from coding_assistant.core.agent_session import AgentSession, ToolCallsEvent
+from coding_assistant.core.agent_session import AgentSession, PromptAcceptedEvent, ToolCallsEvent
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -88,7 +88,34 @@ async def test_run_session_output_renders_system_message_and_streamed_content() 
     markdown_blocks = [
         call.args[0] for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Markdown)
     ]
-    assert [block.markup for block in markdown_blocks] == ["Hello from the worker"]
+    assert [block.markup for block in markdown_blocks] == ["Hi", "Hello from the worker"]
+
+
+@pytest.mark.asyncio
+async def test_run_session_output_prints_accepted_prompt_before_run_output() -> None:
+    session = make_agent_session(
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="Hello from the worker")]),
+    )
+    system_message = SystemMessage(content="System")
+
+    with (
+        patch("coding_assistant.app.output.print_system_message"),
+        patch("coding_assistant.app.output.rich_print") as mock_rich_print,
+    ):
+        task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
+        try:
+            await asyncio.sleep(0)
+            session._publish_event(PromptAcceptedEvent(content="Do the task"))
+            await asyncio.sleep(0)
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            await session.close()
+
+    assert mock_rich_print.call_args_list[0].args == ()
+    assert mock_rich_print.call_args_list[1].args == ("[bold cyan]Prompt accepted:[/bold cyan]",)
+    assert isinstance(mock_rich_print.call_args_list[2].args[0], Markdown)
+    assert mock_rich_print.call_args_list[2].args[0].markup == "Do the task"
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,7 @@ import pytest
 from coding_assistant.core.agent_session import (
     AgentSession,
     AgentSessionEvent,
+    PromptAcceptedEvent,
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
@@ -132,9 +133,12 @@ async def test_agent_session_runs_prompt_and_updates_history() -> None:
         assert isinstance(initial_state, StateChangedEvent)
 
         assert await session.enqueue_prompt("Hi") is True
+        accepted_event = await wait_for_event(queue, PromptAcceptedEvent)
 
         finished_event = await wait_for_event(queue, RunFinishedEvent)
 
+    assert isinstance(accepted_event, PromptAcceptedEvent)
+    assert accepted_event.content == "Hi"
     assert isinstance(finished_event, RunFinishedEvent)
     assert finished_event.summary == "Hello from the worker"
     assert session.history[-1] == AssistantMessage(content="Hello from the worker")

@@ -11,6 +11,7 @@ from rich.panel import Panel
 
 from coding_assistant.core.agent_session import (
     AgentSession,
+    PromptAcceptedEvent,
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
@@ -161,6 +162,17 @@ def print_tool_calls(message: AssistantMessage) -> None:
         _print_tool_call(tool_call)
 
 
+def print_prompt_accepted(content: str | list[dict[str, Any]]) -> None:
+    """Render one accepted prompt so the operator can see queued work."""
+    rich_print()
+    rich_print("[bold cyan]Prompt accepted:[/bold cyan]")
+    if isinstance(content, str):
+        rich_print(Markdown(content))
+        return
+
+    rich_print(Markdown("```json\n" + json.dumps(content, indent=2) + "\n```"))
+
+
 async def run_session_output(*, session: AgentSession, system_message: SystemMessage) -> None:
     """Render one session's streamed events to the local terminal."""
     renderer = DeltaRenderer()
@@ -172,6 +184,10 @@ async def run_session_output(*, session: AgentSession, system_message: SystemMes
                 event = await queue.get()
                 if isinstance(event, ContentDeltaEvent):
                     renderer.on_delta(event.content)
+                    continue
+                if isinstance(event, PromptAcceptedEvent):
+                    renderer.finish()
+                    print_prompt_accepted(event.content)
                     continue
                 if isinstance(event, ToolCallsEvent):
                     renderer.finish(trailing_blank_line=False)

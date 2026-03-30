@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -22,6 +22,13 @@ class StateMessage(BaseModel):
     remote_connected: bool
     running: bool
     queued_prompt_count: int = 0
+
+
+class PromptAcceptedMessage(BaseModel):
+    """Notification that the worker accepted one prompt into its queue."""
+
+    type: Literal["prompt_accepted"] = "prompt_accepted"
+    content: str | list[dict[str, Any]]
 
 
 class ContentDeltaMessage(BaseModel):
@@ -102,6 +109,7 @@ class CancelCommand(BaseModel):
 
 WorkerToSupervisorMessage = (
     StateMessage
+    | PromptAcceptedMessage
     | ContentDeltaMessage
     | ToolCallsMessage
     | RunFinishedMessage
@@ -123,6 +131,8 @@ def parse_worker_message(data: str | bytes) -> WorkerToSupervisorMessage:
     message_type = payload.get("type")
     if message_type == "state":
         return StateMessage.model_validate(payload)
+    if message_type == "prompt_accepted":
+        return PromptAcceptedMessage.model_validate(payload)
     if message_type == "content_delta":
         return ContentDeltaMessage.model_validate(payload)
     if message_type == "tool_calls":
