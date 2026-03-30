@@ -86,7 +86,7 @@ async def _prompt_with_session(prompt_session: PromptSession[str], *, words: lis
 
 async def _run_prompt_loop(*, session: AgentSession, prompt_session: PromptSession[str]) -> None:
     """Keep a local prompt open and translate answers into session actions."""
-    with patch_stdout():
+    with patch_stdout(raw=True):
         while True:
             answer = await _prompt_with_session(prompt_session, words=CLI_COMMAND_NAMES)
             if await _handle_prompt_submission(session=session, answer=answer):

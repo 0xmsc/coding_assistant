@@ -1,4 +1,5 @@
 from argparse import Namespace
+from contextlib import contextmanager
 from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
@@ -6,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from rich.markdown import Markdown
 
-from coding_assistant.app.cli import _handle_prompt_submission, run_cli
+from coding_assistant.app.cli import _handle_prompt_submission, _run_prompt_loop, run_cli
 from coding_assistant.app.default_agent import DefaultAgentBundle, build_default_agent_config
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display, print_tool_calls
@@ -128,6 +129,24 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     ]
     assert mock_run_session_output.await_args is not None
     assert mock_run_session_output.await_args.kwargs["session"] is session
+
+
+@pytest.mark.asyncio
+async def test_run_prompt_loop_preserves_ansi_output() -> None:
+    captured_raw: list[bool] = []
+
+    @contextmanager
+    def fake_patch_stdout(*, raw: bool = False) -> Any:
+        captured_raw.append(raw)
+        yield
+
+    with (
+        patch("coding_assistant.app.cli.patch_stdout", fake_patch_stdout),
+        patch("coding_assistant.app.cli._prompt_with_session", new=AsyncMock(return_value="/exit")),
+    ):
+        await _run_prompt_loop(session=Mock(), prompt_session=Mock())
+
+    assert captured_raw == [True]
 
 
 def test_paragraph_buffer_respects_code_fences() -> None:
