@@ -253,7 +253,6 @@ async def test_agent_session_interrupt_cancels_current_run_and_drops_partial_out
     assert streamer.prompts == ["first", "second"]
     assert session.history == [
         *make_system_history(),
-        UserMessage(content="first"),
         UserMessage(content="second"),
         AssistantMessage(content="Done second"),
     ]
@@ -292,6 +291,55 @@ async def test_agent_session_cancel_current_run_publishes_cancellation_and_resto
     assert state_event.state.promptable is True
     assert state_event.state.running is False
     assert state_event.state.queued_prompt_count == 0
+    assert session.history == make_system_history()
+
+
+@pytest.mark.asyncio
+async def test_agent_session_cancel_with_discard_pending_prompts_leaves_history_unchanged() -> None:
+    started = asyncio.Event()
+    streamer = ControlledStreamer(
+        [
+            StreamStep(
+                message=AssistantMessage(content="Working..."),
+                started_event=started,
+                release_event=asyncio.Event(),
+            ),
+            StreamStep(message=AssistantMessage(content="Fresh result")),
+        ]
+    )
+    session = make_session(completion_streamer=streamer)
+
+    async with session.subscribe() as queue:
+        await wait_for_event(queue, StateChangedEvent)
+        assert await session.enqueue_prompt("abandoned prompt") is True
+        await asyncio.wait_for(started.wait(), timeout=1)
+        assert await session.enqueue_prompt("queued prompt") is True
+
+        await session.cancel_current_run(discard_pending_prompts=True)
+        await wait_for_event(queue, RunCancelledEvent)
+        await wait_for_matching_event(
+            queue,
+            lambda event: (
+                isinstance(event, StateChangedEvent)
+                and not event.state.running
+                and event.state.queued_prompt_count == 0
+            ),
+        )
+
+        assert session.history == make_system_history()
+
+        assert await session.enqueue_prompt("fresh prompt") is True
+        finished_event = await wait_for_event(queue, RunFinishedEvent)
+
+    await session.close()
+    assert isinstance(finished_event, RunFinishedEvent)
+    assert finished_event.summary == "Fresh result"
+    assert streamer.prompts == ["abandoned prompt", "fresh prompt"]
+    assert session.history == [
+        *make_system_history(),
+        UserMessage(content="fresh prompt"),
+        AssistantMessage(content="Fresh result"),
+    ]
 
 
 @pytest.mark.asyncio

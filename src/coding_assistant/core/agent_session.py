@@ -226,8 +226,7 @@ class AgentSession:
                         break
 
                     prompt = self._pending_prompts.popleft()
-                    self._history.append(UserMessage(content=prompt.content))
-                    current_history = list(self._history)
+                    current_history = [*self._history, UserMessage(content=prompt.content)]
                     run_task = asyncio.create_task(self._run_until_boundary(current_history))
                     self._current_run_task = run_task
 
