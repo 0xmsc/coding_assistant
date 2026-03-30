@@ -19,7 +19,7 @@ from coding_assistant.remote.server import start_worker_server
 async def run_worker(args: Namespace) -> None:
     """Run the process as a remote-controlled worker."""
     config = build_default_agent_config(args)
-    async with create_default_agent(config=config, include_worker_tools=False) as bundle:
+    async with create_default_agent(config=config) as bundle:
         if args.print_mcp_tools:
             await print_mcp_tools(bundle.mcp_servers)
             return

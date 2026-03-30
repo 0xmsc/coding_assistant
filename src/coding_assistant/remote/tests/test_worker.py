@@ -135,7 +135,7 @@ async def test_run_session_output_prints_tool_calls_without_extra_spacing() -> N
 
 
 @pytest.mark.asyncio
-async def test_run_worker_starts_worker_server_without_worker_tools_and_with_local_output(tmp_path: Path) -> None:
+async def test_run_worker_starts_worker_server_with_worker_tools_and_local_output(tmp_path: Path) -> None:
     args = Namespace(
         instructions=[],
         mcp_servers=[],
@@ -184,7 +184,7 @@ async def test_run_worker_starts_worker_server_without_worker_tools_and_with_loc
         await run_worker(args)
 
     assert captured["config"] == config
-    assert captured["include_worker_tools"] is False
+    assert captured["include_worker_tools"] is True
     assert isinstance(captured["session"], AgentSession)
     assert captured["session"].history == [
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
