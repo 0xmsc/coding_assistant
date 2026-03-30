@@ -84,7 +84,7 @@ async def test_worker_runtime_connects_prompts_and_waits_for_completion() -> Non
         assert worker_server.endpoint in worker_runtime.format_connected_workers()
 
         prompt_result = await worker_runtime.prompt(worker_server.endpoint, "Please finish the task.")
-        assert prompt_result == f"Prompt sent to worker {worker_server.endpoint}."
+        assert prompt_result == f"Prompt accepted by worker {worker_server.endpoint}.\nPlease finish the task."
 
         wait_result = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
         assert wait_result == f"Worker {worker_server.endpoint} finished:\nFinished the delegated task"
@@ -113,13 +113,13 @@ async def test_worker_runtime_queues_prompt_while_worker_is_busy() -> None:
     async with start_worker_server(session=session) as worker_server:
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert await worker_runtime.prompt(worker_server.endpoint, "Please start working.") == (
-            f"Prompt sent to worker {worker_server.endpoint}."
+            f"Prompt accepted by worker {worker_server.endpoint}.\nPlease start working."
         )
 
         await asyncio.wait_for(first_started.wait(), timeout=1)
 
         prompt_result = await worker_runtime.prompt(worker_server.endpoint, "Please do something else.")
-        assert prompt_result == f"Prompt sent to worker {worker_server.endpoint}."
+        assert prompt_result == f"Prompt accepted by worker {worker_server.endpoint}.\nPlease do something else."
 
         first_release.set()
 
@@ -155,15 +155,15 @@ async def test_worker_runtime_priority_prompt_runs_before_existing_queue() -> No
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert (
             await worker_runtime.prompt(worker_server.endpoint, "first")
-            == f"Prompt sent to worker {worker_server.endpoint}."
+            == f"Prompt accepted by worker {worker_server.endpoint}.\nfirst"
         )
         await asyncio.wait_for(first_started.wait(), timeout=1)
 
         assert await worker_runtime.prompt(worker_server.endpoint, "second") == (
-            f"Prompt sent to worker {worker_server.endpoint}."
+            f"Prompt accepted by worker {worker_server.endpoint}.\nsecond"
         )
         assert await worker_runtime.prompt(worker_server.endpoint, "priority", mode="priority") == (
-            f"Priority prompt sent to worker {worker_server.endpoint}."
+            f"Priority prompt accepted by worker {worker_server.endpoint}.\npriority"
         )
 
         first_release.set()
@@ -203,12 +203,12 @@ async def test_worker_runtime_interrupt_prompt_cancels_current_run_and_runs_new_
         assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
         assert (
             await worker_runtime.prompt(worker_server.endpoint, "first")
-            == f"Prompt sent to worker {worker_server.endpoint}."
+            == f"Prompt accepted by worker {worker_server.endpoint}.\nfirst"
         )
         await asyncio.wait_for(first_started.wait(), timeout=1)
 
         assert await worker_runtime.prompt(worker_server.endpoint, "interrupt", mode="interrupt") == (
-            f"Interrupt prompt sent to worker {worker_server.endpoint}."
+            f"Interrupt prompt accepted by worker {worker_server.endpoint}.\ninterrupt"
         )
 
         cancel_wait = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)

@@ -11,6 +11,7 @@ from websockets.exceptions import ConnectionClosed
 from coding_assistant.core.agent_session import (
     AgentSession,
     AgentSessionEvent,
+    PromptAcceptedEvent,
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
@@ -24,6 +25,7 @@ from coding_assistant.remote.protocol import (
     ContentDeltaMessage,
     ErrorMessage,
     NotReadyMessage,
+    PromptAcceptedMessage,
     PromptCommand,
     RunCancelledMessage,
     RunFailedMessage,
@@ -64,6 +66,7 @@ def _session_event_to_message(
     event: AgentSessionEvent,
 ) -> (
     StateMessage
+    | PromptAcceptedMessage
     | ContentDeltaMessage
     | ToolCallsMessage
     | RunFinishedMessage
@@ -79,6 +82,8 @@ def _session_event_to_message(
             running=event.state.running,
             queued_prompt_count=event.state.queued_prompt_count,
         )
+    if isinstance(event, PromptAcceptedEvent):
+        return PromptAcceptedMessage(content=event.content)
     if isinstance(event, ContentDeltaEvent):
         return ContentDeltaMessage(content=event.content)
     if isinstance(event, ToolCallsEvent):

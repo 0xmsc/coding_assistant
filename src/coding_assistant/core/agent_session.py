@@ -43,6 +43,13 @@ class StateChangedEvent:
 
 
 @dataclass(frozen=True)
+class PromptAcceptedEvent:
+    """Event emitted after one prompt has been accepted into the session queue."""
+
+    content: PromptContent
+
+
+@dataclass(frozen=True)
 class ToolCallsEvent:
     """Event emitted when the current run pauses for tool execution."""
 
@@ -74,6 +81,7 @@ AgentSessionEvent = (
     | StatusEvent
     | CompletionEvent
     | StateChangedEvent
+    | PromptAcceptedEvent
     | ToolCallsEvent
     | RunFinishedEvent
     | RunCancelledEvent
@@ -144,6 +152,7 @@ class AgentSession:
             else:
                 self._pending_prompts.append(queued_prompt)
             self._run_loop_wakeup.set()
+        self._publish_event(PromptAcceptedEvent(content=content))
         await self._publish_state()
         return True
 
@@ -155,6 +164,7 @@ class AgentSession:
             self._pending_prompts.appendleft(_QueuedPrompt(content=content))
             run_task = self._current_run_task
             self._run_loop_wakeup.set()
+        self._publish_event(PromptAcceptedEvent(content=content))
         await self._publish_state()
         if run_task is not None:
             run_task.cancel()

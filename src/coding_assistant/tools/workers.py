@@ -13,6 +13,7 @@ from coding_assistant.remote.protocol import (
     ContentDeltaMessage,
     ErrorMessage,
     NotReadyMessage,
+    PromptAcceptedMessage,
     RunCancelledMessage,
     RunFailedMessage,
     RunFinishedMessage,
@@ -96,11 +97,12 @@ class _WorkerManager:
 
         response = await connection.prompt(prompt, mode=mode)
         if isinstance(response, CommandAcceptedMessage):
+            prompt_text = f"\n{prompt}"
             if mode == "priority":
-                return f"Priority prompt sent to worker {endpoint}."
+                return f"Priority prompt accepted by worker {endpoint}.{prompt_text}"
             if mode == "interrupt":
-                return f"Interrupt prompt sent to worker {endpoint}."
-            return f"Prompt sent to worker {endpoint}."
+                return f"Interrupt prompt accepted by worker {endpoint}.{prompt_text}"
+            return f"Prompt accepted by worker {endpoint}.{prompt_text}"
         if isinstance(response, NotReadyMessage):
             return (
                 f"Worker {endpoint} is not ready for a prompt. "
@@ -150,6 +152,10 @@ class _WorkerManager:
             snapshot.remote_connected = message.remote_connected
             snapshot.running = message.running
             snapshot.queued_prompt_count = message.queued_prompt_count
+            return
+
+        if isinstance(message, PromptAcceptedMessage):
+            snapshot.last_update = f"Accepted prompt: {_format_prompt_preview(message.content)}"
             return
 
         if isinstance(message, ContentDeltaMessage):
@@ -258,6 +264,12 @@ def _truncate_summary(text: str, *, limit: int = 120) -> str:
     if len(stripped) <= limit:
         return stripped
     return f"{stripped[: limit - 3]}..."
+
+
+def _format_prompt_preview(content: str | list[dict[str, Any]]) -> str:
+    if isinstance(content, str):
+        return _truncate_summary(content)
+    return "structured prompt"
 
 
 def _format_meaningful_event(event: WorkerMeaningfulEvent) -> str:
