@@ -11,7 +11,7 @@ from coding_assistant.app.default_agent import (
     create_default_agent,
 )
 from coding_assistant.app.image import get_image
-from coding_assistant.app.output import format_session_status, run_session_output
+from coding_assistant.app.output import format_prompt_preview, format_session_status, run_session_output
 from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.infra.paths import get_app_cache_dir
 from coding_assistant.integrations.mcp_client import print_mcp_tools
@@ -21,8 +21,6 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.patch_stdout import patch_stdout
 from rich import print
-from rich.console import Console
-from rich.rule import Rule
 
 CLI_COMMAND_NAMES = ["/exit", "/help", "/compact", "/image", "/priority", "/interrupt"]
 
@@ -76,6 +74,24 @@ def _create_prompt_session() -> PromptSession[str]:
     )
 
 
+def _format_prompt_message(session: AgentSession) -> str:
+    """Return the dynamic prompt area, including queued prompts above the input line."""
+    state = session.state
+    if not state.pending_prompts:
+        return "> "
+
+    lines = ["queued:"]
+    for prompt in state.pending_prompts[:2]:
+        lines.append(f"- {format_prompt_preview(prompt)}")
+
+    remaining_count = state.queued_prompt_count - min(len(state.pending_prompts), 2)
+    if remaining_count > 0:
+        lines.append(f"- +{remaining_count} more")
+
+    lines.append("> ")
+    return "\n".join(lines)
+
+
 async def _prompt_with_session(
     prompt_session: PromptSession[str],
     *,
@@ -83,11 +99,9 @@ async def _prompt_with_session(
     words: list[str] | None = None,
 ) -> str:
     """Prompt for input while showing the live session status in a footer."""
-    Console().bell()
-    print(Rule(style="dim"))
     completer = SlashCompleter(words) if words else None
     return await prompt_session.prompt_async(
-        "> ",
+        lambda: _format_prompt_message(session),
         completer=completer,
         complete_while_typing=True,
         bottom_toolbar=lambda: format_session_status(session.state),
