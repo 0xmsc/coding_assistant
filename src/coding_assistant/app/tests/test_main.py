@@ -7,11 +7,17 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from rich.markdown import Markdown
 
-from coding_assistant.app.cli import _handle_prompt_submission, _run_prompt_loop, run_cli
+from coding_assistant.app.cli import _handle_prompt_submission, _prompt_with_session, _run_prompt_loop, run_cli
 from coding_assistant.app.default_agent import DefaultAgentBundle, build_default_agent_config
 from coding_assistant.app.main import main, parse_args
-from coding_assistant.app.output import DeltaRenderer, ParagraphBuffer, format_tool_call_display, print_tool_calls
-from coding_assistant.core.agent_session import AgentSession
+from coding_assistant.app.output import (
+    DeltaRenderer,
+    ParagraphBuffer,
+    format_session_status,
+    format_tool_call_display,
+    print_tool_calls,
+)
+from coding_assistant.core.agent_session import AgentSession, SessionState
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
 
@@ -149,6 +155,37 @@ async def test_run_prompt_loop_preserves_ansi_output() -> None:
     assert captured_raw == [True]
 
 
+@pytest.mark.asyncio
+async def test_prompt_with_session_passes_live_status_footer() -> None:
+    prompt_session = Mock()
+    prompt_session.prompt_async = AsyncMock(return_value="/exit")
+    session = Mock()
+    session.state = SessionState(
+        promptable=True,
+        running=False,
+        queued_prompt_count=2,
+        pending_prompts=("first queued prompt", "second queued prompt"),
+    )
+
+    with (
+        patch("coding_assistant.app.cli.Console") as mock_console,
+        patch("coding_assistant.app.cli.print"),
+    ):
+        answer = await _prompt_with_session(prompt_session, session=session, words=[])
+
+    mock_console.return_value.bell.assert_called_once_with()
+
+    assert answer == "/exit"
+    prompt_session.prompt_async.assert_awaited_once()
+    call = prompt_session.prompt_async.await_args
+    assert call is not None
+    assert call.args == ("> ",)
+    assert call.kwargs["refresh_interval"] == 0.1
+    toolbar = call.kwargs["bottom_toolbar"]
+    assert callable(toolbar)
+    assert toolbar() == "idle | queued: 2 | next: first queued prompt | then: second queued prompt"
+
+
 def test_paragraph_buffer_respects_code_fences() -> None:
     buffer = ParagraphBuffer()
 
@@ -226,6 +263,19 @@ def test_format_tool_call_markdown_formats_multiline_arguments() -> None:
 
     assert header == "shell_execute(command, background=false)"
     assert body_sections == [("command", "echo hello\npwd", "bash")]
+
+
+def test_format_session_status_summarizes_pending_prompts() -> None:
+    state = SessionState(
+        promptable=True,
+        running=True,
+        queued_prompt_count=3,
+        pending_prompts=("first queued prompt", "second queued prompt", "third queued prompt"),
+    )
+
+    assert format_session_status(state) == (
+        "running | queued: 3 | next: first queued prompt | then: second queued prompt | +1 more"
+    )
 
 
 def test_format_tool_call_markdown_hides_edit_payload_values() -> None:

@@ -13,7 +13,13 @@ from rich.markdown import Markdown
 
 from coding_assistant.app.default_agent import DefaultAgentBundle, DefaultAgentConfig
 from coding_assistant.app.output import run_session_output
-from coding_assistant.core.agent_session import AgentSession, PromptAcceptedEvent, ToolCallsEvent
+from coding_assistant.core.agent_session import (
+    AgentSession,
+    PromptAcceptedEvent,
+    SessionState,
+    StateChangedEvent,
+    ToolCallsEvent,
+)
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -162,6 +168,43 @@ async def test_run_session_output_prints_tool_calls_without_extra_spacing() -> N
 
 
 @pytest.mark.asyncio
+async def test_run_session_output_prints_status_updates_when_enabled() -> None:
+    session = make_agent_session(
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+    )
+    system_message = SystemMessage(content="System")
+
+    with (
+        patch("coding_assistant.app.output.print_system_message"),
+        patch("coding_assistant.app.output.rich_print") as mock_rich_print,
+    ):
+        task = asyncio.create_task(
+            run_session_output(session=session, system_message=system_message, show_state_updates=True)
+        )
+        try:
+            await asyncio.sleep(0)
+            session._publish_event(
+                StateChangedEvent(
+                    state=SessionState(
+                        promptable=True,
+                        running=False,
+                        queued_prompt_count=2,
+                        pending_prompts=("queued one", "queued two"),
+                    )
+                )
+            )
+            await asyncio.sleep(0)
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            await session.close()
+
+    printed_lines = [call.args[0] for call in mock_rich_print.call_args_list if call.args]
+    assert "[dim]idle | queued: 0[/dim]" in printed_lines
+    assert "[dim]idle | queued: 2 | next: queued one | then: queued two[/dim]" in printed_lines
+
+
+@pytest.mark.asyncio
 async def test_run_worker_starts_worker_server_with_worker_tools_and_local_output(tmp_path: Path) -> None:
     args = Namespace(
         instructions=[],
@@ -191,9 +234,10 @@ async def test_run_worker_starts_worker_server_with_worker_tools_and_local_outpu
         captured["session"] = session
         yield WorkerServer(endpoint="ws://127.0.0.1:1234")
 
-    async def fake_run_session_output(*, session: Any, system_message: Any) -> None:
+    async def fake_run_session_output(*, session: Any, system_message: Any, show_state_updates: bool = False) -> None:
         captured["output_session"] = session
         captured["output_system_message"] = system_message
+        captured["show_state_updates"] = show_state_updates
         await asyncio.Future()
 
     def resolved_future() -> asyncio.Future[None]:
@@ -217,3 +261,4 @@ async def test_run_worker_starts_worker_server_with_worker_tools_and_local_outpu
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
     ]
     assert captured["output_session"] is captured["session"]
+    assert captured["show_state_updates"] is True

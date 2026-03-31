@@ -11,7 +11,7 @@ from coding_assistant.app.default_agent import (
     create_default_agent,
 )
 from coding_assistant.app.image import get_image
-from coding_assistant.app.output import run_session_output
+from coding_assistant.app.output import format_session_status, run_session_output
 from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.infra.paths import get_app_cache_dir
 from coding_assistant.integrations.mcp_client import print_mcp_tools
@@ -76,19 +76,30 @@ def _create_prompt_session() -> PromptSession[str]:
     )
 
 
-async def _prompt_with_session(prompt_session: PromptSession[str], *, words: list[str] | None = None) -> str:
-    """Prompt for input with optional slash-command completion."""
+async def _prompt_with_session(
+    prompt_session: PromptSession[str],
+    *,
+    session: AgentSession,
+    words: list[str] | None = None,
+) -> str:
+    """Prompt for input while showing the live session status in a footer."""
     Console().bell()
     print(Rule(style="dim"))
     completer = SlashCompleter(words) if words else None
-    return await prompt_session.prompt_async("> ", completer=completer, complete_while_typing=True)
+    return await prompt_session.prompt_async(
+        "> ",
+        completer=completer,
+        complete_while_typing=True,
+        bottom_toolbar=lambda: format_session_status(session.state),
+        refresh_interval=0.1,
+    )
 
 
 async def _run_prompt_loop(*, session: AgentSession, prompt_session: PromptSession[str]) -> None:
     """Keep a local prompt open and translate answers into session actions."""
     with patch_stdout(raw=True):
         while True:
-            answer = await _prompt_with_session(prompt_session, words=CLI_COMMAND_NAMES)
+            answer = await _prompt_with_session(prompt_session, session=session, words=CLI_COMMAND_NAMES)
             if await _handle_prompt_submission(session=session, answer=answer):
                 return
 

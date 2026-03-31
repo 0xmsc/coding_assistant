@@ -15,6 +15,7 @@ from coding_assistant.core.agent_session import (
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
+    SessionState,
     StateChangedEvent,
     ToolCallsEvent,
 )
@@ -173,9 +174,46 @@ def print_prompt_accepted(content: str | list[dict[str, Any]]) -> None:
     rich_print(Markdown("```json\n" + json.dumps(content, indent=2) + "\n```"))
 
 
-async def run_session_output(*, session: AgentSession, system_message: SystemMessage) -> None:
+def format_prompt_preview(content: str | list[dict[str, Any]], *, limit: int = 40) -> str:
+    """Return one compact prompt preview suitable for footer/status display."""
+    if not isinstance(content, str):
+        return "structured prompt"
+
+    preview = " ".join(content.split())
+    if len(preview) <= limit:
+        return preview
+    return f"{preview[: limit - 3]}..."
+
+
+def format_session_status(state: SessionState) -> str:
+    """Return one compact session status line for the prompt footer or worker output."""
+    status = "running" if state.running else "idle"
+    parts = [status, f"queued: {state.queued_prompt_count}"]
+    if state.pending_prompts:
+        previews = [format_prompt_preview(prompt) for prompt in state.pending_prompts[:2]]
+        parts.append(f"next: {previews[0]}")
+        if len(previews) > 1:
+            parts.append(f"then: {previews[1]}")
+        remaining_count = state.queued_prompt_count - len(previews)
+        if remaining_count > 0:
+            parts.append(f"+{remaining_count} more")
+    return " | ".join(parts)
+
+
+def print_session_status(state: SessionState) -> None:
+    """Render one compact status line."""
+    rich_print(f"[dim]{format_session_status(state)}[/dim]")
+
+
+async def run_session_output(
+    *,
+    session: AgentSession,
+    system_message: SystemMessage,
+    show_state_updates: bool = False,
+) -> None:
     """Render one session's streamed events to the local terminal."""
     renderer = DeltaRenderer()
+    last_state_summary: str | None = None
     print_system_message(system_message)
 
     async with session.subscribe() as queue:
@@ -203,7 +241,17 @@ async def run_session_output(*, session: AgentSession, system_message: SystemMes
                     renderer.finish()
                     rich_print(f"[bold red]Run failed:[/bold red] {event.error}")
                     continue
-                if isinstance(event, (StateChangedEvent, ReasoningDeltaEvent, StatusEvent, CompletionEvent)):
+                if isinstance(event, StateChangedEvent):
+                    if not show_state_updates:
+                        continue
+                    state_summary = format_session_status(event.state)
+                    if state_summary == last_state_summary:
+                        continue
+                    last_state_summary = state_summary
+                    renderer.finish(trailing_blank_line=False)
+                    print_session_status(event.state)
+                    continue
+                if isinstance(event, (ReasoningDeltaEvent, StatusEvent, CompletionEvent)):
                     continue
         finally:
             renderer.finish()
