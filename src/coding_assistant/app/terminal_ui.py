@@ -61,11 +61,11 @@ def format_queued_prompts(session: AgentSession) -> str:
 
     lines: list[str] = []
     for prompt in state.pending_prompts[:2]:
-        lines.append(format_prompt_preview(prompt))
+        lines.append(f"↳ {format_prompt_preview(prompt)}")
 
     remaining_count = state.queued_prompt_count - min(len(state.pending_prompts), 2)
     if remaining_count > 0:
-        lines.append(f"+{remaining_count} more")
+        lines.append(f"↳ +{remaining_count} more")
 
     return "\n".join(lines)
 

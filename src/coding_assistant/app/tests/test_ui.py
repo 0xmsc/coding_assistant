@@ -105,7 +105,7 @@ def test_format_queued_prompts_shows_pending_prompts() -> None:
         pending_prompts=("first queued prompt", "second queued prompt", "third queued prompt"),
     )
 
-    assert format_queued_prompts(session) == "first queued prompt\nsecond queued prompt\n+1 more"
+    assert format_queued_prompts(session) == "↳ first queued prompt\n↳ second queued prompt\n↳ +1 more"
 
 
 @pytest.mark.asyncio
