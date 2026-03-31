@@ -168,6 +168,7 @@ async def test_agent_session_queues_prompts_fifo_while_run_is_in_flight() -> Non
         assert await session.enqueue_prompt("first") is True
         await asyncio.wait_for(first_started.wait(), timeout=1)
         assert await session.enqueue_prompt("second") is True
+        assert session.state.pending_prompts == ("second",)
 
         first_release.set()
 
@@ -318,6 +319,7 @@ async def test_agent_session_cancel_with_discard_pending_prompts_leaves_history_
         assert await session.enqueue_prompt("abandoned prompt") is True
         await asyncio.wait_for(started.wait(), timeout=1)
         assert await session.enqueue_prompt("queued prompt") is True
+        assert session.state.pending_prompts == ("queued prompt",)
 
         await session.cancel_current_run(discard_pending_prompts=True)
         await wait_for_event(queue, RunCancelledEvent)
@@ -331,6 +333,7 @@ async def test_agent_session_cancel_with_discard_pending_prompts_leaves_history_
         )
 
         assert session.history == make_system_history()
+        assert session.state.pending_prompts == ()
 
         assert await session.enqueue_prompt("fresh prompt") is True
         finished_event = await wait_for_event(queue, RunFinishedEvent)

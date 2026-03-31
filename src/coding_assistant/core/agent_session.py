@@ -33,6 +33,7 @@ class SessionState:
     promptable: bool
     running: bool
     queued_prompt_count: int
+    pending_prompts: tuple[PromptContent, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -130,6 +131,7 @@ class AgentSession:
             promptable=not self._closed,
             running=self._current_run_task is not None,
             queued_prompt_count=len(self._pending_prompts),
+            pending_prompts=tuple(prompt.content for prompt in self._pending_prompts),
         )
 
     @property

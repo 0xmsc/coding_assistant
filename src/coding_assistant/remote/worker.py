@@ -30,7 +30,9 @@ async def run_worker(args: Namespace) -> None:
             model=args.model,
             tools=bundle.tools,
         )
-        output_task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
+        output_task = asyncio.create_task(
+            run_session_output(session=session, system_message=system_message, show_state_updates=True)
+        )
         # Let the renderer subscribe before the worker starts accepting prompts.
         await asyncio.sleep(0)
         try:
