@@ -14,6 +14,7 @@ from rich.panel import Panel
 
 from coding_assistant.app.default_agent import DefaultAgentBundle, DefaultAgentConfig
 from coding_assistant.app.output import run_session_output
+from coding_assistant.app.terminal_ui import TerminalUiMode
 from coding_assistant.core.agent_session import (
     AgentSession,
     PromptAcceptedEvent,
@@ -242,10 +243,15 @@ async def test_run_worker_starts_worker_server_with_worker_tools_and_local_outpu
         captured["session"] = session
         yield WorkerServer(endpoint="ws://127.0.0.1:1234")
 
-    async def fake_run_session_output(*, session: Any, system_message: Any, show_state_updates: bool = False) -> None:
+    async def fake_run_terminal_ui(
+        *,
+        session: Any,
+        system_message: Any,
+        mode: TerminalUiMode,
+    ) -> None:
         captured["output_session"] = session
         captured["output_system_message"] = system_message
-        captured["show_state_updates"] = show_state_updates
+        captured["mode"] = mode
         await asyncio.Future()
 
     def resolved_future() -> asyncio.Future[None]:
@@ -257,7 +263,7 @@ async def test_run_worker_starts_worker_server_with_worker_tools_and_local_outpu
         patch("coding_assistant.remote.worker.build_default_agent_config", return_value=config),
         patch("coding_assistant.remote.worker.create_default_agent", fake_create_default_agent),
         patch("coding_assistant.remote.worker.start_worker_server", fake_start_worker_server),
-        patch("coding_assistant.remote.worker.run_session_output", new=fake_run_session_output),
+        patch("coding_assistant.remote.worker.run_terminal_ui", new=fake_run_terminal_ui),
         patch("coding_assistant.remote.worker.asyncio.Future", new=resolved_future),
     ):
         await run_worker(args)
@@ -269,4 +275,4 @@ async def test_run_worker_starts_worker_server_with_worker_tools_and_local_outpu
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
     ]
     assert captured["output_session"] is captured["session"]
-    assert captured["show_state_updates"] is True
+    assert captured["mode"] is TerminalUiMode.READONLY

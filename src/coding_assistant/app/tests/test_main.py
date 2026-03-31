@@ -1,5 +1,4 @@
 from argparse import Namespace
-from contextlib import contextmanager
 from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
@@ -8,13 +7,7 @@ import pytest
 from rich.markdown import Markdown
 from rich.panel import Panel
 
-from coding_assistant.app.cli import (
-    _format_prompt_message,
-    _handle_prompt_submission,
-    _prompt_with_session,
-    _run_prompt_loop,
-    run_cli,
-)
+from coding_assistant.app.cli import _handle_prompt_submission, run_cli
 from coding_assistant.app.default_agent import DefaultAgentBundle, build_default_agent_config
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import (
@@ -24,6 +17,7 @@ from coding_assistant.app.output import (
     format_tool_call_display,
     print_tool_calls,
 )
+from coding_assistant.app.terminal_ui import TerminalUiMode
 from coding_assistant.core.agent_session import AgentSession, SessionState
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
@@ -129,75 +123,29 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
 
     with (
         patch("coding_assistant.app.cli.create_default_agent", fake_create_default_agent),
-        patch("coding_assistant.app.cli._run_prompt_loop", new=AsyncMock()) as mock_prompt_loop,
-        patch("coding_assistant.app.cli.run_session_output", new=AsyncMock()) as mock_run_session_output,
+        patch("coding_assistant.app.cli.run_terminal_ui", new=AsyncMock()) as mock_run_terminal_ui,
     ):
         await run_cli(args)
 
-    assert mock_prompt_loop.await_args is not None
-    session = mock_prompt_loop.await_args.kwargs["session"]
+    assert mock_run_terminal_ui.await_args is not None
+    session = mock_run_terminal_ui.await_args.kwargs["session"]
     assert isinstance(session, AgentSession)
     assert session.history == [
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
     ]
-    assert mock_run_session_output.await_args is not None
-    assert mock_run_session_output.await_args.kwargs["session"] is session
-
-
-@pytest.mark.asyncio
-async def test_run_prompt_loop_preserves_ansi_output() -> None:
-    captured_raw: list[bool] = []
-
-    @contextmanager
-    def fake_patch_stdout(*, raw: bool = False) -> Any:
-        captured_raw.append(raw)
-        yield
-
-    with (
-        patch("coding_assistant.app.cli.patch_stdout", fake_patch_stdout),
-        patch("coding_assistant.app.cli._prompt_with_session", new=AsyncMock(return_value="/exit")),
-    ):
-        await _run_prompt_loop(session=Mock(), prompt_session=Mock())
-
-    assert captured_raw == [True]
-
-
-@pytest.mark.asyncio
-async def test_prompt_with_session_passes_live_status_footer() -> None:
-    prompt_session = Mock()
-    prompt_session.prompt_async = AsyncMock(return_value="/exit")
-    session = Mock()
-    session.state = SessionState(
-        promptable=True,
-        running=False,
-        queued_prompt_count=2,
-        pending_prompts=("first queued prompt", "second queued prompt"),
+    assert mock_run_terminal_ui.await_args.kwargs["system_message"] == SystemMessage(
+        content=build_system_prompt(instructions="Follow the repo instructions.")
     )
-
-    answer = await _prompt_with_session(prompt_session, session=session, words=[])
-
-    assert answer == "/exit"
-    prompt_session.prompt_async.assert_awaited_once()
-    call = prompt_session.prompt_async.await_args
-    assert call is not None
-    assert callable(call.args[0])
-    assert call.args[0]() == "queued:\n- first queued prompt\n- second queued prompt\n> "
-    assert call.kwargs["refresh_interval"] == 0.1
-    toolbar = call.kwargs["bottom_toolbar"]
-    assert callable(toolbar)
-    assert toolbar() == "idle | queued: 2 | next: first queued prompt | then: second queued prompt"
-
-
-def test_format_prompt_message_shows_pending_prompts_above_input() -> None:
-    session = Mock()
-    session.state = SessionState(
-        promptable=True,
-        running=True,
-        queued_prompt_count=3,
-        pending_prompts=("first queued prompt", "second queued prompt", "third queued prompt"),
-    )
-
-    assert _format_prompt_message(session) == ("queued:\n- first queued prompt\n- second queued prompt\n- +1 more\n> ")
+    assert mock_run_terminal_ui.await_args.kwargs["mode"] is TerminalUiMode.INTERACTIVE
+    assert mock_run_terminal_ui.await_args.kwargs["history_path"].name == "history"
+    assert mock_run_terminal_ui.await_args.kwargs["words"] == [
+        "/exit",
+        "/help",
+        "/compact",
+        "/image",
+        "/priority",
+        "/interrupt",
+    ]
 
 
 def test_paragraph_buffer_respects_code_fences() -> None:
