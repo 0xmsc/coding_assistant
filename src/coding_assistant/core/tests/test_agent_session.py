@@ -341,6 +341,8 @@ async def test_agent_session_cancel_current_run_publishes_cancellation_and_resto
         await session.cancel_current_run()
 
         cancelled_event = await wait_for_event(queue, RunCancelledEvent)
+        assert session.state.running is False
+        assert session.state.queued_prompt_count == 0
         state_event = await wait_for_matching_event(
             queue,
             lambda event: isinstance(event, StateChangedEvent) and not event.state.running,
@@ -449,6 +451,8 @@ async def test_agent_session_publishes_run_failed_event() -> None:
         await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("Hi") is True
         failed_event = await wait_for_event(queue, RunFailedEvent)
+        assert session.state.running is False
+        assert session.state.queued_prompt_count == 0
 
     await session.close()
     assert isinstance(failed_event, RunFailedEvent)
