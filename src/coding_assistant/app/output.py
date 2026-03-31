@@ -220,6 +220,7 @@ async def run_session_output(
     session: AgentSession,
     system_message: SystemMessage,
     show_state_updates: bool = False,
+    show_prompt_accepted: bool = True,
 ) -> None:
     """Render one session's streamed events to the local terminal."""
     renderer = DeltaRenderer()
@@ -234,6 +235,8 @@ async def run_session_output(
                     renderer.on_delta(event.content)
                     continue
                 if isinstance(event, PromptAcceptedEvent):
+                    if not show_prompt_accepted:
+                        continue
                     renderer.finish()
                     print_prompt_accepted(event.content)
                     continue

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import asyncio
-import re
 from argparse import Namespace
-from collections.abc import Iterable
+
+from rich import print
 
 from coding_assistant.app.default_agent import (
     build_default_agent_config,
@@ -11,37 +10,17 @@ from coding_assistant.app.default_agent import (
     create_default_agent,
 )
 from coding_assistant.app.image import get_image
-from coding_assistant.app.output import format_prompt_preview, format_session_status, run_session_output
+from coding_assistant.app.terminal_ui import TerminalUiMode, run_terminal_ui
 from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.infra.paths import get_app_cache_dir
 from coding_assistant.integrations.mcp_client import print_mcp_tools
-from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import CompleteEvent, Completer, Completion, WordCompleter
-from prompt_toolkit.document import Document
-from prompt_toolkit.history import FileHistory
-from prompt_toolkit.patch_stdout import patch_stdout
-from rich import print
 
 CLI_COMMAND_NAMES = ["/exit", "/help", "/compact", "/image", "/priority", "/interrupt"]
-
-
-class SlashCompleter(Completer):
-    """Autocomplete only slash-prefixed commands."""
-
-    def __init__(self, words: list[str]):
-        self.pattern = re.compile(r"/[a-zA-Z0-9_]*")
-        self.word_completer = WordCompleter(words, pattern=self.pattern)
-
-    def get_completions(self, document: Document, complete_event: CompleteEvent) -> Iterable[Completion]:
-        """Yield slash-command completions when the prompt starts with `/`."""
-        if document.text_before_cursor.startswith("/"):
-            yield from self.word_completer.get_completions(document, complete_event)
 
 
 async def run_cli(args: Namespace) -> None:
     """Run the interactive CLI entry point."""
     config = build_default_agent_config(args)
-    prompt_session = _create_prompt_session()
 
     async with create_default_agent(config=config) as bundle:
         if args.print_mcp_tools:
@@ -54,68 +33,17 @@ async def run_cli(args: Namespace) -> None:
             model=args.model,
             tools=bundle.tools,
         )
-        output_task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
         try:
-            await _run_prompt_loop(session=session, prompt_session=prompt_session)
+            await run_terminal_ui(
+                session=session,
+                system_message=system_message,
+                mode=TerminalUiMode.INTERACTIVE,
+                history_path=get_app_cache_dir() / "history",
+                words=CLI_COMMAND_NAMES,
+                submit_handler=lambda answer: _handle_prompt_submission(session=session, answer=answer),
+            )
         finally:
             await session.close()
-            output_task.cancel()
-            await asyncio.gather(output_task, return_exceptions=True)
-
-
-def _create_prompt_session() -> PromptSession[str]:
-    """Create the prompt-toolkit session used by the interactive CLI."""
-    history_dir = get_app_cache_dir()
-    history_dir.mkdir(parents=True, exist_ok=True)
-    history_file = history_dir / "history"
-    return PromptSession(
-        history=FileHistory(str(history_file)),
-        enable_open_in_editor=True,
-    )
-
-
-def _format_prompt_message(session: AgentSession) -> str:
-    """Return the dynamic prompt area, including queued prompts above the input line."""
-    state = session.state
-    if not state.pending_prompts:
-        return "> "
-
-    lines = ["queued:"]
-    for prompt in state.pending_prompts[:2]:
-        lines.append(f"- {format_prompt_preview(prompt)}")
-
-    remaining_count = state.queued_prompt_count - min(len(state.pending_prompts), 2)
-    if remaining_count > 0:
-        lines.append(f"- +{remaining_count} more")
-
-    lines.append("> ")
-    return "\n".join(lines)
-
-
-async def _prompt_with_session(
-    prompt_session: PromptSession[str],
-    *,
-    session: AgentSession,
-    words: list[str] | None = None,
-) -> str:
-    """Prompt for input while showing the live session status in a footer."""
-    completer = SlashCompleter(words) if words else None
-    return await prompt_session.prompt_async(
-        lambda: _format_prompt_message(session),
-        completer=completer,
-        complete_while_typing=True,
-        bottom_toolbar=lambda: format_session_status(session.state),
-        refresh_interval=0.1,
-    )
-
-
-async def _run_prompt_loop(*, session: AgentSession, prompt_session: PromptSession[str]) -> None:
-    """Keep a local prompt open and translate answers into session actions."""
-    with patch_stdout(raw=True):
-        while True:
-            answer = await _prompt_with_session(prompt_session, session=session, words=CLI_COMMAND_NAMES)
-            if await _handle_prompt_submission(session=session, answer=answer):
-                return
 
 
 async def _handle_prompt_submission(*, session: AgentSession, answer: str) -> bool:

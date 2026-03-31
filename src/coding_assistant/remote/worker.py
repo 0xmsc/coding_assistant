@@ -10,7 +10,7 @@ from coding_assistant.app.default_agent import (
     build_initial_system_message,
     create_default_agent,
 )
-from coding_assistant.app.output import run_session_output
+from coding_assistant.app.terminal_ui import TerminalUiMode, run_terminal_ui
 from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.integrations.mcp_client import print_mcp_tools
 from coding_assistant.remote.server import start_worker_server
@@ -31,9 +31,13 @@ async def run_worker(args: Namespace) -> None:
             tools=bundle.tools,
         )
         output_task = asyncio.create_task(
-            run_session_output(session=session, system_message=system_message, show_state_updates=True)
+            run_terminal_ui(
+                session=session,
+                system_message=system_message,
+                mode=TerminalUiMode.READONLY,
+            )
         )
-        # Let the renderer subscribe before the worker starts accepting prompts.
+        # Let the terminal UI subscribe before the worker starts accepting prompts.
         await asyncio.sleep(0)
         try:
             async with start_worker_server(session=session) as worker_server:
