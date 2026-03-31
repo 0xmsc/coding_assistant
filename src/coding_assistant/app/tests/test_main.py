@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from rich.markdown import Markdown
-from rich.panel import Panel
+from rich.styled import Styled
 
 from coding_assistant.app.cli import _handle_prompt_submission, run_cli
 from coding_assistant.app.default_agent import DefaultAgentBundle, build_default_agent_config
@@ -240,17 +240,18 @@ def test_format_session_status_summarizes_pending_prompts() -> None:
     )
 
 
-def test_print_prompt_accepted_uses_subdued_panel() -> None:
+def test_print_prompt_accepted_uses_simple_grey_background() -> None:
     with patch("coding_assistant.app.output.rich_print") as mock_print:
         from coding_assistant.app.output import print_prompt_accepted
 
         print_prompt_accepted("Do the task")
 
-    assert mock_print.call_args_list[0].args == ()
-    assert isinstance(mock_print.call_args_list[1].args[0], Panel)
-    panel = mock_print.call_args_list[1].args[0]
-    assert isinstance(panel.renderable, Markdown)
-    assert panel.renderable.markup == "Do the task"
+    assert len(mock_print.call_args_list) == 1
+    styled = mock_print.call_args_list[0].args[0]
+    assert isinstance(styled, Styled)
+    assert isinstance(styled.renderable, Markdown)
+    assert styled.renderable.markup == "Do the task"
+    assert str(styled.style) == "on grey11"
 
 
 def test_format_tool_call_markdown_hides_edit_payload_values() -> None:

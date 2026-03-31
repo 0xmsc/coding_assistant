@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.styled import Styled
 
 from coding_assistant.app.default_agent import DefaultAgentBundle, DefaultAgentConfig
 from coding_assistant.app.output import run_session_output
@@ -96,12 +97,16 @@ async def test_run_session_output_renders_system_message_and_streamed_content() 
     panel_blocks = [
         call.args[0] for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Panel)
     ]
+    styled_blocks = [
+        call.args[0] for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Styled)
+    ]
     markdown_blocks = [
         call.args[0] for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Markdown)
     ]
-    assert len(panel_blocks) == 1
-    assert isinstance(panel_blocks[0].renderable, Markdown)
-    assert panel_blocks[0].renderable.markup == "Hi"
+    assert len(panel_blocks) == 0
+    assert len(styled_blocks) == 1
+    assert isinstance(styled_blocks[0].renderable, Markdown)
+    assert styled_blocks[0].renderable.markup == "Hi"
     assert [block.markup for block in markdown_blocks] == ["Hello from the worker"]
 
 
@@ -126,11 +131,11 @@ async def test_run_session_output_prints_accepted_prompt_before_run_output() -> 
             await asyncio.gather(task, return_exceptions=True)
             await session.close()
 
-    assert mock_rich_print.call_args_list[0].args == ()
-    assert isinstance(mock_rich_print.call_args_list[1].args[0], Panel)
-    panel = mock_rich_print.call_args_list[1].args[0]
-    assert isinstance(panel.renderable, Markdown)
-    assert panel.renderable.markup == "Do the task"
+    assert len(mock_rich_print.call_args_list) == 1
+    styled = mock_rich_print.call_args_list[0].args[0]
+    assert isinstance(styled, Styled)
+    assert isinstance(styled.renderable, Markdown)
+    assert styled.renderable.markup == "Do the task"
 
 
 @pytest.mark.asyncio
