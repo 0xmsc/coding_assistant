@@ -242,9 +242,9 @@ def test_format_session_status_summarizes_pending_prompts() -> None:
 
 def test_print_prompt_accepted_uses_simple_grey_background() -> None:
     with patch("coding_assistant.app.output.rich_print") as mock_print:
-        from coding_assistant.app.output import print_prompt_accepted
+        from coding_assistant.app.output import print_active_prompt
 
-        print_prompt_accepted("Do the task")
+        print_active_prompt("Do the task")
 
     assert len(mock_print.call_args_list) == 1
     styled = mock_print.call_args_list[0].args[0]

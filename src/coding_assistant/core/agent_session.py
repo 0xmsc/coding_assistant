@@ -51,6 +51,13 @@ class PromptAcceptedEvent:
 
 
 @dataclass(frozen=True)
+class PromptStartedEvent:
+    """Event emitted when a queued prompt begins running."""
+
+    content: PromptContent
+
+
+@dataclass(frozen=True)
 class ToolCallsEvent:
     """Event emitted when the current run pauses for tool execution."""
 
@@ -83,6 +90,7 @@ AgentSessionEvent = (
     | CompletionEvent
     | StateChangedEvent
     | PromptAcceptedEvent
+    | PromptStartedEvent
     | ToolCallsEvent
     | RunFinishedEvent
     | RunCancelledEvent
@@ -242,6 +250,7 @@ class AgentSession:
                     run_task = asyncio.create_task(self._run_until_boundary(current_history))
                     self._current_run_task = run_task
 
+                self._publish_event(PromptStartedEvent(content=prompt.content))
                 await self._publish_state()
                 try:
                     result = await run_task

@@ -11,6 +11,7 @@ from coding_assistant.core.agent_session import (
     AgentSession,
     AgentSessionEvent,
     PromptAcceptedEvent,
+    PromptStartedEvent,
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
@@ -187,6 +188,61 @@ async def test_agent_session_queues_prompts_fifo_while_run_is_in_flight() -> Non
         UserMessage(content="second"),
         AssistantMessage(content="Second result"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_agent_session_starts_queued_prompt_only_after_current_run_finishes() -> None:
+    first_started = asyncio.Event()
+    first_release = asyncio.Event()
+    second_started = asyncio.Event()
+    streamer = ControlledStreamer(
+        [
+            StreamStep(
+                message=AssistantMessage(content="First result"),
+                started_event=first_started,
+                release_event=first_release,
+            ),
+            StreamStep(
+                message=AssistantMessage(content="Second result"),
+                started_event=second_started,
+            ),
+        ]
+    )
+    session = make_session(completion_streamer=streamer)
+
+    async with session.subscribe() as queue:
+        await wait_for_event(queue, StateChangedEvent)
+        assert await session.enqueue_prompt("first") is True
+        await wait_for_matching_event(
+            queue,
+            lambda event: isinstance(event, PromptStartedEvent) and event.content == "first",
+        )
+        await asyncio.wait_for(first_started.wait(), timeout=1)
+
+        assert await session.enqueue_prompt("second") is True
+        await wait_for_matching_event(
+            queue,
+            lambda event: isinstance(event, PromptAcceptedEvent) and event.content == "second",
+        )
+
+        await asyncio.sleep(0)
+        pending_events: list[AgentSessionEvent] = []
+        while not queue.empty():
+            pending_events.append(queue.get_nowait())
+        assert not any(isinstance(event, PromptStartedEvent) and event.content == "second" for event in pending_events)
+        assert second_started.is_set() is False
+
+        first_release.set()
+
+        await asyncio.wait_for(second_started.wait(), timeout=1)
+        finished_event = await wait_for_matching_event(
+            queue,
+            lambda event: isinstance(event, RunFinishedEvent) and event.summary == "Second result",
+        )
+
+    await session.close()
+    assert isinstance(finished_event, RunFinishedEvent)
+    assert finished_event.summary == "Second result"
 
 
 @pytest.mark.asyncio
