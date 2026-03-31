@@ -5,10 +5,10 @@ import os
 from typing import Any
 
 from rich import print as rich_print
-from rich import box
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.panel import Panel
+from rich.styled import Styled
 
 from coding_assistant.core.agent_session import (
     AgentSession,
@@ -172,16 +172,7 @@ def print_prompt_accepted(content: str | list[dict[str, Any]]) -> None:
     else:
         renderable = Markdown("```json\n" + json.dumps(content, indent=2) + "\n```")
 
-    rich_print()
-    rich_print(
-        Panel(
-            renderable,
-            box=box.SQUARE,
-            border_style="grey35",
-            style="on grey11",
-            padding=(0, 1),
-        )
-    )
+    rich_print(Styled(renderable, "on grey11"))
 
 
 def format_prompt_preview(content: str | list[dict[str, Any]], *, limit: int = 40) -> str:

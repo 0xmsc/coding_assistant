@@ -14,7 +14,7 @@ from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import HSplit, Layout, Window
+from prompt_toolkit.layout import HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.containers import AnyContainer, ConditionalContainer
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
@@ -97,6 +97,7 @@ def create_terminal_application(
     )
 
     key_bindings = KeyBindings()
+    input_row: AnyContainer | None = None
     input_window: Window | None = None
     answer_queue: asyncio.Queue[str] | None = None
 
@@ -127,6 +128,17 @@ def create_terminal_application(
             content=BufferControl(buffer=input_buffer),
             height=Dimension.exact(1),
         )
+        input_row = VSplit(
+            [
+                Window(
+                    content=FormattedTextControl([("class:prompt", "> ")], show_cursor=False),
+                    width=Dimension.exact(2),
+                    dont_extend_height=True,
+                ),
+                input_window,
+            ],
+            padding=0,
+        )
 
         @key_bindings.add("c-d")
         def exit_on_eof(event: Any) -> None:
@@ -134,8 +146,8 @@ def create_terminal_application(
                 event.app.exit()
 
     body: list[AnyContainer] = [queued_window]
-    if input_window is not None:
-        body.append(input_window)
+    if input_row is not None:
+        body.append(input_row)
     body.append(footer_window)
 
     layout = (
@@ -149,6 +161,7 @@ def create_terminal_application(
         key_bindings=key_bindings,
         style=Style.from_dict(
             {
+                "prompt": "#bbbbbb",
                 "queued": "#888888",
                 "footer": "#888888",
             }
@@ -182,7 +195,6 @@ async def run_terminal_ui(
         run_session_output(
             session=session,
             system_message=system_message,
-            show_prompt_accepted=False,
         )
     )
 

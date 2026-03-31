@@ -1,16 +1,23 @@
+import asyncio
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock, patch
 
+import pytest
 from prompt_toolkit.document import Document
+from prompt_toolkit.layout import HSplit, VSplit, Window
+from prompt_toolkit.layout.containers import ConditionalContainer
+from prompt_toolkit.layout.controls import FormattedTextControl
 
 from coding_assistant.app.terminal_ui import (
     SlashCompleter,
     TerminalUiMode,
     create_terminal_application,
     format_queued_prompts,
+    run_terminal_ui,
 )
 from coding_assistant.core.agent_session import SessionState
+from coding_assistant.llm.types import SystemMessage
 
 
 def test_slash_completer() -> None:
@@ -58,6 +65,16 @@ def test_create_terminal_application_builds_non_fullscreen_interactive_ui(tmp_pa
     assert application.refresh_interval == 0.1
     assert answer_queue is not None
     assert answer_queue.empty()
+    container = application.layout.container
+    assert isinstance(container, HSplit)
+    layout_children = container.children
+    assert isinstance(layout_children[0], ConditionalContainer)
+    input_row = layout_children[1]
+    assert isinstance(input_row, VSplit)
+    prompt_window = input_row.children[0]
+    assert isinstance(prompt_window, Window)
+    assert isinstance(prompt_window.content, FormattedTextControl)
+    assert prompt_window.content.text == [("class:prompt", "> ")]
 
 
 def test_create_terminal_application_builds_non_fullscreen_readonly_ui() -> None:
@@ -89,3 +106,32 @@ def test_format_queued_prompts_shows_pending_prompts() -> None:
     )
 
     assert format_queued_prompts(session) == "first queued prompt\nsecond queued prompt\n+1 more"
+
+
+@pytest.mark.asyncio
+async def test_run_terminal_ui_prints_accepted_prompts_in_transcript() -> None:
+    async def run_async() -> None:
+        await asyncio.sleep(0)
+
+    application = Mock()
+    application.run_async = AsyncMock(side_effect=run_async)
+    application.exit = Mock()
+    application.is_done = True
+    session = Mock()
+    system_message = SystemMessage(content="System")
+
+    with (
+        patch("coding_assistant.app.terminal_ui.create_terminal_application", return_value=(application, None)),
+        patch("coding_assistant.app.terminal_ui.run_session_output", new=AsyncMock()) as mock_run_session_output,
+    ):
+        await run_terminal_ui(
+            session=session,
+            system_message=system_message,
+            mode=TerminalUiMode.READONLY,
+        )
+
+    assert mock_run_session_output.await_args is not None
+    assert mock_run_session_output.await_args.kwargs == {
+        "session": session,
+        "system_message": system_message,
+    }
