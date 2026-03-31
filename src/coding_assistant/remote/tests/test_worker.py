@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 from rich.markdown import Markdown
+from rich.panel import Panel
 
 from coding_assistant.app.default_agent import DefaultAgentBundle, DefaultAgentConfig
 from coding_assistant.app.output import run_session_output
@@ -91,10 +92,16 @@ async def test_run_session_output_renders_system_message_and_streamed_content() 
             await session.close()
 
     mock_print_system.assert_called_once_with(system_message)
+    panel_blocks = [
+        call.args[0] for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Panel)
+    ]
     markdown_blocks = [
         call.args[0] for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Markdown)
     ]
-    assert [block.markup for block in markdown_blocks] == ["Hi", "Hello from the worker"]
+    assert len(panel_blocks) == 1
+    assert isinstance(panel_blocks[0].renderable, Markdown)
+    assert panel_blocks[0].renderable.markup == "Hi"
+    assert [block.markup for block in markdown_blocks] == ["Hello from the worker"]
 
 
 @pytest.mark.asyncio
@@ -119,9 +126,10 @@ async def test_run_session_output_prints_accepted_prompt_before_run_output() -> 
             await session.close()
 
     assert mock_rich_print.call_args_list[0].args == ()
-    assert mock_rich_print.call_args_list[1].args == ("[bold cyan]Prompt accepted:[/bold cyan]",)
-    assert isinstance(mock_rich_print.call_args_list[2].args[0], Markdown)
-    assert mock_rich_print.call_args_list[2].args[0].markup == "Do the task"
+    assert isinstance(mock_rich_print.call_args_list[1].args[0], Panel)
+    panel = mock_rich_print.call_args_list[1].args[0]
+    assert isinstance(panel.renderable, Markdown)
+    assert panel.renderable.markup == "Do the task"
 
 
 @pytest.mark.asyncio

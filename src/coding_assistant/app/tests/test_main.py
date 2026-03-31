@@ -6,8 +6,15 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from rich.markdown import Markdown
+from rich.panel import Panel
 
-from coding_assistant.app.cli import _handle_prompt_submission, _prompt_with_session, _run_prompt_loop, run_cli
+from coding_assistant.app.cli import (
+    _format_prompt_message,
+    _handle_prompt_submission,
+    _prompt_with_session,
+    _run_prompt_loop,
+    run_cli,
+)
 from coding_assistant.app.default_agent import DefaultAgentBundle, build_default_agent_config
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import (
@@ -167,23 +174,30 @@ async def test_prompt_with_session_passes_live_status_footer() -> None:
         pending_prompts=("first queued prompt", "second queued prompt"),
     )
 
-    with (
-        patch("coding_assistant.app.cli.Console") as mock_console,
-        patch("coding_assistant.app.cli.print"),
-    ):
-        answer = await _prompt_with_session(prompt_session, session=session, words=[])
-
-    mock_console.return_value.bell.assert_called_once_with()
+    answer = await _prompt_with_session(prompt_session, session=session, words=[])
 
     assert answer == "/exit"
     prompt_session.prompt_async.assert_awaited_once()
     call = prompt_session.prompt_async.await_args
     assert call is not None
-    assert call.args == ("> ",)
+    assert callable(call.args[0])
+    assert call.args[0]() == "queued:\n- first queued prompt\n- second queued prompt\n> "
     assert call.kwargs["refresh_interval"] == 0.1
     toolbar = call.kwargs["bottom_toolbar"]
     assert callable(toolbar)
     assert toolbar() == "idle | queued: 2 | next: first queued prompt | then: second queued prompt"
+
+
+def test_format_prompt_message_shows_pending_prompts_above_input() -> None:
+    session = Mock()
+    session.state = SessionState(
+        promptable=True,
+        running=True,
+        queued_prompt_count=3,
+        pending_prompts=("first queued prompt", "second queued prompt", "third queued prompt"),
+    )
+
+    assert _format_prompt_message(session) == ("queued:\n- first queued prompt\n- second queued prompt\n- +1 more\n> ")
 
 
 def test_paragraph_buffer_respects_code_fences() -> None:
@@ -276,6 +290,19 @@ def test_format_session_status_summarizes_pending_prompts() -> None:
     assert format_session_status(state) == (
         "running | queued: 3 | next: first queued prompt | then: second queued prompt | +1 more"
     )
+
+
+def test_print_prompt_accepted_uses_subdued_panel() -> None:
+    with patch("coding_assistant.app.output.rich_print") as mock_print:
+        from coding_assistant.app.output import print_prompt_accepted
+
+        print_prompt_accepted("Do the task")
+
+    assert mock_print.call_args_list[0].args == ()
+    assert isinstance(mock_print.call_args_list[1].args[0], Panel)
+    panel = mock_print.call_args_list[1].args[0]
+    assert isinstance(panel.renderable, Markdown)
+    assert panel.renderable.markup == "Do the task"
 
 
 def test_format_tool_call_markdown_hides_edit_payload_values() -> None:

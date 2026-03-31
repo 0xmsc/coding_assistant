@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 from rich import print as rich_print
+from rich import box
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.panel import Panel
@@ -165,13 +166,22 @@ def print_tool_calls(message: AssistantMessage) -> None:
 
 def print_prompt_accepted(content: str | list[dict[str, Any]]) -> None:
     """Render one accepted prompt so the operator can see queued work."""
-    rich_print()
-    rich_print("[bold cyan]Prompt accepted:[/bold cyan]")
+    renderable: Markdown
     if isinstance(content, str):
-        rich_print(Markdown(content))
-        return
+        renderable = Markdown(content)
+    else:
+        renderable = Markdown("```json\n" + json.dumps(content, indent=2) + "\n```")
 
-    rich_print(Markdown("```json\n" + json.dumps(content, indent=2) + "\n```"))
+    rich_print()
+    rich_print(
+        Panel(
+            renderable,
+            box=box.SQUARE,
+            border_style="grey35",
+            style="on grey11",
+            padding=(0, 1),
+        )
+    )
 
 
 def format_prompt_preview(content: str | list[dict[str, Any]], *, limit: int = 40) -> str:
