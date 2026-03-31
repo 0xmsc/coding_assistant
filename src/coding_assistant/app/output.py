@@ -13,6 +13,7 @@ from rich.styled import Styled
 from coding_assistant.core.agent_session import (
     AgentSession,
     PromptAcceptedEvent,
+    PromptStartedEvent,
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
@@ -164,8 +165,8 @@ def print_tool_calls(message: AssistantMessage) -> None:
         _print_tool_call(tool_call)
 
 
-def print_prompt_accepted(content: str | list[dict[str, Any]]) -> None:
-    """Render one accepted prompt so the operator can see queued work."""
+def print_active_prompt(content: str | list[dict[str, Any]]) -> None:
+    """Render one prompt when it becomes the active run."""
     renderable: Markdown
     if isinstance(content, str):
         renderable = Markdown(content)
@@ -211,7 +212,7 @@ async def run_session_output(
     session: AgentSession,
     system_message: SystemMessage,
     show_state_updates: bool = False,
-    show_prompt_accepted: bool = True,
+    show_prompt_accepted: bool = False,
 ) -> None:
     """Render one session's streamed events to the local terminal."""
     renderer = DeltaRenderer()
@@ -229,7 +230,11 @@ async def run_session_output(
                     if not show_prompt_accepted:
                         continue
                     renderer.finish()
-                    print_prompt_accepted(event.content)
+                    print_active_prompt(event.content)
+                    continue
+                if isinstance(event, PromptStartedEvent):
+                    renderer.finish()
+                    print_active_prompt(event.content)
                     continue
                 if isinstance(event, ToolCallsEvent):
                     renderer.finish(trailing_blank_line=False)

@@ -19,6 +19,7 @@ from coding_assistant.app.terminal_ui import TerminalUiMode
 from coding_assistant.core.agent_session import (
     AgentSession,
     PromptAcceptedEvent,
+    PromptStartedEvent,
     SessionState,
     StateChangedEvent,
     ToolCallsEvent,
@@ -111,7 +112,7 @@ async def test_run_session_output_renders_system_message_and_streamed_content() 
 
 
 @pytest.mark.asyncio
-async def test_run_session_output_prints_accepted_prompt_before_run_output() -> None:
+async def test_run_session_output_prints_started_prompt_before_run_output() -> None:
     session = make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="Hello from the worker")]),
     )
@@ -125,6 +126,7 @@ async def test_run_session_output_prints_accepted_prompt_before_run_output() -> 
         try:
             await asyncio.sleep(0)
             session._publish_event(PromptAcceptedEvent(content="Do the task"))
+            session._publish_event(PromptStartedEvent(content="Do the task"))
             await asyncio.sleep(0)
         finally:
             task.cancel()
