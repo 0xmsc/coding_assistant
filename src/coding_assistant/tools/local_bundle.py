@@ -17,7 +17,7 @@ from coding_assistant.tools.workers import WorkerToolRuntime
 WORKER_TOOL_INSTRUCTIONS = """
 ## Workers
 
-- Use worker tools to connect to, prompt, wait on, cancel, and disconnect from worker endpoints printed by `coding-assistant --worker`.
+- Use `worker_connect(endpoint=...)` with the worker endpoints printed by `coding-assistant --worker`, then use the returned local `worker_id` with the other worker tools.
 - When prompting a worker, choose `mode="queue"` for normal FIFO work, `mode="priority"` to move ahead of already queued prompts, or `mode="interrupt"` to cancel the current run and run your prompt next.
 """.strip()
 

@@ -77,17 +77,20 @@ async def test_worker_runtime_connects_prompts_and_waits_for_completion() -> Non
         ),
     )
     worker_runtime = WorkerToolRuntime()
+    worker_id = 1
 
     async with start_worker_server(session=session) as worker_server:
         connect_result = await worker_runtime.connect(worker_server.endpoint)
-        assert connect_result == f"Connected to worker {worker_server.endpoint}."
-        assert worker_server.endpoint in worker_runtime.format_connected_workers()
+        assert connect_result == f"Connected to worker {worker_id} at {worker_server.endpoint}."
+        connected_workers = worker_runtime.format_connected_workers()
+        assert f"worker {worker_id}" in connected_workers
+        assert worker_server.endpoint in connected_workers
 
-        prompt_result = await worker_runtime.prompt(worker_server.endpoint, "Please finish the task.")
-        assert prompt_result == f"Prompt accepted by worker {worker_server.endpoint}.\nPlease finish the task."
+        prompt_result = await worker_runtime.prompt(worker_id, "Please finish the task.")
+        assert prompt_result == f"Prompt accepted by worker {worker_id}.\nPlease finish the task."
 
-        wait_result = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
-        assert wait_result == f"Worker {worker_server.endpoint} finished:\nFinished the delegated task"
+        wait_result = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
+        assert wait_result == f"Worker {worker_id} finished:\nFinished the delegated task"
 
     await worker_runtime.close()
     await session.close()
@@ -109,25 +112,28 @@ async def test_worker_runtime_queues_prompt_while_worker_is_busy() -> None:
     )
     session = make_agent_session(completion_streamer=streamer)
     worker_runtime = WorkerToolRuntime()
+    worker_id = 1
 
     async with start_worker_server(session=session) as worker_server:
-        assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
-        assert await worker_runtime.prompt(worker_server.endpoint, "Please start working.") == (
-            f"Prompt accepted by worker {worker_server.endpoint}.\nPlease start working."
+        assert await worker_runtime.connect(worker_server.endpoint) == (
+            f"Connected to worker {worker_id} at {worker_server.endpoint}."
+        )
+        assert await worker_runtime.prompt(worker_id, "Please start working.") == (
+            f"Prompt accepted by worker {worker_id}.\nPlease start working."
         )
 
         await asyncio.wait_for(first_started.wait(), timeout=1)
 
-        prompt_result = await worker_runtime.prompt(worker_server.endpoint, "Please do something else.")
-        assert prompt_result == f"Prompt accepted by worker {worker_server.endpoint}.\nPlease do something else."
+        prompt_result = await worker_runtime.prompt(worker_id, "Please do something else.")
+        assert prompt_result == f"Prompt accepted by worker {worker_id}.\nPlease do something else."
 
         first_release.set()
 
-        first_wait = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
-        second_wait = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
+        first_wait = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
+        second_wait = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
 
-        assert first_wait == f"Worker {worker_server.endpoint} finished:\nFirst result"
-        assert second_wait == f"Worker {worker_server.endpoint} finished:\nSecond result"
+        assert first_wait == f"Worker {worker_id} finished:\nFirst result"
+        assert second_wait == f"Worker {worker_id} finished:\nSecond result"
 
     await worker_runtime.close()
     await session.close()
@@ -150,32 +156,28 @@ async def test_worker_runtime_priority_prompt_runs_before_existing_queue() -> No
     )
     session = make_agent_session(completion_streamer=streamer)
     worker_runtime = WorkerToolRuntime()
+    worker_id = 1
 
     async with start_worker_server(session=session) as worker_server:
-        assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
-        assert (
-            await worker_runtime.prompt(worker_server.endpoint, "first")
-            == f"Prompt accepted by worker {worker_server.endpoint}.\nfirst"
+        assert await worker_runtime.connect(worker_server.endpoint) == (
+            f"Connected to worker {worker_id} at {worker_server.endpoint}."
         )
+        assert await worker_runtime.prompt(worker_id, "first") == f"Prompt accepted by worker {worker_id}.\nfirst"
         await asyncio.wait_for(first_started.wait(), timeout=1)
 
-        assert await worker_runtime.prompt(worker_server.endpoint, "second") == (
-            f"Prompt accepted by worker {worker_server.endpoint}.\nsecond"
-        )
-        assert await worker_runtime.prompt(worker_server.endpoint, "priority", mode="priority") == (
-            f"Priority prompt accepted by worker {worker_server.endpoint}.\npriority"
+        assert await worker_runtime.prompt(worker_id, "second") == (f"Prompt accepted by worker {worker_id}.\nsecond")
+        assert await worker_runtime.prompt(worker_id, "priority", mode="priority") == (
+            f"Priority prompt accepted by worker {worker_id}.\npriority"
         )
 
         first_release.set()
 
-        wait_results = [
-            await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1) for _ in range(3)
-        ]
+        wait_results = [await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1) for _ in range(3)]
 
         assert wait_results == [
-            f"Worker {worker_server.endpoint} finished:\nFirst result",
-            f"Worker {worker_server.endpoint} finished:\nPriority result",
-            f"Worker {worker_server.endpoint} finished:\nSecond result",
+            f"Worker {worker_id} finished:\nFirst result",
+            f"Worker {worker_id} finished:\nPriority result",
+            f"Worker {worker_id} finished:\nSecond result",
         ]
 
     await worker_runtime.close()
@@ -198,24 +200,24 @@ async def test_worker_runtime_interrupt_prompt_cancels_current_run_and_runs_new_
     )
     session = make_agent_session(completion_streamer=streamer)
     worker_runtime = WorkerToolRuntime()
+    worker_id = 1
 
     async with start_worker_server(session=session) as worker_server:
-        assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
-        assert (
-            await worker_runtime.prompt(worker_server.endpoint, "first")
-            == f"Prompt accepted by worker {worker_server.endpoint}.\nfirst"
+        assert await worker_runtime.connect(worker_server.endpoint) == (
+            f"Connected to worker {worker_id} at {worker_server.endpoint}."
         )
+        assert await worker_runtime.prompt(worker_id, "first") == f"Prompt accepted by worker {worker_id}.\nfirst"
         await asyncio.wait_for(first_started.wait(), timeout=1)
 
-        assert await worker_runtime.prompt(worker_server.endpoint, "interrupt", mode="interrupt") == (
-            f"Interrupt prompt accepted by worker {worker_server.endpoint}.\ninterrupt"
+        assert await worker_runtime.prompt(worker_id, "interrupt", mode="interrupt") == (
+            f"Interrupt prompt accepted by worker {worker_id}.\ninterrupt"
         )
 
-        cancel_wait = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
-        finish_wait = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
+        cancel_wait = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
+        finish_wait = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
 
-        assert cancel_wait == f"Worker {worker_server.endpoint} cancelled its current run."
-        assert finish_wait == f"Worker {worker_server.endpoint} finished:\nInterrupt result"
+        assert cancel_wait == f"Worker {worker_id} cancelled its current run."
+        assert finish_wait == f"Worker {worker_id} finished:\nInterrupt result"
 
     await worker_runtime.close()
     await session.close()
@@ -228,9 +230,12 @@ async def test_worker_runtime_second_connection_is_rejected_for_controlled_worke
     )
     first_runtime = WorkerToolRuntime()
     second_runtime = WorkerToolRuntime()
+    worker_id = 1
 
     async with start_worker_server(session=session) as worker_server:
-        assert await first_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
+        assert await first_runtime.connect(worker_server.endpoint) == (
+            f"Connected to worker {worker_id} at {worker_server.endpoint}."
+        )
 
         second_result = await second_runtime.connect(worker_server.endpoint)
         assert second_result == (
@@ -248,18 +253,19 @@ async def test_worker_runtime_wait_returns_disconnect_once_then_reports_not_conn
         completion_streamer=ControlledStreamer([StreamStep(message=AssistantMessage(content="unused"))]),
     )
     worker_runtime = WorkerToolRuntime()
+    worker_id = 1
 
     async with start_worker_server(session=session) as worker_server:
-        assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
-        assert await worker_runtime.disconnect(worker_server.endpoint) == (
-            f"Disconnected from worker {worker_server.endpoint}."
+        assert await worker_runtime.connect(worker_server.endpoint) == (
+            f"Connected to worker {worker_id} at {worker_server.endpoint}."
         )
+        assert await worker_runtime.disconnect(worker_id) == (f"Disconnected from worker {worker_id}.")
 
-        wait_result = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
-        assert wait_result == f"Worker {worker_server.endpoint} disconnected."
+        wait_result = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
+        assert wait_result == f"Worker {worker_id} disconnected."
 
-        second_wait_result = await asyncio.wait_for(worker_runtime.wait(worker_server.endpoint), timeout=1)
-        assert second_wait_result == f"Worker {worker_server.endpoint} is not connected."
+        second_wait_result = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
+        assert second_wait_result == f"Worker {worker_id} is not connected."
 
     await worker_runtime.close()
     await session.close()
@@ -271,18 +277,59 @@ async def test_worker_runtime_wait_any_returns_pending_disconnect_after_last_con
         completion_streamer=ControlledStreamer([StreamStep(message=AssistantMessage(content="unused"))]),
     )
     worker_runtime = WorkerToolRuntime()
+    worker_id = 1
 
     async with start_worker_server(session=session) as worker_server:
-        assert await worker_runtime.connect(worker_server.endpoint) == f"Connected to worker {worker_server.endpoint}."
-        assert await worker_runtime.disconnect(worker_server.endpoint) == (
-            f"Disconnected from worker {worker_server.endpoint}."
+        assert await worker_runtime.connect(worker_server.endpoint) == (
+            f"Connected to worker {worker_id} at {worker_server.endpoint}."
         )
+        assert await worker_runtime.disconnect(worker_id) == (f"Disconnected from worker {worker_id}.")
 
         wait_result = await asyncio.wait_for(worker_runtime.wait_any(), timeout=1)
-        assert wait_result == f"Worker {worker_server.endpoint} disconnected."
+        assert wait_result == f"Worker {worker_id} disconnected."
 
         second_wait_result = await asyncio.wait_for(worker_runtime.wait_any(), timeout=1)
         assert second_wait_result == "No connected workers."
+
+    await worker_runtime.close()
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_wait_returns_idle_immediately_for_idle_connected_worker() -> None:
+    session = make_agent_session(
+        completion_streamer=ControlledStreamer([StreamStep(message=AssistantMessage(content="unused"))]),
+    )
+    worker_runtime = WorkerToolRuntime()
+    worker_id = 1
+
+    async with start_worker_server(session=session) as worker_server:
+        assert await worker_runtime.connect(worker_server.endpoint) == (
+            f"Connected to worker {worker_id} at {worker_server.endpoint}."
+        )
+
+        wait_result = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
+        assert wait_result == f"Worker {worker_id} is idle."
+
+    await worker_runtime.close()
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_wait_any_returns_idle_immediately_when_all_workers_are_idle() -> None:
+    session = make_agent_session(
+        completion_streamer=ControlledStreamer([StreamStep(message=AssistantMessage(content="unused"))]),
+    )
+    worker_runtime = WorkerToolRuntime()
+    worker_id = 1
+
+    async with start_worker_server(session=session) as worker_server:
+        assert await worker_runtime.connect(worker_server.endpoint) == (
+            f"Connected to worker {worker_id} at {worker_server.endpoint}."
+        )
+
+        wait_result = await asyncio.wait_for(worker_runtime.wait_any(), timeout=1)
+        assert wait_result == "All connected workers are idle."
 
     await worker_runtime.close()
     await session.close()
