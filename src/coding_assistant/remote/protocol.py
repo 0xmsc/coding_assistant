@@ -14,20 +14,32 @@ class ToolCallPayload(BaseModel):
     arguments: str
 
 
-class StateMessage(BaseModel):
-    """Current promptability/running snapshot for one worker."""
+class WorkerStatePayload(BaseModel):
+    """Authoritative worker state snapshot carried by protocol messages."""
 
-    type: Literal["state"] = "state"
     promptable: bool
     remote_connected: bool
     running: bool
     queued_prompt_count: int = 0
 
 
-class PromptAcceptedMessage(BaseModel):
+class StateMessage(WorkerStatePayload):
+    """Current promptability/running snapshot for one worker."""
+
+    type: Literal["state"] = "state"
+
+
+class PromptAcceptedMessage(WorkerStatePayload):
     """Notification that the worker accepted one prompt into its queue."""
 
     type: Literal["prompt_accepted"] = "prompt_accepted"
+    content: str | list[dict[str, Any]]
+
+
+class PromptStartedMessage(WorkerStatePayload):
+    """Notification that one accepted prompt has started running."""
+
+    type: Literal["prompt_started"] = "prompt_started"
     content: str | list[dict[str, Any]]
 
 
@@ -45,42 +57,38 @@ class ToolCallsMessage(BaseModel):
     tool_calls: list[ToolCallPayload]
 
 
-class RunFinishedMessage(BaseModel):
+class RunFinishedMessage(WorkerStatePayload):
     """Terminal message for a completed worker run."""
 
     type: Literal["run_finished"] = "run_finished"
     summary: str
 
 
-class RunCancelledMessage(BaseModel):
+class RunCancelledMessage(WorkerStatePayload):
     """Terminal message for a cancelled worker run."""
 
     type: Literal["run_cancelled"] = "run_cancelled"
 
 
-class RunFailedMessage(BaseModel):
+class RunFailedMessage(WorkerStatePayload):
     """Terminal message for a worker run that failed with an exception."""
 
     type: Literal["run_failed"] = "run_failed"
     error: str
 
 
-class CommandAcceptedMessage(BaseModel):
+class CommandAcceptedMessage(WorkerStatePayload):
     """Acknowledgement for a prompt or cancel command."""
 
     type: Literal["command_accepted"] = "command_accepted"
     request_id: str
 
 
-class NotReadyMessage(BaseModel):
+class NotReadyMessage(WorkerStatePayload):
     """Command rejection carrying the worker state that caused the rejection."""
 
     type: Literal["not_ready"] = "not_ready"
     request_id: str
-    promptable: bool
-    remote_connected: bool
-    running: bool
-    queued_prompt_count: int = 0
 
 
 class ErrorMessage(BaseModel):
@@ -110,6 +118,7 @@ class CancelCommand(BaseModel):
 WorkerToSupervisorMessage = (
     StateMessage
     | PromptAcceptedMessage
+    | PromptStartedMessage
     | ContentDeltaMessage
     | ToolCallsMessage
     | RunFinishedMessage
@@ -133,6 +142,8 @@ def parse_worker_message(data: str | bytes) -> WorkerToSupervisorMessage:
         return StateMessage.model_validate(payload)
     if message_type == "prompt_accepted":
         return PromptAcceptedMessage.model_validate(payload)
+    if message_type == "prompt_started":
+        return PromptStartedMessage.model_validate(payload)
     if message_type == "content_delta":
         return ContentDeltaMessage.model_validate(payload)
     if message_type == "tool_calls":

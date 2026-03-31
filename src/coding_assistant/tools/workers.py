@@ -14,6 +14,7 @@ from coding_assistant.remote.protocol import (
     ErrorMessage,
     NotReadyMessage,
     PromptAcceptedMessage,
+    PromptStartedMessage,
     RunCancelledMessage,
     RunFailedMessage,
     RunFinishedMessage,
@@ -31,7 +32,6 @@ class WorkerSnapshot:
     remote_connected: bool = False
     running: bool = False
     queued_prompt_count: int = 0
-    outstanding_prompt_count: int = 0
     last_update: str = ""
 
 
@@ -114,7 +114,13 @@ class _WorkerManager:
         response = await connection.prompt(prompt, mode=mode)
         snapshot = self._snapshot_for_worker(worker_id)
         if isinstance(response, CommandAcceptedMessage):
-            self._mark_prompt_accepted(snapshot)
+            self._apply_state(
+                snapshot,
+                promptable=response.promptable,
+                remote_connected=response.remote_connected,
+                running=response.running,
+                queued_prompt_count=response.queued_prompt_count,
+            )
             prompt_text = f"\n{prompt}"
             if mode == "priority":
                 return f"Priority prompt accepted by worker {worker_id}.{prompt_text}"
@@ -143,6 +149,14 @@ class _WorkerManager:
 
         response = await connection.cancel()
         if isinstance(response, CommandAcceptedMessage):
+            snapshot = self._snapshot_for_worker(worker_id)
+            self._apply_state(
+                snapshot,
+                promptable=response.promptable,
+                remote_connected=response.remote_connected,
+                running=response.running,
+                queued_prompt_count=response.queued_prompt_count,
+            )
             return f"Cancelled the current run on worker {worker_id}."
         if isinstance(response, NotReadyMessage):
             snapshot = self._snapshot_for_worker(worker_id)
@@ -199,7 +213,25 @@ class _WorkerManager:
             return
 
         if isinstance(message, PromptAcceptedMessage):
+            self._apply_state(
+                snapshot,
+                promptable=message.promptable,
+                remote_connected=message.remote_connected,
+                running=message.running,
+                queued_prompt_count=message.queued_prompt_count,
+            )
             snapshot.last_update = f"Accepted prompt: {_format_prompt_preview(message.content)}"
+            return
+
+        if isinstance(message, PromptStartedMessage):
+            self._apply_state(
+                snapshot,
+                promptable=message.promptable,
+                remote_connected=message.remote_connected,
+                running=message.running,
+                queued_prompt_count=message.queued_prompt_count,
+            )
+            snapshot.last_update = f"Running prompt: {_format_prompt_preview(message.content)}"
             return
 
         if isinstance(message, ContentDeltaMessage):
@@ -212,7 +244,13 @@ class _WorkerManager:
             return
 
         if isinstance(message, RunFinishedMessage):
-            self._mark_terminal_event(snapshot)
+            self._apply_state(
+                snapshot,
+                promptable=message.promptable,
+                remote_connected=message.remote_connected,
+                running=message.running,
+                queued_prompt_count=message.queued_prompt_count,
+            )
             snapshot.last_update = _truncate_summary(message.summary)
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(
@@ -225,7 +263,13 @@ class _WorkerManager:
             return
 
         if isinstance(message, RunCancelledMessage):
-            self._mark_terminal_event(snapshot)
+            self._apply_state(
+                snapshot,
+                promptable=message.promptable,
+                remote_connected=message.remote_connected,
+                running=message.running,
+                queued_prompt_count=message.queued_prompt_count,
+            )
             snapshot.last_update = "Run cancelled."
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(worker_id=worker_id, endpoint=snapshot.endpoint, kind="cancelled")
@@ -233,7 +277,13 @@ class _WorkerManager:
             return
 
         if isinstance(message, RunFailedMessage):
-            self._mark_terminal_event(snapshot)
+            self._apply_state(
+                snapshot,
+                promptable=message.promptable,
+                remote_connected=message.remote_connected,
+                running=message.running,
+                queued_prompt_count=message.queued_prompt_count,
+            )
             snapshot.last_update = f"Run failed: {message.error}"
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(
@@ -300,26 +350,12 @@ class _WorkerManager:
         snapshot.remote_connected = remote_connected
         snapshot.running = running
         snapshot.queued_prompt_count = queued_prompt_count
-        snapshot.outstanding_prompt_count = queued_prompt_count + int(running)
-
-    def _mark_prompt_accepted(self, snapshot: WorkerSnapshot) -> None:
-        snapshot.outstanding_prompt_count += 1
-        if snapshot.running or snapshot.queued_prompt_count:
-            snapshot.queued_prompt_count += 1
-            return
-        snapshot.running = True
-
-    def _mark_terminal_event(self, snapshot: WorkerSnapshot) -> None:
-        snapshot.outstanding_prompt_count = max(snapshot.outstanding_prompt_count - 1, 0)
-        snapshot.running = False
-        snapshot.promptable = True
-        snapshot.queued_prompt_count = snapshot.outstanding_prompt_count
 
     def _worker_is_idle(self, worker_id: int) -> bool:
         snapshot = self._snapshots.get(worker_id)
         if snapshot is None:
             return True
-        return snapshot.outstanding_prompt_count == 0
+        return not snapshot.running and snapshot.queued_prompt_count == 0
 
 
 class WorkerToolRuntime:

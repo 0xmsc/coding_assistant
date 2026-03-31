@@ -5,7 +5,7 @@ from argparse import Namespace
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -14,8 +14,7 @@ from rich.panel import Panel
 from rich.styled import Styled
 
 from coding_assistant.app.default_agent import DefaultAgentBundle, DefaultAgentConfig
-from coding_assistant.app.output import run_session_output
-from coding_assistant.app.terminal_ui import TerminalUiMode
+from coding_assistant.app.terminal_ui import TerminalUiMode, run_session_output
 from coding_assistant.core.agent_session import (
     AgentSession,
     PromptAcceptedEvent,
@@ -36,7 +35,14 @@ from coding_assistant.llm.types import (
     ToolCall,
     Usage,
 )
+from coding_assistant.remote.protocol import (
+    CommandAcceptedMessage,
+    PromptCommand,
+    PromptStartedMessage,
+    parse_worker_message,
+)
 from coding_assistant.remote.server import WorkerServer
+from coding_assistant.remote.server import _handle_supervisor_message, _session_event_to_message
 from coding_assistant.remote.worker import run_worker
 
 
@@ -77,7 +83,7 @@ async def test_run_session_output_renders_system_message_and_streamed_content() 
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.output.print_system_message") as mock_print_system,
+        patch("coding_assistant.app.terminal_ui.print_system_message") as mock_print_system,
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
@@ -119,7 +125,7 @@ async def test_run_session_output_prints_started_prompt_before_run_output() -> N
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.output.print_system_message"),
+        patch("coding_assistant.app.terminal_ui.print_system_message"),
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
@@ -159,7 +165,7 @@ async def test_run_session_output_prints_tool_calls_without_extra_spacing() -> N
     )
 
     with (
-        patch("coding_assistant.app.output.print_system_message"),
+        patch("coding_assistant.app.terminal_ui.print_system_message"),
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
@@ -191,7 +197,7 @@ async def test_run_session_output_prints_status_updates_when_enabled() -> None:
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.output.print_system_message"),
+        patch("coding_assistant.app.terminal_ui.print_system_message"),
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(
@@ -218,6 +224,59 @@ async def test_run_session_output_prints_status_updates_when_enabled() -> None:
     printed_lines = [call.args[0] for call in mock_rich_print.call_args_list if call.args]
     assert "[dim]idle | queued: 0[/dim]" in printed_lines
     assert "[dim]idle | queued: 2 | next: queued one | then: queued two[/dim]" in printed_lines
+
+
+def test_session_event_to_message_includes_state_for_prompt_started() -> None:
+    state = SessionState(
+        promptable=True,
+        running=True,
+        queued_prompt_count=1,
+        pending_prompts=("next queued prompt",),
+    )
+
+    message = _session_event_to_message(PromptStartedEvent(content="Do the task"), state=state)
+
+    assert message == PromptStartedMessage(
+        content="Do the task",
+        promptable=True,
+        remote_connected=True,
+        running=True,
+        queued_prompt_count=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_supervisor_message_replies_with_authoritative_state_snapshot() -> None:
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+
+        async def send(self, message: str) -> None:
+            self.messages.append(message)
+
+    session = make_agent_session(
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+    )
+    websocket = FakeWebSocket()
+
+    try:
+        await _handle_supervisor_message(
+            cast(Any, websocket),
+            session,
+            PromptCommand(request_id="request-1", prompt="Do the task", mode="queue"),
+        )
+    finally:
+        await session.close()
+
+    assert len(websocket.messages) == 1
+    response = parse_worker_message(websocket.messages[0])
+    assert response == CommandAcceptedMessage(
+        request_id="request-1",
+        promptable=True,
+        remote_connected=True,
+        running=False,
+        queued_prompt_count=1,
+    )
 
 
 @pytest.mark.asyncio
