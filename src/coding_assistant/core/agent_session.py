@@ -107,6 +107,8 @@ class _QueuedPrompt:
 class _RunResult:
     history: list[BaseMessage] | None
     summary: str = ""
+    cancelled: bool = False
+    error: str | None = None
 
 
 class AgentSession:
@@ -261,7 +263,11 @@ class AgentSession:
                         if self._current_run_task is run_task:
                             self._current_run_task = None
 
-                if result is not None and result.history is not None:
+                if result is not None and result.cancelled:
+                    self._publish_event(RunCancelledEvent())
+                elif result is not None and result.error is not None:
+                    self._publish_event(RunFailedEvent(error=result.error))
+                elif result is not None and result.history is not None:
                     self._history = result.history
                     self._publish_event(RunFinishedEvent(summary=result.summary))
                 await self._publish_state()
@@ -299,11 +305,9 @@ class AgentSession:
                     summary=_get_latest_assistant_summary(current_history),
                 )
         except asyncio.CancelledError:
-            self._publish_event(RunCancelledEvent())
-            raise
+            return _RunResult(history=None, cancelled=True)
         except Exception as exc:
-            self._publish_event(RunFailedEvent(error=str(exc)))
-            return _RunResult(history=None)
+            return _RunResult(history=None, error=str(exc))
 
     async def _publish_state(self) -> None:
         self._publish_event(StateChangedEvent(state=self.state))
