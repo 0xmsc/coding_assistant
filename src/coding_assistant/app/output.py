@@ -10,19 +10,8 @@ from rich.padding import Padding
 from rich.panel import Panel
 from rich.styled import Styled
 
-from coding_assistant.core.agent_session import (
-    AgentSession,
-    PromptAcceptedEvent,
-    PromptStartedEvent,
-    RunCancelledEvent,
-    RunFailedEvent,
-    RunFinishedEvent,
-    SessionState,
-    StateChangedEvent,
-    ToolCallsEvent,
-)
+from coding_assistant.core.agent_session import SessionState
 from coding_assistant.llm.types import AssistantMessage, SystemMessage, ToolCall
-from coding_assistant.llm.types import CompletionEvent, ContentDeltaEvent, ReasoningDeltaEvent, StatusEvent
 
 
 SPECIAL_TOOL_FORMATS: dict[str, dict[str, Any]] = {
@@ -205,65 +194,6 @@ def format_session_status(state: SessionState) -> str:
 def print_session_status(state: SessionState) -> None:
     """Render one compact status line."""
     rich_print(f"[dim]{format_session_status(state)}[/dim]")
-
-
-async def run_session_output(
-    *,
-    session: AgentSession,
-    system_message: SystemMessage,
-    show_state_updates: bool = False,
-    show_prompt_accepted: bool = False,
-) -> None:
-    """Render one session's streamed events to the local terminal."""
-    renderer = DeltaRenderer()
-    last_state_summary: str | None = None
-    print_system_message(system_message)
-
-    async with session.subscribe() as queue:
-        try:
-            while True:
-                event = await queue.get()
-                if isinstance(event, ContentDeltaEvent):
-                    renderer.on_delta(event.content)
-                    continue
-                if isinstance(event, PromptAcceptedEvent):
-                    if not show_prompt_accepted:
-                        continue
-                    renderer.finish()
-                    print_active_prompt(event.content)
-                    continue
-                if isinstance(event, PromptStartedEvent):
-                    renderer.finish()
-                    print_active_prompt(event.content)
-                    continue
-                if isinstance(event, ToolCallsEvent):
-                    renderer.finish(trailing_blank_line=False)
-                    print_tool_calls(event.message)
-                    continue
-                if isinstance(event, RunFinishedEvent):
-                    renderer.finish()
-                    continue
-                if isinstance(event, RunCancelledEvent):
-                    renderer.finish()
-                    continue
-                if isinstance(event, RunFailedEvent):
-                    renderer.finish()
-                    rich_print(f"[bold red]Run failed:[/bold red] {event.error}")
-                    continue
-                if isinstance(event, StateChangedEvent):
-                    if not show_state_updates:
-                        continue
-                    state_summary = format_session_status(event.state)
-                    if state_summary == last_state_summary:
-                        continue
-                    last_state_summary = state_summary
-                    renderer.finish(trailing_blank_line=False)
-                    print_session_status(event.state)
-                    continue
-                if isinstance(event, (ReasoningDeltaEvent, StatusEvent, CompletionEvent)):
-                    continue
-        finally:
-            renderer.finish()
 
 
 def format_tool_call_display(tool_call: ToolCall) -> tuple[str, list[tuple[str, str, str]]]:

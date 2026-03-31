@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
+from typing import TypedDict
 
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
@@ -12,9 +13,11 @@ from coding_assistant.core.agent_session import (
     AgentSession,
     AgentSessionEvent,
     PromptAcceptedEvent,
+    PromptStartedEvent,
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
+    SessionState,
     StateChangedEvent,
     ToolCallsEvent,
 )
@@ -26,6 +29,7 @@ from coding_assistant.remote.protocol import (
     ErrorMessage,
     NotReadyMessage,
     PromptAcceptedMessage,
+    PromptStartedMessage,
     PromptCommand,
     RunCancelledMessage,
     RunFailedMessage,
@@ -56,17 +60,27 @@ class RemoteOutput:
         async with session.subscribe() as queue:
             while True:
                 event = await queue.get()
-                message = _session_event_to_message(event)
+                message = _session_event_to_message(event, state=session.state)
                 if message is None:
                     continue
                 await self._websocket.send(message_to_json(message))
 
 
+class _StatePayload(TypedDict):
+    promptable: bool
+    remote_connected: bool
+    running: bool
+    queued_prompt_count: int
+
+
 def _session_event_to_message(
     event: AgentSessionEvent,
+    *,
+    state: SessionState,
 ) -> (
     StateMessage
     | PromptAcceptedMessage
+    | PromptStartedMessage
     | ContentDeltaMessage
     | ToolCallsMessage
     | RunFinishedMessage
@@ -76,14 +90,11 @@ def _session_event_to_message(
 ):
     """Translate internal session events into protocol messages for the supervisor."""
     if isinstance(event, StateChangedEvent):
-        return StateMessage(
-            promptable=event.state.promptable,
-            remote_connected=True,
-            running=event.state.running,
-            queued_prompt_count=event.state.queued_prompt_count,
-        )
+        return StateMessage(**_state_payload(event.state))
     if isinstance(event, PromptAcceptedEvent):
-        return PromptAcceptedMessage(content=event.content)
+        return PromptAcceptedMessage(content=event.content, **_state_payload(state))
+    if isinstance(event, PromptStartedEvent):
+        return PromptStartedMessage(content=event.content, **_state_payload(state))
     if isinstance(event, ContentDeltaEvent):
         return ContentDeltaMessage(content=event.content)
     if isinstance(event, ToolCallsEvent):
@@ -98,12 +109,22 @@ def _session_event_to_message(
             ]
         )
     if isinstance(event, RunFinishedEvent):
-        return RunFinishedMessage(summary=event.summary)
+        return RunFinishedMessage(summary=event.summary, **_state_payload(state))
     if isinstance(event, RunCancelledEvent):
-        return RunCancelledMessage()
+        return RunCancelledMessage(**_state_payload(state))
     if isinstance(event, RunFailedEvent):
-        return RunFailedMessage(error=event.error)
+        return RunFailedMessage(error=event.error, **_state_payload(state))
     return None
+
+
+def _state_payload(state: SessionState) -> _StatePayload:
+    """Serialize one session state snapshot into protocol fields."""
+    return {
+        "promptable": state.promptable,
+        "remote_connected": True,
+        "running": state.running,
+        "queued_prompt_count": state.queued_prompt_count,
+    }
 
 
 async def _handle_supervisor_message(
@@ -122,7 +143,10 @@ async def _handle_supervisor_message(
             )
 
         if accepted:
-            await websocket.send(message_to_json(CommandAcceptedMessage(request_id=message.request_id)))
+            state = session.state
+            await websocket.send(
+                message_to_json(CommandAcceptedMessage(request_id=message.request_id, **_state_payload(state)))
+            )
         else:
             state = session.state
             await websocket.send(
@@ -140,7 +164,10 @@ async def _handle_supervisor_message(
 
     cancelled = await session.cancel_current_run()
     if cancelled:
-        await websocket.send(message_to_json(CommandAcceptedMessage(request_id=message.request_id)))
+        state = session.state
+        await websocket.send(
+            message_to_json(CommandAcceptedMessage(request_id=message.request_id, **_state_payload(state)))
+        )
         return
 
     state = session.state

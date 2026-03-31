@@ -20,10 +20,34 @@ from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
+from rich import print as rich_print
 
-from coding_assistant.app.output import format_prompt_preview, format_session_status, run_session_output
-from coding_assistant.core.agent_session import AgentSession
-from coding_assistant.llm.types import SystemMessage
+from coding_assistant.app.output import (
+    DeltaRenderer,
+    format_prompt_preview,
+    format_session_status,
+    print_active_prompt,
+    print_session_status,
+    print_system_message,
+    print_tool_calls,
+)
+from coding_assistant.core.agent_session import (
+    AgentSession,
+    PromptAcceptedEvent,
+    PromptStartedEvent,
+    RunCancelledEvent,
+    RunFailedEvent,
+    RunFinishedEvent,
+    StateChangedEvent,
+    ToolCallsEvent,
+)
+from coding_assistant.llm.types import (
+    CompletionEvent,
+    ContentDeltaEvent,
+    ReasoningDeltaEvent,
+    StatusEvent,
+    SystemMessage,
+)
 
 
 class TerminalUiMode(str, Enum):
@@ -170,6 +194,65 @@ def create_terminal_application(
         refresh_interval=0.1,
     )
     return application, answer_queue
+
+
+async def run_session_output(
+    *,
+    session: AgentSession,
+    system_message: SystemMessage,
+    show_state_updates: bool = False,
+    show_prompt_accepted: bool = False,
+) -> None:
+    """Render one session's streamed events to the local terminal."""
+    renderer = DeltaRenderer()
+    last_state_summary: str | None = None
+    print_system_message(system_message)
+
+    async with session.subscribe() as queue:
+        try:
+            while True:
+                event = await queue.get()
+                if isinstance(event, ContentDeltaEvent):
+                    renderer.on_delta(event.content)
+                    continue
+                if isinstance(event, PromptAcceptedEvent):
+                    if not show_prompt_accepted:
+                        continue
+                    renderer.finish()
+                    print_active_prompt(event.content)
+                    continue
+                if isinstance(event, PromptStartedEvent):
+                    renderer.finish()
+                    print_active_prompt(event.content)
+                    continue
+                if isinstance(event, ToolCallsEvent):
+                    renderer.finish(trailing_blank_line=False)
+                    print_tool_calls(event.message)
+                    continue
+                if isinstance(event, RunFinishedEvent):
+                    renderer.finish()
+                    continue
+                if isinstance(event, RunCancelledEvent):
+                    renderer.finish()
+                    continue
+                if isinstance(event, RunFailedEvent):
+                    renderer.finish()
+                    rich_print(f"[bold red]Run failed:[/bold red] {event.error}")
+                    continue
+                if isinstance(event, StateChangedEvent):
+                    if not show_state_updates:
+                        continue
+                    state_summary = format_session_status(event.state)
+                    if state_summary == last_state_summary:
+                        continue
+                    last_state_summary = state_summary
+                    renderer.finish(trailing_blank_line=False)
+                    print_session_status(event.state)
+                    continue
+                if isinstance(event, (ReasoningDeltaEvent, StatusEvent, CompletionEvent)):
+                    continue
+        finally:
+            renderer.finish()
 
 
 async def run_terminal_ui(
