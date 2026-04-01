@@ -26,6 +26,7 @@ from coding_assistant.app.output import (
     format_prompt_preview,
     format_session_status,
     print_active_prompt,
+    print_info_message,
     print_session_status,
     print_system_message,
     print_tool_calls,
@@ -225,7 +226,11 @@ async def run_session_output(
                     renderer.finish(trailing_blank_line=False)
                     print_session_status(event.state)
                     continue
-                if isinstance(event, (ReasoningDeltaEvent, StatusEvent, CompletionEvent)):
+                if isinstance(event, StatusEvent):
+                    renderer.finish(trailing_blank_line=False)
+                    print_info_message(event.message)
+                    continue
+                if isinstance(event, (ReasoningDeltaEvent, CompletionEvent)):
                     continue
         finally:
             renderer.finish()

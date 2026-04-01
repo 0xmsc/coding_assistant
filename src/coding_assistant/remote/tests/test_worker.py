@@ -26,6 +26,7 @@ from coding_assistant.llm.types import (
     CompletionEvent,
     ContentDeltaEvent,
     FunctionCall,
+    StatusEvent,
     SystemMessage,
     ToolCall,
     Usage,
@@ -217,6 +218,31 @@ async def test_run_session_output_prints_status_updates_when_enabled() -> None:
     printed_lines = [call.args[0] for call in mock_rich_print.call_args_list if call.args]
     assert "[dim]idle | queued: 0[/dim]" in printed_lines
     assert "[dim]idle | queued: 2 | next: queued one | then: queued two[/dim]" in printed_lines
+
+
+@pytest.mark.asyncio
+async def test_run_session_output_prints_status_events_as_info_lines() -> None:
+    session = make_agent_session(
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+    )
+    system_message = SystemMessage(content="System")
+
+    with (
+        patch("coding_assistant.app.terminal_ui.print_system_message"),
+        patch("coding_assistant.app.output.rich_print") as mock_rich_print,
+    ):
+        task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
+        try:
+            await asyncio.sleep(0)
+            session._publish_event(StatusEvent(message="Retrying LLM request"))
+            await asyncio.sleep(0)
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            await session.close()
+
+    printed_lines = [call.args[0] for call in mock_rich_print.call_args_list if call.args]
+    assert printed_lines == ["[bold blue]i[/bold blue] Retrying LLM request"]
 
 
 def test_session_event_to_message_includes_state_for_prompt_started() -> None:

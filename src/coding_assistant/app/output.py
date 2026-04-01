@@ -196,6 +196,11 @@ def print_session_status(state: SessionState) -> None:
     rich_print(f"[dim]{format_session_status(state)}[/dim]")
 
 
+def print_info_message(message: str) -> None:
+    """Render one informational status line."""
+    rich_print(f"[bold blue]i[/bold blue] {message}")
+
+
 def format_tool_call_display(tool_call: ToolCall) -> tuple[str, list[tuple[str, str, str]]]:
     """Return the tool-call header and multiline sections for display."""
     tool_name = tool_call.function.name or "<missing>"
