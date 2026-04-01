@@ -17,10 +17,10 @@ from coding_assistant.app.output import (
     format_tool_call_display,
     print_tool_calls,
 )
-from coding_assistant.app.terminal_ui import TerminalUiMode
 from coding_assistant.core.agent_session import AgentSession, SessionState
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
+from coding_assistant.remote.server import WorkerServer
 
 
 def test_parse_args_valid() -> None:
@@ -33,19 +33,12 @@ def test_parse_args_defaults() -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "gpt-4"]):
         args = parse_args()
         assert args.skills_directories == []
-        assert args.worker is False
 
 
 def test_parse_args_with_multiple_flags() -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--trace"]):
         args = parse_args()
         assert args.trace is True
-
-
-def test_parse_args_worker_flag() -> None:
-    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--worker"]):
-        args = parse_args()
-        assert args.worker is True
 
 
 def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
@@ -82,13 +75,11 @@ def test_main_waits_for_debugger(mock_listen: Any, mock_wait: Any, mock_run_cli:
         mock_run_cli.assert_called_once()
 
 
-@patch("coding_assistant.app.main.run_worker")
 @patch("coding_assistant.app.main.run_cli")
-def test_main_dispatches_worker_mode(mock_run_cli: Any, mock_run_worker: Any) -> None:
-    with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--worker"]):
+def test_main_runs_cli(mock_run_cli: Any) -> None:
+    with patch("sys.argv", ["coding-assistant", "--model", "test-model"]):
         main()
-        mock_run_worker.assert_called_once()
-        mock_run_cli.assert_not_called()
+        mock_run_cli.assert_called_once()
 
 
 def test_help_exits_with_zero() -> None:
@@ -108,21 +99,25 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         skills_directories=[],
         trace=False,
         wait_for_debugger=False,
-        worker=False,
     )
 
     @asynccontextmanager
-    async def fake_create_default_agent(*, config: Any, include_worker_tools: bool = True) -> Any:
+    async def fake_create_default_agent(*, config: Any) -> Any:
         del config
-        assert include_worker_tools is True
         yield DefaultAgentBundle(
             tools=[],
             instructions="Follow the repo instructions.",
             mcp_servers=[],
         )
 
+    @asynccontextmanager
+    async def fake_start_worker_server(*, session: Any) -> Any:
+        yield WorkerServer(endpoint="ws://127.0.0.1:1234")
+
     with (
         patch("coding_assistant.app.cli.create_default_agent", fake_create_default_agent),
+        patch("coding_assistant.app.cli.start_worker_server", fake_start_worker_server),
+        patch("coding_assistant.app.cli.print") as mock_print,
         patch("coding_assistant.app.cli.run_terminal_ui", new=AsyncMock()) as mock_run_terminal_ui,
     ):
         await run_cli(args)
@@ -136,7 +131,6 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     assert mock_run_terminal_ui.await_args.kwargs["system_message"] == SystemMessage(
         content=build_system_prompt(instructions="Follow the repo instructions.")
     )
-    assert mock_run_terminal_ui.await_args.kwargs["mode"] is TerminalUiMode.INTERACTIVE
     assert mock_run_terminal_ui.await_args.kwargs["history_path"].name == "history"
     assert mock_run_terminal_ui.await_args.kwargs["words"] == [
         "/exit",
@@ -146,6 +140,7 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         "/priority",
         "/interrupt",
     ]
+    mock_print.assert_called_once_with("Remote endpoint: ws://127.0.0.1:1234")
 
 
 def test_paragraph_buffer_respects_code_fences() -> None:

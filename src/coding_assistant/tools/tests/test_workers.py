@@ -239,7 +239,7 @@ async def test_worker_runtime_second_connection_is_rejected_for_controlled_worke
 
         second_result = await second_runtime.connect(worker_server.endpoint)
         assert second_result == (
-            f"Failed to connect to worker {worker_server.endpoint}: Worker is already remotely controlled."
+            f"Failed to connect to worker {worker_server.endpoint}: Session already has a remote client connected."
         )
 
     await first_runtime.close()
@@ -316,6 +316,42 @@ async def test_worker_runtime_wait_returns_idle_immediately_for_idle_connected_w
 
 
 @pytest.mark.asyncio
+async def test_worker_runtime_disconnect_does_not_stop_the_session() -> None:
+    first_started = asyncio.Event()
+    first_release = asyncio.Event()
+    streamer = ControlledStreamer(
+        [
+            StreamStep(
+                message=AssistantMessage(content="First result"),
+                started_event=first_started,
+                release_event=first_release,
+            ),
+            StreamStep(message=AssistantMessage(content="Second result")),
+        ]
+    )
+    session = make_agent_session(completion_streamer=streamer)
+    worker_runtime = WorkerToolRuntime()
+    worker_id = 1
+
+    async with start_worker_server(session=session) as worker_server:
+        assert await worker_runtime.connect(worker_server.endpoint) == (
+            f"Connected to worker {worker_id} at {worker_server.endpoint}."
+        )
+        assert await worker_runtime.prompt(worker_id, "first") == f"Prompt accepted by worker {worker_id}.\nfirst"
+        await asyncio.wait_for(first_started.wait(), timeout=1)
+        assert await worker_runtime.prompt(worker_id, "second") == (f"Prompt accepted by worker {worker_id}.\nsecond")
+        assert await worker_runtime.disconnect(worker_id) == (f"Disconnected from worker {worker_id}.")
+
+        first_release.set()
+        await asyncio.wait_for(_wait_for_session_to_idle(session), timeout=1)
+
+    assert streamer.prompts == ["first", "second"]
+
+    await worker_runtime.close()
+    await session.close()
+
+
+@pytest.mark.asyncio
 async def test_worker_runtime_wait_any_returns_idle_immediately_when_all_workers_are_idle() -> None:
     session = make_agent_session(
         completion_streamer=ControlledStreamer([StreamStep(message=AssistantMessage(content="unused"))]),
@@ -333,3 +369,8 @@ async def test_worker_runtime_wait_any_returns_idle_immediately_when_all_workers
 
     await worker_runtime.close()
     await session.close()
+
+
+async def _wait_for_session_to_idle(session: AgentSession) -> None:
+    while session.state.running or session.state.queued_prompt_count:
+        await asyncio.sleep(0)

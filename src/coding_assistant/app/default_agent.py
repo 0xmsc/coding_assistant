@@ -54,12 +54,10 @@ def build_default_agent_config(args: Namespace) -> DefaultAgentConfig:
 async def create_default_agent(
     *,
     config: DefaultAgentConfig,
-    include_worker_tools: bool = True,
 ) -> AsyncIterator[DefaultAgentBundle]:
     """Resolve instructions and tools for a default agent run."""
     local_tool_bundle = create_local_tool_bundle(
         skills_directories=[Path(path).resolve() for path in config.skills_directories],
-        include_worker_tools=include_worker_tools,
     )
 
     try:

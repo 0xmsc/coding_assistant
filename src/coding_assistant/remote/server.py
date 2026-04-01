@@ -50,7 +50,7 @@ class WorkerServer:
 
 
 class RemoteOutput:
-    """Forward session events over one supervisor websocket connection."""
+    """Forward session events over one remote websocket connection."""
 
     def __init__(self, *, websocket: ServerConnection) -> None:
         self._websocket = websocket
@@ -88,7 +88,7 @@ def _session_event_to_message(
     | RunFailedMessage
     | None
 ):
-    """Translate internal session events into protocol messages for the supervisor."""
+    """Translate internal session events into protocol messages for the remote client."""
     if isinstance(event, StateChangedEvent):
         return StateMessage(**_state_payload(event.state))
     if isinstance(event, PromptAcceptedEvent):
@@ -132,7 +132,7 @@ async def _handle_supervisor_message(
     session: AgentSession,
     message: PromptCommand | CancelCommand,
 ) -> None:
-    """Execute one supervisor command and send its immediate accepted/not-ready reply."""
+    """Execute one remote command and send its immediate accepted/not-ready reply."""
     if isinstance(message, PromptCommand):
         if message.mode == "interrupt":
             accepted = await session.interrupt_and_enqueue(message.prompt)
@@ -189,17 +189,19 @@ async def start_worker_server(
     *,
     session: AgentSession,
 ) -> AsyncIterator[WorkerServer]:
-    """Serve one controlling supervisor connection at a time for a worker session."""
+    """Serve one remote connection at a time for a live session."""
     connection_lock = asyncio.Lock()
     active_connection: ServerConnection | None = None
 
     async def handle_connection(websocket: ServerConnection) -> None:
-        """Own one websocket connection for as long as it is the active controller."""
+        """Own one websocket connection for as long as it is the active remote client."""
         nonlocal active_connection
 
         async with connection_lock:
             if active_connection is not None:
-                await websocket.send(message_to_json(ErrorMessage(message="Worker is already remotely controlled.")))
+                await websocket.send(
+                    message_to_json(ErrorMessage(message="Session already has a remote client connected."))
+                )
                 await websocket.close()
                 return
             active_connection = websocket
@@ -215,7 +217,6 @@ async def start_worker_server(
             sender_task.cancel()
             with suppress(asyncio.CancelledError):
                 await sender_task
-            await session.cancel_current_run(discard_pending_prompts=True)
             async with connection_lock:
                 if active_connection is websocket:
                     active_connection = None

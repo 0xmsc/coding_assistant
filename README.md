@@ -108,6 +108,7 @@ If you want streaming or explicit boundary control, use `run_agent_event_stream(
 - `--skills-directories` loads additional skill directories.
 
 The CLI is interactive.
+At startup it also prints a localhost websocket endpoint; remote clients can enqueue prompts into the same live session.
 
 The interactive CLI also supports:
 

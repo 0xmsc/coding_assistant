@@ -11,7 +11,6 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 
 from coding_assistant.app.terminal_ui import (
     SlashCompleter,
-    TerminalUiMode,
     create_terminal_application,
     format_queued_prompts,
     run_terminal_ui,
@@ -56,7 +55,6 @@ def test_create_terminal_application_builds_non_fullscreen_interactive_ui(tmp_pa
 
     application, answer_queue = create_terminal_application(
         session=session,
-        mode=TerminalUiMode.INTERACTIVE,
         history_path=tmp_path / "history",
         words=[],
     )
@@ -75,25 +73,6 @@ def test_create_terminal_application_builds_non_fullscreen_interactive_ui(tmp_pa
     assert isinstance(prompt_window, Window)
     assert isinstance(prompt_window.content, FormattedTextControl)
     assert prompt_window.content.text == [("class:prompt", "> ")]
-
-
-def test_create_terminal_application_builds_non_fullscreen_readonly_ui() -> None:
-    session = Mock()
-    session.state = SessionState(
-        promptable=True,
-        running=False,
-        queued_prompt_count=0,
-    )
-
-    application, answer_queue = create_terminal_application(
-        session=session,
-        mode=TerminalUiMode.READONLY,
-        history_path=None,
-    )
-
-    assert application.full_screen is False
-    assert application.refresh_interval == 0.1
-    assert answer_queue is None
 
 
 def test_format_queued_prompts_shows_pending_prompts() -> None:
@@ -119,15 +98,18 @@ async def test_run_terminal_ui_prints_accepted_prompts_in_transcript() -> None:
     application.is_done = True
     session = Mock()
     system_message = SystemMessage(content="System")
+    answer_queue: asyncio.Queue[str] = asyncio.Queue()
+    submit_handler = AsyncMock(return_value=False)
 
     with (
-        patch("coding_assistant.app.terminal_ui.create_terminal_application", return_value=(application, None)),
+        patch("coding_assistant.app.terminal_ui.create_terminal_application", return_value=(application, answer_queue)),
         patch("coding_assistant.app.terminal_ui.run_session_output", new=AsyncMock()) as mock_run_session_output,
     ):
         await run_terminal_ui(
             session=session,
             system_message=system_message,
-            mode=TerminalUiMode.READONLY,
+            history_path=Path("history"),
+            submit_handler=submit_handler,
         )
 
     assert mock_run_session_output.await_args is not None
@@ -135,3 +117,4 @@ async def test_run_terminal_ui_prints_accepted_prompts_in_transcript() -> None:
         "session": session,
         "system_message": system_message,
     }
+    submit_handler.assert_not_awaited()

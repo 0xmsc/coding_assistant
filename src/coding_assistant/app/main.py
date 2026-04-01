@@ -8,7 +8,6 @@ import debugpy
 from coding_assistant.app.cli import run_cli
 from coding_assistant.infra.paths import get_log_file
 from coding_assistant.infra.trace import enable_tracing, get_default_trace_dir
-from coding_assistant.remote.worker import run_worker
 
 logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
@@ -18,9 +17,6 @@ async def _main(args: argparse.Namespace) -> None:
     """Run the CLI and translate Ctrl-C into a clean shutdown."""
     logger.info(f"Starting Coding Assistant with arguments {args}")
     try:
-        if args.worker:
-            await run_worker(args)
-            return
         await run_cli(args)
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
@@ -77,11 +73,6 @@ def parse_args() -> argparse.Namespace:
         nargs="*",
         default=[],
         help="Paths to additional directories containing Agent Skills (with SKILL.md files).",
-    )
-    parser.add_argument(
-        "--worker",
-        action="store_true",
-        help="Run as a remote-controlled worker instead of the interactive chat CLI.",
     )
 
     return parser.parse_args()

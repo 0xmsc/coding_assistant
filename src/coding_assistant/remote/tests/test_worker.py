@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from argparse import Namespace
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
 
@@ -13,8 +10,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.styled import Styled
 
-from coding_assistant.app.default_agent import DefaultAgentBundle, DefaultAgentConfig
-from coding_assistant.app.terminal_ui import TerminalUiMode, run_session_output
+from coding_assistant.app.terminal_ui import run_session_output
 from coding_assistant.core.agent_session import (
     AgentSession,
     PromptAcceptedEvent,
@@ -23,7 +19,6 @@ from coding_assistant.core.agent_session import (
     StateChangedEvent,
     ToolCallsEvent,
 )
-from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -41,9 +36,7 @@ from coding_assistant.remote.protocol import (
     PromptStartedMessage,
     parse_worker_message,
 )
-from coding_assistant.remote.server import WorkerServer
 from coding_assistant.remote.server import _handle_supervisor_message, _session_event_to_message
-from coding_assistant.remote.worker import run_worker
 
 
 class ScriptedStreamer:
@@ -277,68 +270,3 @@ async def test_handle_supervisor_message_replies_with_authoritative_state_snapsh
         running=False,
         queued_prompt_count=1,
     )
-
-
-@pytest.mark.asyncio
-async def test_run_worker_starts_worker_server_with_worker_tools_and_local_output(tmp_path: Path) -> None:
-    args = Namespace(
-        instructions=[],
-        mcp_servers=[],
-        model="gpt-4",
-        print_mcp_tools=False,
-        skills_directories=[],
-        trace=False,
-        wait_for_debugger=False,
-        worker=True,
-    )
-    config = DefaultAgentConfig(working_directory=tmp_path)
-    captured: dict[str, object] = {}
-
-    @asynccontextmanager
-    async def fake_create_default_agent(*, config: Any, include_worker_tools: bool = True) -> Any:
-        captured["config"] = config
-        captured["include_worker_tools"] = include_worker_tools
-        yield DefaultAgentBundle(
-            tools=[],
-            instructions="Follow the repo instructions.",
-            mcp_servers=[],
-        )
-
-    @asynccontextmanager
-    async def fake_start_worker_server(*, session: Any) -> Any:
-        captured["session"] = session
-        yield WorkerServer(endpoint="ws://127.0.0.1:1234")
-
-    async def fake_run_terminal_ui(
-        *,
-        session: Any,
-        system_message: Any,
-        mode: TerminalUiMode,
-    ) -> None:
-        captured["output_session"] = session
-        captured["output_system_message"] = system_message
-        captured["mode"] = mode
-        await asyncio.Future()
-
-    def resolved_future() -> asyncio.Future[None]:
-        future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-        future.set_result(None)
-        return future
-
-    with (
-        patch("coding_assistant.remote.worker.build_default_agent_config", return_value=config),
-        patch("coding_assistant.remote.worker.create_default_agent", fake_create_default_agent),
-        patch("coding_assistant.remote.worker.start_worker_server", fake_start_worker_server),
-        patch("coding_assistant.remote.worker.run_terminal_ui", new=fake_run_terminal_ui),
-        patch("coding_assistant.remote.worker.asyncio.Future", new=resolved_future),
-    ):
-        await run_worker(args)
-
-    assert captured["config"] == config
-    assert captured["include_worker_tools"] is True
-    assert isinstance(captured["session"], AgentSession)
-    assert captured["session"].history == [
-        SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
-    ]
-    assert captured["output_session"] is captured["session"]
-    assert captured["mode"] is TerminalUiMode.READONLY
