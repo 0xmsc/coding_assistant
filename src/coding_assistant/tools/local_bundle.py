@@ -15,10 +15,10 @@ from coding_assistant.tools.todo import TodoManager, create_todo_tools
 from coding_assistant.tools.workers import WorkerToolRuntime
 
 WORKER_TOOL_INSTRUCTIONS = """
-## Workers
+## Remotes
 
-- Use `worker_connect(endpoint=...)` with the remote endpoint printed when `coding-assistant` starts, then use the returned local `worker_id` with the other worker tools.
-- When prompting a worker, choose `mode="queue"` for normal FIFO work, `mode="priority"` to move ahead of already queued prompts, or `mode="interrupt"` to cancel the current run and run your prompt next.
+- Use `remote_connect(endpoint=...)` with the remote endpoint printed when `coding-assistant` starts, then use the returned local `remote_id` with the other remote tools.
+- When prompting a remote session, choose `mode="queue"` for normal FIFO work, `mode="priority"` to move ahead of already queued prompts, or `mode="interrupt"` to cancel the current run and run your prompt next.
 """.strip()
 
 

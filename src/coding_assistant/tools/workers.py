@@ -57,7 +57,7 @@ class _WorkerManager:
 
     def format_connected_workers(self) -> str:
         if not self._connections:
-            return "No connected workers."
+            return "No connected remotes."
 
         lines = []
         for worker_id, snapshot in sorted(self._snapshots.items()):
@@ -67,13 +67,13 @@ class _WorkerManager:
             if snapshot.queued_prompt_count:
                 status = f"{status}, {snapshot.queued_prompt_count} queued"
             suffix = f" -> {snapshot.last_update}" if snapshot.last_update else ""
-            lines.append(f"- worker {worker_id} at {snapshot.endpoint} [{status}]{suffix}")
+            lines.append(f"- remote {worker_id} at {snapshot.endpoint} [{status}]{suffix}")
         return "\n".join(lines)
 
     async def connect(self, endpoint: str) -> str:
         existing_worker_id = self._worker_ids_by_endpoint.get(endpoint)
         if existing_worker_id is not None:
-            return f"Already connected to worker {existing_worker_id} at {endpoint}."
+            return f"Already connected to remote {existing_worker_id} at {endpoint}."
 
         worker_id = self._next_worker_id
         self._next_worker_id += 1
@@ -90,26 +90,26 @@ class _WorkerManager:
             self._connecting_worker_ids.discard(worker_id)
             self._snapshots.pop(worker_id, None)
             self._worker_queues.pop(worker_id, None)
-            return f"Failed to connect to worker {endpoint}: {exc}"
+            return f"Failed to connect to remote {endpoint}: {exc}"
 
         self._connecting_worker_ids.discard(worker_id)
         self._connections[worker_id] = connection
         self._worker_ids_by_endpoint[endpoint] = worker_id
-        return f"Connected to worker {worker_id} at {endpoint}."
+        return f"Connected to remote {worker_id} at {endpoint}."
 
     async def disconnect(self, worker_id: int) -> str:
         connection = self._connections.get(worker_id)
         if connection is None:
-            return f"Worker {worker_id} is not connected."
+            return f"Remote {worker_id} is not connected."
         await connection.close()
-        return f"Disconnected from worker {worker_id}."
+        return f"Disconnected from remote {worker_id}."
 
     async def prompt(
         self, worker_id: int, prompt: str, *, mode: Literal["queue", "priority", "interrupt"] = "queue"
     ) -> str:
         connection = self._connections.get(worker_id)
         if connection is None:
-            return f"Worker {worker_id} is not connected."
+            return f"Remote {worker_id} is not connected."
 
         response = await connection.prompt(prompt, mode=mode)
         snapshot = self._snapshot_for_worker(worker_id)
@@ -123,10 +123,10 @@ class _WorkerManager:
             )
             prompt_text = f"\n{prompt}"
             if mode == "priority":
-                return f"Priority prompt accepted by worker {worker_id}.{prompt_text}"
+                return f"Priority prompt accepted by remote {worker_id}.{prompt_text}"
             if mode == "interrupt":
-                return f"Interrupt prompt accepted by worker {worker_id}.{prompt_text}"
-            return f"Prompt accepted by worker {worker_id}.{prompt_text}"
+                return f"Interrupt prompt accepted by remote {worker_id}.{prompt_text}"
+            return f"Prompt accepted by remote {worker_id}.{prompt_text}"
         if isinstance(response, NotReadyMessage):
             self._apply_state(
                 snapshot,
@@ -136,16 +136,16 @@ class _WorkerManager:
                 queued_prompt_count=response.queued_prompt_count,
             )
             return (
-                f"Worker {worker_id} is not ready for a prompt. "
+                f"Remote {worker_id} is not ready for a prompt. "
                 f"promptable={response.promptable} running={response.running} "
                 f"queued={response.queued_prompt_count}"
             )
-        return f"Worker {worker_id} rejected the prompt: {response.message}"
+        return f"Remote {worker_id} rejected the prompt: {response.message}"
 
     async def cancel(self, worker_id: int) -> str:
         connection = self._connections.get(worker_id)
         if connection is None:
-            return f"Worker {worker_id} is not connected."
+            return f"Remote {worker_id} is not connected."
 
         response = await connection.cancel()
         if isinstance(response, CommandAcceptedMessage):
@@ -157,7 +157,7 @@ class _WorkerManager:
                 running=response.running,
                 queued_prompt_count=response.queued_prompt_count,
             )
-            return f"Cancelled the current run on worker {worker_id}."
+            return f"Cancelled the current run on remote {worker_id}."
         if isinstance(response, NotReadyMessage):
             snapshot = self._snapshot_for_worker(worker_id)
             self._apply_state(
@@ -167,19 +167,19 @@ class _WorkerManager:
                 running=response.running,
                 queued_prompt_count=response.queued_prompt_count,
             )
-            return f"Worker {worker_id} has no cancellable run."
-        return f"Worker {worker_id} rejected the cancel request: {response.message}"
+            return f"Remote {worker_id} has no cancellable run."
+        return f"Remote {worker_id} rejected the cancel request: {response.message}"
 
     async def wait(self, worker_id: int) -> str:
         queue = self._worker_queues.get(worker_id)
         if queue is None:
-            return f"Worker {worker_id} is not connected."
+            return f"Remote {worker_id} is not connected."
         if queue.empty():
             if worker_id not in self._connections:
                 self._worker_queues.pop(worker_id, None)
-                return f"Worker {worker_id} is not connected."
+                return f"Remote {worker_id} is not connected."
             if self._worker_is_idle(worker_id):
-                return f"Worker {worker_id} is idle."
+                return f"Remote {worker_id} is idle."
         event = await queue.get()
         self._cleanup_idle_queue(worker_id)
         return _format_meaningful_event(event)
@@ -189,9 +189,9 @@ class _WorkerManager:
             event = await self._any_queue.get()
             return _format_meaningful_event(event)
         if not self._connections:
-            return "No connected workers."
+            return "No connected remotes."
         if all(self._worker_is_idle(worker_id) for worker_id in self._connections):
-            return "All connected workers are idle."
+            return "All connected remotes are idle."
         event = await self._any_queue.get()
         return _format_meaningful_event(event)
 
@@ -359,7 +359,7 @@ class _WorkerManager:
 
 
 class WorkerToolRuntime:
-    """Worker-tool runtime that hides supervisor-side connection management."""
+    """Remote-tool runtime that hides connection management for remote sessions."""
 
     def __init__(self) -> None:
         self._manager = _WorkerManager()
@@ -408,63 +408,63 @@ def _format_prompt_preview(content: str | list[dict[str, Any]]) -> str:
 def _format_meaningful_event(event: WorkerMeaningfulEvent) -> str:
     if event.kind == "finished":
         if event.summary:
-            return f"Worker {event.worker_id} finished:\n{event.summary}"
-        return f"Worker {event.worker_id} finished."
+            return f"Remote {event.worker_id} finished:\n{event.summary}"
+        return f"Remote {event.worker_id} finished."
     if event.kind == "cancelled":
-        return f"Worker {event.worker_id} cancelled its current run."
+        return f"Remote {event.worker_id} cancelled its current run."
     if event.kind == "failed":
-        return f"Worker {event.worker_id} failed:\n{event.summary}"
-    return f"Worker {event.worker_id} disconnected."
+        return f"Remote {event.worker_id} failed:\n{event.summary}"
+    return f"Remote {event.worker_id} disconnected."
 
 
 class EmptyInput(BaseModel):
     """Schema for tools that do not take any arguments."""
 
 
-class WorkerConnectInput(BaseModel):
-    endpoint: str = Field(description="The websocket endpoint of the worker to connect to.")
+class RemoteConnectInput(BaseModel):
+    endpoint: str = Field(description="The websocket endpoint of the remote session to connect to.")
 
 
-class WorkerPromptInput(BaseModel):
-    worker_id: int = Field(description="The local worker id returned by worker_connect.")
-    prompt: str = Field(description="The prompt to send to the worker.")
+class RemotePromptInput(BaseModel):
+    remote_id: int = Field(description="The local remote id returned by remote_connect.")
+    prompt: str = Field(description="The prompt to send to the remote session.")
     mode: Literal["queue", "priority", "interrupt"] = Field(
         default="queue",
         description="How to schedule the prompt: queue normally, queue with priority, or interrupt the current run.",
     )
 
 
-class WorkerIdInput(BaseModel):
-    worker_id: int = Field(description="The local worker id returned by worker_connect.")
+class RemoteIdInput(BaseModel):
+    remote_id: int = Field(description="The local remote id returned by remote_connect.")
 
 
-class WorkerConnectTool(Tool):
+class RemoteConnectTool(Tool):
     def __init__(self, *, runtime: WorkerToolRuntime) -> None:
         self._runtime = runtime
 
     def name(self) -> str:
-        return "worker_connect"
+        return "remote_connect"
 
     def description(self) -> str:
-        return "Connect to one worker websocket endpoint."
+        return "Connect to one remote session websocket endpoint."
 
     def parameters(self) -> dict[str, Any]:
-        return WorkerConnectInput.model_json_schema()
+        return RemoteConnectInput.model_json_schema()
 
     async def execute(self, parameters: dict[str, Any]) -> str:
-        validated = WorkerConnectInput.model_validate(parameters)
+        validated = RemoteConnectInput.model_validate(parameters)
         return await self._runtime.connect(validated.endpoint)
 
 
-class WorkersListTool(Tool):
+class RemotesListTool(Tool):
     def __init__(self, *, runtime: WorkerToolRuntime) -> None:
         self._runtime = runtime
 
     def name(self) -> str:
-        return "workers_list"
+        return "remotes_list"
 
     def description(self) -> str:
-        return "List currently connected workers and their latest state."
+        return "List currently connected remote sessions and their latest state."
 
     def parameters(self) -> dict[str, Any]:
         return EmptyInput.model_json_schema()
@@ -474,51 +474,51 @@ class WorkersListTool(Tool):
         return self._runtime.format_connected_workers()
 
 
-class WorkerPromptTool(Tool):
+class RemotePromptTool(Tool):
     def __init__(self, *, runtime: WorkerToolRuntime) -> None:
         self._runtime = runtime
 
     def name(self) -> str:
-        return "worker_prompt"
+        return "remote_prompt"
 
     def description(self) -> str:
-        return "Send a prompt to one connected worker id, optionally as a priority or interrupting prompt."
+        return "Send a prompt to one connected remote id, optionally as a priority or interrupting prompt."
 
     def parameters(self) -> dict[str, Any]:
-        return WorkerPromptInput.model_json_schema()
+        return RemotePromptInput.model_json_schema()
 
     async def execute(self, parameters: dict[str, Any]) -> str:
-        validated = WorkerPromptInput.model_validate(parameters)
-        return await self._runtime.prompt(validated.worker_id, validated.prompt, mode=validated.mode)
+        validated = RemotePromptInput.model_validate(parameters)
+        return await self._runtime.prompt(validated.remote_id, validated.prompt, mode=validated.mode)
 
 
-class WorkerWaitTool(Tool):
+class RemoteWaitTool(Tool):
     def __init__(self, *, runtime: WorkerToolRuntime) -> None:
         self._runtime = runtime
 
     def name(self) -> str:
-        return "worker_wait"
+        return "remote_wait"
 
     def description(self) -> str:
-        return "Wait for the next meaningful update from one connected worker id."
+        return "Wait for the next meaningful update from one connected remote id."
 
     def parameters(self) -> dict[str, Any]:
-        return WorkerIdInput.model_json_schema()
+        return RemoteIdInput.model_json_schema()
 
     async def execute(self, parameters: dict[str, Any]) -> str:
-        validated = WorkerIdInput.model_validate(parameters)
-        return await self._runtime.wait(validated.worker_id)
+        validated = RemoteIdInput.model_validate(parameters)
+        return await self._runtime.wait(validated.remote_id)
 
 
-class WorkersWaitAnyTool(Tool):
+class RemotesWaitAnyTool(Tool):
     def __init__(self, *, runtime: WorkerToolRuntime) -> None:
         self._runtime = runtime
 
     def name(self) -> str:
-        return "workers_wait_any"
+        return "remotes_wait_any"
 
     def description(self) -> str:
-        return "Wait for the next meaningful update from any connected worker."
+        return "Wait for the next meaningful update from any connected remote session."
 
     def parameters(self) -> dict[str, Any]:
         return EmptyInput.model_json_schema()
@@ -528,49 +528,49 @@ class WorkersWaitAnyTool(Tool):
         return await self._runtime.wait_any()
 
 
-class WorkerCancelTool(Tool):
+class RemoteCancelTool(Tool):
     def __init__(self, *, runtime: WorkerToolRuntime) -> None:
         self._runtime = runtime
 
     def name(self) -> str:
-        return "worker_cancel"
+        return "remote_cancel"
 
     def description(self) -> str:
-        return "Cancel the current run on one connected worker id."
+        return "Cancel the current run on one connected remote id."
 
     def parameters(self) -> dict[str, Any]:
-        return WorkerIdInput.model_json_schema()
+        return RemoteIdInput.model_json_schema()
 
     async def execute(self, parameters: dict[str, Any]) -> str:
-        validated = WorkerIdInput.model_validate(parameters)
-        return await self._runtime.cancel(validated.worker_id)
+        validated = RemoteIdInput.model_validate(parameters)
+        return await self._runtime.cancel(validated.remote_id)
 
 
-class WorkerDisconnectTool(Tool):
+class RemoteDisconnectTool(Tool):
     def __init__(self, *, runtime: WorkerToolRuntime) -> None:
         self._runtime = runtime
 
     def name(self) -> str:
-        return "worker_disconnect"
+        return "remote_disconnect"
 
     def description(self) -> str:
-        return "Disconnect from one connected worker id."
+        return "Disconnect from one connected remote id."
 
     def parameters(self) -> dict[str, Any]:
-        return WorkerIdInput.model_json_schema()
+        return RemoteIdInput.model_json_schema()
 
     async def execute(self, parameters: dict[str, Any]) -> str:
-        validated = WorkerIdInput.model_validate(parameters)
-        return await self._runtime.disconnect(validated.worker_id)
+        validated = RemoteIdInput.model_validate(parameters)
+        return await self._runtime.disconnect(validated.remote_id)
 
 
 def _create_worker_tools(*, runtime: WorkerToolRuntime) -> list[Tool]:
     return [
-        WorkerConnectTool(runtime=runtime),
-        WorkersListTool(runtime=runtime),
-        WorkerPromptTool(runtime=runtime),
-        WorkerWaitTool(runtime=runtime),
-        WorkersWaitAnyTool(runtime=runtime),
-        WorkerCancelTool(runtime=runtime),
-        WorkerDisconnectTool(runtime=runtime),
+        RemoteConnectTool(runtime=runtime),
+        RemotesListTool(runtime=runtime),
+        RemotePromptTool(runtime=runtime),
+        RemoteWaitTool(runtime=runtime),
+        RemotesWaitAnyTool(runtime=runtime),
+        RemoteCancelTool(runtime=runtime),
+        RemoteDisconnectTool(runtime=runtime),
     ]

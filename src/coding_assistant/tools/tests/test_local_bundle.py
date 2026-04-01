@@ -11,7 +11,17 @@ def test_create_local_tool_bundle_includes_builtin_skills() -> None:
 
     assert bundle.instructions.startswith(load_tool_instructions())
     assert "- **example**: Example packaged skill showing the expected SKILL.md structure." in bundle.instructions
-    assert {"skills_list_resources", "skills_read"} <= tool_names
+    assert {
+        "skills_list_resources",
+        "skills_read",
+        "remote_connect",
+        "remotes_list",
+        "remote_prompt",
+        "remote_wait",
+        "remotes_wait_any",
+        "remote_cancel",
+        "remote_disconnect",
+    } <= tool_names
 
 
 def test_create_local_tool_bundle_raises_on_skill_name_collision(tmp_path: Path) -> None:
