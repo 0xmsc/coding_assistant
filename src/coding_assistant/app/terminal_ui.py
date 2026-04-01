@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import re
 from collections.abc import Awaitable, Callable, Iterable
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +14,7 @@ from prompt_toolkit.filters import Condition
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout, VSplit, Window
-from prompt_toolkit.layout.containers import AnyContainer, ConditionalContainer
+from prompt_toolkit.layout.containers import ConditionalContainer
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.patch_stdout import patch_stdout
@@ -48,11 +47,6 @@ from coding_assistant.llm.types import (
     StatusEvent,
     SystemMessage,
 )
-
-
-class TerminalUiMode(str, Enum):
-    INTERACTIVE = "interactive"
-    READONLY = "readonly"
 
 
 PromptSubmitHandler = Callable[[str], Awaitable[bool]]
@@ -97,11 +91,10 @@ def format_queued_prompts(session: AgentSession) -> str:
 def create_terminal_application(
     *,
     session: AgentSession,
-    mode: TerminalUiMode,
-    history_path: Path | None,
+    history_path: Path,
     words: list[str] | None = None,
-) -> tuple[Application[None], asyncio.Queue[str] | None]:
-    """Build the shared non-fullscreen terminal UI and its submission queue when interactive."""
+) -> tuple[Application[None], asyncio.Queue[str]]:
+    """Build the shared non-fullscreen terminal UI and its submission queue."""
     queued_window = ConditionalContainer(
         content=Window(
             content=FormattedTextControl(
@@ -121,64 +114,47 @@ def create_terminal_application(
     )
 
     key_bindings = KeyBindings()
-    input_row: AnyContainer | None = None
-    input_window: Window | None = None
-    answer_queue: asyncio.Queue[str] | None = None
+    answer_queue: asyncio.Queue[str] = asyncio.Queue()
 
     @key_bindings.add("c-c")
     def exit_on_interrupt(event: Any) -> None:
         event.app.exit()
 
-    if mode is TerminalUiMode.INTERACTIVE:
-        if history_path is None:
-            raise ValueError("Interactive terminal UI requires a history path.")
+    completer = SlashCompleter(words) if words else None
 
-        completer = SlashCompleter(words) if words else None
-        answer_queue = asyncio.Queue()
+    def accept_buffer(buffer: Buffer) -> bool:
+        answer_queue.put_nowait(buffer.text)
+        return False
 
-        def accept_buffer(buffer: Buffer) -> bool:
-            assert answer_queue is not None
-            answer_queue.put_nowait(buffer.text)
-            return False
-
-        input_buffer = Buffer(
-            completer=completer,
-            complete_while_typing=True,
-            history=create_prompt_history(history_path),
-            multiline=False,
-            accept_handler=accept_buffer,
-        )
-        input_window = Window(
-            content=BufferControl(buffer=input_buffer),
-            height=Dimension.exact(1),
-        )
-        input_row = VSplit(
-            [
-                Window(
-                    content=FormattedTextControl([("class:prompt", "> ")], show_cursor=False),
-                    width=Dimension.exact(2),
-                    dont_extend_height=True,
-                ),
-                input_window,
-            ],
-            padding=0,
-        )
-
-        @key_bindings.add("c-d")
-        def exit_on_eof(event: Any) -> None:
-            if not input_buffer.text:
-                event.app.exit()
-
-    body: list[AnyContainer] = [queued_window]
-    if input_row is not None:
-        body.append(input_row)
-    body.append(footer_window)
-
-    layout = (
-        Layout(HSplit(body, padding=0), focused_element=input_window)
-        if input_window
-        else Layout(HSplit(body, padding=0))
+    input_buffer = Buffer(
+        completer=completer,
+        complete_while_typing=True,
+        history=create_prompt_history(history_path),
+        multiline=False,
+        accept_handler=accept_buffer,
     )
+    input_window = Window(
+        content=BufferControl(buffer=input_buffer),
+        height=Dimension.exact(1),
+    )
+    input_row = VSplit(
+        [
+            Window(
+                content=FormattedTextControl([("class:prompt", "> ")], show_cursor=False),
+                width=Dimension.exact(2),
+                dont_extend_height=True,
+            ),
+            input_window,
+        ],
+        padding=0,
+    )
+
+    @key_bindings.add("c-d")
+    def exit_on_eof(event: Any) -> None:
+        if not input_buffer.text:
+            event.app.exit()
+
+    layout = Layout(HSplit([queued_window, input_row, footer_window], padding=0), focused_element=input_window)
 
     application: Application[None] = Application(
         layout=layout,
@@ -259,18 +235,13 @@ async def run_terminal_ui(
     *,
     session: AgentSession,
     system_message: SystemMessage,
-    mode: TerminalUiMode,
-    history_path: Path | None = None,
+    history_path: Path,
     words: list[str] | None = None,
-    submit_handler: PromptSubmitHandler | None = None,
+    submit_handler: PromptSubmitHandler,
 ) -> None:
-    """Run the shared terminal UI for either interactive CLI or readonly worker mode."""
-    if mode is TerminalUiMode.INTERACTIVE and submit_handler is None:
-        raise ValueError("Interactive terminal UI requires a submit handler.")
-
+    """Run the shared interactive terminal UI."""
     application, answer_queue = create_terminal_application(
         session=session,
-        mode=mode,
         history_path=history_path,
         words=words,
     )
@@ -283,18 +254,9 @@ async def run_terminal_ui(
 
     with patch_stdout(raw=True):
         application_task = asyncio.create_task(application.run_async())
-        next_answer_task: asyncio.Task[str] | None = None
-        if answer_queue is not None:
-            next_answer_task = asyncio.create_task(answer_queue.get())
+        next_answer_task: asyncio.Task[str] = asyncio.create_task(answer_queue.get())
 
         try:
-            if mode is TerminalUiMode.READONLY:
-                await application_task
-                return
-
-            assert submit_handler is not None
-            assert answer_queue is not None
-            assert next_answer_task is not None
             while True:
                 done, _ = await asyncio.wait(
                     {application_task, next_answer_task},
@@ -316,8 +278,7 @@ async def run_terminal_ui(
 
                 next_answer_task = asyncio.create_task(answer_queue.get())
         finally:
-            if next_answer_task is not None:
-                next_answer_task.cancel()
+            next_answer_task.cancel()
             if not application_task.done():
                 application.exit()
             await asyncio.gather(application_task, return_exceptions=True)

@@ -17,7 +17,7 @@ from coding_assistant.tools.workers import WorkerToolRuntime
 WORKER_TOOL_INSTRUCTIONS = """
 ## Workers
 
-- Use `worker_connect(endpoint=...)` with the worker endpoints printed by `coding-assistant --worker`, then use the returned local `worker_id` with the other worker tools.
+- Use `worker_connect(endpoint=...)` with the remote endpoint printed when `coding-assistant` starts, then use the returned local `worker_id` with the other worker tools.
 - When prompting a worker, choose `mode="queue"` for normal FIFO work, `mode="priority"` to move ahead of already queued prompts, or `mode="interrupt"` to cancel the current run and run your prompt next.
 """.strip()
 
@@ -28,11 +28,9 @@ class LocalToolBundle:
 
     tools: list[Tool]
     instructions: str
-    _worker_runtime: WorkerToolRuntime | None = None
+    _worker_runtime: WorkerToolRuntime
 
     async def close(self) -> None:
-        if self._worker_runtime is None:
-            return
         await self._worker_runtime.close()
 
 
@@ -44,17 +42,14 @@ def load_tool_instructions() -> str:
 def create_local_tool_bundle(
     *,
     skills_directories: Sequence[Path],
-    include_worker_tools: bool = True,
 ) -> LocalToolBundle:
     """Build the in-process tool bundle used by the default CLI."""
     task_manager = TaskManager()
     todo_manager = TodoManager()
-    worker_runtime = WorkerToolRuntime() if include_worker_tools else None
+    worker_runtime = WorkerToolRuntime()
 
     skill_tools, skills = create_skill_tools(skills_directories=[get_builtin_skills_dir(), *skills_directories])
-    instructions = load_tool_instructions()
-    if include_worker_tools:
-        instructions = f"{instructions}\n\n{WORKER_TOOL_INSTRUCTIONS}"
+    instructions = f"{load_tool_instructions()}\n\n{WORKER_TOOL_INSTRUCTIONS}"
     skill_instructions = format_skills_instructions(skills)
     if skill_instructions:
         instructions = f"{instructions}\n\n{skill_instructions}"
@@ -68,8 +63,7 @@ def create_local_tool_bundle(
         *skill_tools,
     ]
 
-    if worker_runtime is not None:
-        tools.extend(worker_runtime.tools)
+    tools.extend(worker_runtime.tools)
 
     return LocalToolBundle(
         tools=tools,
