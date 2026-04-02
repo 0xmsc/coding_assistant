@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from typing import Any, cast
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.styled import Styled
+from websockets.asyncio.client import ClientConnection, connect
 
 from coding_assistant.app.terminal_ui import run_session_output
 from coding_assistant.core.agent_session import (
@@ -28,17 +29,12 @@ from coding_assistant.llm.types import (
     FunctionCall,
     StatusEvent,
     SystemMessage,
+    Tool,
     ToolCall,
     Usage,
 )
-from coding_assistant.remote.protocol import (
-    ErrorMessage,
-    PromptCommand,
-    RequestOkMessage,
-    StateMessage,
-    parse_worker_message,
-)
-from coding_assistant.remote.server import _handle_supervisor_message, _session_event_to_message
+from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
+from coding_assistant.remote.server import start_worker_server
 
 
 class ScriptedStreamer:
@@ -57,17 +53,87 @@ class ScriptedStreamer:
         yield CompletionEvent(completion=Completion(message=action, usage=Usage(tokens=10, cost=0.0)))
 
 
+class BlockingStreamer:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def __call__(self, messages: Any, tools: Any, model: Any) -> AsyncIterator[object]:
+        del messages, tools, model
+        self.started.set()
+        await self.release.wait()
+        yield CompletionEvent(
+            completion=Completion(
+                message=AssistantMessage(content="Finished"),
+                usage=Usage(tokens=10, cost=0.0),
+            )
+        )
+
+
+class EchoTool(Tool):
+    def name(self) -> str:
+        return "echo_tool"
+
+    def description(self) -> str:
+        return "Echo the provided text."
+
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        }
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        return f"echo:{parameters['text']}"
+
+
 def make_system_history() -> list[BaseMessage]:
     return [SystemMessage(content="# Instructions\n\nTest instructions")]
 
 
-def make_agent_session(*, completion_streamer: Any) -> AgentSession:
+def make_agent_session(*, completion_streamer: Any, tools: list[Tool] | None = None) -> AgentSession:
     return AgentSession(
         history=make_system_history(),
         model="test-model",
-        tools=[],
+        tools=tools or [],
         completion_streamer=completion_streamer,
     )
+
+
+async def _open_acp_session(websocket: ClientConnection) -> str:
+    await websocket.send(
+        jsonrpc_request(
+            1,
+            "initialize",
+            {
+                "protocolVersion": ACP_PROTOCOL_VERSION,
+                "clientCapabilities": {},
+                "clientInfo": {
+                    "name": "test-client",
+                    "title": "Test Client",
+                    "version": "0.0.0",
+                },
+            },
+        )
+    )
+    initialize_response = parse_jsonrpc_message(await websocket.recv())
+    assert initialize_response["result"]["protocolVersion"] == ACP_PROTOCOL_VERSION
+
+    await websocket.send(
+        jsonrpc_request(
+            2,
+            "session/new",
+            {
+                "cwd": "/tmp",
+                "mcpServers": [],
+            },
+        )
+    )
+    session_response = parse_jsonrpc_message(await websocket.recv())
+    session_id = session_response["result"]["sessionId"]
+    assert isinstance(session_id, str)
+    return session_id
 
 
 @pytest.mark.asyncio
@@ -246,79 +312,159 @@ async def test_run_session_output_prints_status_events_as_info_lines() -> None:
     assert printed_lines == ["[bold blue]i[/bold blue] Retrying LLM request"]
 
 
-def test_session_event_to_message_uses_accepting_prompts_state() -> None:
-    state = SessionState(
-        promptable=True,
-        running=False,
-        queued_prompt_count=1,
-        pending_prompts=("next queued prompt",),
-    )
-
-    message = _session_event_to_message(StateChangedEvent(state=state), state=state)
-
-    assert message == StateMessage(
-        accepting_prompts=False,
-        running=False,
-    )
-
-
 @pytest.mark.asyncio
-async def test_handle_supervisor_message_replies_with_request_ok_when_idle() -> None:
-    class FakeWebSocket:
-        def __init__(self) -> None:
-            self.messages: list[str] = []
-
-        async def send(self, message: str) -> None:
-            self.messages.append(message)
-
+async def test_worker_server_completes_acp_prompt_turn() -> None:
     session = make_agent_session(
-        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="Hello from the worker")]),
     )
-    websocket = FakeWebSocket()
 
     try:
-        await _handle_supervisor_message(
-            cast(Any, websocket),
-            session,
-            PromptCommand(request_id="request-1", prompt="Do the task"),
+        async with start_worker_server(session=session) as worker_server:
+            async with connect(worker_server.endpoint) as websocket:
+                session_id = await _open_acp_session(websocket)
+
+                await websocket.send(
+                    jsonrpc_request(
+                        3,
+                        "session/prompt",
+                        {
+                            "sessionId": session_id,
+                            "prompt": [text_block("Do the task")],
+                        },
+                    )
+                )
+
+                updates: list[dict[str, Any]] = []
+                response: dict[str, Any] | None = None
+                while response is None:
+                    payload = parse_jsonrpc_message(await websocket.recv())
+                    if payload.get("method") == "session/update":
+                        updates.append(payload)
+                    else:
+                        response = payload
+
+        assert response == {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "result": {"stopReason": "end_turn"},
+        }
+        assert any(
+            update["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
+            and update["params"]["update"]["content"]["text"] == "Hello from the worker"
+            for update in updates
         )
     finally:
         await session.close()
 
-    assert len(websocket.messages) == 1
-    response = parse_worker_message(websocket.messages[0])
-    assert response == RequestOkMessage(
-        request_id="request-1",
-    )
+
+@pytest.mark.asyncio
+async def test_worker_server_rejects_busy_acp_prompt_turn() -> None:
+    streamer = BlockingStreamer()
+    session = make_agent_session(completion_streamer=streamer)
+
+    try:
+        assert await session.enqueue_prompt("Already busy") is True
+        await asyncio.wait_for(streamer.started.wait(), timeout=1)
+
+        async with start_worker_server(session=session) as worker_server:
+            async with connect(worker_server.endpoint) as websocket:
+                session_id = await _open_acp_session(websocket)
+                await websocket.send(
+                    jsonrpc_request(
+                        3,
+                        "session/prompt",
+                        {
+                            "sessionId": session_id,
+                            "prompt": [text_block("Do the task")],
+                        },
+                    )
+                )
+                response = parse_jsonrpc_message(await websocket.recv())
+
+        assert response["id"] == 3
+        assert response["error"]["message"] == "Session is busy. Wait for the current turn or cancel it."
+    finally:
+        streamer.release.set()
+        await session.close()
 
 
 @pytest.mark.asyncio
-async def test_handle_supervisor_message_rejects_prompt_when_session_is_busy() -> None:
-    class FakeWebSocket:
-        def __init__(self) -> None:
-            self.messages: list[str] = []
-
-        async def send(self, message: str) -> None:
-            self.messages.append(message)
-
+async def test_worker_server_reports_tool_call_lifecycle_over_acp() -> None:
     session = make_agent_session(
-        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+        completion_streamer=ScriptedStreamer(
+            [
+                AssistantMessage(
+                    tool_calls=[
+                        ToolCall(
+                            id="call-1",
+                            function=FunctionCall(
+                                name="echo_tool",
+                                arguments='{"text": "hello"}',
+                            ),
+                        )
+                    ]
+                ),
+                AssistantMessage(content="Done"),
+            ]
+        ),
+        tools=[EchoTool()],
     )
-    websocket = FakeWebSocket()
 
     try:
-        assert await session.enqueue_prompt("Already queued") is True
-        await _handle_supervisor_message(
-            cast(Any, websocket),
-            session,
-            PromptCommand(request_id="request-1", prompt="Do the task"),
+        async with start_worker_server(session=session) as worker_server:
+            async with connect(worker_server.endpoint) as websocket:
+                session_id = await _open_acp_session(websocket)
+
+                await websocket.send(
+                    jsonrpc_request(
+                        3,
+                        "session/prompt",
+                        {
+                            "sessionId": session_id,
+                            "prompt": [text_block("Use the tool")],
+                        },
+                    )
+                )
+
+                updates: list[dict[str, Any]] = []
+                response: dict[str, Any] | None = None
+                while response is None:
+                    payload = parse_jsonrpc_message(await websocket.recv())
+                    if payload.get("method") == "session/update":
+                        updates.append(payload)
+                    else:
+                        response = payload
+
+        assert response == {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "result": {"stopReason": "end_turn"},
+        }
+        assert any(
+            update["params"]["update"]
+            == {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "call-1",
+                "title": "echo_tool",
+                "kind": "other",
+                "status": "pending",
+                "rawInput": {"text": "hello"},
+            }
+            for update in updates
+        )
+        assert any(
+            update["params"]["update"]["sessionUpdate"] == "tool_call_update"
+            and update["params"]["update"]["toolCallId"] == "call-1"
+            and update["params"]["update"]["status"] == "in_progress"
+            for update in updates
+        )
+        assert any(
+            update["params"]["update"]["sessionUpdate"] == "tool_call_update"
+            and update["params"]["update"]["toolCallId"] == "call-1"
+            and update["params"]["update"]["status"] == "completed"
+            and update["params"]["update"]["rawOutput"] == "echo:hello"
+            and update["params"]["update"]["content"][0]["content"]["text"] == "echo:hello"
+            for update in updates
         )
     finally:
         await session.close()
-
-    assert len(websocket.messages) == 1
-    response = parse_worker_message(websocket.messages[0])
-    assert response == ErrorMessage(
-        request_id="request-1",
-        message="Remote session is busy. Wait for it to finish or cancel the current run.",
-    )

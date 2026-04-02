@@ -7,17 +7,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from coding_assistant.llm.types import Tool
-from coding_assistant.remote.client import RemoteWorkerConnection
-from coding_assistant.remote.protocol import (
-    ContentDeltaMessage,
-    ErrorMessage,
-    RequestOkMessage,
-    RunCancelledMessage,
-    RunFailedMessage,
-    RunFinishedMessage,
-    StateMessage,
-    ToolCallsMessage,
-    WorkerToSupervisorMessage,
+from coding_assistant.remote.client import (
+    RemoteClientEvent,
+    RemoteContentDeltaEvent,
+    RemotePromptFailedEvent,
+    RemotePromptFinishedEvent,
+    RemoteToolCallEvent,
+    RemoteToolCallUpdateEvent,
+    RemoteWorkerConnection,
 )
 
 
@@ -25,9 +22,9 @@ from coding_assistant.remote.protocol import (
 class WorkerSnapshot:
     worker_id: int
     endpoint: str
-    accepting_prompts: bool = False
     running: bool = False
     last_update: str = ""
+    last_content: str = ""
 
 
 @dataclass(frozen=True)
@@ -58,7 +55,7 @@ class _WorkerManager:
         for worker_id, snapshot in sorted(self._snapshots.items()):
             if worker_id not in self._connections:
                 continue
-            status = "running" if snapshot.running else "ready" if snapshot.accepting_prompts else "busy"
+            status = "running" if snapshot.running else "connected"
             suffix = f" -> {snapshot.last_update}" if snapshot.last_update else ""
             lines.append(f"- remote {worker_id} at {snapshot.endpoint} [{status}]{suffix}")
         return "\n".join(lines)
@@ -102,25 +99,33 @@ class _WorkerManager:
         if connection is None:
             return f"Remote {worker_id} is not connected."
 
-        response = await connection.prompt(prompt)
         snapshot = self._snapshot_for_worker(worker_id)
-        if isinstance(response, RequestOkMessage):
-            snapshot.accepting_prompts = False
-            snapshot.last_update = f"Prompt submitted: {_format_prompt_preview(prompt)}"
-            return f"Prompt submitted to remote {worker_id}.\n{prompt}"
-        return f"Remote {worker_id} rejected the prompt: {response.message}"
+        previous_running = snapshot.running
+        previous_last_content = snapshot.last_content
+        previous_last_update = snapshot.last_update
+        snapshot.running = True
+        snapshot.last_content = ""
+        snapshot.last_update = f"Prompt submitted: {_format_prompt_preview(prompt)}"
+        response_error = await connection.prompt(prompt)
+        if response_error is not None:
+            if response_error == "This remote connection already has an active prompt turn.":
+                snapshot.running = previous_running
+                snapshot.last_content = previous_last_content
+                snapshot.last_update = previous_last_update
+            else:
+                snapshot.running = False
+            return f"Remote {worker_id} rejected the prompt: {response_error}"
+        return f"Prompt submitted to remote {worker_id}.\n{prompt}"
 
     async def cancel(self, worker_id: int) -> str:
         connection = self._connections.get(worker_id)
         if connection is None:
             return f"Remote {worker_id} is not connected."
 
-        response = await connection.cancel()
-        if isinstance(response, RequestOkMessage):
-            snapshot = self._snapshot_for_worker(worker_id)
-            snapshot.last_update = "Cancellation requested."
-            return f"Cancel requested for remote {worker_id}."
-        return f"Remote {worker_id} rejected the cancel request: {response.message}"
+        await connection.cancel()
+        snapshot = self._snapshot_for_worker(worker_id)
+        snapshot.last_update = "Cancellation requested."
+        return f"Cancel requested for remote {worker_id}."
 
     async def wait(self, worker_id: int) -> str:
         queue = self._worker_queues.get(worker_id)
@@ -151,59 +156,62 @@ class _WorkerManager:
         for connection in list(self._connections.values()):
             await connection.close()
 
-    async def _handle_message(self, worker_id: int, message: WorkerToSupervisorMessage) -> None:
+    async def _handle_message(self, worker_id: int, message: RemoteClientEvent) -> None:
         snapshot = self._snapshot_for_worker(worker_id)
 
-        if isinstance(message, StateMessage):
-            self._apply_state(
-                snapshot,
-                accepting_prompts=message.accepting_prompts,
-                running=message.running,
-            )
+        if isinstance(message, RemoteContentDeltaEvent):
+            snapshot.running = True
+            snapshot.last_content = _truncate_summary((snapshot.last_content + message.content).strip())
+            snapshot.last_update = snapshot.last_content
             return
 
-        if isinstance(message, ContentDeltaMessage):
-            snapshot.last_update = _truncate_summary((snapshot.last_update + message.content).strip())
+        if isinstance(message, RemoteToolCallEvent):
+            snapshot.running = True
+            snapshot.last_update = f"Tool call: {message.title}"
             return
 
-        if isinstance(message, ToolCallsMessage):
-            tool_names = ", ".join(tool_call.name for tool_call in message.tool_calls)
-            snapshot.last_update = f"Tool calls: {tool_names}"
+        if isinstance(message, RemoteToolCallUpdateEvent):
+            snapshot.running = True
+            if message.content:
+                snapshot.last_update = _truncate_summary(message.content)
+            elif message.title:
+                snapshot.last_update = f"Tool {message.status}: {message.title}"
             return
 
-        if isinstance(message, RunFinishedMessage):
-            snapshot.last_update = _truncate_summary(message.summary)
+        if isinstance(message, RemotePromptFinishedEvent):
+            snapshot.running = False
+            if message.stop_reason == "cancelled":
+                snapshot.last_content = ""
+                snapshot.last_update = "Run cancelled."
+                await self._push_meaningful_event(
+                    WorkerMeaningfulEvent(worker_id=worker_id, endpoint=snapshot.endpoint, kind="cancelled")
+                )
+                return
+            summary = snapshot.last_content or snapshot.last_update or "Prompt finished."
+            snapshot.last_update = _truncate_summary(summary)
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(
                     worker_id=worker_id,
                     endpoint=snapshot.endpoint,
                     kind="finished",
-                    summary=message.summary,
+                    summary=snapshot.last_update,
                 )
             )
             return
 
-        if isinstance(message, RunCancelledMessage):
-            snapshot.last_update = "Run cancelled."
-            await self._push_meaningful_event(
-                WorkerMeaningfulEvent(worker_id=worker_id, endpoint=snapshot.endpoint, kind="cancelled")
-            )
-            return
-
-        if isinstance(message, RunFailedMessage):
-            snapshot.last_update = f"Run failed: {message.error}"
+        if isinstance(message, RemotePromptFailedEvent):
+            snapshot.running = False
+            snapshot.last_content = ""
+            snapshot.last_update = f"Run failed: {message.message}"
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(
                     worker_id=worker_id,
                     endpoint=snapshot.endpoint,
                     kind="failed",
-                    summary=message.error,
+                    summary=message.message,
                 )
             )
             return
-
-        if isinstance(message, ErrorMessage):
-            snapshot.last_update = f"Error: {message.message}"
 
     async def _handle_disconnect(self, worker_id: int, endpoint: str) -> None:
         was_connected = worker_id in self._connections
@@ -244,21 +252,11 @@ class _WorkerManager:
         self._snapshots[worker_id] = snapshot
         return snapshot
 
-    def _apply_state(
-        self,
-        snapshot: WorkerSnapshot,
-        *,
-        accepting_prompts: bool,
-        running: bool,
-    ) -> None:
-        snapshot.accepting_prompts = accepting_prompts
-        snapshot.running = running
-
     def _worker_is_idle(self, worker_id: int) -> bool:
         snapshot = self._snapshots.get(worker_id)
         if snapshot is None:
             return True
-        return snapshot.accepting_prompts and not snapshot.running
+        return not snapshot.running
 
 
 class WorkerToolRuntime:
