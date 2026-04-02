@@ -9,7 +9,7 @@ from typing import Any
 
 from coding_assistant.core.agent import run_agent_event_stream
 from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
-from coding_assistant.core.tool_calls import execute_tool_calls
+from coding_assistant.core.tool_calls import ToolCallLifecycleEvent, execute_tool_calls
 from coding_assistant.llm.openai import stream_completion as openai_stream_completion
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -48,6 +48,7 @@ class PromptAcceptedEvent:
     """Event emitted after one prompt has been accepted into the session queue."""
 
     content: PromptContent
+    source: str = "local"
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,7 @@ class PromptStartedEvent:
     """Event emitted when a queued prompt begins running."""
 
     content: PromptContent
+    source: str = "local"
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,15 @@ class ToolCallsEvent:
     """Event emitted when the current run pauses for tool execution."""
 
     message: AssistantMessage
+    source: str = "local"
+
+
+@dataclass(frozen=True)
+class ToolCallUpdateEvent:
+    """One lifecycle update for a tool call executing inside the current run."""
+
+    event: ToolCallLifecycleEvent
+    source: str = "local"
 
 
 @dataclass(frozen=True)
@@ -69,11 +80,14 @@ class RunFinishedEvent:
     """Event emitted after a completed run is committed to history."""
 
     summary: str
+    source: str = "local"
 
 
 @dataclass(frozen=True)
 class RunCancelledEvent:
     """The current run was cancelled before reaching the next user boundary."""
+
+    source: str = "local"
 
 
 @dataclass(frozen=True)
@@ -81,6 +95,7 @@ class RunFailedEvent:
     """Event emitted when a run fails with an exception."""
 
     error: str
+    source: str = "local"
 
 
 AgentSessionEvent = (
@@ -92,6 +107,7 @@ AgentSessionEvent = (
     | PromptAcceptedEvent
     | PromptStartedEvent
     | ToolCallsEvent
+    | ToolCallUpdateEvent
     | RunFinishedEvent
     | RunCancelledEvent
     | RunFailedEvent
@@ -101,11 +117,13 @@ AgentSessionEvent = (
 @dataclass(frozen=True)
 class _QueuedPrompt:
     content: PromptContent
+    source: str = "local"
 
 
 @dataclass(frozen=True)
 class _RunResult:
     history: list[BaseMessage] | None
+    source: str
     summary: str = ""
     cancelled: bool = False
     error: str | None = None
@@ -153,41 +171,47 @@ class AgentSession:
         """Subscribe to streamed session events and receive an initial state snapshot."""
         return self._subscribe()
 
-    async def enqueue_prompt(self, content: PromptContent, *, priority: bool = False) -> bool:
+    async def enqueue_prompt(
+        self,
+        content: PromptContent,
+        *,
+        priority: bool = False,
+        source: str = "local",
+    ) -> bool:
         """Queue one prompt, optionally ahead of already queued work."""
         async with self._mutation_lock:
             if self._closed:
                 return False
-            queued_prompt = _QueuedPrompt(content=content)
+            queued_prompt = _QueuedPrompt(content=content, source=source)
             if priority:
                 self._pending_prompts.appendleft(queued_prompt)
             else:
                 self._pending_prompts.append(queued_prompt)
             self._run_loop_wakeup.set()
-        self._publish_event(PromptAcceptedEvent(content=content))
+        self._publish_event(PromptAcceptedEvent(content=content, source=source))
         await self._publish_state()
         return True
 
-    async def enqueue_prompt_if_idle(self, content: PromptContent) -> bool:
+    async def enqueue_prompt_if_idle(self, content: PromptContent, *, source: str = "local") -> bool:
         """Queue one prompt only when the session has no running or pending work."""
         async with self._mutation_lock:
             if self._closed or self._current_run_task is not None or self._pending_prompts:
                 return False
-            self._pending_prompts.append(_QueuedPrompt(content=content))
+            self._pending_prompts.append(_QueuedPrompt(content=content, source=source))
             self._run_loop_wakeup.set()
-        self._publish_event(PromptAcceptedEvent(content=content))
+        self._publish_event(PromptAcceptedEvent(content=content, source=source))
         await self._publish_state()
         return True
 
-    async def interrupt_and_enqueue(self, content: PromptContent) -> bool:
+    async def interrupt_and_enqueue(self, content: PromptContent, *, source: str = "local") -> bool:
         """Cancel the active run and make this prompt the next prompt consumed."""
         async with self._mutation_lock:
             if self._closed:
                 return False
-            self._pending_prompts.appendleft(_QueuedPrompt(content=content))
+            self._pending_prompts.appendleft(_QueuedPrompt(content=content, source=source))
             run_task = self._current_run_task
             self._run_loop_wakeup.set()
-        self._publish_event(PromptAcceptedEvent(content=content))
+        self._publish_event(PromptAcceptedEvent(content=content, source=source))
         await self._publish_state()
         if run_task is not None:
             run_task.cancel()
@@ -260,10 +284,10 @@ class AgentSession:
 
                     prompt = self._pending_prompts.popleft()
                     current_history = [*self._history, UserMessage(content=prompt.content)]
-                    run_task = asyncio.create_task(self._run_until_boundary(current_history))
+                    run_task = asyncio.create_task(self._run_until_boundary(current_history, source=prompt.source))
                     self._current_run_task = run_task
 
-                self._publish_event(PromptStartedEvent(content=prompt.content))
+                self._publish_event(PromptStartedEvent(content=prompt.content, source=prompt.source))
                 await self._publish_state()
                 try:
                     result = await run_task
@@ -275,15 +299,15 @@ class AgentSession:
                             self._current_run_task = None
 
                 if result is not None and result.cancelled:
-                    self._publish_event(RunCancelledEvent())
+                    self._publish_event(RunCancelledEvent(source=result.source))
                 elif result is not None and result.error is not None:
-                    self._publish_event(RunFailedEvent(error=result.error))
+                    self._publish_event(RunFailedEvent(error=result.error, source=result.source))
                 elif result is not None and result.history is not None:
                     self._history = result.history
-                    self._publish_event(RunFinishedEvent(summary=result.summary))
+                    self._publish_event(RunFinishedEvent(summary=result.summary, source=result.source))
                 await self._publish_state()
 
-    async def _run_until_boundary(self, history: list[BaseMessage]) -> _RunResult:
+    async def _run_until_boundary(self, history: list[BaseMessage], *, source: str) -> _RunResult:
         current_history = list(history)
         try:
             while True:
@@ -303,22 +327,24 @@ class AgentSession:
                     raise RuntimeError("run_agent_event_stream stopped without yielding a boundary.")
 
                 if isinstance(boundary, AwaitingToolCalls):
-                    self._publish_event(ToolCallsEvent(message=boundary.message))
+                    self._publish_event(ToolCallsEvent(message=boundary.message, source=source))
                     current_history = await execute_tool_calls(
                         boundary=boundary,
                         tools=self._tools,
+                        on_event=lambda event: self._publish_event(ToolCallUpdateEvent(event=event, source=source)),
                     )
                     continue
 
                 current_history = list(boundary.history)
                 return _RunResult(
                     history=current_history,
+                    source=source,
                     summary=_get_latest_assistant_summary(current_history),
                 )
         except asyncio.CancelledError:
-            return _RunResult(history=None, cancelled=True)
+            return _RunResult(history=None, source=source, cancelled=True)
         except Exception as exc:
-            return _RunResult(history=None, error=str(exc))
+            return _RunResult(history=None, source=source, error=str(exc))
 
     async def _publish_state(self) -> None:
         self._publish_event(StateChangedEvent(state=self.state))
