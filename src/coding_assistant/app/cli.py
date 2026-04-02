@@ -95,8 +95,8 @@ async def _handle_prompt_submission(*, session: AgentSession, answer: str, submi
 
     # Handle steering vs queued submission types
     if submit_type == PromptSubmitType.STEERING:
-        # Steering: try to insert immediately when possible
-        return not await session.enqueue_prompt_if_idle(answer)
+        # Steering: inject this into the active agent loop at the next boundary.
+        return not await session.enqueue_steering_prompt(answer)
     else:
         # Queued: always add to the queue
         return not await session.enqueue_prompt(answer)

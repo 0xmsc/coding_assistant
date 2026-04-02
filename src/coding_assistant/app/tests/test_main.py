@@ -277,6 +277,19 @@ def test_format_tool_call_markdown_hides_edit_payload_values() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handle_prompt_submission_enqueues_steering_prompt() -> None:
+    session = Mock()
+    session.enqueue_steering_prompt = AsyncMock(return_value=True)
+
+    should_exit = await _handle_prompt_submission(
+        session=session, answer="fix this next", submit_type=PromptSubmitType.STEERING
+    )
+
+    assert should_exit is False
+    session.enqueue_steering_prompt.assert_awaited_once_with("fix this next")
+
+
+@pytest.mark.asyncio
 async def test_handle_prompt_submission_queues_priority_prompt() -> None:
     session = Mock()
     session.enqueue_prompt = AsyncMock(return_value=True)

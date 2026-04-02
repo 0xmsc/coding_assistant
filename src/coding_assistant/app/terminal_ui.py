@@ -54,8 +54,8 @@ from coding_assistant.llm.types import (
 class PromptSubmitType(Enum):
     """How a prompt was submitted from the terminal UI."""
 
-    STEERING = auto()  # Enter - immediately inserted when possible
-    QUEUED = auto()  # TAB - added to queue
+    STEERING = auto()  # Enter - injected into the active agent loop at the next boundary
+    QUEUED = auto()  # TAB - added to the back of the queue
 
 
 @dataclass
