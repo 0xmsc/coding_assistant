@@ -9,6 +9,7 @@ from coding_assistant.infra.paths import (
     get_data_home,
     get_config_home,
     get_app_cache_dir,
+    get_app_runtime_dir,
     get_app_state_dir,
 )
 
@@ -69,6 +70,17 @@ def test_get_app_cache_dir(monkeypatch: Any) -> None:
 def test_get_app_state_dir(monkeypatch: Any) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", "/tmp/state")
     assert get_app_state_dir() == Path("/tmp/state/coding_assistant")
+
+
+def test_get_app_runtime_dir_prefers_xdg_runtime(monkeypatch: Any) -> None:
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/tmp/runtime")
+    assert get_app_runtime_dir() == Path("/tmp/runtime/coding_assistant")
+
+
+def test_get_app_runtime_dir_falls_back_to_state(monkeypatch: Any) -> None:
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", "/tmp/state")
+    assert get_app_runtime_dir() == Path("/tmp/state/coding_assistant")
 
 
 def test_builtin_content_directories_exist() -> None:

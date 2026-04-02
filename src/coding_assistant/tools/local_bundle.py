@@ -17,6 +17,7 @@ from coding_assistant.tools.workers import WorkerToolRuntime
 WORKER_TOOL_INSTRUCTIONS = """
 ## Remotes
 
+- Use `remotes_discover()` to find other locally advertised `coding-assistant` instances on this machine.
 - Use `remote_connect(endpoint=...)` with the remote endpoint printed when `coding-assistant` starts, then use the returned local `remote_id` with the other remote tools.
 - Use `remote_prompt(remote_id=..., prompt=...)` only when the remote is idle. If it is busy, wait for it to finish or use `remote_cancel(...)` before prompting again.
 """.strip()

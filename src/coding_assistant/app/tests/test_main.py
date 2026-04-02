@@ -114,9 +114,15 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     async def fake_start_worker_server(*, session: Any) -> Any:
         yield WorkerServer(endpoint="ws://127.0.0.1:1234")
 
+    @asynccontextmanager
+    async def fake_register_remote_instance(*, endpoint: str) -> Any:
+        assert endpoint == "ws://127.0.0.1:1234"
+        yield
+
     with (
         patch("coding_assistant.app.cli.create_default_agent", fake_create_default_agent),
         patch("coding_assistant.app.cli.start_worker_server", fake_start_worker_server),
+        patch("coding_assistant.app.cli.register_remote_instance", fake_register_remote_instance),
         patch("coding_assistant.app.cli.print") as mock_print,
         patch("coding_assistant.app.cli.run_terminal_ui", new=AsyncMock()) as mock_run_terminal_ui,
     ):

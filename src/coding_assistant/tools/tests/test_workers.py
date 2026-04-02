@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -317,6 +320,48 @@ async def test_worker_runtime_wait_any_returns_idle_immediately_when_all_workers
 
     await worker_runtime.close()
     await session.close()
+
+
+def test_worker_runtime_discovers_other_registered_remotes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    registry_dir = tmp_path / "coding_assistant" / "remotes"
+    registry_dir.mkdir(parents=True)
+
+    self_pid = os.getpid()
+    other_pid = self_pid + 1000
+    (registry_dir / f"{self_pid}-4010.json").write_text(
+        json.dumps(
+            {
+                "pid": self_pid,
+                "port": 4010,
+                "endpoint": "ws://127.0.0.1:4010",
+                "cwd": "/self",
+                "started_at": "2026-04-02T12:10:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (registry_dir / f"{other_pid}-4011.json").write_text(
+        json.dumps(
+            {
+                "pid": other_pid,
+                "port": 4011,
+                "endpoint": "ws://127.0.0.1:4011",
+                "cwd": "/other",
+                "started_at": "2026-04-02T12:11:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "coding_assistant.remote.registry._pid_is_running",
+        lambda pid: pid in {self_pid, other_pid},
+    )
+
+    worker_runtime = WorkerToolRuntime()
+
+    assert worker_runtime.discover() == f"- pid {other_pid} at ws://127.0.0.1:4011 cwd=/other"
 
 
 async def _wait_for_session_to_idle(session: AgentSession) -> None:
