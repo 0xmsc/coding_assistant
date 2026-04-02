@@ -32,6 +32,7 @@ class SessionState:
 
     running: bool
     queued_prompt_count: int
+    paused: bool = False
     pending_prompts: tuple[PromptContent, ...] = ()
 
 
@@ -141,6 +142,7 @@ class AgentSession:
         self._mutation_lock = asyncio.Lock()
         self._run_loop_wakeup = asyncio.Event()
         self._closed = False
+        self._paused = False
         self._run_loop_task = asyncio.create_task(self._run_loop())
 
     @property
@@ -152,6 +154,7 @@ class AgentSession:
         return SessionState(
             running=self._current_run_task is not None,
             queued_prompt_count=len(pending_prompts),
+            paused=self._paused,
             pending_prompts=pending_prompts,
         )
 
@@ -175,6 +178,7 @@ class AgentSession:
         async with self._mutation_lock:
             if self._closed:
                 return False
+            self._paused = False
             queued_prompt = _QueuedPrompt(content=content, source=source)
             if priority:
                 self._pending_prompts.appendleft(queued_prompt)
@@ -190,10 +194,12 @@ class AgentSession:
             if (
                 self._closed
                 or self._current_run_task is not None
+                or self._paused
                 or self._pending_prompts
                 or self._pending_steering_prompts
             ):
                 return False
+            self._paused = False
             self._pending_prompts.append(_QueuedPrompt(content=content, source=source))
             self._run_loop_wakeup.set()
         await self._publish_state()
@@ -204,6 +210,7 @@ class AgentSession:
         async with self._mutation_lock:
             if self._closed:
                 return False
+            self._paused = False
             queued_prompt = _QueuedPrompt(content=content, source=source)
             if self._current_run_task is None:
                 self._pending_prompts.appendleft(queued_prompt)
@@ -218,6 +225,7 @@ class AgentSession:
         async with self._mutation_lock:
             if self._closed:
                 return False
+            self._paused = False
             self._pending_steering_prompts.clear()
             self._pending_prompts.appendleft(_QueuedPrompt(content=content, source=source))
             run_task = self._current_run_task
@@ -243,24 +251,40 @@ class AgentSession:
         await self._publish_state()
         return last.content
 
-    async def cancel_current_run(self, *, discard_pending_prompts: bool = False) -> bool:
+    async def cancel_current_run(self, *, discard_pending_prompts: bool = False, pause_queue: bool = False) -> bool:
         """Cancel the active run, optionally clearing prompts that have not started yet."""
         async with self._mutation_lock:
             run_task = self._current_run_task
             had_pending_prompts = bool(self._pending_prompts or self._pending_steering_prompts)
+            was_paused = self._paused
+            self._paused = pause_queue and had_pending_prompts
             if discard_pending_prompts:
                 self._pending_prompts.clear()
                 self._pending_steering_prompts.clear()
+                self._paused = False
 
         if run_task is None:
-            if discard_pending_prompts and had_pending_prompts:
+            if (discard_pending_prompts and had_pending_prompts) or self._paused != was_paused:
                 await self._publish_state()
                 return True
             return False
 
+        if self._paused != was_paused:
+            await self._publish_state()
         run_task.cancel()
         with suppress(asyncio.CancelledError):
             await run_task
+        return True
+
+    async def resume(self) -> bool:
+        """Resume consuming queued prompts after an explicit pause."""
+        async with self._mutation_lock:
+            if self._closed or not self._paused:
+                return False
+            self._paused = False
+            if self._pending_prompts:
+                self._run_loop_wakeup.set()
+        await self._publish_state()
         return True
 
     async def close(self) -> None:
@@ -303,6 +327,9 @@ class AgentSession:
                     if self._closed:
                         return
                     if self._current_run_task is not None:
+                        break
+                    if self._paused:
+                        self._run_loop_wakeup.clear()
                         break
                     if not self._pending_prompts:
                         self._run_loop_wakeup.clear()

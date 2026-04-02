@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+import asyncio
 
 import pytest
 import pytest_asyncio
@@ -64,3 +65,24 @@ async def test_shell_execute_nonzero_with_stderr_content(execute: Tool) -> None:
 async def test_shell_execute_echo(execute: Tool) -> None:
     out = await execute.execute({"command": "echo bar"})
     assert out == "bar\n"
+
+
+@pytest.mark.asyncio
+async def test_shell_execute_cancellation_terminates_foreground_process(execute: Tool, manager: TaskManager) -> None:
+    task = asyncio.create_task(execute.execute({"command": "sleep 10"}))
+
+    tracked_task = None
+    for _ in range(20):
+        tracked_task = manager.get_task(1)
+        if tracked_task is not None:
+            break
+        await asyncio.sleep(0.05)
+
+    assert tracked_task is not None
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert await tracked_task.handle.wait(timeout=1.0) is True
+    assert tracked_task.handle.is_running is False

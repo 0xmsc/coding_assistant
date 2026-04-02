@@ -444,6 +444,7 @@ async def test_agent_session_cancel_current_run_publishes_cancellation_and_resto
 
         cancelled_event = await wait_for_event(queue, RunCancelledEvent)
         assert session.state.running is False
+        assert session.state.paused is False
         assert session.state.queued_prompt_count == 0
         state_event = await wait_for_matching_event(
             queue,
@@ -454,8 +455,71 @@ async def test_agent_session_cancel_current_run_publishes_cancellation_and_resto
     assert isinstance(cancelled_event, RunCancelledEvent)
     assert isinstance(state_event, StateChangedEvent)
     assert state_event.state.running is False
+    assert state_event.state.paused is False
     assert state_event.state.queued_prompt_count == 0
     assert session.history == make_system_history()
+
+
+@pytest.mark.asyncio
+async def test_agent_session_cancel_with_pause_queue_keeps_pending_prompt_stopped_until_resume() -> None:
+    started = asyncio.Event()
+    second_started = asyncio.Event()
+    never_release = asyncio.Event()
+    streamer = ControlledStreamer(
+        [
+            StreamStep(
+                message=AssistantMessage(content="Working..."),
+                started_event=started,
+                release_event=never_release,
+            ),
+            StreamStep(
+                message=AssistantMessage(content="Resumed result"),
+                started_event=second_started,
+            ),
+        ]
+    )
+    session = make_session(completion_streamer=streamer)
+
+    async with session.subscribe() as queue:
+        await wait_for_event(queue, StateChangedEvent)
+        assert await session.enqueue_prompt("abandoned prompt") is True
+        await asyncio.wait_for(started.wait(), timeout=1)
+        assert await session.enqueue_prompt("queued prompt") is True
+
+        await session.cancel_current_run(pause_queue=True)
+        await wait_for_event(queue, RunCancelledEvent)
+        paused_state_event = await wait_for_matching_event(
+            queue,
+            lambda event: isinstance(event, StateChangedEvent) and event.state.paused,
+        )
+        assert session.state.running is False
+        assert session.state.paused is True
+        assert session.state.pending_prompts == ("queued prompt",)
+
+        await asyncio.sleep(0)
+        assert second_started.is_set() is False
+
+        assert await session.resume() is True
+        resumed_state_event = await wait_for_matching_event(
+            queue,
+            lambda event: isinstance(event, StateChangedEvent) and not event.state.paused and event.state.running,
+        )
+        await asyncio.wait_for(second_started.wait(), timeout=1)
+        finished_event = await wait_for_event(queue, RunFinishedEvent)
+
+    await session.close()
+    assert isinstance(paused_state_event, StateChangedEvent)
+    assert paused_state_event.state.paused is True
+    assert isinstance(resumed_state_event, StateChangedEvent)
+    assert resumed_state_event.state.paused is False
+    assert isinstance(finished_event, RunFinishedEvent)
+    assert finished_event.summary == "Resumed result"
+    assert streamer.prompts == ["abandoned prompt", "queued prompt"]
+    assert session.history == [
+        *make_system_history(),
+        UserMessage(content="queued prompt"),
+        AssistantMessage(content="Resumed result"),
+    ]
 
 
 @pytest.mark.asyncio

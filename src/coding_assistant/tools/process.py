@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 from collections.abc import Sequence
 
 
@@ -85,12 +86,24 @@ class ProcessHandle:
         if not self.is_running:
             return
 
-        self._process.terminate()
+        if os.name == "posix":
+            try:
+                os.killpg(self._process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                return
+        else:
+            self._process.terminate()
         await self.wait(timeout=5.0)
         if not self.is_running:
             return
 
-        self._process.kill()
+        if os.name == "posix":
+            try:
+                os.killpg(self._process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                return
+        else:
+            self._process.kill()
         await self.wait(timeout=5.0)
 
 
@@ -113,6 +126,7 @@ async def start_process(
         stderr=asyncio.subprocess.STDOUT,
         stdin=stdin,
         env=merged_env,
+        start_new_session=os.name == "posix",
     )
 
     assert process.stdout is not None

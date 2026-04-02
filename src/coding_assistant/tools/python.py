@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -55,7 +56,11 @@ class PythonExecuteTool(Tool):
             if validated.background:
                 return f"Task started in background with ID: {task_id}"
 
-            finished = await handle.wait(timeout=validated.timeout)
+            try:
+                finished = await handle.wait(timeout=validated.timeout)
+            except asyncio.CancelledError:
+                await handle.terminate()
+                raise
             if not finished:
                 return (
                     f"Python script is taking longer than {validated.timeout}s. "

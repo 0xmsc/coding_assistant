@@ -1,4 +1,7 @@
+import asyncio
 import os
+import shlex
+from pathlib import Path
 
 import pytest
 
@@ -53,3 +56,35 @@ async def test_start_process_no_env_provided() -> None:
     await handle.wait(timeout=5.0)
 
     assert handle.stdout.strip() == "stay"
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="process group termination is only exercised on POSIX")
+async def test_terminate_kills_child_process_group(tmp_path: Path) -> None:
+    child_pid_path = tmp_path / "child.pid"
+    command = f"sleep 30 & echo $! > {shlex.quote(str(child_pid_path))}; wait"
+
+    handle = await start_process(args=["bash", "-c", command])
+
+    child_pid = None
+    for _ in range(20):
+        if child_pid_path.exists():
+            raw_pid = child_pid_path.read_text().strip()
+            if raw_pid:
+                child_pid = int(raw_pid)
+                break
+        await asyncio.sleep(0.05)
+
+    assert child_pid is not None
+
+    await handle.terminate()
+    assert await handle.wait(timeout=1.0) is True
+
+    for _ in range(20):
+        try:
+            os.kill(child_pid, 0)
+        except ProcessLookupError:
+            break
+        await asyncio.sleep(0.05)
+    else:
+        raise AssertionError(f"Child process {child_pid} is still running after terminate().")
