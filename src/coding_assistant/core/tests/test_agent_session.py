@@ -98,6 +98,30 @@ class BlockingEchoTool(EchoTool):
         return await super().execute(parameters)
 
 
+class SlowTool(Tool):
+    def __init__(self, *, started_event: asyncio.Event, release_event: asyncio.Event) -> None:
+        self._started_event = started_event
+        self._release_event = release_event
+
+    def name(self) -> str:
+        return "slow_tool"
+
+    def description(self) -> str:
+        return "A tool that blocks until released."
+
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        }
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        self._started_event.set()
+        await self._release_event.wait()
+        return f"slow:{parameters['text']}"
+
+
 def make_system_history() -> list[BaseMessage]:
     return [SystemMessage(content="# Instructions\n\nTest instructions")]
 
@@ -457,7 +481,10 @@ async def test_agent_session_cancel_current_run_publishes_cancellation_and_resto
     assert state_event.state.running is False
     assert state_event.state.paused is False
     assert state_event.state.queued_prompt_count == 0
-    assert session.history == make_system_history()
+    assert session.history == [
+        *make_system_history(),
+        UserMessage(content="Do the task"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -517,13 +544,14 @@ async def test_agent_session_cancel_with_pause_queue_keeps_pending_prompt_stoppe
     assert streamer.prompts == ["abandoned prompt", "queued prompt"]
     assert session.history == [
         *make_system_history(),
+        UserMessage(content="abandoned prompt"),
         UserMessage(content="queued prompt"),
         AssistantMessage(content="Resumed result"),
     ]
 
 
 @pytest.mark.asyncio
-async def test_agent_session_cancel_with_discard_pending_prompts_leaves_history_unchanged() -> None:
+async def test_agent_session_cancel_with_discard_pending_prompts_preserves_cancelled_turn_history() -> None:
     started = asyncio.Event()
     streamer = ControlledStreamer(
         [
@@ -555,7 +583,10 @@ async def test_agent_session_cancel_with_discard_pending_prompts_leaves_history_
             ),
         )
 
-        assert session.history == make_system_history()
+        assert session.history == [
+            *make_system_history(),
+            UserMessage(content="abandoned prompt"),
+        ]
         assert session.state.pending_prompts == ()
 
         assert await session.enqueue_prompt("fresh prompt") is True
@@ -567,8 +598,57 @@ async def test_agent_session_cancel_with_discard_pending_prompts_leaves_history_
     assert streamer.prompts == ["abandoned prompt", "fresh prompt"]
     assert session.history == [
         *make_system_history(),
+        UserMessage(content="abandoned prompt"),
         UserMessage(content="fresh prompt"),
         AssistantMessage(content="Fresh result"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_agent_session_cancel_during_tool_execution_preserves_completed_and_cancelled_tool_messages() -> None:
+    slow_started = asyncio.Event()
+    never_release = asyncio.Event()
+    tool_calls = [
+        ToolCall(
+            id="call-1",
+            function=FunctionCall(
+                name="echo_tool",
+                arguments='{"text": "done"}',
+            ),
+        ),
+        ToolCall(
+            id="call-2",
+            function=FunctionCall(
+                name="slow_tool",
+                arguments='{"text": "later"}',
+            ),
+        ),
+    ]
+    streamer = ControlledStreamer([StreamStep(message=AssistantMessage(tool_calls=tool_calls))])
+    session = make_session(
+        completion_streamer=streamer,
+        tools=[EchoTool(), SlowTool(started_event=slow_started, release_event=never_release)],
+    )
+
+    async with session.subscribe() as queue:
+        await wait_for_event(queue, StateChangedEvent)
+        assert await session.enqueue_prompt("Use tools") is True
+        await wait_for_event(queue, ToolCallsEvent)
+        await asyncio.wait_for(slow_started.wait(), timeout=1)
+
+        await session.cancel_current_run()
+        cancelled_event = await wait_for_event(queue, RunCancelledEvent)
+
+    await session.close()
+    assert isinstance(cancelled_event, RunCancelledEvent)
+    assert session.history == [
+        *make_system_history(),
+        UserMessage(content="Use tools"),
+        AssistantMessage(tool_calls=tool_calls),
+        ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:done"),
+        ToolMessage(
+            tool_call_id="call-2", name="slow_tool", content="Tool execution cancelled by user before completion."
+        ),
     ]
 
 

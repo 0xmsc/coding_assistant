@@ -9,7 +9,7 @@ from typing import Any
 
 from coding_assistant.core.agent import run_agent_event_stream
 from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
-from coding_assistant.core.tool_calls import ToolCallLifecycleEvent, execute_tool_calls
+from coding_assistant.core.tool_calls import ToolCallLifecycleEvent, ToolExecutionCancelled, execute_tool_calls
 from coding_assistant.llm.openai import stream_completion as openai_stream_completion
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -138,6 +138,7 @@ class AgentSession:
         self._pending_prompts: deque[_QueuedPrompt] = deque()
         self._pending_steering_prompts: deque[_QueuedPrompt] = deque()
         self._current_run_task: asyncio.Task[_RunResult] | None = None
+        self._discard_cancelled_history_task: asyncio.Task[_RunResult] | None = None
         self._subscribers: list[asyncio.Queue[AgentSessionEvent]] = []
         self._mutation_lock = asyncio.Lock()
         self._run_loop_wakeup = asyncio.Event()
@@ -229,6 +230,8 @@ class AgentSession:
             self._pending_steering_prompts.clear()
             self._pending_prompts.appendleft(_QueuedPrompt(content=content, source=source))
             run_task = self._current_run_task
+            if run_task is not None:
+                self._discard_cancelled_history_task = run_task
             self._run_loop_wakeup.set()
         await self._publish_state()
         if run_task is not None:
@@ -348,17 +351,25 @@ class AgentSession:
                     result = None
                 finally:
                     async with self._mutation_lock:
+                        discard_cancelled_history = self._discard_cancelled_history_task is run_task
+                        if discard_cancelled_history:
+                            self._discard_cancelled_history_task = None
                         if self._current_run_task is run_task:
                             self._current_run_task = None
                         if result is not None and (result.cancelled or result.error is not None):
                             self._drain_steering_prompts_to_front_of_queue()
+
+                if discard_cancelled_history and result is not None and result.cancelled:
+                    result = _RunResult(history=None, source=result.source, cancelled=True)
+
+                if result is not None and result.history is not None:
+                    self._history = result.history
 
                 if result is not None and result.cancelled:
                     self._publish_event(RunCancelledEvent(source=result.source))
                 elif result is not None and result.error is not None:
                     self._publish_event(RunFailedEvent(error=result.error, source=result.source))
                 elif result is not None and result.history is not None:
-                    self._history = result.history
                     self._publish_event(RunFinishedEvent(summary=result.summary, source=result.source))
                 await self._publish_state()
 
@@ -412,8 +423,10 @@ class AgentSession:
                     source=source,
                     summary=_get_latest_assistant_summary(current_history),
                 )
+        except ToolExecutionCancelled as exc:
+            return _RunResult(history=exc.history, source=source, cancelled=True)
         except asyncio.CancelledError:
-            return _RunResult(history=None, source=source, cancelled=True)
+            return _RunResult(history=current_history, source=source, cancelled=True)
         except Exception as exc:
             return _RunResult(history=None, source=source, error=str(exc))
 

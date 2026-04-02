@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -28,6 +29,16 @@ class ToolCallLifecycleEvent:
 
 
 ToolCallEventHook = Callable[[ToolCallLifecycleEvent], None]
+TOOL_CANCELLED_MESSAGE = "Tool execution cancelled by user before completion."
+TOOL_NOT_STARTED_MESSAGE = "Tool execution was not started because the run was cancelled by user."
+
+
+@dataclass(frozen=True)
+class ToolExecutionCancelled(Exception):
+    history: list[BaseMessage]
+
+    def __str__(self) -> str:
+        return "Tool execution cancelled."
 
 
 def _parse_tool_call_arguments(tool_call: ToolCall) -> tuple[dict[str, Any] | None, str | None]:
@@ -104,6 +115,41 @@ def _publish_tool_call_event(
     )
 
 
+def _append_tool_message(
+    history: list[BaseMessage],
+    *,
+    tool_call: ToolCall,
+    content: str,
+) -> None:
+    history.append(
+        ToolMessage(
+            tool_call_id=tool_call.id,
+            name=tool_call.function.name,
+            content=content,
+        )
+    )
+
+
+def _append_cancelled_tool_messages(
+    history: list[BaseMessage],
+    *,
+    tool_calls: Sequence[ToolCall],
+    cancelled_at_index: int,
+    on_event: ToolCallEventHook | None,
+) -> None:
+    for index, tool_call in enumerate(tool_calls[cancelled_at_index:], start=cancelled_at_index):
+        arguments, _ = _parse_tool_call_arguments(tool_call)
+        content = TOOL_CANCELLED_MESSAGE if index == cancelled_at_index else TOOL_NOT_STARTED_MESSAGE
+        _publish_tool_call_event(
+            on_event,
+            tool_call=tool_call,
+            status="failed",
+            raw_input=arguments,
+            content=content,
+        )
+        _append_tool_message(history, tool_call=tool_call, content=content)
+
+
 async def _execute_resolved_tool(
     *,
     tool: Tool,
@@ -151,7 +197,7 @@ async def execute_tool_calls(
     all_tools = build_tools(tools=tools)
     tools_by_name = {tool.name(): tool for tool in all_tools}
 
-    for tool_call in boundary.message.tool_calls:
+    for index, tool_call in enumerate(boundary.message.tool_calls):
         tool_name = tool_call.function.name
         arguments, parse_error = _parse_tool_call_arguments(tool_call)
 
@@ -162,13 +208,7 @@ async def execute_tool_calls(
                 status="failed",
                 content=parse_error,
             )
-            current_history.append(
-                ToolMessage(
-                    tool_call_id=tool_call.id,
-                    name=tool_name,
-                    content=parse_error,
-                )
-            )
+            _append_tool_message(current_history, tool_call=tool_call, content=parse_error)
             continue
 
         assert arguments is not None
@@ -182,13 +222,7 @@ async def execute_tool_calls(
                 raw_input=arguments,
                 content=error,
             )
-            current_history.append(
-                ToolMessage(
-                    tool_call_id=tool_call.id,
-                    name=tool_name,
-                    content=error,
-                )
-            )
+            _append_tool_message(current_history, tool_call=tool_call, content=error)
             continue
 
         _publish_tool_call_event(
@@ -203,6 +237,14 @@ async def execute_tool_calls(
                 tool=tool,
                 arguments=arguments,
             )
+        except asyncio.CancelledError as exc:
+            _append_cancelled_tool_messages(
+                current_history,
+                tool_calls=boundary.message.tool_calls,
+                cancelled_at_index=index,
+                on_event=on_event,
+            )
+            raise ToolExecutionCancelled(history=current_history) from exc
         except Exception as exc:
             error = f"Error executing tool: {exc}"
             _publish_tool_call_event(
@@ -212,13 +254,7 @@ async def execute_tool_calls(
                 raw_input=arguments,
                 content=error,
             )
-            current_history.append(
-                ToolMessage(
-                    tool_call_id=tool_call.id,
-                    name=tool_name,
-                    content=error,
-                )
-            )
+            _append_tool_message(current_history, tool_call=tool_call, content=error)
             continue
 
         _publish_tool_call_event(
@@ -234,12 +270,6 @@ async def execute_tool_calls(
             current_history = compact_history(current_history, result)
             break
 
-        current_history.append(
-            ToolMessage(
-                tool_call_id=tool_call.id,
-                name=tool_name,
-                content=result,
-            )
-        )
+        _append_tool_message(current_history, tool_call=tool_call, content=result)
 
     return current_history
