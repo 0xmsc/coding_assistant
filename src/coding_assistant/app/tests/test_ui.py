@@ -47,7 +47,6 @@ def test_slash_completer() -> None:
 def test_create_terminal_application_builds_non_fullscreen_interactive_ui(tmp_path: Path) -> None:
     session = Mock()
     session.state = SessionState(
-        promptable=True,
         running=False,
         queued_prompt_count=2,
         pending_prompts=("first queued prompt", "second queued prompt"),
@@ -78,7 +77,6 @@ def test_create_terminal_application_builds_non_fullscreen_interactive_ui(tmp_pa
 def test_format_queued_prompts_shows_pending_prompts() -> None:
     session = Mock()
     session.state = SessionState(
-        promptable=True,
         running=True,
         queued_prompt_count=3,
         pending_prompts=("first queued prompt", "second queued prompt", "third queued prompt"),

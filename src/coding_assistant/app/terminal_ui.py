@@ -33,7 +33,6 @@ from coding_assistant.app.output import (
 )
 from coding_assistant.core.agent_session import (
     AgentSession,
-    PromptAcceptedEvent,
     PromptStartedEvent,
     RunCancelledEvent,
     RunFailedEvent,
@@ -178,7 +177,6 @@ async def run_session_output(
     session: AgentSession,
     system_message: SystemMessage,
     show_state_updates: bool = False,
-    show_prompt_accepted: bool = False,
 ) -> None:
     """Render one session's streamed events to the local terminal."""
     renderer = DeltaRenderer()
@@ -191,12 +189,6 @@ async def run_session_output(
                 event = await queue.get()
                 if isinstance(event, ContentDeltaEvent):
                     renderer.on_delta(event.content)
-                    continue
-                if isinstance(event, PromptAcceptedEvent):
-                    if not show_prompt_accepted:
-                        continue
-                    renderer.finish()
-                    print_active_prompt(event.content)
                     continue
                 if isinstance(event, PromptStartedEvent):
                     renderer.finish()

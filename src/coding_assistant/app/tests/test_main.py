@@ -230,7 +230,6 @@ def test_format_tool_call_markdown_formats_multiline_arguments() -> None:
 
 def test_format_session_status_summarizes_pending_prompts() -> None:
     state = SessionState(
-        promptable=True,
         running=True,
         queued_prompt_count=3,
         pending_prompts=("first queued prompt", "second queued prompt", "third queued prompt"),
