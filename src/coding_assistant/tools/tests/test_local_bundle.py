@@ -15,6 +15,7 @@ def test_create_local_tool_bundle_includes_builtin_skills() -> None:
         "skills_list_resources",
         "skills_read",
         "remote_connect",
+        "remotes_discover",
         "remotes_list",
         "remote_prompt",
         "remote_wait",

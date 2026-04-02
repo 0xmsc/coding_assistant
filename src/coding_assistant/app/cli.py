@@ -14,6 +14,7 @@ from coding_assistant.app.terminal_ui import run_terminal_ui
 from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.infra.paths import get_app_cache_dir
 from coding_assistant.integrations.mcp_client import print_mcp_tools
+from coding_assistant.remote.registry import register_remote_instance
 from coding_assistant.remote.server import start_worker_server
 
 CLI_COMMAND_NAMES = ["/exit", "/help", "/compact", "/image", "/priority", "/interrupt"]
@@ -36,14 +37,15 @@ async def run_cli(args: Namespace) -> None:
         )
         try:
             async with start_worker_server(session=session) as worker_server:
-                print(f"Remote endpoint: {worker_server.endpoint}")
-                await run_terminal_ui(
-                    session=session,
-                    system_message=system_message,
-                    history_path=get_app_cache_dir() / "history",
-                    words=CLI_COMMAND_NAMES,
-                    submit_handler=lambda answer: _handle_prompt_submission(session=session, answer=answer),
-                )
+                async with register_remote_instance(endpoint=worker_server.endpoint):
+                    print(f"Remote endpoint: {worker_server.endpoint}")
+                    await run_terminal_ui(
+                        session=session,
+                        system_message=system_message,
+                        history_path=get_app_cache_dir() / "history",
+                        words=CLI_COMMAND_NAMES,
+                        submit_handler=lambda answer: _handle_prompt_submission(session=session, answer=answer),
+                    )
         finally:
             await session.close()
 

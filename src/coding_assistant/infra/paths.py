@@ -68,6 +68,14 @@ def get_app_state_dir() -> Path:
     return get_state_home() / "coding_assistant"
 
 
+def get_app_runtime_dir() -> Path:
+    """Return the application's runtime directory path."""
+    xdg_runtime_dir = os.getenv("XDG_RUNTIME_DIR")
+    if xdg_runtime_dir:
+        return Path(xdg_runtime_dir) / "coding_assistant"
+    return get_app_state_dir()
+
+
 def get_session_dir() -> Path:
     """Return the current session directory, creating it on first use."""
     session_dir = get_app_cache_dir() / "sessions" / SESSION_ID

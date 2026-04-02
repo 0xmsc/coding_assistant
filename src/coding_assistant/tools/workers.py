@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -16,6 +17,7 @@ from coding_assistant.remote.client import (
     RemoteToolCallUpdateEvent,
     RemoteWorkerConnection,
 )
+from coding_assistant.remote.registry import discover_remote_instances
 
 
 @dataclass
@@ -58,6 +60,20 @@ class _WorkerManager:
             status = "running" if snapshot.running else "connected"
             suffix = f" -> {snapshot.last_update}" if snapshot.last_update else ""
             lines.append(f"- remote {worker_id} at {snapshot.endpoint} [{status}]{suffix}")
+        return "\n".join(lines)
+
+    def discover(self) -> str:
+        discovered = discover_remote_instances(current_pid=os.getpid())
+        if not discovered:
+            return "No discoverable remotes."
+
+        lines = []
+        for entry in discovered:
+            connected_suffix = ""
+            existing_worker_id = self._worker_ids_by_endpoint.get(entry.endpoint)
+            if existing_worker_id is not None:
+                connected_suffix = f" [connected as remote {existing_worker_id}]"
+            lines.append(f"- pid {entry.pid} at {entry.endpoint}{connected_suffix} cwd={entry.cwd}")
         return "\n".join(lines)
 
     async def connect(self, endpoint: str) -> str:
@@ -272,6 +288,9 @@ class WorkerToolRuntime:
     async def connect(self, endpoint: str) -> str:
         return await self._manager.connect(endpoint)
 
+    def discover(self) -> str:
+        return self._manager.discover()
+
     async def disconnect(self, worker_id: int) -> str:
         return await self._manager.disconnect(worker_id)
 
@@ -369,6 +388,24 @@ class RemotesListTool(Tool):
         return self._runtime.format_connected_workers()
 
 
+class RemotesDiscoverTool(Tool):
+    def __init__(self, *, runtime: WorkerToolRuntime) -> None:
+        self._runtime = runtime
+
+    def name(self) -> str:
+        return "remotes_discover"
+
+    def description(self) -> str:
+        return "List locally advertised remote sessions discovered on this machine."
+
+    def parameters(self) -> dict[str, Any]:
+        return EmptyInput.model_json_schema()
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        EmptyInput.model_validate(parameters)
+        return self._runtime.discover()
+
+
 class RemotePromptTool(Tool):
     def __init__(self, *, runtime: WorkerToolRuntime) -> None:
         self._runtime = runtime
@@ -462,6 +499,7 @@ class RemoteDisconnectTool(Tool):
 def _create_worker_tools(*, runtime: WorkerToolRuntime) -> list[Tool]:
     return [
         RemoteConnectTool(runtime=runtime),
+        RemotesDiscoverTool(runtime=runtime),
         RemotesListTool(runtime=runtime),
         RemotePromptTool(runtime=runtime),
         RemoteWaitTool(runtime=runtime),
