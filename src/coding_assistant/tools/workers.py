@@ -9,12 +9,9 @@ from pydantic import BaseModel, Field
 from coding_assistant.llm.types import Tool
 from coding_assistant.remote.client import RemoteWorkerConnection
 from coding_assistant.remote.protocol import (
-    CommandAcceptedMessage,
     ContentDeltaMessage,
     ErrorMessage,
-    NotReadyMessage,
-    PromptAcceptedMessage,
-    PromptStartedMessage,
+    RequestOkMessage,
     RunCancelledMessage,
     RunFailedMessage,
     RunFinishedMessage,
@@ -28,10 +25,8 @@ from coding_assistant.remote.protocol import (
 class WorkerSnapshot:
     worker_id: int
     endpoint: str
-    promptable: bool = False
-    remote_connected: bool = False
+    accepting_prompts: bool = False
     running: bool = False
-    queued_prompt_count: int = 0
     last_update: str = ""
 
 
@@ -63,9 +58,7 @@ class _WorkerManager:
         for worker_id, snapshot in sorted(self._snapshots.items()):
             if worker_id not in self._connections:
                 continue
-            status = "running" if snapshot.running else "promptable" if snapshot.promptable else "idle"
-            if snapshot.queued_prompt_count:
-                status = f"{status}, {snapshot.queued_prompt_count} queued"
+            status = "running" if snapshot.running else "ready" if snapshot.accepting_prompts else "busy"
             suffix = f" -> {snapshot.last_update}" if snapshot.last_update else ""
             lines.append(f"- remote {worker_id} at {snapshot.endpoint} [{status}]{suffix}")
         return "\n".join(lines)
@@ -104,42 +97,17 @@ class _WorkerManager:
         await connection.close()
         return f"Disconnected from remote {worker_id}."
 
-    async def prompt(
-        self, worker_id: int, prompt: str, *, mode: Literal["queue", "priority", "interrupt"] = "queue"
-    ) -> str:
+    async def prompt(self, worker_id: int, prompt: str) -> str:
         connection = self._connections.get(worker_id)
         if connection is None:
             return f"Remote {worker_id} is not connected."
 
-        response = await connection.prompt(prompt, mode=mode)
+        response = await connection.prompt(prompt)
         snapshot = self._snapshot_for_worker(worker_id)
-        if isinstance(response, CommandAcceptedMessage):
-            self._apply_state(
-                snapshot,
-                promptable=response.promptable,
-                remote_connected=response.remote_connected,
-                running=response.running,
-                queued_prompt_count=response.queued_prompt_count,
-            )
-            prompt_text = f"\n{prompt}"
-            if mode == "priority":
-                return f"Priority prompt accepted by remote {worker_id}.{prompt_text}"
-            if mode == "interrupt":
-                return f"Interrupt prompt accepted by remote {worker_id}.{prompt_text}"
-            return f"Prompt accepted by remote {worker_id}.{prompt_text}"
-        if isinstance(response, NotReadyMessage):
-            self._apply_state(
-                snapshot,
-                promptable=response.promptable,
-                remote_connected=response.remote_connected,
-                running=response.running,
-                queued_prompt_count=response.queued_prompt_count,
-            )
-            return (
-                f"Remote {worker_id} is not ready for a prompt. "
-                f"promptable={response.promptable} running={response.running} "
-                f"queued={response.queued_prompt_count}"
-            )
+        if isinstance(response, RequestOkMessage):
+            snapshot.accepting_prompts = False
+            snapshot.last_update = f"Prompt submitted: {_format_prompt_preview(prompt)}"
+            return f"Prompt submitted to remote {worker_id}.\n{prompt}"
         return f"Remote {worker_id} rejected the prompt: {response.message}"
 
     async def cancel(self, worker_id: int) -> str:
@@ -148,26 +116,10 @@ class _WorkerManager:
             return f"Remote {worker_id} is not connected."
 
         response = await connection.cancel()
-        if isinstance(response, CommandAcceptedMessage):
+        if isinstance(response, RequestOkMessage):
             snapshot = self._snapshot_for_worker(worker_id)
-            self._apply_state(
-                snapshot,
-                promptable=response.promptable,
-                remote_connected=response.remote_connected,
-                running=response.running,
-                queued_prompt_count=response.queued_prompt_count,
-            )
-            return f"Cancelled the current run on remote {worker_id}."
-        if isinstance(response, NotReadyMessage):
-            snapshot = self._snapshot_for_worker(worker_id)
-            self._apply_state(
-                snapshot,
-                promptable=response.promptable,
-                remote_connected=response.remote_connected,
-                running=response.running,
-                queued_prompt_count=response.queued_prompt_count,
-            )
-            return f"Remote {worker_id} has no cancellable run."
+            snapshot.last_update = "Cancellation requested."
+            return f"Cancel requested for remote {worker_id}."
         return f"Remote {worker_id} rejected the cancel request: {response.message}"
 
     async def wait(self, worker_id: int) -> str:
@@ -205,33 +157,9 @@ class _WorkerManager:
         if isinstance(message, StateMessage):
             self._apply_state(
                 snapshot,
-                promptable=message.promptable,
-                remote_connected=message.remote_connected,
+                accepting_prompts=message.accepting_prompts,
                 running=message.running,
-                queued_prompt_count=message.queued_prompt_count,
             )
-            return
-
-        if isinstance(message, PromptAcceptedMessage):
-            self._apply_state(
-                snapshot,
-                promptable=message.promptable,
-                remote_connected=message.remote_connected,
-                running=message.running,
-                queued_prompt_count=message.queued_prompt_count,
-            )
-            snapshot.last_update = f"Accepted prompt: {_format_prompt_preview(message.content)}"
-            return
-
-        if isinstance(message, PromptStartedMessage):
-            self._apply_state(
-                snapshot,
-                promptable=message.promptable,
-                remote_connected=message.remote_connected,
-                running=message.running,
-                queued_prompt_count=message.queued_prompt_count,
-            )
-            snapshot.last_update = f"Running prompt: {_format_prompt_preview(message.content)}"
             return
 
         if isinstance(message, ContentDeltaMessage):
@@ -244,13 +172,6 @@ class _WorkerManager:
             return
 
         if isinstance(message, RunFinishedMessage):
-            self._apply_state(
-                snapshot,
-                promptable=message.promptable,
-                remote_connected=message.remote_connected,
-                running=message.running,
-                queued_prompt_count=message.queued_prompt_count,
-            )
             snapshot.last_update = _truncate_summary(message.summary)
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(
@@ -263,13 +184,6 @@ class _WorkerManager:
             return
 
         if isinstance(message, RunCancelledMessage):
-            self._apply_state(
-                snapshot,
-                promptable=message.promptable,
-                remote_connected=message.remote_connected,
-                running=message.running,
-                queued_prompt_count=message.queued_prompt_count,
-            )
             snapshot.last_update = "Run cancelled."
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(worker_id=worker_id, endpoint=snapshot.endpoint, kind="cancelled")
@@ -277,13 +191,6 @@ class _WorkerManager:
             return
 
         if isinstance(message, RunFailedMessage):
-            self._apply_state(
-                snapshot,
-                promptable=message.promptable,
-                remote_connected=message.remote_connected,
-                running=message.running,
-                queued_prompt_count=message.queued_prompt_count,
-            )
             snapshot.last_update = f"Run failed: {message.error}"
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(
@@ -341,21 +248,17 @@ class _WorkerManager:
         self,
         snapshot: WorkerSnapshot,
         *,
-        promptable: bool,
-        remote_connected: bool,
+        accepting_prompts: bool,
         running: bool,
-        queued_prompt_count: int,
     ) -> None:
-        snapshot.promptable = promptable
-        snapshot.remote_connected = remote_connected
+        snapshot.accepting_prompts = accepting_prompts
         snapshot.running = running
-        snapshot.queued_prompt_count = queued_prompt_count
 
     def _worker_is_idle(self, worker_id: int) -> bool:
         snapshot = self._snapshots.get(worker_id)
         if snapshot is None:
             return True
-        return not snapshot.running and snapshot.queued_prompt_count == 0
+        return snapshot.accepting_prompts and not snapshot.running
 
 
 class WorkerToolRuntime:
@@ -374,10 +277,8 @@ class WorkerToolRuntime:
     async def disconnect(self, worker_id: int) -> str:
         return await self._manager.disconnect(worker_id)
 
-    async def prompt(
-        self, worker_id: int, prompt: str, *, mode: Literal["queue", "priority", "interrupt"] = "queue"
-    ) -> str:
-        return await self._manager.prompt(worker_id, prompt, mode=mode)
+    async def prompt(self, worker_id: int, prompt: str) -> str:
+        return await self._manager.prompt(worker_id, prompt)
 
     async def cancel(self, worker_id: int) -> str:
         return await self._manager.cancel(worker_id)
@@ -428,10 +329,6 @@ class RemoteConnectInput(BaseModel):
 class RemotePromptInput(BaseModel):
     remote_id: int = Field(description="The local remote id returned by remote_connect.")
     prompt: str = Field(description="The prompt to send to the remote session.")
-    mode: Literal["queue", "priority", "interrupt"] = Field(
-        default="queue",
-        description="How to schedule the prompt: queue normally, queue with priority, or interrupt the current run.",
-    )
 
 
 class RemoteIdInput(BaseModel):
@@ -482,14 +379,14 @@ class RemotePromptTool(Tool):
         return "remote_prompt"
 
     def description(self) -> str:
-        return "Send a prompt to one connected remote id, optionally as a priority or interrupting prompt."
+        return "Send a prompt to one connected remote id when that remote is idle."
 
     def parameters(self) -> dict[str, Any]:
         return RemotePromptInput.model_json_schema()
 
     async def execute(self, parameters: dict[str, Any]) -> str:
         validated = RemotePromptInput.model_validate(parameters)
-        return await self._runtime.prompt(validated.remote_id, validated.prompt, mode=validated.mode)
+        return await self._runtime.prompt(validated.remote_id, validated.prompt)
 
 
 class RemoteWaitTool(Tool):

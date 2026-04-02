@@ -12,8 +12,6 @@ from websockets.exceptions import ConnectionClosed
 from coding_assistant.core.agent_session import (
     AgentSession,
     AgentSessionEvent,
-    PromptAcceptedEvent,
-    PromptStartedEvent,
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
@@ -24,13 +22,10 @@ from coding_assistant.core.agent_session import (
 from coding_assistant.llm.types import ContentDeltaEvent
 from coding_assistant.remote.protocol import (
     CancelCommand,
-    CommandAcceptedMessage,
     ContentDeltaMessage,
     ErrorMessage,
-    NotReadyMessage,
-    PromptAcceptedMessage,
-    PromptStartedMessage,
     PromptCommand,
+    RequestOkMessage,
     RunCancelledMessage,
     RunFailedMessage,
     RunFinishedMessage,
@@ -67,10 +62,8 @@ class RemoteOutput:
 
 
 class _StatePayload(TypedDict):
-    promptable: bool
-    remote_connected: bool
+    accepting_prompts: bool
     running: bool
-    queued_prompt_count: int
 
 
 def _session_event_to_message(
@@ -79,8 +72,6 @@ def _session_event_to_message(
     state: SessionState,
 ) -> (
     StateMessage
-    | PromptAcceptedMessage
-    | PromptStartedMessage
     | ContentDeltaMessage
     | ToolCallsMessage
     | RunFinishedMessage
@@ -91,10 +82,6 @@ def _session_event_to_message(
     """Translate internal session events into protocol messages for the remote client."""
     if isinstance(event, StateChangedEvent):
         return StateMessage(**_state_payload(event.state))
-    if isinstance(event, PromptAcceptedEvent):
-        return PromptAcceptedMessage(content=event.content, **_state_payload(state))
-    if isinstance(event, PromptStartedEvent):
-        return PromptStartedMessage(content=event.content, **_state_payload(state))
     if isinstance(event, ContentDeltaEvent):
         return ContentDeltaMessage(content=event.content)
     if isinstance(event, ToolCallsEvent):
@@ -120,10 +107,8 @@ def _session_event_to_message(
 def _state_payload(state: SessionState) -> _StatePayload:
     """Serialize one session state snapshot into protocol fields."""
     return {
-        "promptable": state.promptable,
-        "remote_connected": True,
+        "accepting_prompts": state.promptable and not state.running and state.queued_prompt_count == 0,
         "running": state.running,
-        "queued_prompt_count": state.queued_prompt_count,
     }
 
 
@@ -132,53 +117,43 @@ async def _handle_supervisor_message(
     session: AgentSession,
     message: PromptCommand | CancelCommand,
 ) -> None:
-    """Execute one remote command and send its immediate accepted/not-ready reply."""
+    """Execute one remote command and send its immediate success or error reply."""
     if isinstance(message, PromptCommand):
-        if message.mode == "interrupt":
-            accepted = await session.interrupt_and_enqueue(message.prompt)
-        else:
-            accepted = await session.enqueue_prompt(
-                message.prompt,
-                priority=message.mode == "priority",
-            )
-
+        accepted = await session.enqueue_prompt_if_idle(message.prompt)
         if accepted:
-            state = session.state
-            await websocket.send(
-                message_to_json(CommandAcceptedMessage(request_id=message.request_id, **_state_payload(state)))
-            )
+            await websocket.send(message_to_json(RequestOkMessage(request_id=message.request_id)))
+            return
+
+        state = session.state
+        if not state.promptable:
+            message_text = "Remote session is not accepting prompts."
         else:
-            state = session.state
-            await websocket.send(
-                message_to_json(
-                    NotReadyMessage(
-                        request_id=message.request_id,
-                        promptable=state.promptable,
-                        remote_connected=True,
-                        running=state.running,
-                        queued_prompt_count=state.queued_prompt_count,
-                    )
+            message_text = "Remote session is busy. Wait for it to finish or cancel the current run."
+        await websocket.send(
+            message_to_json(
+                ErrorMessage(
+                    request_id=message.request_id,
+                    message=message_text,
                 )
             )
+        )
         return
 
     cancelled = await session.cancel_current_run()
     if cancelled:
-        state = session.state
-        await websocket.send(
-            message_to_json(CommandAcceptedMessage(request_id=message.request_id, **_state_payload(state)))
-        )
+        await websocket.send(message_to_json(RequestOkMessage(request_id=message.request_id)))
         return
 
     state = session.state
+    if not state.promptable:
+        message_text = "Remote session is closed."
+    else:
+        message_text = "Remote session has no active run to cancel."
     await websocket.send(
         message_to_json(
-            NotReadyMessage(
+            ErrorMessage(
                 request_id=message.request_id,
-                promptable=state.promptable,
-                remote_connected=True,
-                running=state.running,
-                queued_prompt_count=state.queued_prompt_count,
+                message=message_text,
             )
         )
     )

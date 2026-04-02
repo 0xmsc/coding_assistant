@@ -168,6 +168,17 @@ class AgentSession:
         await self._publish_state()
         return True
 
+    async def enqueue_prompt_if_idle(self, content: PromptContent) -> bool:
+        """Queue one prompt only when the session has no running or pending work."""
+        async with self._mutation_lock:
+            if self._closed or self._current_run_task is not None or self._pending_prompts:
+                return False
+            self._pending_prompts.append(_QueuedPrompt(content=content))
+            self._run_loop_wakeup.set()
+        self._publish_event(PromptAcceptedEvent(content=content))
+        await self._publish_state()
+        return True
+
     async def interrupt_and_enqueue(self, content: PromptContent) -> bool:
         """Cancel the active run and make this prompt the next prompt consumed."""
         async with self._mutation_lock:

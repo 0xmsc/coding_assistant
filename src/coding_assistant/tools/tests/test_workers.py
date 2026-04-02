@@ -87,7 +87,7 @@ async def test_worker_runtime_connects_prompts_and_waits_for_completion() -> Non
         assert worker_server.endpoint in connected_workers
 
         prompt_result = await worker_runtime.prompt(worker_id, "Please finish the task.")
-        assert prompt_result == f"Prompt accepted by remote {worker_id}.\nPlease finish the task."
+        assert prompt_result == f"Prompt submitted to remote {worker_id}.\nPlease finish the task."
 
         wait_result = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
         assert wait_result == f"Remote {worker_id} finished:\nFinished the delegated task"
@@ -97,7 +97,7 @@ async def test_worker_runtime_connects_prompts_and_waits_for_completion() -> Non
 
 
 @pytest.mark.asyncio
-async def test_worker_runtime_queues_prompt_while_worker_is_busy() -> None:
+async def test_worker_runtime_rejects_prompt_while_worker_is_busy() -> None:
     first_started = asyncio.Event()
     first_release = asyncio.Event()
     streamer = ControlledStreamer(
@@ -107,7 +107,6 @@ async def test_worker_runtime_queues_prompt_while_worker_is_busy() -> None:
                 started_event=first_started,
                 release_event=first_release,
             ),
-            StreamStep(message=AssistantMessage(content="Second result")),
         ]
     )
     session = make_agent_session(completion_streamer=streamer)
@@ -119,73 +118,30 @@ async def test_worker_runtime_queues_prompt_while_worker_is_busy() -> None:
             f"Connected to remote {worker_id} at {worker_server.endpoint}."
         )
         assert await worker_runtime.prompt(worker_id, "Please start working.") == (
-            f"Prompt accepted by remote {worker_id}.\nPlease start working."
+            f"Prompt submitted to remote {worker_id}.\nPlease start working."
         )
 
         await asyncio.wait_for(first_started.wait(), timeout=1)
 
         prompt_result = await worker_runtime.prompt(worker_id, "Please do something else.")
-        assert prompt_result == f"Prompt accepted by remote {worker_id}.\nPlease do something else."
-
-        first_release.set()
-
-        first_wait = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
-        second_wait = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
-
-        assert first_wait == f"Remote {worker_id} finished:\nFirst result"
-        assert second_wait == f"Remote {worker_id} finished:\nSecond result"
-
-    await worker_runtime.close()
-    await session.close()
-
-
-@pytest.mark.asyncio
-async def test_worker_runtime_priority_prompt_runs_before_existing_queue() -> None:
-    first_started = asyncio.Event()
-    first_release = asyncio.Event()
-    streamer = ControlledStreamer(
-        [
-            StreamStep(
-                message=AssistantMessage(content="First result"),
-                started_event=first_started,
-                release_event=first_release,
-            ),
-            StreamStep(message=AssistantMessage(content="Priority result")),
-            StreamStep(message=AssistantMessage(content="Second result")),
-        ]
-    )
-    session = make_agent_session(completion_streamer=streamer)
-    worker_runtime = WorkerToolRuntime()
-    worker_id = 1
-
-    async with start_worker_server(session=session) as worker_server:
-        assert await worker_runtime.connect(worker_server.endpoint) == (
-            f"Connected to remote {worker_id} at {worker_server.endpoint}."
-        )
-        assert await worker_runtime.prompt(worker_id, "first") == f"Prompt accepted by remote {worker_id}.\nfirst"
-        await asyncio.wait_for(first_started.wait(), timeout=1)
-
-        assert await worker_runtime.prompt(worker_id, "second") == (f"Prompt accepted by remote {worker_id}.\nsecond")
-        assert await worker_runtime.prompt(worker_id, "priority", mode="priority") == (
-            f"Priority prompt accepted by remote {worker_id}.\npriority"
+        assert prompt_result == (
+            f"Remote {worker_id} rejected the prompt: "
+            "Remote session is busy. Wait for it to finish or cancel the current run."
         )
 
         first_release.set()
 
-        wait_results = [await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1) for _ in range(3)]
+        wait_result = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
 
-        assert wait_results == [
-            f"Remote {worker_id} finished:\nFirst result",
-            f"Remote {worker_id} finished:\nPriority result",
-            f"Remote {worker_id} finished:\nSecond result",
-        ]
+        assert wait_result == f"Remote {worker_id} finished:\nFirst result"
 
     await worker_runtime.close()
     await session.close()
+    assert streamer.prompts == ["Please start working."]
 
 
 @pytest.mark.asyncio
-async def test_worker_runtime_interrupt_prompt_cancels_current_run_and_runs_new_prompt_next() -> None:
+async def test_worker_runtime_can_cancel_current_run() -> None:
     first_started = asyncio.Event()
     never_release = asyncio.Event()
     streamer = ControlledStreamer(
@@ -195,7 +151,6 @@ async def test_worker_runtime_interrupt_prompt_cancels_current_run_and_runs_new_
                 started_event=first_started,
                 release_event=never_release,
             ),
-            StreamStep(message=AssistantMessage(content="Interrupt result")),
         ]
     )
     session = make_agent_session(completion_streamer=streamer)
@@ -206,18 +161,14 @@ async def test_worker_runtime_interrupt_prompt_cancels_current_run_and_runs_new_
         assert await worker_runtime.connect(worker_server.endpoint) == (
             f"Connected to remote {worker_id} at {worker_server.endpoint}."
         )
-        assert await worker_runtime.prompt(worker_id, "first") == f"Prompt accepted by remote {worker_id}.\nfirst"
+        assert await worker_runtime.prompt(worker_id, "first") == f"Prompt submitted to remote {worker_id}.\nfirst"
         await asyncio.wait_for(first_started.wait(), timeout=1)
 
-        assert await worker_runtime.prompt(worker_id, "interrupt", mode="interrupt") == (
-            f"Interrupt prompt accepted by remote {worker_id}.\ninterrupt"
-        )
+        assert await worker_runtime.cancel(worker_id) == f"Cancel requested for remote {worker_id}."
 
         cancel_wait = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
-        finish_wait = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
 
         assert cancel_wait == f"Remote {worker_id} cancelled its current run."
-        assert finish_wait == f"Remote {worker_id} finished:\nInterrupt result"
 
     await worker_runtime.close()
     await session.close()
@@ -326,7 +277,6 @@ async def test_worker_runtime_disconnect_does_not_stop_the_session() -> None:
                 started_event=first_started,
                 release_event=first_release,
             ),
-            StreamStep(message=AssistantMessage(content="Second result")),
         ]
     )
     session = make_agent_session(completion_streamer=streamer)
@@ -337,15 +287,14 @@ async def test_worker_runtime_disconnect_does_not_stop_the_session() -> None:
         assert await worker_runtime.connect(worker_server.endpoint) == (
             f"Connected to remote {worker_id} at {worker_server.endpoint}."
         )
-        assert await worker_runtime.prompt(worker_id, "first") == f"Prompt accepted by remote {worker_id}.\nfirst"
+        assert await worker_runtime.prompt(worker_id, "first") == f"Prompt submitted to remote {worker_id}.\nfirst"
         await asyncio.wait_for(first_started.wait(), timeout=1)
-        assert await worker_runtime.prompt(worker_id, "second") == (f"Prompt accepted by remote {worker_id}.\nsecond")
         assert await worker_runtime.disconnect(worker_id) == (f"Disconnected from remote {worker_id}.")
 
         first_release.set()
         await asyncio.wait_for(_wait_for_session_to_idle(session), timeout=1)
 
-    assert streamer.prompts == ["first", "second"]
+    assert streamer.prompts == ["first"]
 
     await worker_runtime.close()
     await session.close()

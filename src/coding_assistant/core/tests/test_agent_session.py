@@ -149,6 +149,36 @@ async def test_agent_session_runs_prompt_and_updates_history() -> None:
 
 
 @pytest.mark.asyncio
+async def test_agent_session_enqueue_prompt_if_idle_rejects_busy_session() -> None:
+    first_started = asyncio.Event()
+    first_release = asyncio.Event()
+    session = make_session(
+        completion_streamer=ControlledStreamer(
+            [
+                StreamStep(
+                    message=AssistantMessage(content="First result"),
+                    started_event=first_started,
+                    release_event=first_release,
+                ),
+            ]
+        ),
+    )
+
+    async with session.subscribe() as queue:
+        await wait_for_event(queue, StateChangedEvent)
+        assert await session.enqueue_prompt("first") is True
+        await asyncio.wait_for(first_started.wait(), timeout=1)
+
+        assert await session.enqueue_prompt_if_idle("second") is False
+        assert session.state.pending_prompts == ()
+
+        first_release.set()
+        await wait_for_event(queue, RunFinishedEvent)
+
+    await session.close()
+
+
+@pytest.mark.asyncio
 async def test_agent_session_queues_prompts_fifo_while_run_is_in_flight() -> None:
     first_started = asyncio.Event()
     first_release = asyncio.Event()

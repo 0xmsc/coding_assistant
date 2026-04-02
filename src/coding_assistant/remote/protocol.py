@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -17,30 +17,14 @@ class ToolCallPayload(BaseModel):
 class WorkerStatePayload(BaseModel):
     """Authoritative worker state snapshot carried by protocol messages."""
 
-    promptable: bool
-    remote_connected: bool
+    accepting_prompts: bool
     running: bool
-    queued_prompt_count: int = 0
 
 
 class StateMessage(WorkerStatePayload):
-    """Current promptability/running snapshot for one worker."""
+    """Current prompt-acceptance/running snapshot for one worker."""
 
     type: Literal["state"] = "state"
-
-
-class PromptAcceptedMessage(WorkerStatePayload):
-    """Notification that the worker accepted one prompt into its queue."""
-
-    type: Literal["prompt_accepted"] = "prompt_accepted"
-    content: str | list[dict[str, Any]]
-
-
-class PromptStartedMessage(WorkerStatePayload):
-    """Notification that one accepted prompt has started running."""
-
-    type: Literal["prompt_started"] = "prompt_started"
-    content: str | list[dict[str, Any]]
 
 
 class ContentDeltaMessage(BaseModel):
@@ -77,17 +61,10 @@ class RunFailedMessage(WorkerStatePayload):
     error: str
 
 
-class CommandAcceptedMessage(WorkerStatePayload):
-    """Acknowledgement for a prompt or cancel command."""
+class RequestOkMessage(BaseModel):
+    """Successful direct reply to one prompt or cancel request."""
 
-    type: Literal["command_accepted"] = "command_accepted"
-    request_id: str
-
-
-class NotReadyMessage(WorkerStatePayload):
-    """Command rejection carrying the worker state that caused the rejection."""
-
-    type: Literal["not_ready"] = "not_ready"
+    type: Literal["ok"] = "ok"
     request_id: str
 
 
@@ -105,7 +82,6 @@ class PromptCommand(BaseModel):
     type: Literal["prompt"] = "prompt"
     request_id: str
     prompt: str
-    mode: Literal["queue", "priority", "interrupt"] = "queue"
 
 
 class CancelCommand(BaseModel):
@@ -117,15 +93,12 @@ class CancelCommand(BaseModel):
 
 WorkerToSupervisorMessage = (
     StateMessage
-    | PromptAcceptedMessage
-    | PromptStartedMessage
     | ContentDeltaMessage
     | ToolCallsMessage
     | RunFinishedMessage
     | RunCancelledMessage
     | RunFailedMessage
-    | CommandAcceptedMessage
-    | NotReadyMessage
+    | RequestOkMessage
     | ErrorMessage
 )
 
@@ -140,10 +113,6 @@ def parse_worker_message(data: str | bytes) -> WorkerToSupervisorMessage:
     message_type = payload.get("type")
     if message_type == "state":
         return StateMessage.model_validate(payload)
-    if message_type == "prompt_accepted":
-        return PromptAcceptedMessage.model_validate(payload)
-    if message_type == "prompt_started":
-        return PromptStartedMessage.model_validate(payload)
     if message_type == "content_delta":
         return ContentDeltaMessage.model_validate(payload)
     if message_type == "tool_calls":
@@ -154,10 +123,8 @@ def parse_worker_message(data: str | bytes) -> WorkerToSupervisorMessage:
         return RunCancelledMessage.model_validate(payload)
     if message_type == "run_failed":
         return RunFailedMessage.model_validate(payload)
-    if message_type == "command_accepted":
-        return CommandAcceptedMessage.model_validate(payload)
-    if message_type == "not_ready":
-        return NotReadyMessage.model_validate(payload)
+    if message_type == "ok":
+        return RequestOkMessage.model_validate(payload)
     if message_type == "error":
         return ErrorMessage.model_validate(payload)
     raise ValueError(f"Unknown worker message type: {message_type}")
