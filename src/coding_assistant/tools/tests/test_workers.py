@@ -125,8 +125,7 @@ async def test_worker_runtime_rejects_prompt_while_worker_is_busy() -> None:
 
         prompt_result = await worker_runtime.prompt(worker_id, "Please do something else.")
         assert prompt_result == (
-            f"Remote {worker_id} rejected the prompt: "
-            "Remote session is busy. Wait for it to finish or cancel the current run."
+            f"Remote {worker_id} rejected the prompt: This remote connection already has an active prompt turn."
         )
 
         first_release.set()
