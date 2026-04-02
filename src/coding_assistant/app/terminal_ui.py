@@ -130,12 +130,12 @@ def create_terminal_application(
         completer=completer,
         complete_while_typing=True,
         history=create_prompt_history(history_path),
-        multiline=False,
+        multiline=True,
         accept_handler=accept_buffer,
     )
     input_window = Window(
         content=BufferControl(buffer=input_buffer),
-        height=Dimension.exact(1),
+        height=Dimension(min=1, max=10),
     )
     input_row = VSplit(
         [
