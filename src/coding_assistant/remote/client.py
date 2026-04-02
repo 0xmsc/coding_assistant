@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
-from typing import Literal
 from uuid import uuid4
 
 from websockets.asyncio.client import ClientConnection, connect
@@ -11,10 +10,9 @@ from websockets.exceptions import ConnectionClosed
 
 from coding_assistant.remote.protocol import (
     CancelCommand,
-    CommandAcceptedMessage,
     ErrorMessage,
-    NotReadyMessage,
     PromptCommand,
+    RequestOkMessage,
     StateMessage,
     WorkerToSupervisorMessage,
     message_to_json,
@@ -38,7 +36,7 @@ class RemoteWorkerConnection:
         self._on_event = on_event
         self._on_disconnect = on_disconnect
         self._send_lock = asyncio.Lock()
-        self._pending: dict[str, asyncio.Future[CommandAcceptedMessage | NotReadyMessage | ErrorMessage]] = {}
+        self._pending: dict[str, asyncio.Future[RequestOkMessage | ErrorMessage]] = {}
         self._ready: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._receive_task = asyncio.create_task(self._receive_loop())
 
@@ -68,17 +66,15 @@ class RemoteWorkerConnection:
     async def prompt(
         self,
         prompt: str,
-        *,
-        mode: Literal["queue", "priority", "interrupt"] = "queue",
-    ) -> CommandAcceptedMessage | NotReadyMessage | ErrorMessage:
+    ) -> RequestOkMessage | ErrorMessage:
         """Send one prompt command and wait for the worker's direct reply."""
         request_id = uuid4().hex
         return await self._send_request(
             request_id=request_id,
-            message=PromptCommand(request_id=request_id, prompt=prompt, mode=mode),
+            message=PromptCommand(request_id=request_id, prompt=prompt),
         )
 
-    async def cancel(self) -> CommandAcceptedMessage | NotReadyMessage | ErrorMessage:
+    async def cancel(self) -> RequestOkMessage | ErrorMessage:
         """Request cancellation of the active worker run."""
         request_id = uuid4().hex
         return await self._send_request(
@@ -97,11 +93,9 @@ class RemoteWorkerConnection:
         *,
         request_id: str,
         message: PromptCommand | CancelCommand,
-    ) -> CommandAcceptedMessage | NotReadyMessage | ErrorMessage:
+    ) -> RequestOkMessage | ErrorMessage:
         """Track one in-flight command until the matching response arrives."""
-        future: asyncio.Future[CommandAcceptedMessage | NotReadyMessage | ErrorMessage] = (
-            asyncio.get_running_loop().create_future()
-        )
+        future: asyncio.Future[RequestOkMessage | ErrorMessage] = asyncio.get_running_loop().create_future()
         self._pending[request_id] = future
         async with self._send_lock:
             await self._websocket.send(message_to_json(message))
@@ -116,7 +110,7 @@ class RemoteWorkerConnection:
                 if (
                     request_id is not None
                     and request_id in self._pending
-                    and isinstance(message, (CommandAcceptedMessage, NotReadyMessage, ErrorMessage))
+                    and isinstance(message, (RequestOkMessage, ErrorMessage))
                 ):
                     future = self._pending.pop(request_id)
                     if not future.done():

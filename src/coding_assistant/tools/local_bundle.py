@@ -18,7 +18,7 @@ WORKER_TOOL_INSTRUCTIONS = """
 ## Remotes
 
 - Use `remote_connect(endpoint=...)` with the remote endpoint printed when `coding-assistant` starts, then use the returned local `remote_id` with the other remote tools.
-- When prompting a remote session, choose `mode="queue"` for normal FIFO work, `mode="priority"` to move ahead of already queued prompts, or `mode="interrupt"` to cancel the current run and run your prompt next.
+- Use `remote_prompt(remote_id=..., prompt=...)` only when the remote is idle. If it is busy, wait for it to finish or use `remote_cancel(...)` before prompting again.
 """.strip()
 
 

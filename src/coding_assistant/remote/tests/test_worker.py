@@ -32,9 +32,10 @@ from coding_assistant.llm.types import (
     Usage,
 )
 from coding_assistant.remote.protocol import (
-    CommandAcceptedMessage,
+    ErrorMessage,
     PromptCommand,
-    PromptStartedMessage,
+    RequestOkMessage,
+    StateMessage,
     parse_worker_message,
 )
 from coding_assistant.remote.server import _handle_supervisor_message, _session_event_to_message
@@ -245,27 +246,24 @@ async def test_run_session_output_prints_status_events_as_info_lines() -> None:
     assert printed_lines == ["[bold blue]i[/bold blue] Retrying LLM request"]
 
 
-def test_session_event_to_message_includes_state_for_prompt_started() -> None:
+def test_session_event_to_message_uses_accepting_prompts_state() -> None:
     state = SessionState(
         promptable=True,
-        running=True,
+        running=False,
         queued_prompt_count=1,
         pending_prompts=("next queued prompt",),
     )
 
-    message = _session_event_to_message(PromptStartedEvent(content="Do the task"), state=state)
+    message = _session_event_to_message(StateChangedEvent(state=state), state=state)
 
-    assert message == PromptStartedMessage(
-        content="Do the task",
-        promptable=True,
-        remote_connected=True,
-        running=True,
-        queued_prompt_count=1,
+    assert message == StateMessage(
+        accepting_prompts=False,
+        running=False,
     )
 
 
 @pytest.mark.asyncio
-async def test_handle_supervisor_message_replies_with_authoritative_state_snapshot() -> None:
+async def test_handle_supervisor_message_replies_with_request_ok_when_idle() -> None:
     class FakeWebSocket:
         def __init__(self) -> None:
             self.messages: list[str] = []
@@ -282,17 +280,45 @@ async def test_handle_supervisor_message_replies_with_authoritative_state_snapsh
         await _handle_supervisor_message(
             cast(Any, websocket),
             session,
-            PromptCommand(request_id="request-1", prompt="Do the task", mode="queue"),
+            PromptCommand(request_id="request-1", prompt="Do the task"),
         )
     finally:
         await session.close()
 
     assert len(websocket.messages) == 1
     response = parse_worker_message(websocket.messages[0])
-    assert response == CommandAcceptedMessage(
+    assert response == RequestOkMessage(
         request_id="request-1",
-        promptable=True,
-        remote_connected=True,
-        running=False,
-        queued_prompt_count=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_supervisor_message_rejects_prompt_when_session_is_busy() -> None:
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+
+        async def send(self, message: str) -> None:
+            self.messages.append(message)
+
+    session = make_agent_session(
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+    )
+    websocket = FakeWebSocket()
+
+    try:
+        assert await session.enqueue_prompt("Already queued") is True
+        await _handle_supervisor_message(
+            cast(Any, websocket),
+            session,
+            PromptCommand(request_id="request-1", prompt="Do the task"),
+        )
+    finally:
+        await session.close()
+
+    assert len(websocket.messages) == 1
+    response = parse_worker_message(websocket.messages[0])
+    assert response == ErrorMessage(
+        request_id="request-1",
+        message="Remote session is busy. Wait for it to finish or cancel the current run.",
     )
