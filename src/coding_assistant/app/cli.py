@@ -10,7 +10,7 @@ from coding_assistant.app.default_agent import (
     create_default_agent,
 )
 from coding_assistant.app.image import get_image
-from coding_assistant.app.terminal_ui import run_terminal_ui
+from coding_assistant.app.terminal_ui import PromptSubmitType, run_terminal_ui
 from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.infra.paths import get_app_cache_dir
 from coding_assistant.integrations.mcp_client import print_mcp_tools
@@ -44,13 +44,17 @@ async def run_cli(args: Namespace) -> None:
                         system_message=system_message,
                         history_path=get_app_cache_dir() / "history",
                         words=CLI_COMMAND_NAMES,
-                        submit_handler=lambda answer: _handle_prompt_submission(session=session, answer=answer),
+                        submit_handler=lambda answer, submit_type: _handle_prompt_submission(
+                            session=session, answer=answer, submit_type=submit_type
+                        ),
                     )
         finally:
             await session.close()
 
 
-async def _handle_prompt_submission(*, session: AgentSession, answer: str) -> bool:
+async def _handle_prompt_submission(
+    *, session: AgentSession, answer: str, submit_type: PromptSubmitType
+) -> bool:
     """Handle one prompt line and return true when the CLI should exit."""
     stripped = answer.strip()
     if stripped == "/exit":
@@ -91,7 +95,13 @@ async def _handle_prompt_submission(*, session: AgentSession, answer: str) -> bo
             return False
         return not await session.interrupt_and_enqueue(interrupt_prompt)
 
-    return not await session.enqueue_prompt(answer)
+    # Handle steering vs queued submission types
+    if submit_type == PromptSubmitType.STEERING:
+        # Steering: try to insert immediately when possible
+        return not await session.enqueue_prompt_if_idle(answer)
+    else:
+        # Queued: always add to the queue
+        return not await session.enqueue_prompt(answer)
 
 
 def _extract_command_argument(*, answer: str, command: str) -> str | None:

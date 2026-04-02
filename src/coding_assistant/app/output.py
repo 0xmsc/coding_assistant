@@ -4,11 +4,11 @@ import json
 import os
 from typing import Any
 
+from rich import box
 from rich import print as rich_print
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.panel import Panel
-from rich.styled import Styled
 
 from coding_assistant.core.agent_session import SessionState
 from coding_assistant.llm.types import AssistantMessage, SystemMessage, ToolCall
@@ -162,7 +162,15 @@ def print_active_prompt(content: str | list[dict[str, Any]]) -> None:
     else:
         renderable = Markdown("```json\n" + json.dumps(content, indent=2) + "\n```")
 
-    rich_print(Styled(renderable, "on grey11"))
+    rich_print(
+        Panel.fit(
+            renderable,
+            box=box.SQUARE,
+            border_style="grey35",
+            style="on grey11",
+            padding=(0, 1),
+        )
+    )
 
 
 def format_prompt_preview(content: str | list[dict[str, Any]]) -> str:

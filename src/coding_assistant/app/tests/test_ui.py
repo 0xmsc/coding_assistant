@@ -11,6 +11,8 @@ from prompt_toolkit.layout.containers import ConditionalContainer
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 
 from coding_assistant.app.terminal_ui import (
+    PromptSubmission,
+    PromptSubmitType,
     SlashCompleter,
     create_terminal_application,
     format_queued_prompts,
@@ -53,7 +55,7 @@ def test_create_terminal_application_builds_non_fullscreen_interactive_ui(tmp_pa
         pending_prompts=("first queued prompt", "second queued prompt"),
     )
 
-    application, answer_queue = create_terminal_application(
+    application, answer_queue, _ = create_terminal_application(
         session=session,
         history_path=tmp_path / "history",
         words=[],
@@ -73,13 +75,16 @@ def test_create_terminal_application_builds_non_fullscreen_interactive_ui(tmp_pa
     assert isinstance(prompt_window, Window)
     assert isinstance(prompt_window.content, FormattedTextControl)
     assert prompt_window.content.text == [("class:prompt", "> ")]
+    input_window = input_row.children[1]
+    assert isinstance(input_window, Window)
+    assert input_window.wrap_lines() is True
 
 
-def test_create_terminal_application_submits_with_enter(tmp_path: Path) -> None:
+def test_create_terminal_application_submits_as_steering_with_enter(tmp_path: Path) -> None:
     session = Mock()
     session.state = SessionState(running=False, queued_prompt_count=0)
 
-    application, answer_queue = create_terminal_application(
+    application, answer_queue, _ = create_terminal_application(
         session=session,
         history_path=tmp_path / "history",
         words=[],
@@ -98,14 +103,44 @@ def test_create_terminal_application_submits_with_enter(tmp_path: Path) -> None:
     enter_binding = next(binding for binding in key_bindings.bindings if binding.keys == ("c-m",))
     enter_binding.handler(cast(Any, None))
 
-    assert answer_queue.get_nowait() == "hello world"
+    submission = answer_queue.get_nowait()
+    assert submission.content == "hello world"
+    assert submission.submit_type == PromptSubmitType.STEERING
+
+
+def test_create_terminal_application_submits_as_queued_with_tab(tmp_path: Path) -> None:
+    session = Mock()
+    session.state = SessionState(running=False, queued_prompt_count=0)
+
+    application, answer_queue, _ = create_terminal_application(
+        session=session,
+        history_path=tmp_path / "history",
+        words=[],
+    )
+
+    layout = cast(HSplit, application.layout.container)
+    input_row = cast(VSplit, layout.children[1])
+    assert isinstance(input_row, VSplit)
+    input_window = input_row.children[1]
+    assert isinstance(input_window, Window)
+    assert isinstance(input_window.content, BufferControl)
+    input_buffer = input_window.content.buffer
+    input_buffer.text = "queued prompt"
+
+    key_bindings = cast(KeyBindings, application.key_bindings)
+    tab_binding = next(binding for binding in key_bindings.bindings if binding.keys == ("c-i",))
+    tab_binding.handler(cast(Any, None))
+
+    submission = answer_queue.get_nowait()
+    assert submission.content == "queued prompt"
+    assert submission.submit_type == PromptSubmitType.QUEUED
 
 
 def test_create_terminal_application_inserts_newline_with_ctrl_j(tmp_path: Path) -> None:
     session = Mock()
     session.state = SessionState(running=False, queued_prompt_count=0)
 
-    application, _ = create_terminal_application(
+    application, _, _ = create_terminal_application(
         session=session,
         history_path=tmp_path / "history",
         words=[],
@@ -149,11 +184,14 @@ async def test_run_terminal_ui_prints_accepted_prompts_in_transcript() -> None:
     application.is_done = True
     session = Mock()
     system_message = SystemMessage(content="System")
-    answer_queue: asyncio.Queue[str] = asyncio.Queue()
+    answer_queue: asyncio.Queue[PromptSubmission] = asyncio.Queue()
     submit_handler = AsyncMock(return_value=False)
 
     with (
-        patch("coding_assistant.app.terminal_ui.create_terminal_application", return_value=(application, answer_queue)),
+        patch(
+            "coding_assistant.app.terminal_ui.create_terminal_application",
+            return_value=(application, answer_queue, asyncio.Queue()),
+        ),
         patch("coding_assistant.app.terminal_ui.run_session_output", new=AsyncMock()) as mock_run_session_output,
     ):
         await run_terminal_ui(

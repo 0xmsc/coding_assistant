@@ -205,6 +205,15 @@ class AgentSession:
                 await run_task
         return True
 
+    async def pop_last_queued_prompt(self) -> PromptContent | None:
+        """Remove and return the last queued prompt, or None if the queue is empty."""
+        async with self._mutation_lock:
+            if not self._pending_prompts or self._closed:
+                return None
+            last = self._pending_prompts.pop()
+            await self._publish_state()
+            return last.content
+
     async def cancel_current_run(self, *, discard_pending_prompts: bool = False) -> bool:
         """Cancel the active run, optionally clearing prompts that have not started yet."""
         async with self._mutation_lock:
