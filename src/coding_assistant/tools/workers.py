@@ -177,7 +177,7 @@ class _WorkerManager:
 
         if isinstance(message, RemoteContentDeltaEvent):
             snapshot.running = True
-            snapshot.last_content = _truncate_summary((snapshot.last_content + message.content).strip())
+            snapshot.last_content = (snapshot.last_content + message.content).strip()
             snapshot.last_update = snapshot.last_content
             return
 
@@ -189,7 +189,7 @@ class _WorkerManager:
         if isinstance(message, RemoteToolCallUpdateEvent):
             snapshot.running = True
             if message.content:
-                snapshot.last_update = _truncate_summary(message.content)
+                snapshot.last_update = message.content
             elif message.title:
                 snapshot.last_update = f"Tool {message.status}: {message.title}"
             return
@@ -204,13 +204,13 @@ class _WorkerManager:
                 )
                 return
             summary = snapshot.last_content or snapshot.last_update or "Prompt finished."
-            snapshot.last_update = _truncate_summary(summary)
+            snapshot.last_update = summary
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(
                     worker_id=worker_id,
                     endpoint=snapshot.endpoint,
                     kind="finished",
-                    summary=snapshot.last_update,
+                    summary=summary,
                 )
             )
             return
@@ -310,17 +310,18 @@ class WorkerToolRuntime:
         await self._manager.close()
 
 
-def _truncate_summary(text: str, *, limit: int = 120) -> str:
-    stripped = text.strip()
-    if len(stripped) <= limit:
-        return stripped
-    return f"{stripped[: limit - 3]}..."
-
-
 def _format_prompt_preview(content: str | list[dict[str, Any]]) -> str:
     if isinstance(content, str):
         return _truncate_summary(content)
     return "structured prompt"
+
+
+def _truncate_summary(text: str, *, limit: int = 120) -> str:
+    """Truncate text for display purposes (prompt previews)."""
+    stripped = text.strip()
+    if len(stripped) <= limit:
+        return stripped
+    return f"{stripped[: limit - 3]}..."
 
 
 def _format_meaningful_event(event: WorkerMeaningfulEvent) -> str:
