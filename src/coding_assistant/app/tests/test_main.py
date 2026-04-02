@@ -242,6 +242,17 @@ def test_format_session_status_summarizes_pending_prompts() -> None:
     assert format_session_status(state) == "running"
 
 
+def test_format_session_status_shows_paused_when_queue_is_paused() -> None:
+    state = SessionState(
+        running=False,
+        queued_prompt_count=2,
+        paused=True,
+        pending_prompts=("first queued prompt", "second queued prompt"),
+    )
+
+    assert format_session_status(state) == "paused"
+
+
 def test_print_prompt_accepted_uses_simple_grey_background() -> None:
     with patch("coding_assistant.app.output.rich_print") as mock_print:
         from coding_assistant.app.output import print_active_prompt

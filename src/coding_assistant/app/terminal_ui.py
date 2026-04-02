@@ -137,8 +137,8 @@ def create_terminal_application(
     _pending_submit_type: list[PromptSubmitType] = [PromptSubmitType.QUEUED]
 
     @key_bindings.add("c-c")
-    def exit_on_interrupt(event: Any) -> None:
-        event.app.exit()
+    def handle_control_interrupt(event: Any) -> None:
+        asyncio.get_running_loop().create_task(_handle_control_interrupt(event))
 
     @key_bindings.add("tab")
     def submit_on_tab(_: Any) -> None:
@@ -160,6 +160,22 @@ def create_terminal_application(
     def unqueue_last_prompt(_: Any) -> None:
         # Schedule the async operation to unqueue
         asyncio.get_running_loop().create_task(_unqueue_to_buffer(session, input_buffer))
+
+    async def _handle_control_interrupt(event: Any) -> None:
+        """Cancel the active run, resume a paused queue, or clear buffered input."""
+        state = session.state
+        if state.running:
+            await session.cancel_current_run(pause_queue=True)
+            event.app.invalidate()
+            return
+        if state.paused:
+            await session.resume()
+            event.app.invalidate()
+            return
+        if input_buffer.text:
+            input_buffer.text = ""
+            input_buffer.cursor_position = 0
+            event.app.invalidate()
 
     async def _unqueue_to_buffer(sess: AgentSession, buf: Buffer) -> None:
         """Async helper to unqueue the last prompt and put it in the buffer."""

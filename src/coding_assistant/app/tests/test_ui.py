@@ -207,3 +207,87 @@ async def test_run_terminal_ui_prints_accepted_prompts_in_transcript() -> None:
         "system_message": system_message,
     }
     submit_handler.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_terminal_application_ctrl_c_cancels_active_run(tmp_path: Path) -> None:
+    session = Mock()
+    session.state = SessionState(running=True, queued_prompt_count=1, pending_prompts=("queued",))
+    session.cancel_current_run = AsyncMock(return_value=True)
+
+    application, _, _ = create_terminal_application(
+        session=session,
+        history_path=tmp_path / "history",
+        words=[],
+    )
+
+    key_bindings = cast(KeyBindings, application.key_bindings)
+    ctrl_c_binding = next(binding for binding in key_bindings.bindings if binding.keys == ("c-c",))
+    event = Mock()
+    event.app = Mock()
+    event.app.invalidate = Mock()
+
+    ctrl_c_binding.handler(event)
+    await asyncio.sleep(0)
+
+    session.cancel_current_run.assert_awaited_once_with(pause_queue=True)
+    event.app.invalidate.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_terminal_application_ctrl_c_resumes_paused_queue(tmp_path: Path) -> None:
+    session = Mock()
+    session.state = SessionState(running=False, queued_prompt_count=1, paused=True, pending_prompts=("queued",))
+    session.resume = AsyncMock(return_value=True)
+
+    application, _, _ = create_terminal_application(
+        session=session,
+        history_path=tmp_path / "history",
+        words=[],
+    )
+
+    key_bindings = cast(KeyBindings, application.key_bindings)
+    ctrl_c_binding = next(binding for binding in key_bindings.bindings if binding.keys == ("c-c",))
+    event = Mock()
+    event.app = Mock()
+    event.app.invalidate = Mock()
+
+    ctrl_c_binding.handler(event)
+    await asyncio.sleep(0)
+
+    session.resume.assert_awaited_once_with()
+    event.app.invalidate.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_terminal_application_ctrl_c_clears_input_buffer_when_idle(tmp_path: Path) -> None:
+    session = Mock()
+    session.state = SessionState(running=False, queued_prompt_count=0)
+
+    application, _, _ = create_terminal_application(
+        session=session,
+        history_path=tmp_path / "history",
+        words=[],
+    )
+
+    layout = cast(HSplit, application.layout.container)
+    input_row = cast(VSplit, layout.children[1])
+    input_window = input_row.children[1]
+    assert isinstance(input_window, Window)
+    assert isinstance(input_window.content, BufferControl)
+    input_buffer = input_window.content.buffer
+    input_buffer.text = "draft prompt"
+    input_buffer.cursor_position = len(input_buffer.text)
+
+    key_bindings = cast(KeyBindings, application.key_bindings)
+    ctrl_c_binding = next(binding for binding in key_bindings.bindings if binding.keys == ("c-c",))
+    event = Mock()
+    event.app = Mock()
+    event.app.invalidate = Mock()
+
+    ctrl_c_binding.handler(event)
+    await asyncio.sleep(0)
+
+    assert input_buffer.text == ""
+    assert input_buffer.cursor_position == 0
+    event.app.invalidate.assert_called_once()

@@ -186,7 +186,12 @@ def format_prompt_preview(content: str | list[dict[str, Any]]) -> str:
 
 def format_session_status(state: SessionState) -> str:
     """Return one compact session status line for the prompt footer or worker output."""
-    status = "running" if state.running else "idle"
+    if state.running:
+        status = "running"
+    elif state.paused:
+        status = "paused"
+    else:
+        status = "idle"
     if state.pending_prompts:
         # When pending prompts exist, they're shown in the queued prompts widget above the input.
         # Only show the status in the footer to avoid redundancy.
