@@ -28,6 +28,7 @@ from coding_assistant.llm.types import (
     SystemMessage,
     Tool,
     ToolCall,
+    ToolMessage,
     Usage,
     UserMessage,
 )
@@ -84,6 +85,17 @@ class EchoTool(Tool):
 
     async def execute(self, parameters: dict[str, Any]) -> str:
         return f"echo:{parameters['text']}"
+
+
+class BlockingEchoTool(EchoTool):
+    def __init__(self, *, started_event: asyncio.Event, release_event: asyncio.Event) -> None:
+        self._started_event = started_event
+        self._release_event = release_event
+
+    async def execute(self, parameters: dict[str, Any]) -> str:
+        self._started_event.set()
+        await self._release_event.wait()
+        return await super().execute(parameters)
 
 
 def make_system_history() -> list[BaseMessage]:
@@ -301,6 +313,75 @@ async def test_agent_session_priority_prompt_runs_before_existing_queued_prompts
         "Second result",
     ]
     assert streamer.prompts == ["first", "priority", "second"]
+
+
+@pytest.mark.asyncio
+async def test_agent_session_inserts_steering_prompt_into_active_run_after_tool_boundary() -> None:
+    tool_started = asyncio.Event()
+    tool_release = asyncio.Event()
+    streamer = ControlledStreamer(
+        [
+            StreamStep(
+                message=AssistantMessage(
+                    tool_calls=[
+                        ToolCall(
+                            id="call-1",
+                            function=FunctionCall(
+                                name="echo_tool",
+                                arguments='{"text": "hello"}',
+                            ),
+                        )
+                    ]
+                )
+            ),
+            StreamStep(message=AssistantMessage(content="Steered result")),
+        ]
+    )
+    session = make_session(
+        completion_streamer=streamer,
+        tools=[BlockingEchoTool(started_event=tool_started, release_event=tool_release)],
+    )
+
+    async with session.subscribe() as queue:
+        await wait_for_event(queue, StateChangedEvent)
+        assert await session.enqueue_prompt("first") is True
+        await wait_for_event(queue, ToolCallsEvent)
+        await asyncio.wait_for(tool_started.wait(), timeout=1)
+
+        assert await session.enqueue_steering_prompt("steer now") is True
+        assert session.state.pending_prompts == ("steer now",)
+
+        tool_release.set()
+
+        steering_started_event = await wait_for_matching_event(
+            queue,
+            lambda event: isinstance(event, PromptStartedEvent) and event.content == "steer now",
+        )
+        finished_event = await wait_for_event(queue, RunFinishedEvent)
+
+    await session.close()
+    assert isinstance(steering_started_event, PromptStartedEvent)
+    assert isinstance(finished_event, RunFinishedEvent)
+    assert finished_event.summary == "Steered result"
+    assert streamer.prompts == ["first", "steer now"]
+    assert session.history == [
+        *make_system_history(),
+        UserMessage(content="first"),
+        AssistantMessage(
+            tool_calls=[
+                ToolCall(
+                    id="call-1",
+                    function=FunctionCall(
+                        name="echo_tool",
+                        arguments='{"text": "hello"}',
+                    ),
+                )
+            ]
+        ),
+        ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
+        UserMessage(content="steer now"),
+        AssistantMessage(content="Steered result"),
+    ]
 
 
 @pytest.mark.asyncio

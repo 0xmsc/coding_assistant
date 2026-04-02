@@ -135,6 +135,7 @@ class AgentSession:
         self._tools = list(tools)
         self._completion_streamer = completion_streamer
         self._pending_prompts: deque[_QueuedPrompt] = deque()
+        self._pending_steering_prompts: deque[_QueuedPrompt] = deque()
         self._current_run_task: asyncio.Task[_RunResult] | None = None
         self._subscribers: list[asyncio.Queue[AgentSessionEvent]] = []
         self._mutation_lock = asyncio.Lock()
@@ -144,11 +145,14 @@ class AgentSession:
 
     @property
     def state(self) -> SessionState:
-        """Return the current promptability, run state, and queued prompt count."""
+        """Return the current run state and pending prompt count."""
+        pending_prompts = tuple(prompt.content for prompt in self._pending_steering_prompts) + tuple(
+            prompt.content for prompt in self._pending_prompts
+        )
         return SessionState(
             running=self._current_run_task is not None,
-            queued_prompt_count=len(self._pending_prompts),
-            pending_prompts=tuple(prompt.content for prompt in self._pending_prompts),
+            queued_prompt_count=len(pending_prompts),
+            pending_prompts=pending_prompts,
         )
 
     @property
@@ -183,10 +187,29 @@ class AgentSession:
     async def enqueue_prompt_if_idle(self, content: PromptContent, *, source: str = "local") -> bool:
         """Queue one prompt only when the session has no running or pending work."""
         async with self._mutation_lock:
-            if self._closed or self._current_run_task is not None or self._pending_prompts:
+            if (
+                self._closed
+                or self._current_run_task is not None
+                or self._pending_prompts
+                or self._pending_steering_prompts
+            ):
                 return False
             self._pending_prompts.append(_QueuedPrompt(content=content, source=source))
             self._run_loop_wakeup.set()
+        await self._publish_state()
+        return True
+
+    async def enqueue_steering_prompt(self, content: PromptContent, *, source: str = "local") -> bool:
+        """Inject one prompt into the active run at the next agent-loop boundary."""
+        async with self._mutation_lock:
+            if self._closed:
+                return False
+            queued_prompt = _QueuedPrompt(content=content, source=source)
+            if self._current_run_task is None:
+                self._pending_prompts.appendleft(queued_prompt)
+                self._run_loop_wakeup.set()
+            else:
+                self._pending_steering_prompts.append(queued_prompt)
         await self._publish_state()
         return True
 
@@ -195,6 +218,7 @@ class AgentSession:
         async with self._mutation_lock:
             if self._closed:
                 return False
+            self._pending_steering_prompts.clear()
             self._pending_prompts.appendleft(_QueuedPrompt(content=content, source=source))
             run_task = self._current_run_task
             self._run_loop_wakeup.set()
@@ -208,19 +232,25 @@ class AgentSession:
     async def pop_last_queued_prompt(self) -> PromptContent | None:
         """Remove and return the last queued prompt, or None if the queue is empty."""
         async with self._mutation_lock:
-            if not self._pending_prompts or self._closed:
+            if self._closed:
                 return None
-            last = self._pending_prompts.pop()
-            await self._publish_state()
-            return last.content
+            if self._pending_prompts:
+                last = self._pending_prompts.pop()
+            elif self._pending_steering_prompts:
+                last = self._pending_steering_prompts.pop()
+            else:
+                return None
+        await self._publish_state()
+        return last.content
 
     async def cancel_current_run(self, *, discard_pending_prompts: bool = False) -> bool:
         """Cancel the active run, optionally clearing prompts that have not started yet."""
         async with self._mutation_lock:
             run_task = self._current_run_task
-            had_pending_prompts = bool(self._pending_prompts)
+            had_pending_prompts = bool(self._pending_prompts or self._pending_steering_prompts)
             if discard_pending_prompts:
                 self._pending_prompts.clear()
+                self._pending_steering_prompts.clear()
 
         if run_task is None:
             if discard_pending_prompts and had_pending_prompts:
@@ -240,6 +270,7 @@ class AgentSession:
                 return
             self._closed = True
             self._pending_prompts.clear()
+            self._pending_steering_prompts.clear()
             run_task = self._current_run_task
             self._run_loop_wakeup.set()
 
@@ -292,6 +323,8 @@ class AgentSession:
                     async with self._mutation_lock:
                         if self._current_run_task is run_task:
                             self._current_run_task = None
+                        if result is not None and (result.cancelled or result.error is not None):
+                            self._drain_steering_prompts_to_front_of_queue()
 
                 if result is not None and result.cancelled:
                     self._publish_event(RunCancelledEvent(source=result.source))
@@ -328,6 +361,22 @@ class AgentSession:
                         tools=self._tools,
                         on_event=lambda event: self._publish_event(ToolCallUpdateEvent(event=event, source=source)),
                     )
+                    steering_prompt = await self._pop_next_steering_prompt()
+                    if steering_prompt is not None:
+                        current_history.append(UserMessage(content=steering_prompt.content))
+                        self._publish_event(
+                            PromptStartedEvent(content=steering_prompt.content, source=steering_prompt.source)
+                        )
+                        await self._publish_state()
+                    continue
+
+                steering_prompt = await self._pop_next_steering_prompt()
+                if steering_prompt is not None:
+                    current_history = [*boundary.history, UserMessage(content=steering_prompt.content)]
+                    self._publish_event(
+                        PromptStartedEvent(content=steering_prompt.content, source=steering_prompt.source)
+                    )
+                    await self._publish_state()
                     continue
 
                 current_history = list(boundary.history)
@@ -340,6 +389,16 @@ class AgentSession:
             return _RunResult(history=None, source=source, cancelled=True)
         except Exception as exc:
             return _RunResult(history=None, source=source, error=str(exc))
+
+    async def _pop_next_steering_prompt(self) -> _QueuedPrompt | None:
+        async with self._mutation_lock:
+            if self._closed or not self._pending_steering_prompts:
+                return None
+            return self._pending_steering_prompts.popleft()
+
+    def _drain_steering_prompts_to_front_of_queue(self) -> None:
+        while self._pending_steering_prompts:
+            self._pending_prompts.appendleft(self._pending_steering_prompts.pop())
 
     async def _publish_state(self) -> None:
         self._publish_event(StateChangedEvent(state=self.state))
