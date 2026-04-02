@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import re
 from collections.abc import Awaitable, Callable, Iterable
+from dataclasses import dataclass
+from enum import Enum, auto
 from pathlib import Path
 from typing import Any
 
@@ -49,7 +51,22 @@ from coding_assistant.llm.types import (
 )
 
 
-PromptSubmitHandler = Callable[[str], Awaitable[bool]]
+class PromptSubmitType(Enum):
+    """How a prompt was submitted from the terminal UI."""
+
+    STEERING = auto()  # Enter - immediately inserted when possible
+    QUEUED = auto()  # TAB - added to queue
+
+
+@dataclass
+class PromptSubmission:
+    """A prompt submission with its type."""
+
+    content: str
+    submit_type: PromptSubmitType
+
+
+PromptSubmitHandler = Callable[[str, PromptSubmitType], Awaitable[bool]]
 
 
 class SlashCompleter(Completer):
@@ -93,8 +110,8 @@ def create_terminal_application(
     session: AgentSession,
     history_path: Path,
     words: list[str] | None = None,
-) -> tuple[Application[None], asyncio.Queue[str]]:
-    """Build the shared non-fullscreen terminal UI and its submission queue."""
+) -> tuple[Application[None], asyncio.Queue[PromptSubmission], asyncio.Queue[str]]:
+    """Build the shared non-fullscreen terminal UI and its submission queues."""
     queued_window = ConditionalContainer(
         content=Window(
             content=FormattedTextControl(
@@ -114,24 +131,54 @@ def create_terminal_application(
     )
 
     key_bindings = KeyBindings()
-    answer_queue: asyncio.Queue[str] = asyncio.Queue()
+    answer_queue: asyncio.Queue[PromptSubmission] = asyncio.Queue()
+
+    # Mutable holder for the current submission type (using a list to allow mutation in closures)
+    _pending_submit_type: list[PromptSubmitType] = [PromptSubmitType.QUEUED]
 
     @key_bindings.add("c-c")
     def exit_on_interrupt(event: Any) -> None:
         event.app.exit()
 
+    @key_bindings.add("tab")
+    def submit_on_tab(_: Any) -> None:
+        # TAB submits as queued
+        _pending_submit_type[0] = PromptSubmitType.QUEUED
+        input_buffer.validate_and_handle()
+
     @key_bindings.add("c-m")
     def submit_on_enter(_: Any) -> None:
+        # Enter submits as steering
+        _pending_submit_type[0] = PromptSubmitType.STEERING
         input_buffer.validate_and_handle()
 
     @key_bindings.add("c-j")
     def insert_newline(_: Any) -> None:
         input_buffer.insert_text("\n")
 
+    @key_bindings.add("c-u")
+    def unqueue_last_prompt(_: Any) -> None:
+        # Schedule the async operation to unqueue
+        asyncio.get_running_loop().create_task(_unqueue_to_buffer(session, input_buffer))
+
+    async def _unqueue_to_buffer(sess: AgentSession, buf: Buffer) -> None:
+        """Async helper to unqueue the last prompt and put it in the buffer."""
+        content = await sess.pop_last_queued_prompt()
+        if content is not None:
+            # If there's existing text, prepend with newline
+            if buf.text:
+                buf.text = str(content) + "\n" + buf.text
+            else:
+                buf.text = str(content)
+            buf.cursor_position = len(buf.text)
+
     completer = SlashCompleter(words) if words else None
 
     def accept_buffer(buffer: Buffer) -> bool:
-        answer_queue.put_nowait(buffer.text)
+        # Use the current submission type, then reset to default
+        submit_type = _pending_submit_type[0]
+        _pending_submit_type[0] = PromptSubmitType.QUEUED  # Reset to default
+        answer_queue.put_nowait(PromptSubmission(content=buffer.text, submit_type=submit_type))
         return False
 
     input_buffer = Buffer(
@@ -144,6 +191,7 @@ def create_terminal_application(
     input_window = Window(
         content=BufferControl(buffer=input_buffer),
         height=Dimension(min=1, max=10),
+        wrap_lines=True,
     )
     input_row = VSplit(
         [
@@ -177,7 +225,8 @@ def create_terminal_application(
         full_screen=False,
         refresh_interval=0.1,
     )
-    return application, answer_queue
+    # Return application, prompt submission queue, and unqueue request queue
+    return application, answer_queue, asyncio.Queue[str]()
 
 
 async def run_session_output(
@@ -245,7 +294,7 @@ async def run_terminal_ui(
     submit_handler: PromptSubmitHandler,
 ) -> None:
     """Run the shared interactive terminal UI."""
-    application, answer_queue = create_terminal_application(
+    application, answer_queue, _ = create_terminal_application(
         session=session,
         history_path=history_path,
         words=words,
@@ -259,7 +308,7 @@ async def run_terminal_ui(
 
     with patch_stdout(raw=True):
         application_task = asyncio.create_task(application.run_async())
-        next_answer_task: asyncio.Task[str] = asyncio.create_task(answer_queue.get())
+        next_answer_task: asyncio.Task[PromptSubmission] = asyncio.create_task(answer_queue.get())
 
         try:
             while True:
@@ -272,8 +321,8 @@ async def run_terminal_ui(
                     await application_task
                     return
 
-                answer = next_answer_task.result()
-                should_exit = await submit_handler(answer)
+                submission = next_answer_task.result()
+                should_exit = await submit_handler(submission.content, submission.submit_type)
                 application.invalidate()
                 if should_exit:
                     if not application.is_done:

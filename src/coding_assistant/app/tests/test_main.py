@@ -5,9 +5,10 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from rich.markdown import Markdown
-from rich.styled import Styled
+from rich.panel import Panel
 
 from coding_assistant.app.cli import _handle_prompt_submission, run_cli
+from coding_assistant.app.terminal_ui import PromptSubmitType
 from coding_assistant.app.default_agent import DefaultAgentBundle, build_default_agent_config
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import (
@@ -247,11 +248,11 @@ def test_print_prompt_accepted_uses_simple_grey_background() -> None:
         print_active_prompt("Do the task")
 
     assert len(mock_print.call_args_list) == 1
-    styled = mock_print.call_args_list[0].args[0]
-    assert isinstance(styled, Styled)
-    assert isinstance(styled.renderable, Markdown)
-    assert styled.renderable.markup == "Do the task"
-    assert str(styled.style) == "on grey11"
+    panel = mock_print.call_args_list[0].args[0]
+    assert isinstance(panel, Panel)
+    assert isinstance(panel.renderable, Markdown)
+    assert panel.renderable.markup == "Do the task"
+    assert str(panel.style) == "on grey11"
 
 
 def test_format_tool_call_markdown_hides_edit_payload_values() -> None:
@@ -274,7 +275,9 @@ async def test_handle_prompt_submission_queues_priority_prompt() -> None:
     session = Mock()
     session.enqueue_prompt = AsyncMock(return_value=True)
 
-    should_exit = await _handle_prompt_submission(session=session, answer="/priority fix this next")
+    should_exit = await _handle_prompt_submission(
+        session=session, answer="/priority fix this next", submit_type=PromptSubmitType.QUEUED
+    )
 
     assert should_exit is False
     session.enqueue_prompt.assert_awaited_once_with("fix this next", priority=True)
@@ -285,7 +288,9 @@ async def test_handle_prompt_submission_interrupts_current_run() -> None:
     session = Mock()
     session.interrupt_and_enqueue = AsyncMock(return_value=True)
 
-    should_exit = await _handle_prompt_submission(session=session, answer="/interrupt stop and do this instead")
+    should_exit = await _handle_prompt_submission(
+        session=session, answer="/interrupt stop and do this instead", submit_type=PromptSubmitType.QUEUED
+    )
 
     assert should_exit is False
     session.interrupt_and_enqueue.assert_awaited_once_with("stop and do this instead")
@@ -296,7 +301,9 @@ async def test_handle_prompt_submission_compact_enqueues_compaction_prompt() -> 
     session = Mock()
     session.enqueue_prompt = AsyncMock(return_value=True)
 
-    should_exit = await _handle_prompt_submission(session=session, answer="/compact")
+    should_exit = await _handle_prompt_submission(
+        session=session, answer="/compact", submit_type=PromptSubmitType.QUEUED
+    )
 
     assert should_exit is False
     session.enqueue_prompt.assert_awaited_once_with(
