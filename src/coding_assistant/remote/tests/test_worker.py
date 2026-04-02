@@ -6,8 +6,9 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from rich.console import Group
 from rich.markdown import Markdown
-from rich.panel import Panel
+from rich.text import Text
 from websockets.asyncio.client import ClientConnection, connect
 
 from coding_assistant.app.terminal_ui import run_session_output
@@ -160,15 +161,16 @@ async def test_run_session_output_renders_system_message_and_streamed_content() 
             await session.close()
 
     mock_print_system.assert_called_once_with(system_message)
-    panel_blocks = [
-        call.args[0] for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Panel)
+    group_blocks = [
+        call.args[0] for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Group)
     ]
     markdown_blocks = [
         call.args[0] for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Markdown)
     ]
-    assert len(panel_blocks) == 1
-    assert isinstance(panel_blocks[0].renderable, Markdown)
-    assert panel_blocks[0].renderable.markup == "Hi"
+    assert len(group_blocks) == 1
+    assert len(group_blocks[0].renderables) == 1
+    assert isinstance(group_blocks[0].renderables[0], Text)
+    assert group_blocks[0].renderables[0].plain == "▌ Hi"
     assert [block.markup for block in markdown_blocks] == ["Hello from the worker"]
 
 
@@ -194,10 +196,11 @@ async def test_run_session_output_prints_started_prompt_before_run_output() -> N
             await session.close()
 
     assert len(mock_rich_print.call_args_list) == 1
-    panel = mock_rich_print.call_args_list[0].args[0]
-    assert isinstance(panel, Panel)
-    assert isinstance(panel.renderable, Markdown)
-    assert panel.renderable.markup == "Do the task"
+    group = mock_rich_print.call_args_list[0].args[0]
+    assert isinstance(group, Group)
+    assert len(group.renderables) == 1
+    assert isinstance(group.renderables[0], Text)
+    assert group.renderables[0].plain == "▌ Do the task"
 
 
 @pytest.mark.asyncio

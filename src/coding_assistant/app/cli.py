@@ -52,9 +52,7 @@ async def run_cli(args: Namespace) -> None:
             await session.close()
 
 
-async def _handle_prompt_submission(
-    *, session: AgentSession, answer: str, submit_type: PromptSubmitType
-) -> bool:
+async def _handle_prompt_submission(*, session: AgentSession, answer: str, submit_type: PromptSubmitType) -> bool:
     """Handle one prompt line and return true when the CLI should exit."""
     stripped = answer.strip()
     if stripped == "/exit":
