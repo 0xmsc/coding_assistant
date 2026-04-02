@@ -5,9 +5,10 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from prompt_toolkit.document import Document
+from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, VSplit, Window
 from prompt_toolkit.layout.containers import ConditionalContainer
-from prompt_toolkit.layout.controls import FormattedTextControl
+from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 
 from coding_assistant.app.terminal_ui import (
     SlashCompleter,
@@ -72,6 +73,58 @@ def test_create_terminal_application_builds_non_fullscreen_interactive_ui(tmp_pa
     assert isinstance(prompt_window, Window)
     assert isinstance(prompt_window.content, FormattedTextControl)
     assert prompt_window.content.text == [("class:prompt", "> ")]
+
+
+def test_create_terminal_application_submits_with_enter(tmp_path: Path) -> None:
+    session = Mock()
+    session.state = SessionState(running=False, queued_prompt_count=0)
+
+    application, answer_queue = create_terminal_application(
+        session=session,
+        history_path=tmp_path / "history",
+        words=[],
+    )
+
+    layout = cast(HSplit, application.layout.container)
+    input_row = cast(VSplit, layout.children[1])
+    assert isinstance(input_row, VSplit)
+    input_window = input_row.children[1]
+    assert isinstance(input_window, Window)
+    assert isinstance(input_window.content, BufferControl)
+    input_buffer = input_window.content.buffer
+    input_buffer.text = "hello world"
+
+    key_bindings = cast(KeyBindings, application.key_bindings)
+    enter_binding = next(binding for binding in key_bindings.bindings if binding.keys == ("c-m",))
+    enter_binding.handler(cast(Any, None))
+
+    assert answer_queue.get_nowait() == "hello world"
+
+
+def test_create_terminal_application_inserts_newline_with_ctrl_j(tmp_path: Path) -> None:
+    session = Mock()
+    session.state = SessionState(running=False, queued_prompt_count=0)
+
+    application, _ = create_terminal_application(
+        session=session,
+        history_path=tmp_path / "history",
+        words=[],
+    )
+
+    layout = cast(HSplit, application.layout.container)
+    input_row = cast(VSplit, layout.children[1])
+    assert isinstance(input_row, VSplit)
+    input_window = input_row.children[1]
+    assert isinstance(input_window, Window)
+    assert isinstance(input_window.content, BufferControl)
+    input_buffer = input_window.content.buffer
+
+    key_bindings = cast(KeyBindings, application.key_bindings)
+    newline_binding = next(binding for binding in key_bindings.bindings if binding.keys == ("c-j",))
+    with patch.object(input_buffer, "insert_text") as mock_insert_text:
+        newline_binding.handler(cast(Any, None))
+
+    mock_insert_text.assert_called_once_with("\n")
 
 
 def test_format_queued_prompts_shows_pending_prompts() -> None:

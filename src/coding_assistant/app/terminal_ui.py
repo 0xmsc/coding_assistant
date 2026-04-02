@@ -120,6 +120,14 @@ def create_terminal_application(
     def exit_on_interrupt(event: Any) -> None:
         event.app.exit()
 
+    @key_bindings.add("c-m")
+    def submit_on_enter(_: Any) -> None:
+        input_buffer.validate_and_handle()
+
+    @key_bindings.add("c-j")
+    def insert_newline(_: Any) -> None:
+        input_buffer.insert_text("\n")
+
     completer = SlashCompleter(words) if words else None
 
     def accept_buffer(buffer: Buffer) -> bool:
