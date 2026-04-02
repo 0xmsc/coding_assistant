@@ -2,13 +2,32 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from json import JSONDecodeError
-from typing import Any
+from typing import Any, Callable, Literal
 
 from coding_assistant.core.boundaries import AwaitingToolCalls
 from coding_assistant.core.builtin_tools import CompactConversationTool, RedirectToolCallTool
 from coding_assistant.core.history import compact_history
 from coding_assistant.llm.types import BaseMessage, Tool, ToolCall, ToolMessage
+
+
+ToolCallKind = Literal["read", "edit", "delete", "move", "search", "execute", "think", "fetch", "other"]
+
+
+@dataclass(frozen=True)
+class ToolCallLifecycleEvent:
+    tool_call_id: str
+    tool_name: str
+    title: str
+    kind: ToolCallKind
+    status: Literal["in_progress", "completed", "failed"]
+    raw_input: dict[str, Any] | None = None
+    raw_output: Any | None = None
+    content: str | None = None
+
+
+ToolCallEventHook = Callable[[ToolCallLifecycleEvent], None]
 
 
 def _parse_tool_call_arguments(tool_call: ToolCall) -> tuple[dict[str, Any] | None, str | None]:
@@ -35,6 +54,56 @@ def _validate_tools(tools: Sequence[Tool]) -> list[Tool]:
     return validated_tools
 
 
+def _tool_call_kind(tool_name: str) -> ToolCallKind:
+    normalized = tool_name.lower()
+    if any(part in normalized for part in ("read", "cat", "get_output", "skills_read")):
+        return "read"
+    if any(part in normalized for part in ("write", "edit", "todo_add", "todo_complete")):
+        return "edit"
+    if any(part in normalized for part in ("delete", "remove")):
+        return "delete"
+    if any(part in normalized for part in ("move", "rename")):
+        return "move"
+    if any(part in normalized for part in ("search", "list")):
+        return "search"
+    if any(part in normalized for part in ("shell", "python", "task", "execute", "kill")):
+        return "execute"
+    if "fetch" in normalized:
+        return "fetch"
+    if "think" in normalized or "compact" in normalized:
+        return "think"
+    return "other"
+
+
+def _tool_call_title(tool_name: str) -> str:
+    return tool_name or "tool_call"
+
+
+def _publish_tool_call_event(
+    on_event: ToolCallEventHook | None,
+    *,
+    tool_call: ToolCall,
+    status: Literal["in_progress", "completed", "failed"],
+    raw_input: dict[str, Any] | None = None,
+    raw_output: Any | None = None,
+    content: str | None = None,
+) -> None:
+    if on_event is None:
+        return
+    on_event(
+        ToolCallLifecycleEvent(
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.function.name,
+            title=_tool_call_title(tool_call.function.name),
+            kind=_tool_call_kind(tool_call.function.name),
+            status=status,
+            raw_input=raw_input,
+            raw_output=raw_output,
+            content=content,
+        )
+    )
+
+
 async def _execute_resolved_tool(
     *,
     tool: Tool,
@@ -45,42 +114,6 @@ async def _execute_resolved_tool(
     if not isinstance(result, str):
         raise TypeError(f"Tool '{tool.name()}' did not return text.")
     return result
-
-
-async def _execute_tool_call(
-    *,
-    history: list[BaseMessage],
-    tool_call: ToolCall,
-    tools_by_name: dict[str, Tool],
-) -> tuple[list[BaseMessage], str | None]:
-    """Execute one tool call and return any updated history plus result text."""
-    tool_name = tool_call.function.name
-    if not tool_name:
-        raise RuntimeError(f"Tool call {tool_call.id} is missing function name.")
-
-    arguments, parse_error = _parse_tool_call_arguments(tool_call)
-    if parse_error is not None:
-        return history, parse_error
-
-    assert arguments is not None
-
-    tool = tools_by_name.get(tool_name)
-    if tool is None:
-        return history, f"Tool '{tool_name}' not found."
-
-    try:
-        result = await _execute_resolved_tool(
-            tool=tool,
-            arguments=arguments,
-        )
-    except Exception as exc:
-        return history, f"Error executing tool: {exc}"
-
-    if tool_name == "compact_conversation":
-        compacted_history = compact_history(history, result)
-        return compacted_history, None
-
-    return history, result
 
 
 def build_tools(
@@ -111,6 +144,7 @@ async def execute_tool_calls(
     *,
     boundary: AwaitingToolCalls,
     tools: Sequence[Tool],
+    on_event: ToolCallEventHook | None = None,
 ) -> list[BaseMessage]:
     """Execute one tool-call boundary and append the resulting tool messages."""
     current_history = list(boundary.history)
@@ -118,19 +152,92 @@ async def execute_tool_calls(
     tools_by_name = {tool.name(): tool for tool in all_tools}
 
     for tool_call in boundary.message.tool_calls:
-        current_history, result = await _execute_tool_call(
-            history=current_history,
+        tool_name = tool_call.function.name
+        arguments, parse_error = _parse_tool_call_arguments(tool_call)
+
+        if parse_error is not None:
+            _publish_tool_call_event(
+                on_event,
+                tool_call=tool_call,
+                status="failed",
+                content=parse_error,
+            )
+            current_history.append(
+                ToolMessage(
+                    tool_call_id=tool_call.id,
+                    name=tool_name,
+                    content=parse_error,
+                )
+            )
+            continue
+
+        assert arguments is not None
+        tool = tools_by_name.get(tool_name)
+        if tool is None:
+            error = f"Tool '{tool_name}' not found."
+            _publish_tool_call_event(
+                on_event,
+                tool_call=tool_call,
+                status="failed",
+                raw_input=arguments,
+                content=error,
+            )
+            current_history.append(
+                ToolMessage(
+                    tool_call_id=tool_call.id,
+                    name=tool_name,
+                    content=error,
+                )
+            )
+            continue
+
+        _publish_tool_call_event(
+            on_event,
             tool_call=tool_call,
-            tools_by_name=tools_by_name,
+            status="in_progress",
+            raw_input=arguments,
         )
 
-        if result is None:
+        try:
+            result = await _execute_resolved_tool(
+                tool=tool,
+                arguments=arguments,
+            )
+        except Exception as exc:
+            error = f"Error executing tool: {exc}"
+            _publish_tool_call_event(
+                on_event,
+                tool_call=tool_call,
+                status="failed",
+                raw_input=arguments,
+                content=error,
+            )
+            current_history.append(
+                ToolMessage(
+                    tool_call_id=tool_call.id,
+                    name=tool_name,
+                    content=error,
+                )
+            )
+            continue
+
+        _publish_tool_call_event(
+            on_event,
+            tool_call=tool_call,
+            status="completed",
+            raw_input=arguments,
+            raw_output=result,
+            content=result,
+        )
+
+        if tool_name == "compact_conversation":
+            current_history = compact_history(current_history, result)
             break
 
         current_history.append(
             ToolMessage(
                 tool_call_id=tool_call.id,
-                name=tool_call.function.name,
+                name=tool_name,
                 content=result,
             )
         )

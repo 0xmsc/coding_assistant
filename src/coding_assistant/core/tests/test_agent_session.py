@@ -16,6 +16,7 @@ from coding_assistant.core.agent_session import (
     RunFailedEvent,
     RunFinishedEvent,
     StateChangedEvent,
+    ToolCallUpdateEvent,
     ToolCallsEvent,
 )
 from coding_assistant.llm.types import (
@@ -464,11 +465,24 @@ async def test_agent_session_emits_tool_call_and_finish_events() -> None:
         assert await session.enqueue_prompt("Use the tool") is True
 
         tool_event = await wait_for_event(queue, ToolCallsEvent)
+        tool_started_event = await wait_for_matching_event(
+            queue,
+            lambda event: isinstance(event, ToolCallUpdateEvent) and event.event.status == "in_progress",
+        )
+        tool_completed_event = await wait_for_matching_event(
+            queue,
+            lambda event: isinstance(event, ToolCallUpdateEvent) and event.event.status == "completed",
+        )
         finished_event = await wait_for_event(queue, RunFinishedEvent)
 
     await session.close()
     assert isinstance(tool_event, ToolCallsEvent)
     assert tool_event.message.tool_calls[0].function.name == "echo_tool"
+    assert isinstance(tool_started_event, ToolCallUpdateEvent)
+    assert tool_started_event.event.tool_call_id == "call-1"
+    assert tool_started_event.event.raw_input == {"text": "hello"}
+    assert isinstance(tool_completed_event, ToolCallUpdateEvent)
+    assert tool_completed_event.event.raw_output == "echo:hello"
     assert isinstance(finished_event, RunFinishedEvent)
     assert finished_event.summary == "Done"
 
