@@ -10,7 +10,6 @@ import pytest
 from coding_assistant.core.agent_session import (
     AgentSession,
     AgentSessionEvent,
-    PromptAcceptedEvent,
     PromptStartedEvent,
     RunCancelledEvent,
     RunFailedEvent,
@@ -135,16 +134,11 @@ async def test_agent_session_runs_prompt_and_updates_history() -> None:
         assert isinstance(initial_state, StateChangedEvent)
 
         assert await session.enqueue_prompt("Hi") is True
-        accepted_event = await wait_for_event(queue, PromptAcceptedEvent)
-
         finished_event = await wait_for_event(queue, RunFinishedEvent)
 
-    assert isinstance(accepted_event, PromptAcceptedEvent)
-    assert accepted_event.content == "Hi"
     assert isinstance(finished_event, RunFinishedEvent)
     assert finished_event.summary == "Hello from the worker"
     assert session.history[-1] == AssistantMessage(content="Hello from the worker")
-    assert session.state.promptable is True
     assert session.state.running is False
     await session.close()
 
@@ -251,10 +245,6 @@ async def test_agent_session_starts_queued_prompt_only_after_current_run_finishe
         await asyncio.wait_for(first_started.wait(), timeout=1)
 
         assert await session.enqueue_prompt("second") is True
-        await wait_for_matching_event(
-            queue,
-            lambda event: isinstance(event, PromptAcceptedEvent) and event.content == "second",
-        )
 
         await asyncio.sleep(0)
         pending_events: list[AgentSessionEvent] = []
@@ -382,7 +372,6 @@ async def test_agent_session_cancel_current_run_publishes_cancellation_and_resto
     await session.close()
     assert isinstance(cancelled_event, RunCancelledEvent)
     assert isinstance(state_event, StateChangedEvent)
-    assert state_event.state.promptable is True
     assert state_event.state.running is False
     assert state_event.state.queued_prompt_count == 0
     assert session.history == make_system_history()

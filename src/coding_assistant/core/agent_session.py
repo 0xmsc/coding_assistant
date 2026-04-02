@@ -30,7 +30,6 @@ PromptContent = str | list[dict[str, Any]]
 class SessionState:
     """Snapshot of whether the session can accept or is running work."""
 
-    promptable: bool
     running: bool
     queued_prompt_count: int
     pending_prompts: tuple[PromptContent, ...] = ()
@@ -41,14 +40,6 @@ class StateChangedEvent:
     """Event emitted whenever the session state snapshot changes."""
 
     state: SessionState
-
-
-@dataclass(frozen=True)
-class PromptAcceptedEvent:
-    """Event emitted after one prompt has been accepted into the session queue."""
-
-    content: PromptContent
-    source: str = "local"
 
 
 @dataclass(frozen=True)
@@ -104,7 +95,6 @@ AgentSessionEvent = (
     | StatusEvent
     | CompletionEvent
     | StateChangedEvent
-    | PromptAcceptedEvent
     | PromptStartedEvent
     | ToolCallsEvent
     | ToolCallUpdateEvent
@@ -156,7 +146,6 @@ class AgentSession:
     def state(self) -> SessionState:
         """Return the current promptability, run state, and queued prompt count."""
         return SessionState(
-            promptable=not self._closed,
             running=self._current_run_task is not None,
             queued_prompt_count=len(self._pending_prompts),
             pending_prompts=tuple(prompt.content for prompt in self._pending_prompts),
@@ -188,7 +177,6 @@ class AgentSession:
             else:
                 self._pending_prompts.append(queued_prompt)
             self._run_loop_wakeup.set()
-        self._publish_event(PromptAcceptedEvent(content=content, source=source))
         await self._publish_state()
         return True
 
@@ -199,7 +187,6 @@ class AgentSession:
                 return False
             self._pending_prompts.append(_QueuedPrompt(content=content, source=source))
             self._run_loop_wakeup.set()
-        self._publish_event(PromptAcceptedEvent(content=content, source=source))
         await self._publish_state()
         return True
 
@@ -211,7 +198,6 @@ class AgentSession:
             self._pending_prompts.appendleft(_QueuedPrompt(content=content, source=source))
             run_task = self._current_run_task
             self._run_loop_wakeup.set()
-        self._publish_event(PromptAcceptedEvent(content=content, source=source))
         await self._publish_state()
         if run_task is not None:
             run_task.cancel()

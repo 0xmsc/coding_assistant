@@ -14,7 +14,6 @@ from websockets.asyncio.client import ClientConnection, connect
 from coding_assistant.app.terminal_ui import run_session_output
 from coding_assistant.core.agent_session import (
     AgentSession,
-    PromptAcceptedEvent,
     PromptStartedEvent,
     SessionState,
     StateChangedEvent,
@@ -192,7 +191,6 @@ async def test_run_session_output_prints_started_prompt_before_run_output() -> N
         task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
         try:
             await asyncio.sleep(0)
-            session._publish_event(PromptAcceptedEvent(content="Do the task"))
             session._publish_event(PromptStartedEvent(content="Do the task"))
             await asyncio.sleep(0)
         finally:
@@ -269,7 +267,6 @@ async def test_run_session_output_prints_status_updates_when_enabled() -> None:
             session._publish_event(
                 StateChangedEvent(
                     state=SessionState(
-                        promptable=True,
                         running=False,
                         queued_prompt_count=2,
                         pending_prompts=("queued one", "queued two"),
