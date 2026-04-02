@@ -235,9 +235,9 @@ def test_format_session_status_summarizes_pending_prompts() -> None:
         pending_prompts=("first queued prompt", "second queued prompt", "third queued prompt"),
     )
 
-    assert format_session_status(state) == (
-        "running | queued: 3 | next: first queued prompt | then: second queued prompt | +1 more"
-    )
+    # When pending prompts exist, they're shown in the queued prompts widget above the input.
+    # The footer only shows the status to avoid redundancy.
+    assert format_session_status(state) == "running"
 
 
 def test_print_prompt_accepted_uses_simple_grey_background() -> None:

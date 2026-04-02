@@ -165,29 +165,22 @@ def print_active_prompt(content: str | list[dict[str, Any]]) -> None:
     rich_print(Styled(renderable, "on grey11"))
 
 
-def format_prompt_preview(content: str | list[dict[str, Any]], *, limit: int = 40) -> str:
+def format_prompt_preview(content: str | list[dict[str, Any]]) -> str:
     """Return one compact prompt preview suitable for footer/status display."""
     if not isinstance(content, str):
         return "structured prompt"
 
-    preview = " ".join(content.split())
-    if len(preview) <= limit:
-        return preview
-    return f"{preview[: limit - 3]}..."
+    return " ".join(content.split())
 
 
 def format_session_status(state: SessionState) -> str:
     """Return one compact session status line for the prompt footer or worker output."""
     status = "running" if state.running else "idle"
-    parts = [status, f"queued: {state.queued_prompt_count}"]
     if state.pending_prompts:
-        previews = [format_prompt_preview(prompt) for prompt in state.pending_prompts[:2]]
-        parts.append(f"next: {previews[0]}")
-        if len(previews) > 1:
-            parts.append(f"then: {previews[1]}")
-        remaining_count = state.queued_prompt_count - len(previews)
-        if remaining_count > 0:
-            parts.append(f"+{remaining_count} more")
+        # When pending prompts exist, they're shown in the queued prompts widget above the input.
+        # Only show the status in the footer to avoid redundancy.
+        return status
+    parts = [status, f"queued: {state.queued_prompt_count}"]
     return " | ".join(parts)
 
 
