@@ -187,8 +187,9 @@ async def test__run_output_prints_started_prompt_before_run_output() -> None:
             await asyncio.gather(task, return_exceptions=True)
             await session.close()
 
-    # Should call rich_print 3 times: blank line, content, blank line
-    assert len(mock_rich_print.call_args_list) == 3
+    # Should call rich_print 2 times: blank line, content (no trailing blank)
+    assert len(mock_rich_print.call_args_list) == 2
+    assert mock_rich_print.call_args_list[0].args == ()
     content = mock_rich_print.call_args_list[1].args[0]
     assert "Do the task" in content
 

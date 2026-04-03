@@ -47,25 +47,26 @@ class DeltaRenderer:
 
     def __init__(self) -> None:
         self._buffer = ParagraphBuffer()
-        self.saw_content = False
+        self._first_paragraph = True
 
     def on_delta(self, chunk: str) -> None:
         """Render one streamed content chunk when a paragraph is complete."""
-        self.saw_content = True
         for paragraph in self._buffer.push(chunk):
             self._print_markdown(paragraph)
 
     def finish(self, *, trailing_blank_line: bool = True) -> None:
         """Flush any remaining buffered content at the end of a turn."""
-        had_content = self.saw_content
+        had_content = not self._first_paragraph
         if flushed := self._buffer.flush():
             self._print_markdown(flushed)
         if had_content and trailing_blank_line:
             rich_print()
-        self.saw_content = False
+        self._first_paragraph = True
 
     def _print_markdown(self, content: str) -> None:
-        rich_print()
+        if self._first_paragraph:
+            rich_print()
+            self._first_paragraph = False
         rich_print(Markdown(content))
 
 
@@ -106,7 +107,6 @@ def print_active_prompt(content: str | list[dict[str, Any]]) -> None:
     rich_print(f"  [bold cyan]▌[/bold cyan] [white]{lines[0]}[/white]")
     for line in lines[1:]:
         rich_print(f"    [dim]│[/dim] [white]{line}[/white]")
-    rich_print()
 
 
 def format_prompt_preview(content: str | list[dict[str, Any]]) -> str:
