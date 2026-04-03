@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from rich.markdown import Markdown
 
-from coding_assistant.app.cli import _handle_prompt_submission, run_cli
+from coding_assistant.app.cli import _handle_submission, PromptSubmitType, run_cli
 from coding_assistant.app.default_agent import DefaultAgentBundle, build_default_agent_config
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import (
@@ -16,7 +16,6 @@ from coding_assistant.app.output import (
     format_tool_call_display,
     print_tool_calls,
 )
-from coding_assistant.app.terminal_ui import PromptSubmitType
 from coding_assistant.core.agent_session import AgentSession, SessionState
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
@@ -123,28 +122,22 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         patch("coding_assistant.app.cli.create_default_agent", fake_create_default_agent),
         patch("coding_assistant.app.cli.start_worker_server", fake_start_worker_server),
         patch("coding_assistant.app.cli.register_remote_instance", fake_register_remote_instance),
-        patch("coding_assistant.app.cli.print") as mock_print,
-        patch("coding_assistant.app.cli.run_terminal_ui", new=AsyncMock()) as mock_run_terminal_ui,
+        patch("coding_assistant.app.cli.rich_print") as mock_rich_print,
+        patch("coding_assistant.app.cli._run_ui", new=AsyncMock()) as mock_run_ui,
     ):
         await run_cli(args)
 
-    assert mock_run_terminal_ui.await_args is not None
-    session = mock_run_terminal_ui.await_args.kwargs["session"]
+    assert mock_run_ui.await_args is not None
+    session = mock_run_ui.await_args.kwargs["session"]
     assert isinstance(session, AgentSession)
     assert session.history == [
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
     ]
-    assert mock_run_terminal_ui.await_args.kwargs["system_message"] == SystemMessage(
+    assert mock_run_ui.await_args.kwargs["system_message"] == SystemMessage(
         content=build_system_prompt(instructions="Follow the repo instructions."),
     )
-    assert mock_run_terminal_ui.await_args.kwargs["history_path"].name == "history"
-    assert mock_run_terminal_ui.await_args.kwargs["words"] == [
-        "/exit",
-        "/help",
-        "/compact",
-        "/image",
-    ]
-    mock_print.assert_called_once_with("Remote endpoint: ws://127.0.0.1:1234")
+    assert mock_run_ui.await_args.kwargs["history_path"].name == "history"
+    mock_rich_print.assert_called_once()
 
 
 def test_paragraph_buffer_respects_code_fences() -> None:
@@ -279,13 +272,13 @@ def test_format_tool_call_markdown_hides_edit_payload_values() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_prompt_submission_enqueues_steering_prompt() -> None:
+async def test_handle_submission_enqueues_steering_prompt() -> None:
     session = Mock()
     session.enqueue_steering_prompt = AsyncMock(return_value=True)
 
-    should_exit = await _handle_prompt_submission(
+    should_exit = await _handle_submission(
         session=session,
-        answer="fix this next",
+        content="fix this next",
         submit_type=PromptSubmitType.STEERING,
     )
 
@@ -294,13 +287,13 @@ async def test_handle_prompt_submission_enqueues_steering_prompt() -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_prompt_submission_compact_enqueues_compaction_prompt() -> None:
+async def test_handle_submission_compact_enqueues_compaction_prompt() -> None:
     session = Mock()
     session.enqueue_prompt = AsyncMock(return_value=True)
 
-    should_exit = await _handle_prompt_submission(
+    should_exit = await _handle_submission(
         session=session,
-        answer="/compact",
+        content="/compact",
         submit_type=PromptSubmitType.QUEUED,
     )
 

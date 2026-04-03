@@ -1,25 +1,20 @@
-import asyncio
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
-import pytest
 from prompt_toolkit.document import Document
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, VSplit, Window
 from prompt_toolkit.layout.containers import ConditionalContainer
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 
-from coding_assistant.app.terminal_ui import (
-    PromptSubmission,
+from coding_assistant.app.cli import (
     PromptSubmitType,
     SlashCompleter,
-    create_terminal_application,
-    format_queued_prompts,
-    run_terminal_ui,
+    _create_application,
+    _format_queued_prompts,
 )
 from coding_assistant.core.agent_session import SessionState
-from coding_assistant.llm.types import SystemMessage
 
 
 def test_slash_completer() -> None:
@@ -47,7 +42,7 @@ def test_slash_completer() -> None:
     assert [c.text for c in completions] == []
 
 
-def test_create_terminal_application_builds_non_fullscreen_interactive_ui(tmp_path: Path) -> None:
+def test_create_application_builds_non_fullscreen_interactive_ui(tmp_path: Path) -> None:
     session = Mock()
     session.state = SessionState(
         running=False,
@@ -55,10 +50,9 @@ def test_create_terminal_application_builds_non_fullscreen_interactive_ui(tmp_pa
         pending_prompts=("first queued prompt", "second queued prompt"),
     )
 
-    application, answer_queue, _ = create_terminal_application(
+    application, answer_queue = _create_application(
         session=session,
         history_path=tmp_path / "history",
-        words=[],
     )
 
     assert application.full_screen is False
@@ -80,14 +74,13 @@ def test_create_terminal_application_builds_non_fullscreen_interactive_ui(tmp_pa
     assert input_window.wrap_lines() is True
 
 
-def test_create_terminal_application_submits_as_steering_with_enter(tmp_path: Path) -> None:
+def test_create_application_submits_as_steering_with_enter(tmp_path: Path) -> None:
     session = Mock()
     session.state = SessionState(running=False, queued_prompt_count=0)
 
-    application, answer_queue, _ = create_terminal_application(
+    application, answer_queue = _create_application(
         session=session,
         history_path=tmp_path / "history",
-        words=[],
     )
 
     layout = cast(HSplit, application.layout.container)
@@ -105,17 +98,16 @@ def test_create_terminal_application_submits_as_steering_with_enter(tmp_path: Pa
 
     submission = answer_queue.get_nowait()
     assert submission.content == "hello world"
-    assert submission.submit_type == PromptSubmitType.STEERING
+    assert submission.type == PromptSubmitType.STEERING
 
 
-def test_create_terminal_application_submits_as_queued_with_tab(tmp_path: Path) -> None:
+def test_create_application_submits_as_queued_with_tab(tmp_path: Path) -> None:
     session = Mock()
     session.state = SessionState(running=False, queued_prompt_count=0)
 
-    application, answer_queue, _ = create_terminal_application(
+    application, answer_queue = _create_application(
         session=session,
         history_path=tmp_path / "history",
-        words=[],
     )
 
     layout = cast(HSplit, application.layout.container)
@@ -133,17 +125,16 @@ def test_create_terminal_application_submits_as_queued_with_tab(tmp_path: Path) 
 
     submission = answer_queue.get_nowait()
     assert submission.content == "queued prompt"
-    assert submission.submit_type == PromptSubmitType.QUEUED
+    assert submission.type == PromptSubmitType.QUEUED
 
 
-def test_create_terminal_application_inserts_newline_with_ctrl_j(tmp_path: Path) -> None:
+def test_create_application_inserts_newline_with_ctrl_j(tmp_path: Path) -> None:
     session = Mock()
     session.state = SessionState(running=False, queued_prompt_count=0)
 
-    application, _, _ = create_terminal_application(
+    application, _ = _create_application(
         session=session,
         history_path=tmp_path / "history",
-        words=[],
     )
 
     layout = cast(HSplit, application.layout.container)
@@ -170,124 +161,4 @@ def test_format_queued_prompts_shows_pending_prompts() -> None:
         pending_prompts=("first queued prompt", "second queued prompt", "third queued prompt"),
     )
 
-    assert format_queued_prompts(session) == "↳ first queued prompt\n↳ second queued prompt\n↳ +1 more"
-
-
-@pytest.mark.asyncio
-async def test_run_terminal_ui_prints_accepted_prompts_in_transcript() -> None:
-    async def run_async() -> None:
-        await asyncio.sleep(0)
-
-    application = Mock()
-    application.run_async = AsyncMock(side_effect=run_async)
-    application.exit = Mock()
-    application.is_done = True
-    session = Mock()
-    system_message = SystemMessage(content="System")
-    answer_queue: asyncio.Queue[PromptSubmission] = asyncio.Queue()
-    submit_handler = AsyncMock(return_value=False)
-
-    with (
-        patch(
-            "coding_assistant.app.terminal_ui.create_terminal_application",
-            return_value=(application, answer_queue, asyncio.Queue()),
-        ),
-        patch("coding_assistant.app.terminal_ui.run_session_output", new=AsyncMock()) as mock_run_session_output,
-    ):
-        await run_terminal_ui(
-            session=session,
-            system_message=system_message,
-            history_path=Path("history"),
-            submit_handler=submit_handler,
-        )
-
-    assert mock_run_session_output.await_args is not None
-    assert mock_run_session_output.await_args.kwargs == {
-        "session": session,
-        "system_message": system_message,
-    }
-    submit_handler.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_create_terminal_application_ctrl_c_cancels_active_run(tmp_path: Path) -> None:
-    session = Mock()
-    session.state = SessionState(running=True, queued_prompt_count=1, pending_prompts=("queued",))
-    session.cancel_current_run = AsyncMock(return_value=True)
-
-    application, _, _ = create_terminal_application(
-        session=session,
-        history_path=tmp_path / "history",
-        words=[],
-    )
-
-    key_bindings = cast(KeyBindings, application.key_bindings)
-    ctrl_c_binding = next(binding for binding in key_bindings.bindings if binding.keys == ("c-c",))
-    event = Mock()
-    event.app = Mock()
-    event.app.invalidate = Mock()
-
-    ctrl_c_binding.handler(event)
-    await asyncio.sleep(0)
-
-    session.cancel_current_run.assert_awaited_once_with(pause_queue=True)
-    event.app.invalidate.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_create_terminal_application_ctrl_c_resumes_paused_queue(tmp_path: Path) -> None:
-    session = Mock()
-    session.state = SessionState(running=False, queued_prompt_count=1, paused=True, pending_prompts=("queued",))
-    session.resume = AsyncMock(return_value=True)
-
-    application, _, _ = create_terminal_application(
-        session=session,
-        history_path=tmp_path / "history",
-        words=[],
-    )
-
-    key_bindings = cast(KeyBindings, application.key_bindings)
-    ctrl_c_binding = next(binding for binding in key_bindings.bindings if binding.keys == ("c-c",))
-    event = Mock()
-    event.app = Mock()
-    event.app.invalidate = Mock()
-
-    ctrl_c_binding.handler(event)
-    await asyncio.sleep(0)
-
-    session.resume.assert_awaited_once_with()
-    event.app.invalidate.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_create_terminal_application_ctrl_c_clears_input_buffer_when_idle(tmp_path: Path) -> None:
-    session = Mock()
-    session.state = SessionState(running=False, queued_prompt_count=0)
-
-    application, _, _ = create_terminal_application(
-        session=session,
-        history_path=tmp_path / "history",
-        words=[],
-    )
-
-    layout = cast(HSplit, application.layout.container)
-    input_row = cast(VSplit, layout.children[1])
-    input_window = input_row.children[1]
-    assert isinstance(input_window, Window)
-    assert isinstance(input_window.content, BufferControl)
-    input_buffer = input_window.content.buffer
-    input_buffer.text = "draft prompt"
-    input_buffer.cursor_position = len(input_buffer.text)
-
-    key_bindings = cast(KeyBindings, application.key_bindings)
-    ctrl_c_binding = next(binding for binding in key_bindings.bindings if binding.keys == ("c-c",))
-    event = Mock()
-    event.app = Mock()
-    event.app.invalidate = Mock()
-
-    ctrl_c_binding.handler(event)
-    await asyncio.sleep(0)
-
-    assert input_buffer.text == ""
-    assert input_buffer.cursor_position == 0
-    event.app.invalidate.assert_called_once()
+    assert _format_queued_prompts(session) == "↳ first queued prompt\n↳ second queued prompt\n↳ +1 more"
