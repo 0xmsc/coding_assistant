@@ -38,7 +38,6 @@
 
 ## MCP
 
-- MCP servers must be configured via CLI `--mcp-servers` to be available.
 - Use `mcp_start(server="...")` to start an MCP server and connect to it.
 - Use `mcp_stop(server="...")` to stop a running MCP server.
 - Use `mcp_list_tools(server="...")` to see what tools a server provides.
