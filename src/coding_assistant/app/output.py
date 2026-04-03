@@ -4,8 +4,7 @@ import json
 import os
 from typing import Any
 
-from rich import print as rich_print
-from rich.console import Group
+from rich import box, print as rich_print
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.panel import Panel
@@ -156,24 +155,22 @@ def print_tool_calls(message: AssistantMessage) -> None:
 
 
 def print_active_prompt(content: str | list[dict[str, Any]]) -> None:
-    """Render one prompt when it becomes the active run."""
+    """Render one prompt when it becomes the active run in a clean box."""
     if isinstance(content, str):
         rendered_content = content
     else:
         rendered_content = json.dumps(content, indent=2)
 
-    lines = rendered_content.split("\n")
-    rich_print(
-        Group(
-            *[
-                Text.assemble(
-                    ("▌ ", "grey50"),
-                    (line if line else " ", "on grey11"),
-                )
-                for line in lines
-            ]
-        )
+    panel = Panel(
+        Text(rendered_content, style="white"),
+        box=box.MINIMAL,
+        padding=(1, 2),
+        border_style="dim",
     )
+
+    rich_print()
+    rich_print(panel)
+    rich_print()
 
 
 def format_prompt_preview(content: str | list[dict[str, Any]]) -> str:
