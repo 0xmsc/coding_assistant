@@ -42,7 +42,6 @@ def setup_logging() -> None:
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments for the coding assistant executable."""
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant CLI")
-    parser.add_argument("--print-mcp-tools", action="store_true", help="Print all available tools from MCP servers.")
     parser.add_argument("--model", type=str, required=True, help="Model to use for the orchestrator agent.")
     parser.add_argument(
         "--instructions",

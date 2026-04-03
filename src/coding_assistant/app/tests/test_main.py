@@ -93,7 +93,6 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         instructions=[],
         mcp_servers=[],
         model="gpt-4",
-        print_mcp_tools=False,
         skills_directories=[],
         trace=False,
         wait_for_debugger=False,
@@ -105,7 +104,6 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         yield DefaultAgentBundle(
             tools=[],
             instructions="Follow the repo instructions.",
-            mcp_servers=[],
         )
 
     @asynccontextmanager
