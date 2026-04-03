@@ -11,8 +11,7 @@ from coding_assistant.app.instructions import get_instructions
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import SystemMessage, Tool
 from coding_assistant.tools.local_bundle import create_local_tool_bundle
-from coding_assistant.tools.mcp_manager import MCPServerConfig, MCPServerManager
-from coding_assistant.tools.mcp_tools import create_mcp_tools
+from coding_assistant.tools.mcp_manager import MCPServerConfig
 
 
 @dataclass(slots=True)
@@ -31,7 +30,6 @@ class DefaultAgentBundle:
 
     tools: list[Tool]
     instructions: str
-    mcp_manager: MCPServerManager | None = None
 
 
 def build_default_agent_config(args: Namespace) -> DefaultAgentConfig:
@@ -54,16 +52,9 @@ async def create_default_agent(
     """Resolve instructions and tools for a default agent run."""
     local_tool_bundle = create_local_tool_bundle(
         skills_directories=[Path(path).resolve() for path in config.skills_directories],
+        mcp_server_configs=config.mcp_server_configs,
+        working_directory=config.working_directory,
     )
-
-    # Create MCP manager for lazy loading (only if configs provided)
-    mcp_manager: MCPServerManager | None = None
-    if config.mcp_server_configs:
-        mcp_manager = MCPServerManager(
-            configs=list(config.mcp_server_configs),
-            working_directory=config.working_directory,
-        )
-        local_tool_bundle.tools.extend(create_mcp_tools(mcp_manager))
 
     instructions = get_instructions(
         working_directory=config.working_directory,
@@ -75,12 +66,9 @@ async def create_default_agent(
         yield DefaultAgentBundle(
             tools=local_tool_bundle.tools,
             instructions=instructions,
-            mcp_manager=mcp_manager,
         )
     finally:
         await local_tool_bundle.close()
-        if mcp_manager:
-            await mcp_manager.close()
 
 
 def build_initial_system_message(*, instructions: str) -> SystemMessage:
