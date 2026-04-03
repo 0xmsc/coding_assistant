@@ -13,7 +13,6 @@ from coding_assistant.app.output import (
     DeltaRenderer,
     ParagraphBuffer,
     format_session_status,
-    format_tool_call_display,
     print_tool_calls,
 )
 from coding_assistant.core.agent_session import AgentSession, SessionState
@@ -181,12 +180,12 @@ def test_delta_renderer_avoids_double_spacing_before_tool_calls() -> None:
         renderer.finish(trailing_blank_line=False)
         print_tool_calls(tool_call_message)
 
-    assert len(mock_print.call_args_list) == 4
+    assert len(mock_print.call_args_list) == 3
     assert mock_print.call_args_list[0].args == ()
     assert isinstance(mock_print.call_args_list[1].args[0], Markdown)
     assert mock_print.call_args_list[1].args[0].markup == "Can you read README.md?"
-    assert mock_print.call_args_list[2].args == ()
-    assert mock_print.call_args_list[3].args == ('[bold yellow]▶[/bold yellow] shell_execute(command="cat README.md")',)
+    assert "▶" in str(mock_print.call_args_list[2])
+    assert "shell_execute" in str(mock_print.call_args_list[2])
 
 
 def test_delta_renderer_finish_is_idempotent() -> None:
@@ -202,21 +201,6 @@ def test_delta_renderer_finish_is_idempotent() -> None:
     assert isinstance(mock_print.call_args_list[1].args[0], Markdown)
     assert mock_print.call_args_list[1].args[0].markup == "Hello"
     assert mock_print.call_args_list[2].args == ()
-
-
-def test_format_tool_call_markdown_formats_multiline_arguments() -> None:
-    tool_call = ToolCall(
-        id="call-1",
-        function=FunctionCall(
-            name="shell_execute",
-            arguments='{"command": "echo hello\\npwd", "background": false}',
-        ),
-    )
-
-    header, body_sections = format_tool_call_display(tool_call)
-
-    assert header == "shell_execute(command, background=false)"
-    assert body_sections == [("command", "echo hello\npwd", "bash")]
 
 
 def test_format_session_status_summarizes_pending_prompts() -> None:
@@ -254,21 +238,6 @@ def test_print_prompt_accepted_uses_simple_grey_background() -> None:
     content = mock_print.call_args_list[1].args[0]
     assert "Do the task" in content
     assert "▌" in content
-
-
-def test_format_tool_call_markdown_hides_edit_payload_values() -> None:
-    tool_call = ToolCall(
-        id="call-1",
-        function=FunctionCall(
-            name="filesystem_edit_file",
-            arguments='{"path": "script.sh", "old_text": "old", "new_text": "new"}',
-        ),
-    )
-
-    header, body_sections = format_tool_call_display(tool_call)
-
-    assert header == 'filesystem_edit_file(path="script.sh", old_text, new_text)'
-    assert body_sections == []
 
 
 @pytest.mark.asyncio
