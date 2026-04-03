@@ -4,11 +4,10 @@ import json
 import os
 from typing import Any
 
-from rich import box, print as rich_print
+from rich import print as rich_print
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.panel import Panel
-from rich.text import Text
 
 from coding_assistant.core.agent_session import SessionState
 from coding_assistant.llm.types import AssistantMessage, SystemMessage, ToolCall
@@ -155,21 +154,20 @@ def print_tool_calls(message: AssistantMessage) -> None:
 
 
 def print_active_prompt(content: str | list[dict[str, Any]]) -> None:
-    """Render one prompt when it becomes the active run in a clean box."""
+    """Render one prompt when it becomes the active run - simple and clean."""
     if isinstance(content, str):
         rendered_content = content
     else:
         rendered_content = json.dumps(content, indent=2)
 
-    panel = Panel(
-        Text(rendered_content, style="white"),
-        box=box.MINIMAL,
-        padding=(1, 2),
-        border_style="dim",
-    )
-
+    lines = rendered_content.split("\n")
     rich_print()
-    rich_print(panel)
+    if len(lines) == 1:
+        rich_print(f"  [bold cyan]▌[/bold cyan] [white]{lines[0]}[/white]")
+    else:
+        rich_print(f"  [bold cyan]▌[/bold cyan] [white]{lines[0]}[/white]")
+        for line in lines[1:]:
+            rich_print(f"    [dim]│[/dim] [white]{line}[/white]")
     rich_print()
 
 

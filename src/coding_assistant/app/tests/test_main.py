@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from rich.markdown import Markdown
-from rich.panel import Panel
 
 from coding_assistant.app.cli import _handle_prompt_submission, run_cli
 from coding_assistant.app.terminal_ui import PromptSubmitType
@@ -258,10 +257,12 @@ def test_print_prompt_accepted_uses_simple_grey_background() -> None:
 
         print_active_prompt("Do the task")
 
-    # Should call rich_print 3 times: blank line, Panel, blank line
+    # Should call rich_print 3 times: blank line, content, blank line
     assert len(mock_print.call_args_list) == 3
-    panel = mock_print.call_args_list[1].args[0]
-    assert isinstance(panel, Panel)
+    # Second call should be the prompt with bullet
+    content = mock_print.call_args_list[1].args[0]
+    assert "Do the task" in content
+    assert "▌" in content
 
 
 def test_format_tool_call_markdown_hides_edit_payload_values() -> None:

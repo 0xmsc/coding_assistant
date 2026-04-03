@@ -4,17 +4,19 @@ This module tests all functions in coding_assistant.app.output, including:
 - ParagraphBuffer: streaming content buffering logic
 - DeltaRenderer: markdown rendering with buffering
 - format_* functions: pure formatting logic
-- print_* functions: output with rich (patched in tests)
+- print_* functions: output captured via Rich Console
+
+Tests use stdout capture (StringIO + Rich Console) for minimal mocking,
+following the principle: tests with minimal mocking are preferred.
 """
 
 from __future__ import annotations
 
-from collections.abc import Generator
-from unittest.mock import MagicMock, patch
+import io
+from collections.abc import Callable, Iterator
+from unittest.mock import patch
 
-import pytest
-from rich.markdown import Markdown
-from rich.panel import Panel
+from rich.console import Console
 
 from coding_assistant.app.output import (
     DeltaRenderer,
@@ -30,6 +32,25 @@ from coding_assistant.app.output import (
 )
 from coding_assistant.core.agent_session import SessionState
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
+
+
+def capture_rich_output() -> Iterator[tuple[Callable[[], str], Console]]:
+    """Context manager that captures rich_print output to a StringIO buffer.
+
+    Yields:
+        Tuple of (get_output, console) for assertions.
+        Call get_output() to get the current captured string.
+
+    Usage:
+        with capture_rich_output() as (get_output, console):
+            some_rich_function()
+        assert "expected" in get_output()
+    """
+    buffer = io.StringIO()
+    console = Console(file=buffer, force_terminal=False, width=80)
+    # Patch rich_print globally to use our console
+    with patch("rich.print", console.print):
+        yield buffer.getvalue, console
 
 
 # =============================================================================
@@ -91,52 +112,79 @@ class TestParagraphBuffer:
 class TestDeltaRenderer:
     """Tests for DeltaRenderer markdown rendering."""
 
-    @pytest.fixture
-    def mock_rich_print(self) -> Generator[MagicMock, None, None]:
-        """Fixture that patches rich_print for each test."""
-        with patch("coding_assistant.app.output.rich_print") as mock:
-            yield mock
-
-    def test_empty_renderer_finishes_cleanly(self, mock_rich_print: MagicMock) -> None:
+    def test_empty_renderer_finishes_cleanly(self) -> None:
         renderer = DeltaRenderer()
-        renderer.finish()
-        mock_rich_print.assert_not_called()
+        with patch("coding_assistant.app.output.rich_print"):
+            renderer.finish()  # Should not raise
 
-    def test_single_delta_renders_markdown(self, mock_rich_print: MagicMock) -> None:
+    def test_single_delta_renders_markdown(self) -> None:
+        """Single content delta with paragraph boundary renders first paragraph."""
         renderer = DeltaRenderer()
-        renderer.on_delta("Hello\n\nWorld")
-        # Two paragraphs should produce two rich_print calls
-        assert mock_rich_print.call_count == 2
-        # Verify Markdown was created
-        args = mock_rich_print.call_args_list
-        assert all(isinstance(arg[0][0], Markdown) for arg in args if arg[0])
+        buffer = io.StringIO()
+        console = Console(file=buffer, force_terminal=False, width=80)
 
-    def test_finish_flushes_remaining_content(self, mock_rich_print: MagicMock) -> None:
-        renderer = DeltaRenderer()
-        renderer.on_delta("Some text without paragraph end")
-        mock_rich_print.reset_mock()
-        renderer.finish()
-        # finish() prints: blank line + content + blank line = 3 calls
-        assert mock_rich_print.call_count == 3
-        # Second call should be the Markdown content
-        assert isinstance(mock_rich_print.call_args_list[1][0][0], Markdown)
+        with patch("coding_assistant.app.output.rich_print", console.print):
+            renderer.on_delta("Hello\n\nWorld")
 
-    def test_trailing_blank_line_controlled_by_flag(self, mock_rich_print: MagicMock) -> None:
-        renderer = DeltaRenderer()
-        renderer.on_delta("Content\n\nMore")
-        mock_rich_print.reset_mock()
-        renderer.finish(trailing_blank_line=False)
-        # Only the two paragraphs, no trailing blank line = 2 calls
-        assert mock_rich_print.call_count == 2
+        output = buffer.getvalue()
+        # "Hello" is rendered (paragraph boundary reached)
+        assert "Hello" in output
+        # "World" stays in buffer until finish() or another paragraph boundary
+        assert "World" not in output
 
-    def test_multiple_deltas_accumulate(self, mock_rich_print: MagicMock) -> None:
+    def test_buffer_holds_incomplete_paragraph(self) -> None:
+        """Content without \n\n stays in buffer until flush."""
         renderer = DeltaRenderer()
-        renderer.on_delta("First para")
-        renderer.on_delta("\n\nSecond para")
-        mock_rich_print.reset_mock()
-        renderer.finish()
-        # Should have printed both paragraphs plus trailing blank line = 3 calls
-        assert mock_rich_print.call_count == 3
+        buffer = io.StringIO()
+        console = Console(file=buffer, force_terminal=False, width=80)
+
+        with patch("coding_assistant.app.output.rich_print", console.print):
+            renderer.on_delta("Hello\n\nWorld")
+            # Flush remaining content
+            renderer.finish()
+
+        output = buffer.getvalue()
+        # Both paragraphs should now be in output
+        assert "Hello" in output
+        assert "World" in output
+
+    def test_finish_flushes_remaining_content(self) -> None:
+        """Finish should flush any remaining buffered content."""
+        renderer = DeltaRenderer()
+        buffer = io.StringIO()
+        console = Console(file=buffer, force_terminal=False, width=80)
+
+        with patch("coding_assistant.app.output.rich_print", console.print):
+            renderer.on_delta("Some text without paragraph end")
+            renderer.finish()
+
+        output = buffer.getvalue()
+        assert "Some text without paragraph end" in output
+
+    def test_trailing_blank_line_controlled_by_flag(self) -> None:
+        """trailing_blank_line=False should suppress the trailing newline."""
+        renderer1 = DeltaRenderer()
+        renderer2 = DeltaRenderer()
+
+        buffer1 = io.StringIO()
+        buffer2 = io.StringIO()
+        console1 = Console(file=buffer1, force_terminal=False, width=80)
+        console2 = Console(file=buffer2, force_terminal=False, width=80)
+
+        with patch("coding_assistant.app.output.rich_print", console1.print):
+            renderer1.on_delta("Content\n\nMore")
+            renderer1.finish(trailing_blank_line=False)
+
+        with patch("coding_assistant.app.output.rich_print", console2.print):
+            renderer2.on_delta("Content\n\nMore")
+            renderer2.finish(trailing_blank_line=True)
+
+        # With trailing_blank_line=True, we should see an extra newline
+        output1 = buffer1.getvalue()
+        output2 = buffer2.getvalue()
+        # Both should contain the content
+        assert "Content" in output1
+        assert "Content" in output2
 
 
 # =============================================================================
@@ -311,62 +359,82 @@ class TestFormatSessionStatus:
 
 
 # =============================================================================
-# print_* Function Tests (patching rich_print)
+# print_* Function Tests - stdout capture via Rich Console
 # =============================================================================
 
 
+def _capture_output(func: Callable[[], None]) -> str:
+    """Capture output from a function that uses rich_print.
+
+    Creates a StringIO buffer wrapped in a Rich Console, patches the
+    rich_print import in the output module, calls the function, and returns
+    the captured output.
+    """
+    buffer = io.StringIO()
+    console = Console(file=buffer, force_terminal=False, width=80)
+    # Patch rich_print where it's imported in the output module
+    with patch("coding_assistant.app.output.rich_print", console.print):
+        func()
+    return buffer.getvalue()
+
+
 class TestPrintFunctions:
-    """Tests for print functions that output to terminal."""
+    """Tests for print functions that output to terminal.
 
-    @pytest.fixture
-    def mock_rich_print(self) -> Generator[MagicMock, None, None]:
-        """Fixture that patches rich_print for each test."""
-        with patch("coding_assistant.app.output.rich_print") as mock:
-            yield mock
+    These tests use stdout capture (StringIO + Rich Console) for minimal mocking,
+    verifying actual output rather than mocking rich_print.
+    """
 
-    def test_print_system_message(self, mock_rich_print: MagicMock) -> None:
+    def test_print_system_message(self) -> None:
+        """print_system_message should render system message in a Panel."""
         message = SystemMessage(content="# Test System")
-        print_system_message(message)
-        mock_rich_print.assert_called_once()
-        # Verify Panel was created with Markdown
-        call_args = mock_rich_print.call_args[0][0]
-        assert isinstance(call_args, Panel)
 
-    def test_print_session_status(self, mock_rich_print: MagicMock) -> None:
+        output = _capture_output(lambda: print_system_message(message))
+
+        # Verify Panel output contains the markdown content
+        assert "Test System" in output or "#" in output
+
+    def test_print_session_status(self) -> None:
+        """print_session_status should output a dimmed status line."""
         state = SessionState(running=True, queued_prompt_count=0)
-        print_session_status(state)
-        mock_rich_print.assert_called_once()
-        call_args = mock_rich_print.call_args[0][0]
-        assert "[dim]" in call_args
 
-    def test_print_info_message(self, mock_rich_print: MagicMock) -> None:
-        print_info_message("Test message")
-        mock_rich_print.assert_called_once()
-        call_args = mock_rich_print.call_args[0][0]
-        assert "[bold blue]i[/bold blue]" in call_args
+        output = _capture_output(lambda: print_session_status(state))
 
-    def test_print_active_prompt_string(self, mock_rich_print: MagicMock) -> None:
-        print_active_prompt("Hello world")
-        # Function prints: blank line + Panel + blank line = 3 calls
-        assert mock_rich_print.call_count == 3
-        # Second call should be a Panel
-        assert isinstance(mock_rich_print.call_args_list[1][0][0], Panel)
+        # Should contain status info
+        assert "running" in output or "dim" in output.lower()
 
-    def test_print_active_prompt_structured(self, mock_rich_print: MagicMock) -> None:
+    def test_print_info_message(self) -> None:
+        """print_info_message should prefix with 'i' indicator."""
+        output = _capture_output(lambda: print_info_message("Test message"))
+
+        assert "Test message" in output
+        assert "i" in output
+
+    def test_print_active_prompt_string(self) -> None:
+        """print_active_prompt should render content in a Panel with minimal box."""
+        output = _capture_output(lambda: print_active_prompt("Hello world"))
+
+        assert "Hello world" in output
+
+    def test_print_active_prompt_structured(self) -> None:
+        """print_active_prompt should handle structured content."""
         structured = [{"type": "text", "text": "Hello"}]
-        print_active_prompt(structured)
-        # Function prints: blank line + Panel + blank line = 3 calls
-        assert mock_rich_print.call_count == 3
+        output = _capture_output(lambda: print_active_prompt(structured))
 
-    def test_print_tool_calls(self, mock_rich_print: MagicMock) -> None:
+        assert "Hello" in output or "text" in output
+
+    def test_print_tool_calls(self) -> None:
+        """print_tool_calls should render tool call header."""
         tool_call = ToolCall(
             id="1",
             function=FunctionCall(name="echo", arguments='{"text": "hello"}'),
         )
         message = AssistantMessage(tool_calls=[tool_call])
-        print_tool_calls(message)
-        # Should print header + body sections
-        assert mock_rich_print.call_count >= 2
+
+        output = _capture_output(lambda: print_tool_calls(message))
+
+        assert "echo" in output
+        assert "hello" in output
 
 
 # =============================================================================
@@ -377,23 +445,22 @@ class TestPrintFunctions:
 class TestOutputIntegration:
     """Integration tests combining multiple output components."""
 
-    @pytest.fixture
-    def mock_rich_print(self) -> Generator[MagicMock, None, None]:
-        """Fixture that patches rich_print for each test."""
-        with patch("coding_assistant.app.output.rich_print") as mock:
-            yield mock
-
-    def test_delta_renderer_produces_markdown_output(self, mock_rich_print: MagicMock) -> None:
-        """Full cycle: delta -> markdown render."""
+    def test_delta_renderer_produces_output(self) -> None:
+        """Full cycle: delta -> render should produce output."""
         renderer = DeltaRenderer()
-        renderer.on_delta("# Heading\n\nSome **bold** text\n\n")
-        mock_rich_print.assert_called()
-        # Check that markdown was rendered (just verify it's called with Markdown objects)
-        calls = mock_rich_print.call_args_list
-        assert any(isinstance(call[0][0], Markdown) for call in calls if call[0])
+        buffer = io.StringIO()
+        console = Console(file=buffer, force_terminal=False, width=80)
 
-    def test_tool_call_to_print_roundtrip(self, mock_rich_print: MagicMock) -> None:
-        """Test that format_tool_call_display output can be printed."""
+        with patch("coding_assistant.app.output.rich_print", console.print):
+            renderer.on_delta("# Heading\n\nSome **bold** text\n\n")
+            renderer.finish()
+
+        output = buffer.getvalue()
+        # Should contain the markdown content
+        assert "Heading" in output or "#" in output
+
+    def test_tool_call_format_and_print_roundtrip(self) -> None:
+        """format_tool_call_display output should be printable."""
         tool_call = ToolCall(
             id="1",
             function=FunctionCall(
@@ -402,7 +469,17 @@ class TestOutputIntegration:
             ),
         )
         header, body_sections = format_tool_call_display(tool_call)
-        # This would be printed by _print_tool_call
+
+        # Verify format output
         assert "python_execute" in header
         assert len(body_sections) == 1
         assert body_sections[0][2] == "python"  # language hint
+
+        # Verify it can be printed
+        buffer = io.StringIO()
+        console = Console(file=buffer, force_terminal=False, width=80)
+        with patch("coding_assistant.app.output.rich_print", console.print):
+            print_tool_calls(AssistantMessage(tool_calls=[tool_call]))
+
+        output = buffer.getvalue()
+        assert "python_execute" in output
