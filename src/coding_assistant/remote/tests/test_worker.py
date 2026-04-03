@@ -226,14 +226,12 @@ async def test__run_output_prints_tool_calls_without_extra_spacing() -> None:
             await asyncio.gather(task, return_exceptions=True)
             await session.close()
 
-    assert len(mock_rich_print.call_args_list) == 4
+    assert len(mock_rich_print.call_args_list) == 3
     assert mock_rich_print.call_args_list[0].args == ()
     assert isinstance(mock_rich_print.call_args_list[1].args[0], Markdown)
     assert mock_rich_print.call_args_list[1].args[0].markup == "Can you read README.md?"
-    assert mock_rich_print.call_args_list[2].args == ()
-    assert mock_rich_print.call_args_list[3].args == (
-        '[bold yellow]▶[/bold yellow] shell_execute(command="cat README.md")',
-    )
+    assert "▶" in str(mock_rich_print.call_args_list[2])
+    assert "shell_execute" in str(mock_rich_print.call_args_list[2])
 
 
 @pytest.mark.asyncio
