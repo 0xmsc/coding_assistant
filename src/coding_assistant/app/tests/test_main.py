@@ -143,8 +143,6 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         "/help",
         "/compact",
         "/image",
-        "/priority",
-        "/interrupt",
     ]
     mock_print.assert_called_once_with("Remote endpoint: ws://127.0.0.1:1234")
 
@@ -293,36 +291,6 @@ async def test_handle_prompt_submission_enqueues_steering_prompt() -> None:
 
     assert should_exit is False
     session.enqueue_steering_prompt.assert_awaited_once_with("fix this next")
-
-
-@pytest.mark.asyncio
-async def test_handle_prompt_submission_queues_priority_prompt() -> None:
-    session = Mock()
-    session.enqueue_prompt = AsyncMock(return_value=True)
-
-    should_exit = await _handle_prompt_submission(
-        session=session,
-        answer="/priority fix this next",
-        submit_type=PromptSubmitType.QUEUED,
-    )
-
-    assert should_exit is False
-    session.enqueue_prompt.assert_awaited_once_with("fix this next", priority=True)
-
-
-@pytest.mark.asyncio
-async def test_handle_prompt_submission_interrupts_current_run() -> None:
-    session = Mock()
-    session.interrupt_and_enqueue = AsyncMock(return_value=True)
-
-    should_exit = await _handle_prompt_submission(
-        session=session,
-        answer="/interrupt stop and do this instead",
-        submit_type=PromptSubmitType.QUEUED,
-    )
-
-    assert should_exit is False
-    session.interrupt_and_enqueue.assert_awaited_once_with("stop and do this instead")
 
 
 @pytest.mark.asyncio

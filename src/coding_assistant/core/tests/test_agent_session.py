@@ -303,43 +303,6 @@ async def test_agent_session_starts_queued_prompt_only_after_current_run_finishe
 
 
 @pytest.mark.asyncio
-async def test_agent_session_priority_prompt_runs_before_existing_queued_prompts() -> None:
-    first_started = asyncio.Event()
-    first_release = asyncio.Event()
-    streamer = ControlledStreamer(
-        [
-            StreamStep(
-                message=AssistantMessage(content="First result"),
-                started_event=first_started,
-                release_event=first_release,
-            ),
-            StreamStep(message=AssistantMessage(content="Priority result")),
-            StreamStep(message=AssistantMessage(content="Second result")),
-        ],
-    )
-    session = make_session(completion_streamer=streamer)
-
-    async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
-        assert await session.enqueue_prompt("first") is True
-        await asyncio.wait_for(first_started.wait(), timeout=1)
-        assert await session.enqueue_prompt("second") is True
-        assert await session.enqueue_prompt("priority", priority=True) is True
-
-        first_release.set()
-
-        finished_events = [await wait_for_event(queue, RunFinishedEvent) for _ in range(3)]
-
-    await session.close()
-    assert [event.summary for event in finished_events if isinstance(event, RunFinishedEvent)] == [
-        "First result",
-        "Priority result",
-        "Second result",
-    ]
-    assert streamer.prompts == ["first", "priority", "second"]
-
-
-@pytest.mark.asyncio
 async def test_agent_session_inserts_steering_prompt_into_active_run_after_tool_boundary() -> None:
     tool_started = asyncio.Event()
     tool_release = asyncio.Event()
@@ -405,43 +368,6 @@ async def test_agent_session_inserts_steering_prompt_into_active_run_after_tool_
         ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
         UserMessage(content="steer now"),
         AssistantMessage(content="Steered result"),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_agent_session_interrupt_cancels_current_run_and_drops_partial_output_from_history() -> None:
-    first_started = asyncio.Event()
-    never_release = asyncio.Event()
-    streamer = ControlledStreamer(
-        [
-            StreamStep(
-                message=AssistantMessage(content="Working..."),
-                started_event=first_started,
-                release_event=never_release,
-            ),
-            StreamStep(message=AssistantMessage(content="Done second")),
-        ],
-    )
-    session = make_session(completion_streamer=streamer)
-
-    async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
-        assert await session.enqueue_prompt("first") is True
-        await asyncio.wait_for(first_started.wait(), timeout=1)
-        assert await session.interrupt_and_enqueue("second") is True
-
-        cancelled_event = await wait_for_event(queue, RunCancelledEvent)
-        finished_event = await wait_for_event(queue, RunFinishedEvent)
-
-    await session.close()
-    assert isinstance(cancelled_event, RunCancelledEvent)
-    assert isinstance(finished_event, RunFinishedEvent)
-    assert finished_event.summary == "Done second"
-    assert streamer.prompts == ["first", "second"]
-    assert session.history == [
-        *make_system_history(),
-        UserMessage(content="second"),
-        AssistantMessage(content="Done second"),
     ]
 
 
