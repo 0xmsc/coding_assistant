@@ -104,9 +104,8 @@ def print_active_prompt(content: str | list[dict[str, Any]]) -> None:
 
     lines = rendered_content.split("\n")
     rich_print()
-    rich_print(f"  [bold cyan]▌[/bold cyan] [white]{lines[0]}[/white]")
-    for line in lines[1:]:
-        rich_print(f"    [dim]│[/dim] [white]{line}[/white]")
+    for line in lines:
+        rich_print(f"  [bold cyan]▌[/bold cyan] [white]{line}[/white]")
 
 
 def format_prompt_preview(content: str | list[dict[str, Any]]) -> str:
