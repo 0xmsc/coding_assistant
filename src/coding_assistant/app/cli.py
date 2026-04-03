@@ -17,7 +17,7 @@ from coding_assistant.integrations.mcp_client import print_mcp_tools
 from coding_assistant.remote.registry import register_remote_instance
 from coding_assistant.remote.server import start_worker_server
 
-CLI_COMMAND_NAMES = ["/exit", "/help", "/compact", "/image", "/priority", "/interrupt"]
+CLI_COMMAND_NAMES = ["/exit", "/help", "/compact", "/image"]
 
 
 async def run_cli(args: Namespace) -> None:
@@ -61,13 +61,7 @@ async def _handle_prompt_submission(*, session: AgentSession, answer: str, submi
         return True
     if stripped == "/help":
         print(
-            "Available commands:\n"
-            "  /exit\n"
-            "  /help\n"
-            "  /compact\n"
-            "  /image <path-or-url>\n"
-            "  /priority <prompt>\n"
-            "  /interrupt <prompt>",
+            "Available commands:\n  /exit\n  /help\n  /compact\n  /image <path-or-url>",
         )
         return False
     if stripped == "/compact":
@@ -82,18 +76,6 @@ async def _handle_prompt_submission(*, session: AgentSession, answer: str, submi
         data_url = await get_image(parts[1])
         image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
         return not await session.enqueue_prompt(image_content)
-    if stripped.startswith("/priority"):
-        priority_prompt = _extract_command_argument(answer=answer, command="/priority")
-        if priority_prompt is None:
-            print("/priority requires prompt text.")
-            return False
-        return not await session.enqueue_prompt(priority_prompt, priority=True)
-    if stripped.startswith("/interrupt"):
-        interrupt_prompt = _extract_command_argument(answer=answer, command="/interrupt")
-        if interrupt_prompt is None:
-            print("/interrupt requires prompt text.")
-            return False
-        return not await session.interrupt_and_enqueue(interrupt_prompt)
 
     # Handle steering vs queued submission types
     if submit_type == PromptSubmitType.STEERING:
@@ -102,13 +84,3 @@ async def _handle_prompt_submission(*, session: AgentSession, answer: str, submi
     else:
         # Queued: always add to the queue
         return not await session.enqueue_prompt(answer)
-
-
-def _extract_command_argument(*, answer: str, command: str) -> str | None:
-    """Return the trailing argument text for one slash command."""
-    if not answer.startswith(command):
-        return None
-    argument = answer[len(command) :].strip()
-    if not argument:
-        return None
-    return argument

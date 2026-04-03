@@ -168,23 +168,13 @@ class AgentSession:
         """Subscribe to streamed session events and receive an initial state snapshot."""
         return self._subscribe()
 
-    async def enqueue_prompt(
-        self,
-        content: PromptContent,
-        *,
-        priority: bool = False,
-        source: str = "local",
-    ) -> bool:
-        """Queue one prompt, optionally ahead of already queued work."""
+    async def enqueue_prompt(self, content: PromptContent, *, source: str = "local") -> bool:
+        """Queue one prompt."""
         async with self._mutation_lock:
             if self._closed:
                 return False
             self._paused = False
-            queued_prompt = _QueuedPrompt(content=content, source=source)
-            if priority:
-                self._pending_prompts.appendleft(queued_prompt)
-            else:
-                self._pending_prompts.append(queued_prompt)
+            self._pending_prompts.append(_QueuedPrompt(content=content, source=source))
             self._run_loop_wakeup.set()
         await self._publish_state()
         return True
@@ -219,25 +209,6 @@ class AgentSession:
             else:
                 self._pending_steering_prompts.append(queued_prompt)
         await self._publish_state()
-        return True
-
-    async def interrupt_and_enqueue(self, content: PromptContent, *, source: str = "local") -> bool:
-        """Cancel the active run and make this prompt the next prompt consumed."""
-        async with self._mutation_lock:
-            if self._closed:
-                return False
-            self._paused = False
-            self._pending_steering_prompts.clear()
-            self._pending_prompts.appendleft(_QueuedPrompt(content=content, source=source))
-            run_task = self._current_run_task
-            if run_task is not None:
-                self._discard_cancelled_history_task = run_task
-            self._run_loop_wakeup.set()
-        await self._publish_state()
-        if run_task is not None:
-            run_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await run_task
         return True
 
     async def pop_last_queued_prompt(self) -> PromptContent | None:
