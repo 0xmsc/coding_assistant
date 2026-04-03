@@ -316,6 +316,7 @@ async def _run_output(
                     print_active_prompt(event.content)
                 elif isinstance(event, ToolCallsEvent):
                     renderer.finish(trailing_blank_line=False)
+                    rich_print()
                     print_tool_calls(event.message)
                 elif isinstance(event, RunFinishedEvent):
                     renderer.finish()

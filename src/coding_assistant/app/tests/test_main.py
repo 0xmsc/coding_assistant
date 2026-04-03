@@ -196,11 +196,11 @@ def test_delta_renderer_finish_is_idempotent() -> None:
         renderer.finish()
         renderer.finish()
 
-    assert len(mock_print.call_args_list) == 3
+    # Should call rich_print 2 times: blank line + content (no trailing blank)
+    assert len(mock_print.call_args_list) == 2
     assert mock_print.call_args_list[0].args == ()
     assert isinstance(mock_print.call_args_list[1].args[0], Markdown)
     assert mock_print.call_args_list[1].args[0].markup == "Hello"
-    assert mock_print.call_args_list[2].args == ()
 
 
 def test_format_session_status_summarizes_pending_prompts() -> None:
@@ -232,9 +232,10 @@ def test_print_prompt_accepted_uses_simple_grey_background() -> None:
 
         print_active_prompt("Do the task")
 
-    # Should call rich_print 3 times: blank line, content, blank line
-    assert len(mock_print.call_args_list) == 3
-    # Second call should be the prompt with bullet
+    # Should call rich_print 2 times: blank line, content (no trailing blank)
+    assert len(mock_print.call_args_list) == 2
+    # First call should be blank, second should be the prompt with bullet
+    assert mock_print.call_args_list[0].args == ()
     content = mock_print.call_args_list[1].args[0]
     assert "Do the task" in content
     assert "▌" in content
