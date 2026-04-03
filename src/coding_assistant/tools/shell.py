@@ -15,7 +15,7 @@ class ShellExecuteInput(BaseModel):
         description=(
             "The shell command to execute. Do not include 'bash -c'. You can use shell features "
             "like pipes (|) and redirections (>, >>)."
-        )
+        ),
     )
     timeout: int = Field(default=30, description="The timeout for the command in seconds.")
     truncate_at: int = Field(

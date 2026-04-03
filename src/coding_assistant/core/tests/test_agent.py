@@ -139,14 +139,14 @@ async def test_run_agent_event_stream_yields_content_completion_and_boundary() -
             completion=Completion(
                 message=AssistantMessage(content="Hello from the assistant"),
                 usage=Usage(tokens=10, cost=0.0),
-            )
+            ),
         ),
         AwaitingUser(
             history=[
                 *make_system_history(),
                 UserMessage(content="Hi"),
                 AssistantMessage(content="Hello from the assistant"),
-            ]
+            ],
         ),
     ]
     assert history == [*make_system_history(), UserMessage(content="Hi")]
@@ -174,7 +174,7 @@ async def test_run_agent_event_stream_yields_tool_boundary_without_executing() -
             completion=Completion(
                 message=AssistantMessage(tool_calls=[external_call]),
                 usage=Usage(tokens=10, cost=0.0),
-            )
+            ),
         ),
         AwaitingToolCalls(
             history=[
@@ -291,7 +291,7 @@ async def test_run_agent_executes_tool_calls_and_continues() -> None:
             [
                 AssistantMessage(tool_calls=[external_call]),
                 AssistantMessage(content="Finished after the tool call"),
-            ]
+            ],
         ),
     )
 
@@ -315,7 +315,7 @@ async def test_run_agent_appends_non_text_tool_errors_and_continues() -> None:
             [
                 AssistantMessage(tool_calls=[external_call]),
                 AssistantMessage(content="I can continue without that tool."),
-            ]
+            ],
         ),
     )
 
@@ -342,12 +342,14 @@ async def test_run_agent_appends_tool_execution_errors_and_continues() -> None:
             [
                 AssistantMessage(tool_calls=[external_call]),
                 AssistantMessage(content="I recovered from the tool error."),
-            ]
+            ],
         ),
     )
 
     assert result[-2] == ToolMessage(
-        tool_call_id="call-1", name="error_tool", content="Error executing tool: tool boom"
+        tool_call_id="call-1",
+        name="error_tool",
+        content="Error executing tool: tool boom",
     )
     assert result[-1] == AssistantMessage(content="I recovered from the tool error.")
 

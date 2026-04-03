@@ -63,7 +63,7 @@ class BlockingStreamer:
             completion=Completion(
                 message=AssistantMessage(content="Finished"),
                 usage=Usage(tokens=10, cost=0.0),
-            )
+            ),
         )
 
 
@@ -112,7 +112,7 @@ async def _open_acp_session(websocket: ClientConnection) -> str:
                     "version": "0.0.0",
                 },
             },
-        )
+        ),
     )
     initialize_response = parse_jsonrpc_message(await websocket.recv())
     assert initialize_response["result"]["protocolVersion"] == ACP_PROTOCOL_VERSION
@@ -125,7 +125,7 @@ async def _open_acp_session(websocket: ClientConnection) -> str:
                 "cwd": "/tmp",
                 "mcpServers": [],
             },
-        )
+        ),
     )
     session_response = parse_jsonrpc_message(await websocket.recv())
     session_id = session_response["result"]["sessionId"]
@@ -207,8 +207,8 @@ async def test_run_session_output_prints_tool_calls_without_extra_spacing() -> N
                     name="shell_execute",
                     arguments='{"command": "cat README.md"}',
                 ),
-            )
-        ]
+            ),
+        ],
     )
 
     with (
@@ -248,7 +248,7 @@ async def test_run_session_output_prints_status_updates_when_enabled() -> None:
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(
-            run_session_output(session=session, system_message=system_message, show_state_updates=True)
+            run_session_output(session=session, system_message=system_message, show_state_updates=True),
         )
         try:
             await asyncio.sleep(0)
@@ -258,8 +258,8 @@ async def test_run_session_output_prints_status_updates_when_enabled() -> None:
                         running=False,
                         queued_prompt_count=2,
                         pending_prompts=("queued one", "queued two"),
-                    )
-                )
+                    ),
+                ),
             )
             await asyncio.sleep(0)
         finally:
@@ -317,7 +317,7 @@ async def test_worker_server_completes_acp_prompt_turn() -> None:
                             "sessionId": session_id,
                             "prompt": [text_block("Do the task")],
                         },
-                    )
+                    ),
                 )
 
                 updates: list[dict[str, Any]] = []
@@ -363,7 +363,7 @@ async def test_worker_server_rejects_busy_acp_prompt_turn() -> None:
                             "sessionId": session_id,
                             "prompt": [text_block("Do the task")],
                         },
-                    )
+                    ),
                 )
                 response = parse_jsonrpc_message(await websocket.recv())
 
@@ -387,11 +387,11 @@ async def test_worker_server_reports_tool_call_lifecycle_over_acp() -> None:
                                 name="echo_tool",
                                 arguments='{"text": "hello"}',
                             ),
-                        )
-                    ]
+                        ),
+                    ],
                 ),
                 AssistantMessage(content="Done"),
-            ]
+            ],
         ),
         tools=[EchoTool()],
     )
@@ -409,7 +409,7 @@ async def test_worker_server_reports_tool_call_lifecycle_over_acp() -> None:
                             "sessionId": session_id,
                             "prompt": [text_block("Use the tool")],
                         },
-                    )
+                    ),
                 )
 
                 updates: list[dict[str, Any]] = []

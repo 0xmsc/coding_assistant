@@ -4,8 +4,8 @@ from typing import Any
 
 import pytest
 
-from coding_assistant.llm.types import Tool
 from coding_assistant.core.builtin_tools import RedirectToolCallTool
+from coding_assistant.llm.types import Tool
 
 
 class MockTextTool(Tool):

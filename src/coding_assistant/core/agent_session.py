@@ -403,7 +403,7 @@ class AgentSession:
                     if steering_prompt is not None:
                         current_history.append(UserMessage(content=steering_prompt.content))
                         self._publish_event(
-                            PromptStartedEvent(content=steering_prompt.content, source=steering_prompt.source)
+                            PromptStartedEvent(content=steering_prompt.content, source=steering_prompt.source),
                         )
                         await self._publish_state()
                     continue
@@ -412,7 +412,7 @@ class AgentSession:
                 if steering_prompt is not None:
                     current_history = [*boundary.history, UserMessage(content=steering_prompt.content)]
                     self._publish_event(
-                        PromptStartedEvent(content=steering_prompt.content, source=steering_prompt.source)
+                        PromptStartedEvent(content=steering_prompt.content, source=steering_prompt.source),
                     )
                     await self._publish_state()
                     continue

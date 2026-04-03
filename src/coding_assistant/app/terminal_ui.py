@@ -236,7 +236,7 @@ def create_terminal_application(
                 "prompt": "#bbbbbb",
                 "queued": "#888888",
                 "footer": "#888888",
-            }
+            },
         ),
         full_screen=False,
         refresh_interval=0.1,
@@ -319,7 +319,7 @@ async def run_terminal_ui(
         run_session_output(
             session=session,
             system_message=system_message,
-        )
+        ),
     )
 
     with patch_stdout(raw=True):

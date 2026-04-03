@@ -52,7 +52,7 @@ def jsonrpc_result(message_id: int | str, result: JsonObject | None) -> str:
             "jsonrpc": JSONRPC_VERSION,
             "id": message_id,
             "result": result,
-        }
+        },
     )
 
 
@@ -65,7 +65,7 @@ def jsonrpc_error(message_id: int | str | None, code: int, message: str) -> str:
                 "code": code,
                 "message": message,
             },
-        }
+        },
     )
 
 

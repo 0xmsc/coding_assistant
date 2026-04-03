@@ -1,9 +1,11 @@
-import pytest
-from pydantic import ValidationError
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastmcp.mcp_config import RemoteMCPServer, StdioMCPServer
+from pydantic import ValidationError
+
 from coding_assistant.integrations.mcp_client import MCPServerConfig, get_mcp_servers_from_config
-from fastmcp.mcp_config import StdioMCPServer, RemoteMCPServer
 
 
 @pytest.mark.asyncio

@@ -45,7 +45,9 @@ async def run_cli(args: Namespace) -> None:
                         history_path=get_app_cache_dir() / "history",
                         words=CLI_COMMAND_NAMES,
                         submit_handler=lambda answer, submit_type: _handle_prompt_submission(
-                            session=session, answer=answer, submit_type=submit_type
+                            session=session,
+                            answer=answer,
+                            submit_type=submit_type,
                         ),
                     )
         finally:
@@ -65,12 +67,12 @@ async def _handle_prompt_submission(*, session: AgentSession, answer: str, submi
             "  /compact\n"
             "  /image <path-or-url>\n"
             "  /priority <prompt>\n"
-            "  /interrupt <prompt>"
+            "  /interrupt <prompt>",
         )
         return False
     if stripped == "/compact":
         return not await session.enqueue_prompt(
-            "Immediately compact our conversation so far by using the `compact_conversation` tool."
+            "Immediately compact our conversation so far by using the `compact_conversation` tool.",
         )
     if stripped.startswith("/image"):
         parts = stripped.split(maxsplit=1)

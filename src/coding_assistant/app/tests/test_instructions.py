@@ -1,6 +1,4 @@
 from pathlib import Path
-
-
 from typing import cast
 
 from coding_assistant.app.instructions import get_instructions

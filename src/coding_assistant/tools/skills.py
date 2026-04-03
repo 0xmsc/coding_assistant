@@ -59,7 +59,7 @@ def load_skills_from_root(root_directory: Path) -> list[Skill]:
             continue
 
         skill.resources = sorted(
-            [str(path.relative_to(skill_directory)) for path in skill_directory.glob("**/*") if path.is_file()]
+            [str(path.relative_to(skill_directory)) for path in skill_directory.glob("**/*") if path.is_file()],
         )
         skills.append(skill)
 
@@ -94,7 +94,7 @@ def format_skills_instructions(skills: list[Skill]) -> str:
             "- Use `skills_read(name=..., resource=...)` to read specific resources or scripts of a skill.",
             "- If a skill could match the users task, you must read it.",
             "- Before implementation work, read any relevant development skill that is available.",
-        ]
+        ],
     )
     return "\n".join(lines)
 
@@ -180,7 +180,7 @@ def create_skill_tools(*, skills_directories: Sequence[Path]) -> tuple[list[Tool
         if existing_skill is not None:
             raise RuntimeError(
                 f"Duplicate skill name '{skill.name}' found in '{existing_skill.root}' and '{skill.root}'. "
-                "Skill names must be unique."
+                "Skill names must be unique.",
             )
         skills_by_name[skill.name] = skill
 

@@ -1,16 +1,17 @@
-from typing import Any
 import os
 from pathlib import Path
+from typing import Any
+
 from coding_assistant.infra.paths import (
-    get_builtin_instructions_dir,
-    get_builtin_skills_dir,
-    get_cache_home,
-    get_state_home,
-    get_data_home,
-    get_config_home,
     get_app_cache_dir,
     get_app_runtime_dir,
     get_app_state_dir,
+    get_builtin_instructions_dir,
+    get_builtin_skills_dir,
+    get_cache_home,
+    get_config_home,
+    get_data_home,
+    get_state_home,
 )
 
 

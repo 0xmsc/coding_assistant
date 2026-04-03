@@ -200,7 +200,7 @@ class _WorkerManager:
                 snapshot.last_content = ""
                 snapshot.last_update = "Run cancelled."
                 await self._push_meaningful_event(
-                    WorkerMeaningfulEvent(worker_id=worker_id, endpoint=snapshot.endpoint, kind="cancelled")
+                    WorkerMeaningfulEvent(worker_id=worker_id, endpoint=snapshot.endpoint, kind="cancelled"),
                 )
                 return
             summary = snapshot.last_content or snapshot.last_update or "Prompt finished."
@@ -211,7 +211,7 @@ class _WorkerManager:
                     endpoint=snapshot.endpoint,
                     kind="finished",
                     summary=summary,
-                )
+                ),
             )
             return
 
@@ -225,7 +225,7 @@ class _WorkerManager:
                     endpoint=snapshot.endpoint,
                     kind="failed",
                     summary=message.message,
-                )
+                ),
             )
             return
 
@@ -242,7 +242,7 @@ class _WorkerManager:
         if not was_known:
             return
         await self._push_meaningful_event(
-            WorkerMeaningfulEvent(worker_id=worker_id, endpoint=endpoint, kind="disconnected")
+            WorkerMeaningfulEvent(worker_id=worker_id, endpoint=endpoint, kind="disconnected"),
         )
 
     async def _push_meaningful_event(self, event: WorkerMeaningfulEvent) -> None:

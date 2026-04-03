@@ -1,5 +1,7 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+
 from coding_assistant.integrations.mcp_client import MCPServer, MCPWrappedTool, get_mcp_wrapped_tools
 
 

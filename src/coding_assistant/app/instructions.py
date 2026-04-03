@@ -3,8 +3,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from coding_assistant.integrations.mcp_client import MCPServer
 from coding_assistant.infra.paths import get_builtin_instructions_dir
+from coding_assistant.integrations.mcp_client import MCPServer
 
 logger = logging.getLogger(__name__)
 

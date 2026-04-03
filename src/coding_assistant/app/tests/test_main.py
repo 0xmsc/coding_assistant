@@ -7,7 +7,6 @@ import pytest
 from rich.markdown import Markdown
 
 from coding_assistant.app.cli import _handle_prompt_submission, run_cli
-from coding_assistant.app.terminal_ui import PromptSubmitType
 from coding_assistant.app.default_agent import DefaultAgentBundle, build_default_agent_config
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import (
@@ -17,6 +16,7 @@ from coding_assistant.app.output import (
     format_tool_call_display,
     print_tool_calls,
 )
+from coding_assistant.app.terminal_ui import PromptSubmitType
 from coding_assistant.core.agent_session import AgentSession, SessionState
 from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
@@ -135,7 +135,7 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
     ]
     assert mock_run_terminal_ui.await_args.kwargs["system_message"] == SystemMessage(
-        content=build_system_prompt(instructions="Follow the repo instructions.")
+        content=build_system_prompt(instructions="Follow the repo instructions."),
     )
     assert mock_run_terminal_ui.await_args.kwargs["history_path"].name == "history"
     assert mock_run_terminal_ui.await_args.kwargs["words"] == [
@@ -181,8 +181,8 @@ def test_delta_renderer_avoids_double_spacing_before_tool_calls() -> None:
                     name="shell_execute",
                     arguments='{"command": "cat README.md"}',
                 ),
-            )
-        ]
+            ),
+        ],
     )
 
     with patch("coding_assistant.app.output.rich_print") as mock_print:
@@ -286,7 +286,9 @@ async def test_handle_prompt_submission_enqueues_steering_prompt() -> None:
     session.enqueue_steering_prompt = AsyncMock(return_value=True)
 
     should_exit = await _handle_prompt_submission(
-        session=session, answer="fix this next", submit_type=PromptSubmitType.STEERING
+        session=session,
+        answer="fix this next",
+        submit_type=PromptSubmitType.STEERING,
     )
 
     assert should_exit is False
@@ -299,7 +301,9 @@ async def test_handle_prompt_submission_queues_priority_prompt() -> None:
     session.enqueue_prompt = AsyncMock(return_value=True)
 
     should_exit = await _handle_prompt_submission(
-        session=session, answer="/priority fix this next", submit_type=PromptSubmitType.QUEUED
+        session=session,
+        answer="/priority fix this next",
+        submit_type=PromptSubmitType.QUEUED,
     )
 
     assert should_exit is False
@@ -312,7 +316,9 @@ async def test_handle_prompt_submission_interrupts_current_run() -> None:
     session.interrupt_and_enqueue = AsyncMock(return_value=True)
 
     should_exit = await _handle_prompt_submission(
-        session=session, answer="/interrupt stop and do this instead", submit_type=PromptSubmitType.QUEUED
+        session=session,
+        answer="/interrupt stop and do this instead",
+        submit_type=PromptSubmitType.QUEUED,
     )
 
     assert should_exit is False
@@ -325,10 +331,12 @@ async def test_handle_prompt_submission_compact_enqueues_compaction_prompt() -> 
     session.enqueue_prompt = AsyncMock(return_value=True)
 
     should_exit = await _handle_prompt_submission(
-        session=session, answer="/compact", submit_type=PromptSubmitType.QUEUED
+        session=session,
+        answer="/compact",
+        submit_type=PromptSubmitType.QUEUED,
     )
 
     assert should_exit is False
     session.enqueue_prompt.assert_awaited_once_with(
-        "Immediately compact our conversation so far by using the `compact_conversation` tool."
+        "Immediately compact our conversation so far by using the `compact_conversation` tool.",
     )

@@ -15,7 +15,8 @@ from coding_assistant.remote.registry import (
 
 @pytest.mark.asyncio
 async def test_register_remote_instance_writes_and_removes_registry_file(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
 
@@ -33,7 +34,8 @@ async def test_register_remote_instance_writes_and_removes_registry_file(
 
 
 def test_discover_remote_instances_skips_self_and_removes_dead_entries(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
     registry_dir = get_remote_registry_dir()
@@ -51,7 +53,7 @@ def test_discover_remote_instances_skips_self_and_removes_dead_entries(
                 "endpoint": "ws://127.0.0.1:4000",
                 "cwd": "/self",
                 "started_at": "2026-04-02T12:00:00+00:00",
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -64,7 +66,7 @@ def test_discover_remote_instances_skips_self_and_removes_dead_entries(
                 "endpoint": "ws://127.0.0.1:4001",
                 "cwd": "/live",
                 "started_at": "2026-04-02T12:01:00+00:00",
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -77,7 +79,7 @@ def test_discover_remote_instances_skips_self_and_removes_dead_entries(
                 "endpoint": "ws://127.0.0.1:4002",
                 "cwd": "/dead",
                 "started_at": "2026-04-02T12:02:00+00:00",
-            }
+            },
         ),
         encoding="utf-8",
     )

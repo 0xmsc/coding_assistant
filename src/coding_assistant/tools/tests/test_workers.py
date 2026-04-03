@@ -76,7 +76,7 @@ def _get_latest_user_content(messages: list[object]) -> str | list[dict[str, Any
 async def test_worker_runtime_connects_prompts_and_waits_for_completion() -> None:
     session = make_agent_session(
         completion_streamer=ControlledStreamer(
-            [StreamStep(message=AssistantMessage(content="Finished the delegated task"))]
+            [StreamStep(message=AssistantMessage(content="Finished the delegated task"))],
         ),
     )
     worker_runtime = WorkerToolRuntime()
@@ -110,7 +110,7 @@ async def test_worker_runtime_rejects_prompt_while_worker_is_busy() -> None:
                 started_event=first_started,
                 release_event=first_release,
             ),
-        ]
+        ],
     )
     session = make_agent_session(completion_streamer=streamer)
     worker_runtime = WorkerToolRuntime()
@@ -153,7 +153,7 @@ async def test_worker_runtime_can_cancel_current_run() -> None:
                 started_event=first_started,
                 release_event=never_release,
             ),
-        ]
+        ],
     )
     session = make_agent_session(completion_streamer=streamer)
     worker_runtime = WorkerToolRuntime()
@@ -279,7 +279,7 @@ async def test_worker_runtime_disconnect_does_not_stop_the_session() -> None:
                 started_event=first_started,
                 release_event=first_release,
             ),
-        ]
+        ],
     )
     session = make_agent_session(completion_streamer=streamer)
     worker_runtime = WorkerToolRuntime()
@@ -337,7 +337,7 @@ def test_worker_runtime_discovers_other_registered_remotes(monkeypatch: pytest.M
                 "endpoint": "ws://127.0.0.1:4010",
                 "cwd": "/self",
                 "started_at": "2026-04-02T12:10:00+00:00",
-            }
+            },
         ),
         encoding="utf-8",
     )
@@ -349,7 +349,7 @@ def test_worker_runtime_discovers_other_registered_remotes(monkeypatch: pytest.M
                 "endpoint": "ws://127.0.0.1:4011",
                 "cwd": "/other",
                 "started_at": "2026-04-02T12:11:00+00:00",
-            }
+            },
         ),
         encoding="utf-8",
     )

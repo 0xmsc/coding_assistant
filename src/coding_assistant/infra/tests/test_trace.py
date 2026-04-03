@@ -1,7 +1,9 @@
 from typing import Any
-import coding_assistant.infra.trace
+
 import pytest
-from coding_assistant.infra.trace import enable_tracing, trace_enabled, trace_data, trace_json
+
+import coding_assistant.infra.trace
+from coding_assistant.infra.trace import enable_tracing, trace_data, trace_enabled, trace_json
 
 
 @pytest.fixture(autouse=True)
