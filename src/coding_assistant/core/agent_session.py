@@ -121,7 +121,24 @@ class _RunResult:
 
 
 class AgentSession:
-    """Own queued prompts, transcript state, and one concrete agent run loop."""
+    """Own queued prompts, transcript state, and one concrete agent run loop.
+
+    This session manages two prompt queues:
+
+    1. _pending_prompts: The main queue. Prompts run FIFO when the session is idle.
+
+    2. _pending_steering_prompts: Steers the agent mid-run. When the agent reaches
+       any boundary (tool call or user input), steering prompts are injected before
+       continuing. This allows redirecting the agent mid-task.
+
+    Session states:
+    - Running: actively processing a prompt
+    - Idle: not running, waiting for wakeup events (new prompts, cancellation, resume)
+    - Paused: not running, pending prompts exist but won't process until resume() is called
+
+    After each run completes (or is cancelled/errored), any steering prompts in
+    queue are moved back to the front of the main queue.
+    """
 
     def __init__(
         self,
@@ -138,7 +155,6 @@ class AgentSession:
         self._pending_prompts: deque[_QueuedPrompt] = deque()
         self._pending_steering_prompts: deque[_QueuedPrompt] = deque()
         self._current_run_task: asyncio.Task[_RunResult] | None = None
-        self._discard_cancelled_history_task: asyncio.Task[_RunResult] | None = None
         self._subscribers: list[asyncio.Queue[AgentSessionEvent]] = []
         self._mutation_lock = asyncio.Lock()
         self._run_loop_wakeup = asyncio.Event()
@@ -293,6 +309,17 @@ class AgentSession:
                 self._subscribers.remove(queue)
 
     async def _run_loop(self) -> None:
+        """Main event loop. Runs until session is closed.
+
+        Outer loop: Wait for something to do (wakeup event set).
+        Inner loop: Process one prompt at a time while possible.
+
+        Exits inner loop when:
+        - Session closed
+        - Already running a task
+        - Paused (waiting for explicit resume)
+        - No prompts in queue
+        """
         while True:
             await self._run_loop_wakeup.wait()
 
@@ -301,14 +328,15 @@ class AgentSession:
                     if self._closed:
                         return
                     if self._current_run_task is not None:
-                        break
+                        break  # Another task is running
                     if self._paused:
                         self._run_loop_wakeup.clear()
-                        break
+                        break  # Waiting for explicit resume
                     if not self._pending_prompts:
                         self._run_loop_wakeup.clear()
-                        break
+                        break  # Nothing to do, go back to waiting
 
+                    # Start running the next prompt
                     prompt = self._pending_prompts.popleft()
                     current_history = [*self._history, UserMessage(content=prompt.content)]
                     run_task = asyncio.create_task(self._run_until_boundary(current_history, source=prompt.source))
@@ -322,16 +350,11 @@ class AgentSession:
                     result = None
                 finally:
                     async with self._mutation_lock:
-                        discard_cancelled_history = self._discard_cancelled_history_task is run_task
-                        if discard_cancelled_history:
-                            self._discard_cancelled_history_task = None
                         if self._current_run_task is run_task:
                             self._current_run_task = None
+                        # On cancellation or error, move steering prompts back to main queue
                         if result is not None and (result.cancelled or result.error is not None):
                             self._drain_steering_prompts_to_front_of_queue()
-
-                if discard_cancelled_history and result is not None and result.cancelled:
-                    result = _RunResult(history=None, source=result.source, cancelled=True)
 
                 if result is not None and result.history is not None:
                     self._history = result.history
