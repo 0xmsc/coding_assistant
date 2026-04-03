@@ -9,7 +9,7 @@ import pytest
 from rich.markdown import Markdown
 from websockets.asyncio.client import ClientConnection, connect
 
-from coding_assistant.app.terminal_ui import run_session_output
+from coding_assistant.app.cli import _run_output
 from coding_assistant.core.agent_session import (
     AgentSession,
     PromptStartedEvent,
@@ -134,17 +134,17 @@ async def _open_acp_session(websocket: ClientConnection) -> str:
 
 
 @pytest.mark.asyncio
-async def test_run_session_output_renders_system_message_and_streamed_content() -> None:
+async def test__run_output_renders_system_message_and_streamed_content() -> None:
     session = make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="Hello from the worker")]),
     )
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.terminal_ui.print_system_message") as mock_print_system,
+        patch("coding_assistant.app.cli.print_system_message") as mock_print_system,
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
-        task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
+        task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:
             await asyncio.sleep(0)
             assert await session.enqueue_prompt("Hi") is True
@@ -167,17 +167,17 @@ async def test_run_session_output_renders_system_message_and_streamed_content() 
 
 
 @pytest.mark.asyncio
-async def test_run_session_output_prints_started_prompt_before_run_output() -> None:
+async def test__run_output_prints_started_prompt_before_run_output() -> None:
     session = make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="Hello from the worker")]),
     )
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.terminal_ui.print_system_message"),
+        patch("coding_assistant.app.cli.print_system_message"),
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
-        task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
+        task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:
             await asyncio.sleep(0)
             session._publish_event(PromptStartedEvent(content="Do the task"))
@@ -194,7 +194,7 @@ async def test_run_session_output_prints_started_prompt_before_run_output() -> N
 
 
 @pytest.mark.asyncio
-async def test_run_session_output_prints_tool_calls_without_extra_spacing() -> None:
+async def test__run_output_prints_tool_calls_without_extra_spacing() -> None:
     session = make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
@@ -212,10 +212,10 @@ async def test_run_session_output_prints_tool_calls_without_extra_spacing() -> N
     )
 
     with (
-        patch("coding_assistant.app.terminal_ui.print_system_message"),
+        patch("coding_assistant.app.cli.print_system_message"),
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
-        task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
+        task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:
             await asyncio.sleep(0)
             session._publish_event(ContentDeltaEvent(content="Can you read README.md?"))
@@ -237,18 +237,18 @@ async def test_run_session_output_prints_tool_calls_without_extra_spacing() -> N
 
 
 @pytest.mark.asyncio
-async def test_run_session_output_prints_status_updates_when_enabled() -> None:
+async def test__run_output_prints_status_updates_when_enabled() -> None:
     session = make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.terminal_ui.print_system_message"),
+        patch("coding_assistant.app.cli.print_system_message"),
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(
-            run_session_output(session=session, system_message=system_message, show_state_updates=True),
+            _run_output(session=session, system_message=system_message, show_state_updates=True),
         )
         try:
             await asyncio.sleep(0)
@@ -274,17 +274,17 @@ async def test_run_session_output_prints_status_updates_when_enabled() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_session_output_prints_status_events_as_info_lines() -> None:
+async def test__run_output_prints_status_events_as_info_lines() -> None:
     session = make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.terminal_ui.print_system_message"),
+        patch("coding_assistant.app.cli.print_system_message"),
         patch("coding_assistant.app.output.rich_print") as mock_rich_print,
     ):
-        task = asyncio.create_task(run_session_output(session=session, system_message=system_message))
+        task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:
             await asyncio.sleep(0)
             session._publish_event(StatusEvent(message="Retrying LLM request"))
