@@ -1,8 +1,6 @@
 from pathlib import Path
-from typing import cast
 
 from coding_assistant.app.instructions import get_instructions
-from coding_assistant.integrations.mcp_client import MCPServer
 
 
 def _get_project_root() -> Path:
@@ -40,77 +38,3 @@ def test_get_instructions_appends_extra_sections(tmp_path: Path) -> None:
 
     assert "# Local tools" in instr
     assert "Use shell_execute." in instr
-
-
-def test_get_instructions_appends_mcp_instructions(tmp_path: Path) -> None:
-    wd = tmp_path
-
-    class _FakeServer:
-        def __init__(self, name: str, instructions: str | None):
-            self.name = name
-            self.instructions = instructions
-
-    s1 = _FakeServer("server1", "- Use server1 tools whenever possible.")
-    s2 = _FakeServer("server2", "- Server2: prefer safe operations.")
-
-    instr = get_instructions(
-        working_directory=wd,
-        user_instructions=[],
-        mcp_servers=cast(list[MCPServer], [s1, s2]),
-    )
-
-    assert "Use server1 tools whenever possible." in instr
-    assert "Server2: prefer safe operations." in instr
-
-
-def test_get_instructions_ignores_empty_or_missing_mcp_instructions(tmp_path: Path) -> None:
-    wd = tmp_path
-
-    class _BlankServer:
-        def __init__(self, name: str, instructions: str | None):
-            self.name = name
-            self.instructions = instructions
-
-    s1 = _BlankServer("s1", "   ")  # only whitespace
-    s2 = _BlankServer("s2", "")  # empty
-    s3 = _BlankServer("s3", None)  # None
-
-    instr = get_instructions(
-        working_directory=wd,
-        user_instructions=[],
-        mcp_servers=cast(list[MCPServer], [s1, s2, s3]),
-    )
-
-    # Ensure baseline rule present and nothing from the servers leaked
-    assert "Do not install any software" in instr
-    assert "Server" not in instr
-
-
-def test_get_instructions_includes_mcp_formatting_with_real_mcp_instructions(tmp_path: Path) -> None:
-    wd = tmp_path
-    mcp_instructions = """
-## Shell
-- Rule 1
-
-## Tasks
-- Rule 2
-""".strip()
-
-    class _FakeServer:
-        def __init__(self, name: str, instructions: str | None):
-            self.name = name
-            self.instructions = instructions
-
-    server = _FakeServer("external-server", mcp_instructions)
-
-    instr = get_instructions(
-        working_directory=wd,
-        user_instructions=[],
-        mcp_servers=cast(list[MCPServer], [server]),
-    )
-
-    assert "# MCP `external-server` instructions" in instr
-    assert "## Shell" in instr
-    assert "- Rule 1" in instr
-    assert "## Tasks" in instr
-    assert "- Rule 2" in instr

@@ -50,7 +50,6 @@ from coding_assistant.core.agent_session import (
     ToolCallsEvent,
 )
 from coding_assistant.infra.paths import get_app_cache_dir
-from coding_assistant.integrations.mcp_client import print_mcp_tools
 from coding_assistant.llm.types import (
     ContentDeltaEvent,
     StatusEvent,
@@ -110,10 +109,6 @@ async def run_cli(args: Namespace) -> None:
     config = build_default_agent_config(args)
 
     async with create_default_agent(config=config) as bundle:
-        if args.print_mcp_tools:
-            await print_mcp_tools(bundle.mcp_servers)
-            return
-
         system_message = build_initial_system_message(instructions=bundle.instructions)
         session = AgentSession(
             history=[system_message],

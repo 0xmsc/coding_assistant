@@ -4,7 +4,6 @@ import logging
 from pathlib import Path
 
 from coding_assistant.infra.paths import get_builtin_instructions_dir
-from coding_assistant.integrations.mcp_client import MCPServer
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +18,8 @@ def get_instructions(
     working_directory: Path,
     user_instructions: list[str],
     extra_sections: list[str] | None = None,
-    mcp_servers: list[MCPServer] | None = None,
 ) -> str:
-    """Assemble instructions from defaults, project files, MCP, and user input."""
+    """Assemble instructions from defaults, project files, and user input."""
     sections: list[str] = []
 
     sections.append(_load_default_instructions())
@@ -42,11 +40,6 @@ def get_instructions(
     for section in extra_sections or []:
         if section and section.strip():
             sections.append(section.strip())
-
-    for server in mcp_servers or []:
-        instructions = server.instructions
-        if instructions and instructions.strip():
-            sections.append(f"# MCP `{server.name}` instructions\n\n{instructions.strip()}")
 
     if user_instructions:
         sections.append("# User-provided instructions")
