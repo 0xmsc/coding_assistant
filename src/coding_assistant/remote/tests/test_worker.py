@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 import pytest
 from rich.markdown import Markdown
-from rich.panel import Panel
 from websockets.asyncio.client import ClientConnection, connect
 
 from coding_assistant.app.terminal_ui import run_session_output
@@ -160,14 +159,10 @@ async def test_run_session_output_renders_system_message_and_streamed_content() 
             await session.close()
 
     mock_print_system.assert_called_once_with(system_message)
-    panel_blocks = [
-        call.args[0] for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Panel)
-    ]
     markdown_blocks = [
         call.args[0] for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Markdown)
     ]
-    # Should have 1 Panel for the prompt (blank, Panel, blank = 3 calls, but we filter)
-    assert len(panel_blocks) == 1
+    # Should have rendered the streamed content as markdown
     assert [block.markup for block in markdown_blocks] == ["Hello from the worker"]
 
 
@@ -192,10 +187,10 @@ async def test_run_session_output_prints_started_prompt_before_run_output() -> N
             await asyncio.gather(task, return_exceptions=True)
             await session.close()
 
-    # Should call rich_print 3 times: blank line, Panel, blank line
+    # Should call rich_print 3 times: blank line, content, blank line
     assert len(mock_rich_print.call_args_list) == 3
-    panel = mock_rich_print.call_args_list[1].args[0]
-    assert isinstance(panel, Panel)
+    content = mock_rich_print.call_args_list[1].args[0]
+    assert "Do the task" in content
 
 
 @pytest.mark.asyncio
