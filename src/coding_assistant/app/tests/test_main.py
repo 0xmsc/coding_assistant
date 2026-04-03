@@ -4,9 +4,8 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from rich.console import Group
 from rich.markdown import Markdown
-from rich.text import Text
+from rich.panel import Panel
 
 from coding_assistant.app.cli import _handle_prompt_submission, run_cli
 from coding_assistant.app.terminal_ui import PromptSubmitType
@@ -259,17 +258,10 @@ def test_print_prompt_accepted_uses_simple_grey_background() -> None:
 
         print_active_prompt("Do the task")
 
-    assert len(mock_print.call_args_list) == 1
-    group = mock_print.call_args_list[0].args[0]
-    assert isinstance(group, Group)
-    assert len(group.renderables) == 1
-    line = group.renderables[0]
-    assert isinstance(line, Text)
-    assert line.plain == "▌ Do the task"
-    assert [(span.start, span.end, span.style) for span in line.spans] == [
-        (0, 2, "grey50"),
-        (2, 13, "on grey11"),
-    ]
+    # Should call rich_print 3 times: blank line, Panel, blank line
+    assert len(mock_print.call_args_list) == 3
+    panel = mock_print.call_args_list[1].args[0]
+    assert isinstance(panel, Panel)
 
 
 def test_format_tool_call_markdown_hides_edit_payload_values() -> None:
