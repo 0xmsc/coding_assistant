@@ -162,12 +162,9 @@ def print_active_prompt(content: str | list[dict[str, Any]]) -> None:
 
     lines = rendered_content.split("\n")
     rich_print()
-    if len(lines) == 1:
-        rich_print(f"  [bold cyan]▌[/bold cyan] [white]{lines[0]}[/white]")
-    else:
-        rich_print(f"  [bold cyan]▌[/bold cyan] [white]{lines[0]}[/white]")
-        for line in lines[1:]:
-            rich_print(f"    [dim]│[/dim] [white]{line}[/white]")
+    rich_print(f"  [bold cyan]▌[/bold cyan] [white]{lines[0]}[/white]")
+    for line in lines[1:]:
+        rich_print(f"    [dim]│[/dim] [white]{line}[/white]")
     rich_print()
 
 
