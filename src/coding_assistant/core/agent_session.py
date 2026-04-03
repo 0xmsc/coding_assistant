@@ -107,17 +107,21 @@ AgentSessionEvent = (
 
 @dataclass(frozen=True)
 class _QueuedPrompt:
+    """Internal representation of a prompt waiting to be processed."""
+
     content: PromptContent
     source: str = "local"
 
 
 @dataclass(frozen=True)
 class _RunResult:
-    history: list[BaseMessage] | None
-    source: str
-    summary: str = ""
-    cancelled: bool = False
-    error: str | None = None
+    """Result of a single agent run, returned by `_run_until_boundary`."""
+
+    history: list[BaseMessage] | None  # Updated transcript, or None on fatal error
+    source: str  # Origin of the prompt that triggered this run
+    summary: str = ""  # Short text summarizing the outcome
+    cancelled: bool = False  # True if the run was cancelled
+    error: str | None = None  # Error message if the run failed
 
 
 class AgentSession:
@@ -152,10 +156,14 @@ class AgentSession:
         self._model = model
         self._tools = list(tools)
         self._completion_streamer = completion_streamer
+        # Two queues with different roles:
+        # - _pending_prompts: main FIFO queue when session is idle.
+        # - _pending_steering_prompts: injected at agent boundaries while a run is active.
         self._pending_prompts: deque[_QueuedPrompt] = deque()
         self._pending_steering_prompts: deque[_QueuedPrompt] = deque()
         self._current_run_task: asyncio.Task[_RunResult] | None = None
         self._subscribers: list[asyncio.Queue[AgentSessionEvent]] = []
+        # Protects all state mutations; public mutating methods acquire this lock.
         self._mutation_lock = asyncio.Lock()
         self._run_loop_wakeup = asyncio.Event()
         self._closed = False
@@ -299,6 +307,14 @@ class AgentSession:
 
     @asynccontextmanager
     async def _subscribe(self) -> AsyncIterator[asyncio.Queue[AgentSessionEvent]]:
+        """Create a new event subscription queue and deliver an initial state snapshot.
+
+        Yields:
+            A queue that will receive all subsequent session events.
+
+        Note:
+            The queue is automatically removed from subscribers on exit.
+        """
         queue: asyncio.Queue[AgentSessionEvent] = asyncio.Queue()
         self._subscribers.append(queue)
         queue.put_nowait(StateChangedEvent(state=self.state))
@@ -309,16 +325,20 @@ class AgentSession:
                 self._subscribers.remove(queue)
 
     async def _run_loop(self) -> None:
-        """Main event loop. Runs until session is closed.
+        """Main event loop driving prompt processing.
 
-        Outer loop: Wait for something to do (wakeup event set).
-        Inner loop: Process one prompt at a time while possible.
+        Structure:
+        - Outer loop: wait for _run_loop_wakeup event.
+        - Inner loop: while idle and prompts available, run them sequentially.
 
-        Exits inner loop when:
-        - Session closed
-        - Already running a task
-        - Paused (waiting for explicit resume)
-        - No prompts in queue
+        The inner loop exits when:
+        - Session is closed (exit outer loop entirely)
+        - A run is already active (another task started it)
+        - Session is paused (wait for resume())
+        - No pending prompts (clear wakeup and return to outer wait)
+
+        After each run completes (success, cancellation, or error), steering prompts
+        are drained back to the main queue (LIFO) so they run before new prompts.
         """
         while True:
             await self._run_loop_wakeup.wait()
@@ -368,6 +388,22 @@ class AgentSession:
                 await self._publish_state()
 
     async def _run_until_boundary(self, history: list[BaseMessage], *, source: str) -> _RunResult:
+        """Run the agent from the given history until the next user boundary.
+
+        The agent stream is consumed until it yields either:
+        - AwaitingUser: the assistant has produced a message and is waiting for user input.
+        - AwaitingToolCalls: the assistant has requested tool calls; these are executed.
+
+        After handling tool calls, the loop continues until the next boundary.
+        Steering prompts are injected at each boundary if available.
+
+        Args:
+            history: The starting conversation history (includes the initial user prompt).
+            source: Identification string for the origin of this run (for event tracing).
+
+        Returns:
+            A `_RunResult` capturing the final history, outcome, and optional error.
+        """
         current_history = list(history)
         try:
             while True:
@@ -425,19 +461,38 @@ class AgentSession:
             return _RunResult(history=None, source=source, error=str(exc))
 
     async def _pop_next_steering_prompt(self) -> _QueuedPrompt | None:
+        """Remove and return the next steering prompt, if any.
+
+        Acquires the mutation lock and respects the closed state.
+
+        Returns:
+            The next steering prompt, or None if none available or session closed.
+        """
         async with self._mutation_lock:
             if self._closed or not self._pending_steering_prompts:
                 return None
             return self._pending_steering_prompts.popleft()
 
     def _drain_steering_prompts_to_front_of_queue(self) -> None:
+        """Move all steering prompts back to the front of the main queue.
+
+        Called after a run ends (completion, cancellation, or error) so that
+        any steering prompts that were injected mid-run get re-queued as regular
+        prompts and processed in LIFO order before new prompts.
+        """
         while self._pending_steering_prompts:
             self._pending_prompts.appendleft(self._pending_steering_prompts.pop())
 
     async def _publish_state(self) -> None:
+        """Publish a state snapshot event to all subscribers."""
         self._publish_event(StateChangedEvent(state=self.state))
 
     def _publish_event(self, event: AgentSessionEvent) -> None:
+        """Broadcast an event to all subscriber queues.
+
+        Uses `list(self._subscribers)` to allow safe mutation during iteration
+        (e.g., subscribers unsubscribing in response to events).
+        """
         for queue in list(self._subscribers):
             queue.put_nowait(event)
 
