@@ -178,12 +178,13 @@ def test_delta_renderer_avoids_double_spacing_before_tool_calls() -> None:
         renderer.finish(trailing_blank_line=False)
         print_tool_calls(tool_call_message)
 
-    assert len(mock_print.call_args_list) == 3
+    assert len(mock_print.call_args_list) == 4
     assert mock_print.call_args_list[0].args == ()
     assert isinstance(mock_print.call_args_list[1].args[0], Markdown)
     assert mock_print.call_args_list[1].args[0].markup == "Can you read README.md?"
-    assert "▶" in str(mock_print.call_args_list[2])
-    assert "shell_execute" in str(mock_print.call_args_list[2])
+    assert mock_print.call_args_list[2].args == ()  # blank line before tool call
+    assert "▶" in str(mock_print.call_args_list[3])
+    assert "shell_execute" in str(mock_print.call_args_list[3])
 
 
 def test_delta_renderer_finish_is_idempotent() -> None:
