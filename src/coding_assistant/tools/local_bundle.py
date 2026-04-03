@@ -14,7 +14,7 @@ from coding_assistant.tools.shell import create_shell_tools
 from coding_assistant.tools.skills import create_skill_tools, format_skills_instructions
 from coding_assistant.tools.tasks import TaskManager, create_task_tools
 from coding_assistant.tools.todo import TodoManager, create_todo_tools
-from coding_assistant.tools.workers import WorkerToolRuntime
+from coding_assistant.tools.remote import WorkerToolRuntime
 
 
 @dataclass(slots=True)

@@ -21,7 +21,7 @@ from coding_assistant.llm.types import (
     UserMessage,
 )
 from coding_assistant.remote.server import start_worker_server
-from coding_assistant.tools.workers import WorkerToolRuntime
+from coding_assistant.tools.remote import WorkerToolRuntime
 
 
 @dataclass
