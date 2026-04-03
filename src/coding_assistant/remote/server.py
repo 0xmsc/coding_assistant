@@ -18,8 +18,8 @@ from coding_assistant.core.agent_session import (
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
-    ToolCallUpdateEvent,
     ToolCallsEvent,
+    ToolCallUpdateEvent,
 )
 from coding_assistant.llm.types import ContentDeltaEvent
 from coding_assistant.remote.acp import (
@@ -91,7 +91,7 @@ def _tool_calls_to_updates(event: ToolCallsEvent) -> list[dict[str, Any]]:
                 kind="other",
                 status="pending",
                 raw_input=_tool_call_raw_input(tool_call.function.arguments),
-            )
+            ),
         )
     return updates
 
@@ -187,7 +187,7 @@ async def _handle_jsonrpc_message(
         protocol_version = params.get("protocolVersion")
         if not isinstance(protocol_version, int):
             await websocket.send(
-                jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "initialize requires an integer protocolVersion.")
+                jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "initialize requires an integer protocolVersion."),
             )
             return
         negotiated_version = min(protocol_version, ACP_PROTOCOL_VERSION)
@@ -201,7 +201,7 @@ async def _handle_jsonrpc_message(
                     agent_version=_agent_version(),
                 )
                 | {"protocolVersion": negotiated_version},
-            )
+            ),
         )
         return
 
@@ -211,7 +211,7 @@ async def _handle_jsonrpc_message(
             return
         if not state.initialized:
             await websocket.send(
-                jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "initialize must be called before session/new.")
+                jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "initialize must be called before session/new."),
             )
             return
         state.session_opened = True
@@ -228,7 +228,7 @@ async def _handle_jsonrpc_message(
                     response_id,
                     ERROR_INVALID_REQUEST,
                     "initialize and session/new must be completed before session/prompt.",
-                )
+                ),
             )
             return
         if params.get("sessionId") != session_id:
@@ -237,12 +237,12 @@ async def _handle_jsonrpc_message(
         prompt_blocks = params.get("prompt")
         if not isinstance(prompt_blocks, list):
             await websocket.send(
-                jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "session/prompt requires a prompt array.")
+                jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "session/prompt requires a prompt array."),
             )
             return
         if state.active_prompt_request_id is not None:
             await websocket.send(
-                jsonrpc_error(response_id, ERROR_SERVER, "This ACP connection already has an active prompt turn.")
+                jsonrpc_error(response_id, ERROR_SERVER, "This ACP connection already has an active prompt turn."),
             )
             return
 
@@ -260,7 +260,7 @@ async def _handle_jsonrpc_message(
             state.active_prompt_request_id = None
             state.active_prompt_source = None
             await websocket.send(
-                jsonrpc_error(response_id, ERROR_SERVER, "Session is busy. Wait for the current turn or cancel it.")
+                jsonrpc_error(response_id, ERROR_SERVER, "Session is busy. Wait for the current turn or cancel it."),
             )
             return
         return
@@ -294,7 +294,7 @@ async def start_worker_server(
         async with connection_lock:
             if active_connection is not None:
                 await websocket.send(
-                    jsonrpc_error(None, ERROR_SERVER, "Session already has a remote client connected.")
+                    jsonrpc_error(None, ERROR_SERVER, "Session already has a remote client connected."),
                 )
                 await websocket.close()
                 return
@@ -307,7 +307,7 @@ async def start_worker_server(
                 session=session,
                 session_id=session_id,
                 state=state,
-            )
+            ),
         )
         try:
             async for raw_message in websocket:

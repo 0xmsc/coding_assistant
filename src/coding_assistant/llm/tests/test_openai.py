@@ -1,28 +1,29 @@
-from typing import cast, Any
 import json
-import pytest
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import httpx
+import pytest
+
 from coding_assistant.llm import openai as openai_model
+from coding_assistant.llm.openai import (
+    _extract_usage,
+    _get_base_url_and_api_key,
+    _merge_chunks,
+    _prepare_messages,
+)
 from coding_assistant.llm.types import (
+    AssistantMessage,
     Completion,
     CompletionEvent,
     ContentDeltaEvent,
+    FunctionCall,
     ReasoningDeltaEvent,
     StatusEvent,
     StatusLevel,
-    Usage,
-    AssistantMessage,
     ToolCall,
-    FunctionCall,
+    Usage,
     UserMessage,
-)
-from coding_assistant.llm.openai import (
-    _merge_chunks,
-    _extract_usage,
-    _get_base_url_and_api_key,
-    _prepare_messages,
 )
 
 
@@ -59,16 +60,16 @@ class TestMergeChunks:
                     {
                         "delta": {"role": "assistant", "content": "Hello"},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [
                     {
                         "delta": {"content": " world"},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
         ]
 
@@ -88,24 +89,24 @@ class TestMergeChunks:
                     {
                         "delta": {"role": "assistant", "reasoning": "Thinking"},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [
                     {
                         "delta": {"reasoning": " more thoughts"},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [
                     {
                         "delta": {"content": "Answer"},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
         ]
 
@@ -127,8 +128,8 @@ class TestMergeChunks:
                             "tool_calls": [{"index": 0, "id": "call_", "function": {"name": "test", "arguments": ""}}],
                         },
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [
@@ -137,8 +138,8 @@ class TestMergeChunks:
                             "tool_calls": [{"index": 0, "function": {"arguments": '{"key"'}}],
                         },
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [
@@ -147,8 +148,8 @@ class TestMergeChunks:
                             "tool_calls": [{"index": 0, "function": {"arguments": ': "value"}'}}],
                         },
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
         ]
 
@@ -177,8 +178,8 @@ class TestMergeChunks:
                     {
                         "delta": {"role": "assistant", "content": ""},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
         ]
 
@@ -197,8 +198,8 @@ class TestMergeChunks:
                     {
                         "delta": {"role": "assistant", "content": "Hello"},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [{"delta": {}}],
@@ -228,7 +229,7 @@ class TestMergeChunks:
                     {
                         "delta": {"content": "Part 1"},
                         "finish_reason": None,
-                    }
+                    },
                 ],
                 "usage": {
                     "total_tokens": 10,
@@ -240,7 +241,7 @@ class TestMergeChunks:
                     {
                         "delta": {"content": " Part 2"},
                         "finish_reason": None,
-                    }
+                    },
                 ],
             },
             {
@@ -307,22 +308,22 @@ class TestMergeChunks:
                     {
                         "delta": {
                             "reasoning_details": [
-                                {"type": "reasoning.text", "index": 0, "text": "Step 1", "signature": "sig1"}
-                            ]
-                        }
-                    }
-                ]
+                                {"type": "reasoning.text", "index": 0, "text": "Step 1", "signature": "sig1"},
+                            ],
+                        },
+                    },
+                ],
             },
             {
                 "choices": [
                     {
                         "delta": {
                             "reasoning_details": [
-                                {"type": "reasoning.text", "index": 0, "text": "Step 2", "signature": "sig2"}
-                            ]
-                        }
-                    }
-                ]
+                                {"type": "reasoning.text", "index": 0, "text": "Step 2", "signature": "sig2"},
+                            ],
+                        },
+                    },
+                ],
             },
         ]
         msg = _merge_chunks(cast(Any, chunks))
@@ -352,8 +353,8 @@ class TestMergeChunks:
         chunks = [
             {
                 "choices": [
-                    {"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Text chunk"}]}}
-                ]
+                    {"delta": {"reasoning_details": [{"type": "reasoning.text", "index": 0, "text": "Text chunk"}]}},
+                ],
             },
             {"choices": [{"delta": {"reasoning_details": [{"type": "reasoning.other", "index": 0, "data": "value"}]}}]},
         ]
@@ -373,16 +374,16 @@ class TestMergeChunks:
                     {
                         "delta": {
                             "reasoning_details": [
-                                {"type": "reasoning.summary", "index": 0, "summary": "Summary part 1"}
-                            ]
-                        }
-                    }
-                ]
+                                {"type": "reasoning.summary", "index": 0, "summary": "Summary part 1"},
+                            ],
+                        },
+                    },
+                ],
             },
             {
                 "choices": [
-                    {"delta": {"reasoning_details": [{"type": "reasoning.summary", "index": 0, "summary": " part 2"}]}}
-                ]
+                    {"delta": {"reasoning_details": [{"type": "reasoning.summary", "index": 0, "summary": " part 2"}]}},
+                ],
             },
         ]
         msg = _merge_chunks(cast(Any, chunks))
@@ -407,13 +408,13 @@ class TestMergeChunks:
         chunks = [
             {
                 "choices": [
-                    {"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "f1", "arguments": ""}}]}}
-                ]
+                    {"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "f1", "arguments": ""}}]}},
+                ],
             },
             {
                 "choices": [
-                    {"delta": {"tool_calls": [{"index": 1, "id": "c2", "function": {"name": "f2", "arguments": ""}}]}}
-                ]
+                    {"delta": {"tool_calls": [{"index": 1, "id": "c2", "function": {"name": "f2", "arguments": ""}}]}},
+                ],
             },
             {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "arg1"}}]}}]},
             {"choices": [{"delta": {"tool_calls": [{"index": 1, "function": {"arguments": "arg2"}}]}}]},
@@ -437,11 +438,11 @@ class TestMergeChunks:
                     {
                         "delta": {
                             "tool_calls": [
-                                {"index": 0, "id": "call_456", "function": {"name": "calc", "arguments": ""}}
-                            ]
-                        }
-                    }
-                ]
+                                {"index": 0, "id": "call_456", "function": {"name": "calc", "arguments": ""}},
+                            ],
+                        },
+                    },
+                ],
             },
             {"choices": [{"delta": {"content": " searching"}}]},
         ]
@@ -509,16 +510,16 @@ class TestIntegration:
                     {
                         "delta": {"role": "assistant", "content": "The answer"},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [
                     {
                         "delta": {"content": " is 42."},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [{"delta": {}}],
@@ -556,8 +557,8 @@ class TestIntegration:
                     {
                         "delta": {"role": "assistant", "content": "Response"},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [{"delta": {}}],
@@ -592,24 +593,24 @@ class TestIntegration:
                     {
                         "delta": {"role": "assistant", "reasoning": "Step 1"},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [
                     {
                         "delta": {"reasoning": " Step 2"},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [
                     {
                         "delta": {"content": "Final"},
                         "finish_reason": None,
-                    }
-                ]
+                    },
+                ],
             },
             {
                 "choices": [{"delta": {}}],
@@ -728,7 +729,7 @@ class TestOpenAIComplete:
                 completion=Completion(
                     message=AssistantMessage(content="Hello world", provider_specific_fields={"reasoning_details": []}),
                     usage=None,
-                )
+                ),
             ),
         ]
 
@@ -746,13 +747,13 @@ class TestOpenAIComplete:
                                         "index": 0,
                                         "id": "call_123",
                                         "function": {"name": "get_weather", "arguments": '{"location": "New York"}'},
-                                    }
-                                ]
-                            }
-                        }
-                    ]
-                }
-            )
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                },
+            ),
         ]
         mock_context_instance = FakeContext(fake_events)
         mock_ac = MagicMock(return_value=mock_context_instance)

@@ -12,7 +12,6 @@ from rich.panel import Panel
 from coding_assistant.core.agent_session import SessionState
 from coding_assistant.llm.types import AssistantMessage, SystemMessage, ToolCall
 
-
 SPECIAL_TOOL_FORMATS: dict[str, dict[str, Any]] = {
     "shell_execute": {
         "languages": {"command": "bash"},

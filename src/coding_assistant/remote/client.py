@@ -152,7 +152,7 @@ class RemoteWorkerConnection:
                         "sessionId": self._session_id,
                         "prompt": [text_block(prompt)],
                     },
-                )
+                ),
             )
 
         try:
@@ -177,7 +177,7 @@ class RemoteWorkerConnection:
                     {
                         "sessionId": self._session_id,
                     },
-                )
+                ),
             )
 
     async def close(self) -> None:
@@ -277,7 +277,7 @@ class RemoteWorkerConnection:
                     status=str(update.get("status", "")),
                     title=update.get("title") if isinstance(update.get("title"), str) else None,
                     content=content_text,
-                )
+                ),
             )
 
     async def _handle_response(self, payload: JsonObject) -> None:

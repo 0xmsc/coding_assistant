@@ -1,4 +1,5 @@
 from typing import Any
+
 from coding_assistant.integrations.mcp_client import get_default_env
 
 

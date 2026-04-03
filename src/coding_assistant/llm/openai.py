@@ -1,34 +1,34 @@
 from __future__ import annotations
 
-import dataclasses
 import asyncio
+import dataclasses
 import functools
 import json
 import logging
 import os
 import re
 from collections.abc import AsyncIterator, Sequence
-from typing import Literal, cast, Any
+from typing import Any, Literal, cast
 
 import httpx
-from httpx_sse import aconnect_sse, SSEError
+from httpx_sse import SSEError, aconnect_sse
 
+from coding_assistant.infra.trace import trace_json
 from coding_assistant.llm.types import (
+    AssistantMessage,
+    BaseMessage,
     Completion,
     CompletionEvent,
     ContentDeltaEvent,
-    Usage,
-    BaseMessage,
-    ReasoningDeltaEvent,
-    StatusLevel,
-    StatusEvent,
-    ToolDefinition,
-    ToolCall,
     FunctionCall,
-    AssistantMessage,
+    ReasoningDeltaEvent,
+    StatusEvent,
+    StatusLevel,
+    ToolCall,
+    ToolDefinition,
+    Usage,
     message_to_dict,
 )
-from coding_assistant.infra.trace import trace_json
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ async def _get_tools_payload(tools: Sequence[ToolDefinition]) -> list[dict[str, 
                     "description": tool.description(),
                     "parameters": params,
                 },
-            }
+            },
         )
     return result
 
@@ -129,7 +129,7 @@ def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
                     name=item["function"]["name"],
                     arguments=item["function"]["arguments"],
                 ),
-            )
+            ),
         )
 
     return AssistantMessage(
@@ -240,7 +240,7 @@ async def _try_completion(
         completion=Completion(
             message=message,
             usage=usage,
-        )
+        ),
     )
 
 

@@ -4,7 +4,6 @@ from collections.abc import Sequence
 
 from coding_assistant.llm.types import BaseMessage, SystemMessage, UserMessage
 
-
 SYSTEM_PROMPT_TEMPLATE = """
 ## General
 

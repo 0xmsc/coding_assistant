@@ -6,8 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.tools.process import ProcessHandle, truncate_output
 from coding_assistant.llm.types import Tool
+from coding_assistant.tools.process import ProcessHandle, truncate_output
 
 
 @dataclass

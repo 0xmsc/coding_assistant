@@ -12,7 +12,6 @@ from coding_assistant.core.builtin_tools import CompactConversationTool, Redirec
 from coding_assistant.core.history import compact_history
 from coding_assistant.llm.types import BaseMessage, Tool, ToolCall, ToolMessage
 
-
 ToolCallKind = Literal["read", "edit", "delete", "move", "search", "execute", "think", "fetch", "other"]
 
 
@@ -111,7 +110,7 @@ def _publish_tool_call_event(
             raw_input=raw_input,
             raw_output=raw_output,
             content=content,
-        )
+        ),
     )
 
 
@@ -126,7 +125,7 @@ def _append_tool_message(
             tool_call_id=tool_call.id,
             name=tool_call.function.name,
             content=content,
-        )
+        ),
     )
 
 

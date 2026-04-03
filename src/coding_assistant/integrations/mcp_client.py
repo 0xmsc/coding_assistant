@@ -147,7 +147,9 @@ def get_default_env() -> dict[str, str]:
 
 @asynccontextmanager
 async def get_mcp_servers_from_config(
-    config_servers: list[MCPServerConfig], *, working_directory: Path
+    config_servers: list[MCPServerConfig],
+    *,
+    working_directory: Path,
 ) -> AsyncGenerator[list[MCPServer], None]:
     """Create MCP servers from configuration objects."""
     if not working_directory.exists():
@@ -168,7 +170,7 @@ async def get_mcp_servers_from_config(
             for env_var in server_config.env:
                 if env_var not in os.environ:
                     raise ValueError(
-                        f"Required environment variable '{env_var}' for MCP server '{server_config.name}' is not set"
+                        f"Required environment variable '{env_var}' for MCP server '{server_config.name}' is not set",
                     )
                 env[env_var] = os.environ[env_var]
 
@@ -190,7 +192,7 @@ async def get_mcp_servers_from_config(
                     name=server_config.name,
                     config=backend,
                     prefix=server_config.prefix,
-                )
+                ),
             )
             servers.append(server)
 

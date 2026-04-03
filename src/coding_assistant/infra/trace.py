@@ -1,7 +1,8 @@
-import json5
-from pathlib import Path
 import logging
+from pathlib import Path
 from typing import Any
+
+import json5
 
 from coding_assistant.infra.paths import get_traces_dir
 

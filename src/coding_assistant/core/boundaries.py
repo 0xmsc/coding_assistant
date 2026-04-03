@@ -25,7 +25,7 @@ class AwaitingToolCalls:
         pending_message = get_pending_tool_call_message(self.history)
         if pending_message is None:
             raise RuntimeError(
-                "AwaitingToolCalls requires the last history entry to be an assistant tool-call message."
+                "AwaitingToolCalls requires the last history entry to be an assistant tool-call message.",
             )
         return pending_message
 

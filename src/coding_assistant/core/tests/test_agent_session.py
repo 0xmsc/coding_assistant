@@ -15,8 +15,8 @@ from coding_assistant.core.agent_session import (
     RunFailedEvent,
     RunFinishedEvent,
     StateChangedEvent,
-    ToolCallUpdateEvent,
     ToolCallsEvent,
+    ToolCallUpdateEvent,
 )
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -191,7 +191,7 @@ async def test_agent_session_enqueue_prompt_if_idle_rejects_busy_session() -> No
                     started_event=first_started,
                     release_event=first_release,
                 ),
-            ]
+            ],
         ),
     )
 
@@ -221,7 +221,7 @@ async def test_agent_session_queues_prompts_fifo_while_run_is_in_flight() -> Non
                 release_event=first_release,
             ),
             StreamStep(message=AssistantMessage(content="Second result")),
-        ]
+        ],
     )
     session = make_session(completion_streamer=streamer)
 
@@ -267,7 +267,7 @@ async def test_agent_session_starts_queued_prompt_only_after_current_run_finishe
                 message=AssistantMessage(content="Second result"),
                 started_event=second_started,
             ),
-        ]
+        ],
     )
     session = make_session(completion_streamer=streamer)
 
@@ -315,7 +315,7 @@ async def test_agent_session_priority_prompt_runs_before_existing_queued_prompts
             ),
             StreamStep(message=AssistantMessage(content="Priority result")),
             StreamStep(message=AssistantMessage(content="Second result")),
-        ]
+        ],
     )
     session = make_session(completion_streamer=streamer)
 
@@ -354,12 +354,12 @@ async def test_agent_session_inserts_steering_prompt_into_active_run_after_tool_
                                 name="echo_tool",
                                 arguments='{"text": "hello"}',
                             ),
-                        )
-                    ]
-                )
+                        ),
+                    ],
+                ),
             ),
             StreamStep(message=AssistantMessage(content="Steered result")),
-        ]
+        ],
     )
     session = make_session(
         completion_streamer=streamer,
@@ -399,8 +399,8 @@ async def test_agent_session_inserts_steering_prompt_into_active_run_after_tool_
                         name="echo_tool",
                         arguments='{"text": "hello"}',
                     ),
-                )
-            ]
+                ),
+            ],
         ),
         ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
         UserMessage(content="steer now"),
@@ -420,7 +420,7 @@ async def test_agent_session_interrupt_cancels_current_run_and_drops_partial_out
                 release_event=never_release,
             ),
             StreamStep(message=AssistantMessage(content="Done second")),
-        ]
+        ],
     )
     session = make_session(completion_streamer=streamer)
 
@@ -454,8 +454,8 @@ async def test_agent_session_cancel_current_run_publishes_cancellation_and_resto
                 message=AssistantMessage(content="Working..."),
                 started_event=started,
                 release_event=asyncio.Event(),
-            )
-        ]
+            ),
+        ],
     )
     session = make_session(completion_streamer=streamer)
 
@@ -503,7 +503,7 @@ async def test_agent_session_cancel_with_pause_queue_keeps_pending_prompt_stoppe
                 message=AssistantMessage(content="Resumed result"),
                 started_event=second_started,
             ),
-        ]
+        ],
     )
     session = make_session(completion_streamer=streamer)
 
@@ -561,7 +561,7 @@ async def test_agent_session_cancel_with_discard_pending_prompts_preserves_cance
                 release_event=asyncio.Event(),
             ),
             StreamStep(message=AssistantMessage(content="Fresh result")),
-        ]
+        ],
     )
     session = make_session(completion_streamer=streamer)
 
@@ -647,7 +647,9 @@ async def test_agent_session_cancel_during_tool_execution_preserves_completed_an
         AssistantMessage(tool_calls=tool_calls),
         ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:done"),
         ToolMessage(
-            tool_call_id="call-2", name="slow_tool", content="Tool execution cancelled by user before completion."
+            tool_call_id="call-2",
+            name="slow_tool",
+            content="Tool execution cancelled by user before completion.",
         ),
     ]
 
@@ -665,12 +667,12 @@ async def test_agent_session_emits_tool_call_and_finish_events() -> None:
                                 name="echo_tool",
                                 arguments='{"text": "hello"}',
                             ),
-                        )
-                    ]
-                )
+                        ),
+                    ],
+                ),
             ),
             StreamStep(message=AssistantMessage(content="Done")),
-        ]
+        ],
     )
     session = make_session(completion_streamer=streamer, tools=[EchoTool()])
 
