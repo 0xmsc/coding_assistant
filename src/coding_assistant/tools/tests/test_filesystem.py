@@ -259,3 +259,68 @@ async def test_edit_file_replace_all_true_no_occurrences(tmp_path: Path) -> None
     with pytest.raises(ValueError) as ei:
         await edit_file(p, old_text="foo", new_text="bar", replace_all=True)
     assert "not found" in str(ei.value)
+
+
+@pytest.mark.asyncio
+async def test_edit_file_includes_summary_header(tmp_path: Path) -> None:
+    """Test that edit_file output includes a clear summary of the change."""
+    p = tmp_path / "summary_test.txt"
+    original = "hello world\n"
+    await write_file(p, original)
+
+    result = await edit_file(p, old_text="world", new_text="universe")
+
+    # Check summary header
+    assert f"Applied edit to {p}" in result
+    assert '- Old: "world"' in result
+    assert '+ New: "universe"' in result
+    # Check unified diff is present
+    assert "@@" in result
+    assert "-hello world" in result
+    assert "+hello universe" in result
+
+
+@pytest.mark.asyncio
+async def test_edit_file_summary_truncates_long_text(tmp_path: Path) -> None:
+    """Test that long old/new text is truncated in the summary."""
+    p = tmp_path / "truncate_test.txt"
+    original = "start " + "x" * 150 + " end\n"
+    await write_file(p, original)
+
+    long_old = "x" * 150
+    long_new = "y" * 150
+    result = await edit_file(p, old_text=long_old, new_text=long_new)
+
+    # Summary should show truncated text (truncation uses ...)
+    assert "..." in result  # Truncation marker
+    assert '- Old: "' in result
+    assert '+ New: "' in result
+    # Full diff should still have the complete changes
+    assert "-start " + "x" * 150 in result
+    assert "+start " + "y" * 150 in result
+
+
+@pytest.mark.asyncio
+async def test_edit_file_summary_shows_multiline(tmp_path: Path) -> None:
+    """Test that multiline text is shown with visible newlines."""
+    p = tmp_path / "multiline_test.txt"
+    original = "line1\nline2\nline3\n"
+    await write_file(p, original)
+
+    result = await edit_file(p, old_text="line1\nline2", new_text="first\nsecond")
+
+    # Newlines should be visible in summary
+    assert '"line1\\nline2"' in result
+    assert '"first\\nsecond"' in result
+
+
+@pytest.mark.asyncio
+async def test_edit_file_replace_all_shows_count(tmp_path: Path) -> None:
+    """Test that replace_all shows how many occurrences were replaced."""
+    p = tmp_path / "replace_count.txt"
+    original = "foo bar foo baz foo\n"
+    await write_file(p, original)
+
+    result = await edit_file(p, old_text="foo", new_text="XYZ", replace_all=True)
+
+    assert "replaced all 3 occurrences" in result
