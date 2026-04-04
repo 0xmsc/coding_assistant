@@ -40,6 +40,7 @@ class StreamStep:
     message: AssistantMessage
     started_event: asyncio.Event | None = None
     release_event: asyncio.Event | None = None
+    usage: Usage | None = Usage(tokens=10, cost=0.0)
 
 
 class ControlledStreamer:
@@ -60,7 +61,12 @@ class ControlledStreamer:
             yield ContentDeltaEvent(content=step.message.content)
         if step.release_event is not None:
             await step.release_event.wait()
-        yield CompletionEvent(completion=Completion(message=step.message, usage=Usage(tokens=10, cost=0.0)))
+        yield CompletionEvent(
+            completion=Completion(
+                message=step.message,
+                usage=step.usage,
+            ),
+        )
 
 
 class FailingStreamer:
@@ -590,3 +596,71 @@ async def test_agent_session_publishes_run_failed_event() -> None:
     await session.close()
     assert isinstance(failed_event, RunFailedEvent)
     assert failed_event.error == "boom"
+
+
+@pytest.mark.asyncio
+async def test_agent_session_accumulates_usage_from_completion_event() -> None:
+    """State should reflect cumulative tokens and cost after each run."""
+    streamer = ControlledStreamer(
+        [
+            StreamStep(
+                message=AssistantMessage(content="First run"),
+                usage=Usage(tokens=1000, cost=0.01),
+            ),
+            StreamStep(
+                message=AssistantMessage(content="Second run"),
+                usage=Usage(tokens=2000, cost=0.02),
+            ),
+        ],
+    )
+    session = make_session(completion_streamer=streamer)
+
+    async with session.subscribe() as queue:
+        await wait_for_event(queue, StateChangedEvent)
+        assert await session.enqueue_prompt("first") is True
+        await wait_for_event(queue, RunFinishedEvent)
+
+        assert session.state.total_tokens == 1000
+        assert session.state.total_cost == 0.01
+
+        assert await session.enqueue_prompt("second") is True
+        await wait_for_event(queue, RunFinishedEvent)
+
+        # total_tokens is set to latest Usage.tokens; total_cost accumulates
+        assert session.state.total_tokens == 2000
+        assert session.state.total_cost == 0.03
+
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_agent_session_usage_not_accumulated_when_completion_has_no_usage() -> None:
+    """A CompletionEvent with no usage should not affect totals."""
+    streamer = ControlledStreamer(
+        [
+            StreamStep(
+                message=AssistantMessage(content="First run"),
+                usage=Usage(tokens=500, cost=0.005),
+            ),
+            StreamStep(
+                message=AssistantMessage(content="Second run"),
+                usage=None,
+            ),
+        ],
+    )
+    session = make_session(completion_streamer=streamer)
+
+    async with session.subscribe() as queue:
+        await wait_for_event(queue, StateChangedEvent)
+        assert await session.enqueue_prompt("first") is True
+        await wait_for_event(queue, RunFinishedEvent)
+        assert session.state.total_tokens == 500
+        assert session.state.total_cost == 0.005
+
+        assert await session.enqueue_prompt("second") is True
+        await wait_for_event(queue, RunFinishedEvent)
+        # Totals unchanged since usage was None
+        assert session.state.total_tokens == 500
+        assert session.state.total_cost == 0.005
+
+    await session.close()
