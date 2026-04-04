@@ -339,7 +339,7 @@ class TestTruncateValue:
     def test_long_value_truncated(self) -> None:
         long_value = "x" * 100
         result = _truncate_value(long_value)
-        assert result == "x" * 50 + "[...]"
+        assert result == "x" * 50 + " [...]"
 
 
 class TestFormatToolCall:

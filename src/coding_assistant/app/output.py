@@ -109,7 +109,7 @@ def _truncate_value(value: str) -> str:
     """Truncate a value string if it exceeds the maximum length."""
     if len(value) <= _MAX_ARG_VALUE_LENGTH:
         return value
-    return value[:_MAX_ARG_VALUE_LENGTH] + "[...]"
+    return value[:_MAX_ARG_VALUE_LENGTH] + " [...]"
 
 
 def _format_tool_call(tool_call: ToolCall) -> str:
