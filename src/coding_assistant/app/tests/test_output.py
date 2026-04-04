@@ -229,7 +229,7 @@ class TestPrintFunctions:
     def test_print_info_message(self) -> None:
         output = _capture_output(lambda: print_info_message("Test message"))
         assert "Test message" in output
-        assert "i" in output
+        assert "ℹ" in output
 
     def test_print_active_prompt_string(self) -> None:
         output = _capture_output(lambda: print_active_prompt("Hello world"))

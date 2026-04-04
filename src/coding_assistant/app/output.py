@@ -126,4 +126,4 @@ def print_session_status(state: SessionState) -> None:
 
 def print_info_message(message: str) -> None:
     """Render one informational status line."""
-    rich_print(f"[bold blue]i[/bold blue] {message}")
+    rich_print(f"[bold blue]ℹ[/bold blue] {message}")

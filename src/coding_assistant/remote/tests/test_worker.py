@@ -299,7 +299,7 @@ async def test__run_output_prints_status_events_as_info_lines() -> None:
             await session.close()
 
     printed_lines = [call.args[0] for call in mock_rich_print.call_args_list if call.args]
-    assert printed_lines == ["[bold blue]i[/bold blue] Retrying LLM request"]
+    assert printed_lines == ["[bold blue]ℹ[/bold blue] Retrying LLM request"]
 
 
 @pytest.mark.asyncio
