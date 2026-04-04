@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from rich import print as rich_print
 from rich.markdown import Markdown
@@ -61,10 +61,7 @@ class DeltaRenderer:
 
     def _print_markdown(self, content: str) -> None:
         rich_print()
-        if self._style is None:
-            rich_print(Markdown(content))
-            return
-        cast(Any, rich_print)(Markdown(content), style=self._style)
+        rich_print(Markdown(content, style=self._style or "none"))
 
 
 class StreamRenderer:

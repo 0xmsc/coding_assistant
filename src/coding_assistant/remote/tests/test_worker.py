@@ -292,7 +292,8 @@ async def test__run_output_prints_reasoning_deltas_before_content() -> None:
         call for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Markdown)
     ]
     assert [call.args[0].markup for call in markdown_calls] == ["Thinking", "Answer"]
-    assert markdown_calls[0].kwargs == {"style": "dim"}
+    assert markdown_calls[0].kwargs == {}
+    assert markdown_calls[0].args[0].style == "dim"
     assert markdown_calls[1].kwargs == {}
 
 
