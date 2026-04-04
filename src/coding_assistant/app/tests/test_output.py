@@ -251,6 +251,29 @@ class TestFormatSessionStatus:
         )
         assert format_session_status(state) == "running"
 
+    def test_idle_shows_tokens_and_cost(self) -> None:
+        state = SessionState(running=False, queued_prompt_count=0, total_tokens=12345, total_cost=0.23)
+        result = format_session_status(state)
+        assert "idle" in result
+        assert "12k tokens" in result
+        assert "$0.23" in result
+
+    def test_tokens_below_1k_shown_as_number(self) -> None:
+        state = SessionState(running=False, queued_prompt_count=0, total_tokens=500, total_cost=0.01)
+        assert "500 tokens" in format_session_status(state)
+
+    def test_running_does_not_show_tokens(self) -> None:
+        state = SessionState(running=True, queued_prompt_count=0, total_tokens=9999, total_cost=1.00)
+        assert format_session_status(state) == "running"
+
+    def test_paused_does_not_show_tokens(self) -> None:
+        state = SessionState(running=False, queued_prompt_count=0, paused=True, total_tokens=5000, total_cost=0.50)
+        assert format_session_status(state) == "paused"
+
+    def test_zero_tokens_shows_idle_without_usage(self) -> None:
+        state = SessionState(running=False, queued_prompt_count=0, total_tokens=0, total_cost=0.0)
+        assert format_session_status(state) == "idle"
+
 
 # =============================================================================
 # print_* Function Tests
