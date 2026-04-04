@@ -1,12 +1,9 @@
 # Coding Assistant
 
-Coding Assistant is a Python-based CLI and embeddable library for coding workflows. It combines a boundary-based agent loop, built-in local tools, and optional external MCP servers.
+Coding Assistant is a Python-based CLI for coding workflows. It combines a boundary-based agent loop, built-in local tools, and optional external MCP servers.
 
 ## Key Features
 
-- Async event-stream API via `run_agent_event_stream(...)`.
-- Simple `run_agent(history=...)` convenience wrapper.
-- Caller-owned history with `compact_history(...)`.
 - Built-in local shell, Python, filesystem, TODO, and background-task tools.
 - Support for external MCP servers over stdio or SSE.
 - Prompt-toolkit powered interactive CLI.
@@ -48,54 +45,7 @@ Show available options:
 coding-assistant --help
 ```
 
-## Embedding
-
-The simplest Python surface is `run_agent(...)`. You pass in history, model, and executable tools, and it returns the updated transcript after executing any requested tools.
-
-```python
-import asyncio
-from typing import Any
-
-from coding_assistant.core.agent import run_agent
-from coding_assistant.core.history import build_system_prompt
-from coding_assistant.llm.types import SystemMessage, Tool, UserMessage
-
-
-class LookupDocsTool(Tool):
-    def name(self) -> str:
-        return "lookup_docs"
-
-    def description(self) -> str:
-        return "Look up project documentation."
-
-    def parameters(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-            "required": ["query"],
-        }
-
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        return f"Documentation for: {parameters['query']}"
-
-
-async def main() -> None:
-    history = [
-        SystemMessage(content=build_system_prompt(instructions="You are a helpful coding agent.")),
-        UserMessage(content="Say hello in one sentence."),
-    ]
-
-    history = await run_agent(
-        history=history,
-        model="openai/gpt-5-mini",
-        tools=[LookupDocsTool()],
-    )
-
-
-asyncio.run(main())
-```
-
-If you want streaming or explicit boundary control, use `run_agent_event_stream(...)`. It yields concrete LLM events and ends with either `AwaitingUser` or `AwaitingToolCalls`. You can then call `execute_tool_calls(...)` when the boundary requests tools.
+The supported public interface is the CLI. Internal Python modules may change without notice.
 
 ## CLI Highlights
 

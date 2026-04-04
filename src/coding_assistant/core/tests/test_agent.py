@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from coding_assistant.core.agent import run_agent, run_agent_event_stream
+from coding_assistant.core.agent import run_agent_event_stream
 from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
 from coding_assistant.core.tool_calls import execute_tool_calls
 from coding_assistant.llm.types import (
@@ -92,15 +92,6 @@ class NonTextTool(Tool):
 
 def make_system_history() -> list[BaseMessage]:
     return [SystemMessage(content="# Instructions\n\nTest instructions")]
-
-
-@pytest.mark.asyncio
-async def test_run_agent_returns_existing_history_without_pending_model_turn() -> None:
-    history = make_system_history()
-
-    result = await run_agent(history=history, model="test-model", tools=[])
-
-    assert result == history
 
 
 @pytest.mark.asyncio
@@ -265,101 +256,64 @@ async def test_execute_tool_calls_compacts_history_without_orphan_tool_message()
 
 
 @pytest.mark.asyncio
-async def test_run_agent_returns_final_history_after_event_stream() -> None:
-    result = await run_agent(
-        history=[*make_system_history(), UserMessage(content="Hi")],
-        model="test-model",
-        tools=[],
-        streamer=ScriptedStreamer([AssistantMessage(content="Hello from the assistant")]),
-    )
-
-    assert result[-1] == AssistantMessage(content="Hello from the assistant")
-
-
-@pytest.mark.asyncio
-async def test_run_agent_executes_tool_calls_and_continues() -> None:
-    external_call = ToolCall(
-        id="call-1",
-        function=FunctionCall(name="mock_tool", arguments="{}"),
-    )
-
-    result = await run_agent(
-        history=[*make_system_history(), UserMessage(content="Finish the task")],
-        model="test-model",
-        tools=[MockTool()],
-        streamer=ScriptedStreamer(
-            [
-                AssistantMessage(tool_calls=[external_call]),
-                AssistantMessage(content="Finished after the tool call"),
-            ],
-        ),
-    )
-
-    assert result[-3] == AssistantMessage(tool_calls=[external_call])
-    assert result[-2] == ToolMessage(tool_call_id="call-1", name="mock_tool", content="tool result")
-    assert result[-1] == AssistantMessage(content="Finished after the tool call")
-
-
-@pytest.mark.asyncio
-async def test_run_agent_appends_non_text_tool_errors_and_continues() -> None:
+async def test_execute_tool_calls_appends_non_text_tool_error() -> None:
     external_call = ToolCall(
         id="call-1",
         function=FunctionCall(name="structured_tool", arguments="{}"),
     )
-
-    result = await run_agent(
-        history=[*make_system_history(), UserMessage(content="Finish the task")],
-        model="test-model",
-        tools=[NonTextTool()],
-        streamer=ScriptedStreamer(
-            [
-                AssistantMessage(tool_calls=[external_call]),
-                AssistantMessage(content="I can continue without that tool."),
-            ],
-        ),
+    boundary = AwaitingToolCalls(
+        history=[
+            *make_system_history(),
+            UserMessage(content="Finish the task"),
+            AssistantMessage(tool_calls=[external_call]),
+        ],
     )
 
-    assert result[-2] == ToolMessage(
+    result = await execute_tool_calls(
+        boundary=boundary,
+        tools=[NonTextTool()],
+    )
+
+    assert result[-1] == ToolMessage(
         tool_call_id="call-1",
         name="structured_tool",
         content="Error executing tool: Tool 'structured_tool' did not return text.",
     )
-    assert result[-1] == AssistantMessage(content="I can continue without that tool.")
 
 
 @pytest.mark.asyncio
-async def test_run_agent_appends_tool_execution_errors_and_continues() -> None:
+async def test_execute_tool_calls_appends_tool_execution_error() -> None:
     external_call = ToolCall(
         id="call-1",
         function=FunctionCall(name="error_tool", arguments="{}"),
     )
-
-    result = await run_agent(
-        history=[*make_system_history(), UserMessage(content="Finish the task")],
-        model="test-model",
-        tools=[ErrorTool()],
-        streamer=ScriptedStreamer(
-            [
-                AssistantMessage(tool_calls=[external_call]),
-                AssistantMessage(content="I recovered from the tool error."),
-            ],
-        ),
+    boundary = AwaitingToolCalls(
+        history=[
+            *make_system_history(),
+            UserMessage(content="Finish the task"),
+            AssistantMessage(tool_calls=[external_call]),
+        ],
     )
 
-    assert result[-2] == ToolMessage(
+    result = await execute_tool_calls(
+        boundary=boundary,
+        tools=[ErrorTool()],
+    )
+
+    assert result[-1] == ToolMessage(
         tool_call_id="call-1",
         name="error_tool",
         content="Error executing tool: tool boom",
     )
-    assert result[-1] == AssistantMessage(content="I recovered from the tool error.")
 
 
 @pytest.mark.asyncio
-async def test_run_agent_raises_when_streamer_crashes() -> None:
+async def test_run_agent_event_stream_raises_when_streamer_crashes() -> None:
     with pytest.raises(RuntimeError, match="boom"):
-        await run_agent(
+        async for _ in run_agent_event_stream(
             history=[*make_system_history(), UserMessage(content="Fail")],
             model="test-model",
             tools=[],
             streamer=ScriptedStreamer([RuntimeError("boom")]),
-        )
+        ):
+            pass
