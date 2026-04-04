@@ -62,8 +62,9 @@ def test_create_application_builds_non_fullscreen_interactive_ui(tmp_path: Path)
     container = application.layout.container
     assert isinstance(container, HSplit)
     layout_children = container.children
-    assert isinstance(layout_children[0], ConditionalContainer)
-    input_row = layout_children[1]
+    assert isinstance(layout_children[0], Window)  # spacer
+    assert isinstance(layout_children[1], ConditionalContainer)
+    input_row = layout_children[2]
     assert isinstance(input_row, VSplit)
     prompt_window = input_row.children[0]
     assert isinstance(prompt_window, Window)
@@ -84,7 +85,7 @@ def test_create_application_submits_as_steering_with_enter(tmp_path: Path) -> No
     )
 
     layout = cast(HSplit, application.layout.container)
-    input_row = cast(VSplit, layout.children[1])
+    input_row = cast(VSplit, layout.children[2])
     assert isinstance(input_row, VSplit)
     input_window = input_row.children[1]
     assert isinstance(input_window, Window)
@@ -111,7 +112,7 @@ def test_create_application_submits_as_queued_with_tab(tmp_path: Path) -> None:
     )
 
     layout = cast(HSplit, application.layout.container)
-    input_row = cast(VSplit, layout.children[1])
+    input_row = cast(VSplit, layout.children[2])
     assert isinstance(input_row, VSplit)
     input_window = input_row.children[1]
     assert isinstance(input_window, Window)
@@ -138,7 +139,7 @@ def test_create_application_inserts_newline_with_ctrl_j(tmp_path: Path) -> None:
     )
 
     layout = cast(HSplit, application.layout.container)
-    input_row = cast(VSplit, layout.children[1])
+    input_row = cast(VSplit, layout.children[2])
     assert isinstance(input_row, VSplit)
     input_window = input_row.children[1]
     assert isinstance(input_window, Window)
