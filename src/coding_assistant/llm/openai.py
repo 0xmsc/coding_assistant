@@ -258,7 +258,7 @@ def _parse_model_and_reasoning(
     base = m.group(1).strip()
     effort = m.group(2).strip().lower()
 
-    if effort not in ("low", "medium", "high"):
+    if effort not in ("low", "medium", "high", "xhigh"):
         raise ValueError(f"Invalid reasoning effort level {effort} in {model}")
 
     effort = cast(Literal["low", "medium", "high"], effort)
