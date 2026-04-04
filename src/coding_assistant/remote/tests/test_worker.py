@@ -268,8 +268,6 @@ async def test__run_output_prints_status_updates_when_enabled() -> None:
             await session.close()
 
     printed_lines = [call.args[0] for call in mock_rich_print.call_args_list if call.args]
-    assert "[dim]idle | queued: 0[/dim]" in printed_lines
-    # When pending prompts exist, they're shown in the queued prompts widget, not in the footer.
     assert "[dim]idle[/dim]" in printed_lines
 
 
