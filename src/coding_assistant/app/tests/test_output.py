@@ -57,6 +57,21 @@ class TestParagraphBuffer:
         assert buffer.flush() == "Some text"
         assert buffer._buffer == ""
 
+    def test_flush_strips_only_trailing_line_endings(self) -> None:
+        buffer = ParagraphBuffer()
+        buffer.push("Some text\r\n\r\n")
+        assert buffer.flush() == "Some text"
+
+    def test_flush_preserves_indentation_and_trailing_spaces(self) -> None:
+        buffer = ParagraphBuffer()
+        buffer.push("    code block line  ")
+        assert buffer.flush() == "    code block line  "
+
+    def test_flush_whitespace_only_returns_none(self) -> None:
+        buffer = ParagraphBuffer()
+        buffer.push("  \n\t")
+        assert buffer.flush() is None
+
     def test_flush_empty_buffer_returns_none(self) -> None:
         buffer = ParagraphBuffer()
         assert buffer.flush() is None
