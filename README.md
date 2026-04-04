@@ -102,7 +102,6 @@ If you want streaming or explicit boundary control, use `run_agent_event_stream(
 - `--model` selects the model to use. Required.
 - `--instructions` appends custom instructions.
 - `--mcp-servers` configures external MCP servers as JSON strings.
-- `--print-mcp-tools` prints the discovered MCP tools and exits.
 - `--trace` writes model request and response traces.
 - `--wait-for-debugger` waits for a debugger on port `1234`.
 - `--skills-directories` loads additional skill directories.
