@@ -78,8 +78,8 @@ def _format_tool_call(tool_call: ToolCall) -> str:
 
 def print_tool_calls(message: AssistantMessage) -> None:
     """Print tool calls in simple format."""
-    rich_print()  # leading blank line
     for tool_call in message.tool_calls:
+        rich_print()
         rich_print(f"[bold yellow]▶[/bold yellow] {_format_tool_call(tool_call)}")
 
 
