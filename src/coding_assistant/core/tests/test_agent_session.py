@@ -26,6 +26,7 @@ from coding_assistant.llm.types import (
     ContentDeltaEvent,
     FunctionCall,
     SystemMessage,
+    TextToolResult,
     Tool,
     ToolCall,
     ToolMessage,
@@ -83,8 +84,8 @@ class EchoTool(Tool):
             "required": ["text"],
         }
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        return f"echo:{parameters['text']}"
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
+        return TextToolResult(content=f"echo:{parameters['text']}")
 
 
 class BlockingEchoTool(EchoTool):
@@ -92,7 +93,7 @@ class BlockingEchoTool(EchoTool):
         self._started_event = started_event
         self._release_event = release_event
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         self._started_event.set()
         await self._release_event.wait()
         return await super().execute(parameters)
@@ -116,10 +117,10 @@ class SlowTool(Tool):
             "required": ["text"],
         }
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         self._started_event.set()
         await self._release_event.wait()
-        return f"slow:{parameters['text']}"
+        return TextToolResult(content=f"slow:{parameters['text']}")
 
 
 def make_system_history() -> list[BaseMessage]:

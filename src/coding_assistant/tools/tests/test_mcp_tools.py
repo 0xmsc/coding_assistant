@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from coding_assistant.llm.types import TextToolResult
 from coding_assistant.tools.mcp_manager import MCPServerManager
 from coding_assistant.tools.mcp_tools import (
     MCPCallTool,
@@ -52,7 +53,7 @@ class TestMCPStartTool:
         tool = MCPStartTool(manager)
         result = await tool.execute({"server": "test"})
         manager.start.assert_called_once_with("test")
-        assert result == "Started"
+        assert result == TextToolResult(content="Started")
 
 
 class TestMCPStopTool:
@@ -72,7 +73,7 @@ class TestMCPStopTool:
         tool = MCPStopTool(manager)
         result = await tool.execute({"server": "test"})
         manager.stop.assert_called_once_with("test")
-        assert result == "Stopped"
+        assert result == TextToolResult(content="Stopped")
 
 
 class TestMCPCallTool:
@@ -106,7 +107,7 @@ class TestMCPCallTool:
             }
         )
         manager.call.assert_called_once_with("myserver", "mytool", {"arg1": "value1"})
-        assert result == "result"
+        assert result == TextToolResult(content="result")
 
     @pytest.mark.asyncio
     async def test_execute_handles_missing_arguments(self) -> None:
@@ -135,7 +136,7 @@ class TestMCPListToolsTool:
         tool = MCPListToolsTool(manager)
         result = await tool.execute({"server": "test"})
         manager.list_tools.assert_called_once_with("test")
-        assert result == "Tools:\n- tool1"
+        assert result == TextToolResult(content="Tools:\n- tool1")
 
 
 class TestCreateMCPTools:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from coding_assistant.llm.types import Tool
+from coding_assistant.llm.types import TextToolResult, Tool
 from coding_assistant.tools.mcp_manager import MCPServerManager
 
 
@@ -34,8 +34,8 @@ class MCPStartTool(Tool):
             "required": ["server"],
         }
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        return await self._manager.start(parameters["server"])
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
+        return TextToolResult(content=await self._manager.start(parameters["server"]))
 
 
 class MCPStopTool(Tool):
@@ -62,8 +62,8 @@ class MCPStopTool(Tool):
             "required": ["server"],
         }
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        return await self._manager.stop(parameters["server"])
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
+        return TextToolResult(content=await self._manager.stop(parameters["server"]))
 
 
 class MCPCallTool(Tool):
@@ -102,11 +102,13 @@ class MCPCallTool(Tool):
             "required": ["server", "tool"],
         }
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        return await self._manager.call(
-            parameters["server"],
-            parameters["tool"],
-            parameters.get("arguments", {}),
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
+        return TextToolResult(
+            content=await self._manager.call(
+                parameters["server"],
+                parameters["tool"],
+                parameters.get("arguments", {}),
+            ),
         )
 
 
@@ -134,8 +136,8 @@ class MCPListToolsTool(Tool):
             "required": ["server"],
         }
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        return await self._manager.list_tools(parameters["server"])
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
+        return TextToolResult(content=await self._manager.list_tools(parameters["server"]))
 
 
 def create_mcp_tools(manager: MCPServerManager) -> list[Tool]:

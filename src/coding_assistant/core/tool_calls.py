@@ -11,7 +11,15 @@ from coding_assistant.core.boundaries import AwaitingToolCalls
 from coding_assistant.core.builtin_tools import CompactConversationTool, RedirectToolCallTool
 from coding_assistant.core.history import compact_history
 from coding_assistant.infra.trace import trace_enabled, trace_json
-from coding_assistant.llm.types import BaseMessage, Tool, ToolCall, ToolMessage
+from coding_assistant.llm.types import (
+    BaseMessage,
+    CompactConversationResult,
+    TextToolResult,
+    Tool,
+    ToolCall,
+    ToolMessage,
+    ToolResult,
+)
 
 ToolCallKind = Literal["read", "edit", "delete", "move", "search", "execute", "think", "fetch", "other"]
 
@@ -186,16 +194,28 @@ def _append_cancelled_tool_messages(
     return events
 
 
+def _tool_result_content(result: ToolResult) -> str:
+    if isinstance(result, TextToolResult):
+        return result.content
+    return result.summary
+
+
+def _tool_result_raw_output(result: ToolResult) -> Any:
+    if isinstance(result, TextToolResult):
+        return result.content
+    return {"summary": result.summary}
+
+
 def _apply_tool_result(
     history: list[BaseMessage],
     *,
     tool_call: ToolCall,
-    result: str,
-) -> list[BaseMessage]:
-    if tool_call.function.name == "compact_conversation":
-        return compact_history(history, result)
-    _append_tool_message(history, tool_call=tool_call, content=result)
-    return history
+    result: ToolResult,
+) -> tuple[list[BaseMessage], bool]:
+    if isinstance(result, CompactConversationResult):
+        return compact_history(history, result.summary), True
+    _append_tool_message(history, tool_call=tool_call, content=result.content)
+    return history, False
 
 
 async def stream_tool_call_execution(
@@ -265,16 +285,16 @@ async def stream_tool_call_execution(
             tool_call=tool_call,
             status="completed",
             raw_input=arguments,
-            raw_output=result,
-            content=result,
+            raw_output=_tool_result_raw_output(result),
+            content=_tool_result_content(result),
         )
 
-        current_history = _apply_tool_result(
+        current_history, should_stop = _apply_tool_result(
             current_history,
             tool_call=tool_call,
             result=result,
         )
-        if tool_name == "compact_conversation":
+        if should_stop:
             break
 
     yield ToolCallExecutionCompleted(history=current_history)
@@ -284,12 +304,12 @@ async def _execute_resolved_tool(
     *,
     tool: Tool,
     arguments: dict[str, Any],
-) -> str:
-    """Run one resolved tool and require a text result."""
+) -> ToolResult:
+    """Run one resolved tool and require a typed tool result."""
     result = await tool.execute(arguments)
-    if not isinstance(result, str):
-        raise TypeError(f"Tool '{tool.name()}' did not return text.")
-    return result
+    if isinstance(result, (TextToolResult, CompactConversationResult)):
+        return result
+    raise TypeError(f"Tool '{tool.name()}' returned unsupported result type: {type(result).__name__}.")
 
 
 def build_tools(
@@ -300,14 +320,11 @@ def build_tools(
     base_tools = [CompactConversationTool(), *tools]
     base_tools_by_name = {tool.name(): tool for tool in base_tools}
 
-    async def execute_redirected_tool(tool_name: str, arguments: dict[str, Any]) -> str:
+    async def execute_redirected_tool(tool_name: str, arguments: dict[str, Any]) -> ToolResult:
         target_tool = base_tools_by_name.get(tool_name)
         if target_tool is None:
             raise RuntimeError(f"Tool '{tool_name}' is not available for redirection.")
-        return await _execute_resolved_tool(
-            tool=target_tool,
-            arguments=arguments,
-        )
+        return await target_tool.execute(arguments)
 
     redirect_tool = RedirectToolCallTool(
         tools=base_tools,

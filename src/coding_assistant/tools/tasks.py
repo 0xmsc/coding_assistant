@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.llm.types import Tool
+from coding_assistant.llm.types import TextToolResult, Tool
 from coding_assistant.tools.process import ProcessHandle, truncate_output
 
 
@@ -109,17 +109,17 @@ class TasksListTasksTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return EmptyInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         EmptyInput.model_validate(parameters)
         tasks = self._manager.list_tasks()
         if not tasks:
-            return "No tasks found."
+            return TextToolResult(content="No tasks found.")
 
         lines: list[str] = []
         for task in tasks:
             status = "Running" if task.handle.is_running else f"Finished (Exit code: {task.handle.exit_code})"
             lines.append(f"ID: {task.id} | Name: {task.name} | Status: {status}")
-        return "\n".join(lines)
+        return TextToolResult(content="\n".join(lines))
 
 
 class TasksGetOutputTool(Tool):
@@ -137,11 +137,11 @@ class TasksGetOutputTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return TasksGetOutputInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = TasksGetOutputInput.model_validate(parameters)
         task = self._manager.get_task(validated.task_id)
         if task is None:
-            return f"Error: Task {validated.task_id} not found."
+            return TextToolResult(content=f"Error: Task {validated.task_id} not found.")
 
         if validated.wait:
             await task.handle.wait(timeout=validated.timeout)
@@ -150,7 +150,7 @@ class TasksGetOutputTool(Tool):
         result += f"Status: {_format_task_status(task)}\n"
 
         output = truncate_output(task.handle.consume_text(), validated.truncate_at)
-        return f"{result}\n\n{output}"
+        return TextToolResult(content=f"{result}\n\n{output}")
 
 
 class TasksGetStatusTool(Tool):
@@ -168,13 +168,13 @@ class TasksGetStatusTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return TaskIdInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = TaskIdInput.model_validate(parameters)
         task = self._manager.get_task(validated.task_id)
         if task is None:
-            return f"Error: Task {validated.task_id} not found."
+            return TextToolResult(content=f"Error: Task {validated.task_id} not found.")
 
-        return f"Task {validated.task_id} ({task.name}) | Status: {_format_task_status(task)}"
+        return TextToolResult(content=f"Task {validated.task_id} ({task.name}) | Status: {_format_task_status(task)}")
 
 
 class TasksKillTaskTool(Tool):
@@ -192,14 +192,14 @@ class TasksKillTaskTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return TaskIdInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = TaskIdInput.model_validate(parameters)
         task = self._manager.get_task(validated.task_id)
         if task is None:
-            return f"Error: Task {validated.task_id} not found."
+            return TextToolResult(content=f"Error: Task {validated.task_id} not found.")
 
         await task.handle.terminate()
-        return f"Task {validated.task_id} has been terminated."
+        return TextToolResult(content=f"Task {validated.task_id} has been terminated.")
 
 
 class TasksRemoveTaskTool(Tool):
@@ -217,14 +217,14 @@ class TasksRemoveTaskTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return TaskIdInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = TaskIdInput.model_validate(parameters)
         task = self._manager.get_task(validated.task_id)
         if task is None:
-            return f"Error: Task {validated.task_id} not found."
+            return TextToolResult(content=f"Error: Task {validated.task_id} not found.")
 
         self._manager.remove_task(validated.task_id)
-        return f"Task {validated.task_id} removed from history."
+        return TextToolResult(content=f"Task {validated.task_id} removed from history.")
 
 
 def create_task_tools(*, manager: TaskManager) -> list[Tool]:

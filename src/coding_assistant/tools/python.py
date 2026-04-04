@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.llm.types import Tool
+from coding_assistant.llm.types import TextToolResult, Tool
 from coding_assistant.tools.process import start_process, truncate_output
 from coding_assistant.tools.tasks import TaskManager
 
@@ -41,7 +41,7 @@ class PythonExecuteTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return PythonExecuteInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = PythonExecuteInput.model_validate(parameters)
         code = validated.code.strip()
 
@@ -54,7 +54,7 @@ class PythonExecuteTool(Tool):
             task_id = self._manager.register_task("python script", handle)
 
             if validated.background:
-                return f"Task started in background with ID: {task_id}"
+                return TextToolResult(content=f"Task started in background with ID: {task_id}")
 
             try:
                 finished = await handle.wait(timeout=validated.timeout)
@@ -62,10 +62,12 @@ class PythonExecuteTool(Tool):
                 await handle.terminate()
                 raise
             if not finished:
-                return (
-                    f"Python script is taking longer than {validated.timeout}s. "
-                    f"It continues in the background with Task ID: {task_id}. "
-                    "You can check its status later using `tasks_get_output`."
+                return TextToolResult(
+                    content=(
+                        f"Python script is taking longer than {validated.timeout}s. "
+                        f"It continues in the background with Task ID: {task_id}. "
+                        "You can check its status later using `tasks_get_output`."
+                    ),
                 )
 
             output = handle.stdout
@@ -74,10 +76,10 @@ class PythonExecuteTool(Tool):
                 stdout_text += f"\n\nFull output available via `tasks_get_output(task_id={task_id})`"
 
             if handle.exit_code != 0:
-                return f"Exception (exit code {handle.exit_code}):\n\n{handle.stdout}"
-            return stdout_text
+                return TextToolResult(content=f"Exception (exit code {handle.exit_code}):\n\n{handle.stdout}")
+            return TextToolResult(content=stdout_text)
         except Exception as exc:
-            return f"Error executing script: {exc}"
+            return TextToolResult(content=f"Error executing script: {exc}")
 
 
 def create_python_tools(*, manager: TaskManager) -> list[Tool]:

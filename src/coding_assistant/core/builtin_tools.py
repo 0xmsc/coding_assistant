@@ -6,7 +6,13 @@ from typing import Any, Awaitable, Callable, Sequence
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.llm.types import Tool, ToolDefinition
+from coding_assistant.llm.types import (
+    CompactConversationResult,
+    TextToolResult,
+    Tool,
+    ToolDefinition,
+    ToolResult,
+)
 
 
 class CompactConversationSchema(BaseModel):
@@ -26,10 +32,10 @@ class CompactConversationTool(Tool):
         """Return the schema for the compaction summary payload."""
         return CompactConversationSchema.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        """Validate the request and return the summary text unchanged."""
+    async def execute(self, parameters: dict[str, Any]) -> CompactConversationResult:
+        """Validate the request and return a compaction result."""
         validated = CompactConversationSchema.model_validate(parameters)
-        return validated.summary
+        return CompactConversationResult(summary=validated.summary)
 
 
 class RedirectToolCallSchema(BaseModel):
@@ -48,7 +54,7 @@ class RedirectToolCallTool(Tool):
         self,
         *,
         tools: Sequence[ToolDefinition],
-        execute_tool: Callable[[str, dict[str, Any]], Awaitable[str]],
+        execute_tool: Callable[[str, dict[str, Any]], Awaitable[ToolResult]],
     ) -> None:
         self._tools = list(tools)
         self._execute_tool = execute_tool
@@ -69,7 +75,7 @@ class RedirectToolCallTool(Tool):
         """Return the schema for redirected tool-call requests."""
         return RedirectToolCallSchema.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         """Execute the target tool and write its text output to a file."""
         validated = RedirectToolCallSchema.model_validate(parameters)
         tool_name = validated.tool_name
@@ -77,25 +83,27 @@ class RedirectToolCallTool(Tool):
         output_file = validated.output_file
 
         if tool_name == self.name():
-            return "Error: Cannot call redirect_tool_call recursively."
-        if tool_name == "compact_conversation":
-            return "Error: Cannot redirect compact_conversation."
+            return TextToolResult(content="Error: Cannot call redirect_tool_call recursively.")
 
         target_tool = next((tool for tool in self._tools if tool.name() == tool_name), None)
         if target_tool is None:
-            return f"Error: Tool '{tool_name}' not found or cannot be redirected."
+            return TextToolResult(content=f"Error: Tool '{tool_name}' not found or cannot be redirected.")
 
-        try:
-            result = await self._execute_tool(tool_name, tool_args)
-        except TypeError as exc:
-            return f"Error: {exc}"
+        result = await self._execute_tool(tool_name, tool_args)
+
+        if not isinstance(result, TextToolResult):
+            return TextToolResult(
+                content=f"Error: Tool '{tool_name}' cannot be redirected because it does not produce text output.",
+            )
 
         if output_file:
             path = Path(output_file)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(result)
-            return f"Tool '{tool_name}' executed. Output redirected to {output_file}"
+            path.write_text(result.content)
+            return TextToolResult(content=f"Tool '{tool_name}' executed. Output redirected to {output_file}")
 
         with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as tmp:
-            tmp.write(result)
-            return f"Tool '{tool_name}' executed. Output redirected to temporary file: {tmp.name}"
+            tmp.write(result.content)
+            return TextToolResult(
+                content=f"Tool '{tool_name}' executed. Output redirected to temporary file: {tmp.name}",
+            )

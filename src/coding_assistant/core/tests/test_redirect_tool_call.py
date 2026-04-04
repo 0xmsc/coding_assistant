@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from coding_assistant.core.builtin_tools import RedirectToolCallTool
-from coding_assistant.llm.types import Tool
+from coding_assistant.llm.types import CompactConversationResult, TextToolResult, Tool, ToolResult
 
 
 class MockTextTool(Tool):
@@ -18,22 +18,24 @@ class MockTextTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return {}
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        return "pure text output"
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
+        del parameters
+        return TextToolResult(content="pure text output")
 
 
-class MockStructuredTool(Tool):
+class MockCompactionTool(Tool):
     def name(self) -> str:
-        return "mock_struct"
+        return "mock_compact"
 
     def description(self) -> str:
-        return "returns json"
+        return "returns a compaction result"
 
     def parameters(self) -> dict[str, Any]:
         return {}
 
-    async def execute(self, parameters: dict[str, Any]) -> Any:
-        return {"status": "ok", "value": 42}
+    async def execute(self, parameters: dict[str, Any]) -> CompactConversationResult:
+        del parameters
+        return CompactConversationResult(summary="summary")
 
 
 class MockErrorTool(Tool):
@@ -46,16 +48,15 @@ class MockErrorTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return {}
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
+        del parameters
         raise ValueError("Something went wrong")
 
 
-async def execute_tool(tool_name: str, tool_args: dict[str, Any], tools: list[Tool]) -> str:
+async def execute_tool(tool_name: str, tool_args: dict[str, Any], tools: list[Tool]) -> ToolResult:
     tool = next(tool for tool in tools if tool.name() == tool_name)
-    result = await tool.execute(tool_args)
-    if not isinstance(result, str):
-        raise TypeError(f"Tool '{tool_name}' did not return text.")
-    return result
+    del tool_name
+    return await tool.execute(tool_args)
 
 
 @pytest.mark.asyncio
@@ -67,7 +68,7 @@ async def test_redirect_to_specific_file() -> None:
         output_file = Path(tmp_dir) / "output.txt"
         result = await redirect.execute({"tool_name": "mock_text", "tool_args": {}, "output_file": str(output_file)})
 
-        assert f"Output redirected to {output_file}" in result
+        assert f"Output redirected to {output_file}" in result.content
         assert output_file.exists()
         assert output_file.read_text() == "pure text output"
 
@@ -81,7 +82,7 @@ async def test_redirect_to_nested_file() -> None:
         output_file = Path(tmp_dir) / "subdir" / "nested" / "output.txt"
         result = await redirect.execute({"tool_name": "mock_text", "tool_args": {}, "output_file": str(output_file)})
 
-        assert f"Output redirected to {output_file}" in result
+        assert f"Output redirected to {output_file}" in result.content
         assert output_file.exists()
         assert output_file.read_text() == "pure text output"
         assert output_file.parent.exists()
@@ -89,22 +90,17 @@ async def test_redirect_to_nested_file() -> None:
 
 
 @pytest.mark.asyncio
-async def test_redirect_structured_result_error() -> None:
-    mock = MockStructuredTool()
-
-    async def execute_struct(tool_name: str, tool_args: dict[str, Any]) -> str:
-        result = await mock.execute(tool_args)
-        if not isinstance(result, str):
-            raise TypeError("Tool 'mock_struct' did not return text.")
-        return result
-
-    redirect = RedirectToolCallTool(tools=[mock], execute_tool=execute_struct)
+async def test_redirect_non_text_result_error() -> None:
+    mock = MockCompactionTool()
+    redirect = RedirectToolCallTool(tools=[mock], execute_tool=lambda name, args: execute_tool(name, args, [mock]))
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         output_file = Path(tmp_dir) / "output.json"
-        result = await redirect.execute({"tool_name": "mock_struct", "tool_args": {}, "output_file": str(output_file)})
+        result = await redirect.execute({"tool_name": "mock_compact", "tool_args": {}, "output_file": str(output_file)})
 
-        assert "Error: Tool 'mock_struct' did not return text." in result
+        assert (
+            "Error: Tool 'mock_compact' cannot be redirected because it does not produce text output." in result.content
+        )
         assert not output_file.exists()
 
 
@@ -115,8 +111,8 @@ async def test_redirect_to_temp_file() -> None:
 
     result = await redirect.execute({"tool_name": "mock_text", "tool_args": {}})
 
-    assert "Output redirected to temporary file:" in result
-    tmp_path = result.split("temporary file: ")[1]
+    assert "Output redirected to temporary file:" in result.content
+    tmp_path = result.content.split("temporary file: ")[1]
     path = Path(tmp_path)
 
     try:
@@ -132,21 +128,21 @@ async def test_recursion_protection() -> None:
     redirect = RedirectToolCallTool(tools=[], execute_tool=lambda name, args: execute_tool(name, args, []))
     # It adds itself to the internal list in actual usage, here we just test the name check
     result = await redirect.execute({"tool_name": "redirect_tool_call", "tool_args": {}})
-    assert "Error: Cannot call redirect_tool_call recursively." in result
+    assert "Error: Cannot call redirect_tool_call recursively." in result.content
 
 
 @pytest.mark.asyncio
 async def test_tool_not_found() -> None:
     redirect = RedirectToolCallTool(tools=[], execute_tool=lambda name, args: execute_tool(name, args, []))
     result = await redirect.execute({"tool_name": "non_existent", "tool_args": {}})
-    assert "Error: Tool 'non_existent' not found or cannot be redirected." in result
+    assert "Error: Tool 'non_existent' not found or cannot be redirected." in result.content
 
 
 @pytest.mark.asyncio
 async def test_redirect_tool_exception() -> None:
     mock = MockErrorTool()
 
-    async def execute_error(tool_name: str, tool_args: dict[str, Any]) -> str:
+    async def execute_error(tool_name: str, tool_args: dict[str, Any]) -> ToolResult:
         del tool_name
         return await mock.execute(tool_args)
 

@@ -22,12 +22,29 @@ class ToolDefinition(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class TextToolResult:
+    """Normal text output that should be appended as a tool message."""
+
+    content: str
+
+
+@dataclass(frozen=True)
+class CompactConversationResult:
+    """A request to compact transcript history around a summary."""
+
+    summary: str
+
+
+ToolResult = TextToolResult | CompactConversationResult
+
+
 class Tool(ToolDefinition, ABC):
     """Executable tool implementation."""
 
     @abstractmethod
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        """Execute the tool and return a text result for the transcript."""
+    async def execute(self, parameters: dict[str, Any]) -> ToolResult:
+        """Execute the tool and return a runtime tool result."""
         ...
 
 

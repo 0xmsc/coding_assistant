@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from coding_assistant.llm.types import TextToolResult, ToolResult
 from coding_assistant.tools.skills import (
     Skill,
     create_skill_tools,
@@ -10,6 +11,11 @@ from coding_assistant.tools.skills import (
     load_skills_from_directory,
     parse_skill_file,
 )
+
+
+def _text(result: ToolResult) -> str:
+    assert isinstance(result, TextToolResult)
+    return result.content
 
 
 def test_load_skills_from_directory(tmp_path: Any) -> None:
@@ -116,12 +122,12 @@ async def test_skills_tools(tmp_path: Any) -> None:
     list_tool = next(tool for tool in tools if tool.name() == "skills_list_resources")
     read_tool = next(tool for tool in tools if tool.name() == "skills_read")
 
-    result_text = await list_tool.execute({"name": "myskill"})
+    result_text = _text(await list_tool.execute({"name": "myskill"}))
     assert "- SKILL.md" in result_text
     assert "- script.py" in result_text
 
-    script_content = await read_tool.execute({"name": "myskill", "resource": "script.py"})
+    script_content = _text(await read_tool.execute({"name": "myskill", "resource": "script.py"}))
     assert script_content == "print(1)"
 
-    main_content = await read_tool.execute({"name": "myskill"})
+    main_content = _text(await read_tool.execute({"name": "myskill"}))
     assert "content" in main_content
