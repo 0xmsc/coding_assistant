@@ -16,7 +16,6 @@ from coding_assistant.app.output import (
     print_tool_calls,
 )
 from coding_assistant.core.agent_session import AgentSession, SessionState
-from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
 from coding_assistant.remote.server import WorkerServer
 
@@ -128,10 +127,10 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     session = mock_run_ui.await_args.kwargs["session"]
     assert isinstance(session, AgentSession)
     assert session.history == [
-        SystemMessage(content=build_system_prompt(instructions="Follow the repo instructions.")),
+        SystemMessage(content="Follow the repo instructions."),
     ]
     assert mock_run_ui.await_args.kwargs["system_message"] == SystemMessage(
-        content=build_system_prompt(instructions="Follow the repo instructions."),
+        content="Follow the repo instructions.",
     )
     assert mock_run_ui.await_args.kwargs["history_path"].name == "history"
     mock_rich_print.assert_called_once()

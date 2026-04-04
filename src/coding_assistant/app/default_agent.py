@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from coding_assistant.app.instructions import get_instructions
-from coding_assistant.core.history import build_system_prompt
 from coding_assistant.llm.types import SystemMessage, Tool
 from coding_assistant.tools.local_bundle import create_local_tool_bundle
 from coding_assistant.tools.mcp_manager import MCPServerConfig
@@ -73,4 +72,4 @@ async def create_default_agent(
 
 def build_initial_system_message(*, instructions: str) -> SystemMessage:
     """Build the system message used to seed a fresh transcript."""
-    return SystemMessage(content=build_system_prompt(instructions=instructions))
+    return SystemMessage(content=instructions)
