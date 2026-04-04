@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import Callable
 from typing import Any
 from unittest.mock import patch
@@ -13,6 +14,8 @@ from coding_assistant.app.output import (
     DeltaRenderer,
     ParagraphBuffer,
     StreamRenderer,
+    _format_tool_call,
+    _truncate_value,
     format_prompt_preview,
     format_session_status,
     print_active_prompt,
@@ -316,3 +319,57 @@ class TestOutputIntegration:
         assert "python_execute" in output
         assert "code" in output
         assert "▶" in output
+
+
+# =============================================================================
+# Tool Call Truncation Tests
+# =============================================================================
+
+
+class TestTruncateValue:
+    """Tests for value truncation."""
+
+    def test_short_value_unchanged(self) -> None:
+        assert _truncate_value("hello") == "hello"
+
+    def test_value_at_max_length_unchanged(self) -> None:
+        long_value = "x" * 50
+        assert _truncate_value(long_value) == long_value
+
+    def test_long_value_truncated(self) -> None:
+        long_value = "x" * 100
+        result = _truncate_value(long_value)
+        assert result == "x" * 50 + "[...]"
+
+
+class TestFormatToolCall:
+    """Tests for tool call formatting with truncation."""
+
+    def test_simple_tool_call(self) -> None:
+        tool_call = ToolCall(
+            id="1",
+            function=FunctionCall(name="echo", arguments='{"text": "hello"}'),
+        )
+        result = _format_tool_call(tool_call)
+        assert result == 'echo(text="hello")'
+
+    def test_long_argument_value_truncated(self) -> None:
+        # Create a JSON with a long string value (100 x's)
+        long_string = "x" * 100
+        args = json.dumps({"text": long_string})
+        tool_call = ToolCall(
+            id="1",
+            function=FunctionCall(name="echo", arguments=args),
+        )
+        result = _format_tool_call(tool_call)
+        # The long string value should be truncated
+        assert "[...]" in result
+        assert "text=" in result
+
+    def test_invalid_json_returns_unchanged(self) -> None:
+        tool_call = ToolCall(
+            id="1",
+            function=FunctionCall(name="broken", arguments="not json"),
+        )
+        result = _format_tool_call(tool_call)
+        assert result == "broken(not json)"
