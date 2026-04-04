@@ -10,6 +10,7 @@ from typing import Any, Callable, Literal
 from coding_assistant.core.boundaries import AwaitingToolCalls
 from coding_assistant.core.builtin_tools import CompactConversationTool, RedirectToolCallTool
 from coding_assistant.core.history import compact_history
+from coding_assistant.infra.trace import trace_enabled, trace_json
 from coding_assistant.llm.types import BaseMessage, Tool, ToolCall, ToolMessage
 
 ToolCallKind = Literal["read", "edit", "delete", "move", "search", "execute", "think", "fetch", "other"]
@@ -89,6 +90,23 @@ def _tool_call_title(tool_name: str) -> str:
     return tool_name or "tool_call"
 
 
+def _trace_tool_call_event(event: ToolCallLifecycleEvent) -> None:
+    """Write a tool call lifecycle event to the trace log when tracing is enabled."""
+    if not trace_enabled():
+        return
+    trace_json(
+        f"tool_{event.tool_call_id}_{event.status}.json5",
+        {
+            "tool_call_id": event.tool_call_id,
+            "tool_name": event.tool_name,
+            "kind": event.kind,
+            "status": event.status,
+            "raw_input": event.raw_input,
+            "raw_output": event.raw_output,
+        },
+    )
+
+
 def _publish_tool_call_event(
     on_event: ToolCallEventHook | None,
     *,
@@ -98,20 +116,19 @@ def _publish_tool_call_event(
     raw_output: Any | None = None,
     content: str | None = None,
 ) -> None:
-    if on_event is None:
-        return
-    on_event(
-        ToolCallLifecycleEvent(
-            tool_call_id=tool_call.id,
-            tool_name=tool_call.function.name,
-            title=_tool_call_title(tool_call.function.name),
-            kind=_tool_call_kind(tool_call.function.name),
-            status=status,
-            raw_input=raw_input,
-            raw_output=raw_output,
-            content=content,
-        ),
+    event = ToolCallLifecycleEvent(
+        tool_call_id=tool_call.id,
+        tool_name=tool_call.function.name,
+        title=_tool_call_title(tool_call.function.name),
+        kind=_tool_call_kind(tool_call.function.name),
+        status=status,
+        raw_input=raw_input,
+        raw_output=raw_output,
+        content=content,
     )
+    _trace_tool_call_event(event)
+    if on_event is not None:
+        on_event(event)
 
 
 def _append_tool_message(

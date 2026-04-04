@@ -9,7 +9,7 @@ from coding_assistant.core.boundaries import (
     AwaitingUser,
     get_pending_tool_call_message,
 )
-from coding_assistant.core.tool_calls import build_tools, execute_tool_calls
+from coding_assistant.core.tool_calls import build_tools
 from coding_assistant.llm.openai import stream_completion as openai_stream_completion
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -34,41 +34,6 @@ def _get_boundary(history: list[BaseMessage]) -> AgentBoundary | None:
     if _should_wait_for_user(history):
         return AwaitingUser(history=history)
     return None
-
-
-async def run_agent(
-    *,
-    history: Sequence[BaseMessage],
-    model: str,
-    tools: Sequence[Tool],
-    streamer: Any = openai_stream_completion,
-) -> list[BaseMessage]:
-    """Advance the transcript until the assistant yields back to the caller."""
-    current_history = list(history)
-    if not current_history:
-        raise ValueError("run_agent requires a non-empty history.")
-
-    while True:
-        boundary: AgentBoundary | None = None
-        async for event in run_agent_event_stream(
-            history=current_history,
-            model=model,
-            tools=tools,
-            streamer=streamer,
-        ):
-            if isinstance(event, (AwaitingUser, AwaitingToolCalls)):
-                boundary = event
-
-        if boundary is None:
-            raise RuntimeError("run_agent_event_stream stopped without yielding a boundary.")
-
-        if isinstance(boundary, AwaitingUser):
-            return boundary.history
-
-        current_history = await execute_tool_calls(
-            boundary=boundary,
-            tools=tools,
-        )
 
 
 async def run_agent_event_stream(
