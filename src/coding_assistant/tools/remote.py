@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.llm.types import Tool
+from coding_assistant.llm.types import TextToolResult, Tool
 from coding_assistant.remote.client import (
     RemoteClientEvent,
     RemoteContentDeltaEvent,
@@ -366,9 +366,9 @@ class RemoteConnectTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return RemoteConnectInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = RemoteConnectInput.model_validate(parameters)
-        return await self._runtime.connect(validated.endpoint)
+        return TextToolResult(content=await self._runtime.connect(validated.endpoint))
 
 
 class RemotesListTool(Tool):
@@ -384,9 +384,9 @@ class RemotesListTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return EmptyInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         EmptyInput.model_validate(parameters)
-        return self._runtime.format_connected_workers()
+        return TextToolResult(content=self._runtime.format_connected_workers())
 
 
 class RemotesDiscoverTool(Tool):
@@ -402,9 +402,9 @@ class RemotesDiscoverTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return EmptyInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         EmptyInput.model_validate(parameters)
-        return self._runtime.discover()
+        return TextToolResult(content=self._runtime.discover())
 
 
 class RemotePromptTool(Tool):
@@ -420,9 +420,9 @@ class RemotePromptTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return RemotePromptInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = RemotePromptInput.model_validate(parameters)
-        return await self._runtime.prompt(validated.remote_id, validated.prompt)
+        return TextToolResult(content=await self._runtime.prompt(validated.remote_id, validated.prompt))
 
 
 class RemoteWaitTool(Tool):
@@ -438,9 +438,9 @@ class RemoteWaitTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return RemoteIdInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = RemoteIdInput.model_validate(parameters)
-        return await self._runtime.wait(validated.remote_id)
+        return TextToolResult(content=await self._runtime.wait(validated.remote_id))
 
 
 class RemotesWaitAnyTool(Tool):
@@ -456,9 +456,9 @@ class RemotesWaitAnyTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return EmptyInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         EmptyInput.model_validate(parameters)
-        return await self._runtime.wait_any()
+        return TextToolResult(content=await self._runtime.wait_any())
 
 
 class RemoteCancelTool(Tool):
@@ -474,9 +474,9 @@ class RemoteCancelTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return RemoteIdInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = RemoteIdInput.model_validate(parameters)
-        return await self._runtime.cancel(validated.remote_id)
+        return TextToolResult(content=await self._runtime.cancel(validated.remote_id))
 
 
 class RemoteDisconnectTool(Tool):
@@ -492,9 +492,9 @@ class RemoteDisconnectTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return RemoteIdInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = RemoteIdInput.model_validate(parameters)
-        return await self._runtime.disconnect(validated.remote_id)
+        return TextToolResult(content=await self._runtime.disconnect(validated.remote_id))
 
 
 def _create_worker_tools(*, runtime: WorkerToolRuntime) -> list[Tool]:

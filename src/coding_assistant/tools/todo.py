@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.llm.types import Tool
+from coding_assistant.llm.types import TextToolResult, Tool
 
 
 @dataclass
@@ -93,9 +93,9 @@ class TodoAddTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return TodoAddInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = TodoAddInput.model_validate(parameters)
-        return self._manager.add(validated.descriptions)
+        return TextToolResult(content=self._manager.add(validated.descriptions))
 
 
 class TodoListTool(Tool):
@@ -113,9 +113,9 @@ class TodoListTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return EmptyInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         EmptyInput.model_validate(parameters)
-        return self._manager.list_todos()
+        return TextToolResult(content=self._manager.list_todos())
 
 
 class TodoCompleteTool(Tool):
@@ -133,9 +133,9 @@ class TodoCompleteTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return TodoCompleteInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = TodoCompleteInput.model_validate(parameters)
-        return self._manager.complete(validated.task_id, validated.result)
+        return TextToolResult(content=self._manager.complete(validated.task_id, validated.result))
 
 
 def create_todo_tools(*, manager: TodoManager) -> list[Tool]:

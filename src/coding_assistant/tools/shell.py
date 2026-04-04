@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.llm.types import Tool
+from coding_assistant.llm.types import TextToolResult, Tool
 from coding_assistant.tools.process import start_process, truncate_output
 from coding_assistant.tools.tasks import TaskManager
 
@@ -43,7 +43,7 @@ class ShellExecuteTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return ShellExecuteInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = ShellExecuteInput.model_validate(parameters)
         command = validated.command.strip()
 
@@ -53,7 +53,7 @@ class ShellExecuteTool(Tool):
             task_id = self._manager.register_task(task_name, handle)
 
             if validated.background:
-                return f"Task started in background with ID: {task_id}"
+                return TextToolResult(content=f"Task started in background with ID: {task_id}")
 
             try:
                 finished = await handle.wait(timeout=validated.timeout)
@@ -61,10 +61,12 @@ class ShellExecuteTool(Tool):
                 await handle.terminate()
                 raise
             if not finished:
-                return (
-                    f"Command is taking longer than {validated.timeout}s. "
-                    f"It continues in the background with Task ID: {task_id}. "
-                    "You can check its status later using `tasks_get_output`."
+                return TextToolResult(
+                    content=(
+                        f"Command is taking longer than {validated.timeout}s. "
+                        f"It continues in the background with Task ID: {task_id}. "
+                        "You can check its status later using `tasks_get_output`."
+                    ),
                 )
 
             output = handle.stdout
@@ -74,10 +76,10 @@ class ShellExecuteTool(Tool):
                 output += f"\n\n[Full output available via `tasks_get_output(task_id={task_id})`]"
 
             if handle.exit_code != 0:
-                return f"Exit code: {handle.exit_code}.\n\n{output}"
-            return output
+                return TextToolResult(content=f"Exit code: {handle.exit_code}.\n\n{output}")
+            return TextToolResult(content=output)
         except Exception as exc:
-            return f"Error: {exc}"
+            return TextToolResult(content=f"Error: {exc}")
 
 
 def create_shell_tools(*, manager: TaskManager) -> list[Tool]:

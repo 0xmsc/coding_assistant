@@ -7,7 +7,7 @@ from typing import Any
 import aiofiles
 from pydantic import BaseModel, Field
 
-from coding_assistant.llm.types import Tool
+from coding_assistant.llm.types import TextToolResult, Tool
 
 
 class FilesystemWriteFileInput(BaseModel):
@@ -37,9 +37,9 @@ class FilesystemWriteFileTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return FilesystemWriteFileInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = FilesystemWriteFileInput.model_validate(parameters)
-        return await write_file(Path(validated.path), validated.content)
+        return TextToolResult(content=await write_file(Path(validated.path), validated.content))
 
 
 class FilesystemEditFileTool(Tool):
@@ -54,13 +54,15 @@ class FilesystemEditFileTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return FilesystemEditFileInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = FilesystemEditFileInput.model_validate(parameters)
-        return await edit_file(
-            Path(validated.path),
-            validated.old_text,
-            validated.new_text,
-            replace_all=validated.replace_all,
+        return TextToolResult(
+            content=await edit_file(
+                Path(validated.path),
+                validated.old_text,
+                validated.new_text,
+                replace_all=validated.replace_all,
+            ),
         )
 
 

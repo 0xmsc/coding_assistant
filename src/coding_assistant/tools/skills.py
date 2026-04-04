@@ -8,7 +8,7 @@ from typing import Any, Sequence
 import frontmatter  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field
 
-from coding_assistant.llm.types import Tool
+from coding_assistant.llm.types import TextToolResult, Tool
 
 logger = logging.getLogger(__name__)
 
@@ -126,12 +126,12 @@ class SkillsListResourcesTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return SkillsListResourcesInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = SkillsListResourcesInput.model_validate(parameters)
         skill = self._skills_by_name.get(validated.name)
         if skill is None:
-            return "Skill not found."
-        return "\n".join(f"- {resource}" for resource in skill.resources)
+            return TextToolResult(content="Skill not found.")
+        return TextToolResult(content="\n".join(f"- {resource}" for resource in skill.resources))
 
 
 class SkillsReadTool(Tool):
@@ -149,20 +149,24 @@ class SkillsReadTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return SkillsReadInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
         validated = SkillsReadInput.model_validate(parameters)
         skill = self._skills_by_name.get(validated.name)
         if skill is None:
-            return f"Error: Skill '{validated.name}' not found."
+            return TextToolResult(content=f"Error: Skill '{validated.name}' not found.")
 
         resource = validated.resource or "SKILL.md"
         if resource not in skill.resources:
-            return f"Error: Resource '{resource}' not found or not allowed in skill '{validated.name}'."
+            return TextToolResult(
+                content=f"Error: Resource '{resource}' not found or not allowed in skill '{validated.name}'.",
+            )
 
         try:
-            return (skill.root / resource).read_text(encoding="utf-8")
+            return TextToolResult(content=(skill.root / resource).read_text(encoding="utf-8"))
         except Exception as exc:
-            return f"Error: Could not read resource '{resource}' in skill '{validated.name}': {exc}"
+            return TextToolResult(
+                content=f"Error: Could not read resource '{resource}' in skill '{validated.name}': {exc}",
+            )
 
 
 def create_skill_tools(*, skills_directories: Sequence[Path]) -> tuple[list[Tool], list[Skill]]:

@@ -26,6 +26,7 @@ from coding_assistant.llm.types import (
     FunctionCall,
     StatusEvent,
     SystemMessage,
+    TextToolResult,
     Tool,
     ToolCall,
     Usage,
@@ -81,8 +82,8 @@ class EchoTool(Tool):
             "required": ["text"],
         }
 
-    async def execute(self, parameters: dict[str, Any]) -> str:
-        return f"echo:{parameters['text']}"
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
+        return TextToolResult(content=f"echo:{parameters['text']}")
 
 
 def make_system_history() -> list[BaseMessage]:
