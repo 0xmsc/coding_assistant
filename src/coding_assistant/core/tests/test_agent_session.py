@@ -478,60 +478,6 @@ async def test_agent_session_cancel_with_pause_queue_keeps_pending_prompt_stoppe
 
 
 @pytest.mark.asyncio
-async def test_agent_session_cancel_with_discard_pending_prompts_preserves_cancelled_turn_history() -> None:
-    started = asyncio.Event()
-    streamer = ControlledStreamer(
-        [
-            StreamStep(
-                message=AssistantMessage(content="Working..."),
-                started_event=started,
-                release_event=asyncio.Event(),
-            ),
-            StreamStep(message=AssistantMessage(content="Fresh result")),
-        ],
-    )
-    session = make_session(completion_streamer=streamer)
-
-    async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
-        assert await session.enqueue_prompt("abandoned prompt") is True
-        await asyncio.wait_for(started.wait(), timeout=1)
-        assert await session.enqueue_prompt("queued prompt") is True
-        assert session.state.pending_prompts == ("queued prompt",)
-
-        await session.cancel_current_run(discard_pending_prompts=True)
-        await wait_for_event(queue, RunCancelledEvent)
-        await wait_for_matching_event(
-            queue,
-            lambda event: (
-                isinstance(event, StateChangedEvent)
-                and not event.state.running
-                and event.state.queued_prompt_count == 0
-            ),
-        )
-
-        assert session.history == [
-            *make_system_history(),
-            UserMessage(content="abandoned prompt"),
-        ]
-        assert session.state.pending_prompts == ()
-
-        assert await session.enqueue_prompt("fresh prompt") is True
-        finished_event = await wait_for_event(queue, RunFinishedEvent)
-
-    await session.close()
-    assert isinstance(finished_event, RunFinishedEvent)
-    assert finished_event.summary == "Fresh result"
-    assert streamer.prompts == ["abandoned prompt", "fresh prompt"]
-    assert session.history == [
-        *make_system_history(),
-        UserMessage(content="abandoned prompt"),
-        UserMessage(content="fresh prompt"),
-        AssistantMessage(content="Fresh result"),
-    ]
-
-
-@pytest.mark.asyncio
 async def test_agent_session_cancel_during_tool_execution_preserves_completed_and_cancelled_tool_messages() -> None:
     slow_started = asyncio.Event()
     never_release = asyncio.Event()

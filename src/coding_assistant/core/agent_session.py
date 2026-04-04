@@ -254,20 +254,16 @@ class AgentSession:
         await self._publish_state()
         return last.content
 
-    async def cancel_current_run(self, *, discard_pending_prompts: bool = False, pause_queue: bool = False) -> bool:
-        """Cancel the active run, optionally clearing prompts that have not started yet."""
+    async def cancel_current_run(self, *, pause_queue: bool = False) -> bool:
+        """Cancel the active run, optionally pausing the queue."""
         async with self._mutation_lock:
             run_task = self._current_run_task
             had_pending_prompts = bool(self._pending_prompts or self._pending_steering_prompts)
             was_paused = self._paused
             self._paused = pause_queue and had_pending_prompts
-            if discard_pending_prompts:
-                self._pending_prompts.clear()
-                self._pending_steering_prompts.clear()
-                self._paused = False
 
         if run_task is None:
-            if (discard_pending_prompts and had_pending_prompts) or self._paused != was_paused:
+            if self._paused != was_paused:
                 await self._publish_state()
                 return True
             return False
