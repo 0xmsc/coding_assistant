@@ -104,7 +104,7 @@ class StreamRenderer:
 
 
 # Maximum length for a single argument value before truncation
-_MAX_ARG_VALUE_LENGTH = 50
+_MAX_ARG_VALUE_LENGTH = 100
 
 
 def _truncate_value(value: str) -> str:

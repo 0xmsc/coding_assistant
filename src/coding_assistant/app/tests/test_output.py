@@ -176,6 +176,12 @@ class TestDeltaRenderer:
 class TestStreamRenderer:
     """Tests for rendering separate content and reasoning streams."""
 
+    def test_empty_renderer_finishes_cleanly(self) -> None:
+        renderer = StreamRenderer()
+        with patch("coding_assistant.app.output.rich_print"):
+            renderer.finish()
+        # No deltas, no output.
+
     def test_switching_from_reasoning_to_content_flushes_reasoning_first(self) -> None:
         renderer = StreamRenderer()
 
@@ -352,9 +358,9 @@ class TestTruncateValue:
         assert _truncate_value(long_value) == long_value
 
     def test_long_value_truncated(self) -> None:
-        long_value = "x" * 100
+        long_value = "x" * 150
         result = _truncate_value(long_value)
-        assert result == "x" * 50 + " [...]"
+        assert result == "x" * 100 + " [...]"
 
 
 class TestFormatToolCall:
@@ -369,8 +375,8 @@ class TestFormatToolCall:
         assert result == 'echo(text="hello")'
 
     def test_long_argument_value_truncated(self) -> None:
-        # Create a JSON with a long string value (100 x's)
-        long_string = "x" * 100
+        # Create a JSON with a long string value (150 x's)
+        long_string = "x" * 150
         args = json.dumps({"text": long_string})
         tool_call = ToolCall(
             id="1",
