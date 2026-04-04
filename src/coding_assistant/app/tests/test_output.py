@@ -151,7 +151,8 @@ class TestDeltaRenderer:
             renderer.finish()
 
         assert mock_print.call_args_list[0].args == ()
-        assert mock_print.call_args_list[1].kwargs == {"style": "dim"}
+        assert mock_print.call_args_list[1].kwargs == {}
+        assert mock_print.call_args_list[1].args[0].style == "dim"
 
 
 class TestStreamRenderer:
@@ -167,7 +168,8 @@ class TestStreamRenderer:
 
         markdown_calls = [call for call in mock_print.call_args_list if call.args and hasattr(call.args[0], "markup")]
         assert [call.args[0].markup for call in markdown_calls] == ["Thinking", "Answer"]
-        assert markdown_calls[0].kwargs == {"style": "dim"}
+        assert markdown_calls[0].kwargs == {}
+        assert markdown_calls[0].args[0].style == "dim"
         assert markdown_calls[1].kwargs == {}
 
 
