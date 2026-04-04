@@ -231,6 +231,7 @@ def _create_application(
     layout = Layout(
         HSplit(
             [
+                Window(height=Dimension.exact(1)),
                 queued_window,
                 VSplit(
                     [
