@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal, cast
 
 from rich import print as rich_print
 from rich.markdown import Markdown
@@ -45,8 +45,9 @@ class ParagraphBuffer:
 class DeltaRenderer:
     """Render streamed assistant text as markdown paragraphs."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, style: str | None = None) -> None:
         self._buffer = ParagraphBuffer()
+        self._style = style
 
     def on_delta(self, chunk: str) -> None:
         """Render one streamed content chunk when a paragraph is complete."""
@@ -60,7 +61,47 @@ class DeltaRenderer:
 
     def _print_markdown(self, content: str) -> None:
         rich_print()
-        rich_print(Markdown(content))
+        if self._style is None:
+            rich_print(Markdown(content))
+            return
+        cast(Any, rich_print)(Markdown(content), style=self._style)
+
+
+class StreamRenderer:
+    """Render assistant content and reasoning streams without interleaving buffers."""
+
+    def __init__(self) -> None:
+        self._content_renderer = DeltaRenderer()
+        self._reasoning_renderer = DeltaRenderer(style="dim")
+        self._active_stream: Literal["content", "reasoning"] | None = None
+
+    def on_content_delta(self, chunk: str) -> None:
+        """Render one assistant content chunk."""
+        self._switch_stream("content")
+        self._content_renderer.on_delta(chunk)
+
+    def on_reasoning_delta(self, chunk: str) -> None:
+        """Render one assistant reasoning chunk."""
+        self._switch_stream("reasoning")
+        self._reasoning_renderer.on_delta(chunk)
+
+    def finish(self) -> None:
+        """Flush any buffered content or reasoning output."""
+        self._content_renderer.finish()
+        self._reasoning_renderer.finish()
+        self._active_stream = None
+
+    def _switch_stream(self, stream: Literal["content", "reasoning"]) -> None:
+        if self._active_stream == stream:
+            return
+        self._finish_active_stream()
+        self._active_stream = stream
+
+    def _finish_active_stream(self) -> None:
+        if self._active_stream == "content":
+            self._content_renderer.finish()
+        elif self._active_stream == "reasoning":
+            self._reasoning_renderer.finish()
 
 
 def _format_tool_call(tool_call: ToolCall) -> str:
@@ -117,11 +158,6 @@ def format_session_status(state: SessionState) -> str:
     if state.paused:
         return "paused"
     return "idle"
-
-
-def print_session_status(state: SessionState) -> None:
-    """Render one compact status line."""
-    rich_print(f"[dim]{format_session_status(state)}[/dim]")
 
 
 def print_info_message(message: str) -> None:

@@ -13,8 +13,6 @@ from coding_assistant.app.cli import _run_output
 from coding_assistant.core.agent_session import (
     AgentSession,
     PromptStartedEvent,
-    SessionState,
-    StateChangedEvent,
     ToolCallsEvent,
 )
 from coding_assistant.llm.types import (
@@ -24,6 +22,7 @@ from coding_assistant.llm.types import (
     CompletionEvent,
     ContentDeltaEvent,
     FunctionCall,
+    ReasoningDeltaEvent,
     StatusEvent,
     SystemMessage,
     TextToolResult,
@@ -243,41 +242,6 @@ async def test__run_output_prints_tool_calls_without_extra_spacing() -> None:
 
 
 @pytest.mark.asyncio
-async def test__run_output_prints_status_updates_when_enabled() -> None:
-    session = make_agent_session(
-        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
-    )
-    system_message = SystemMessage(content="System")
-
-    with (
-        patch("coding_assistant.app.cli.print_system_message"),
-        patch("coding_assistant.app.output.rich_print") as mock_rich_print,
-    ):
-        task = asyncio.create_task(
-            _run_output(session=session, system_message=system_message, show_state_updates=True),
-        )
-        try:
-            await asyncio.sleep(0)
-            session._publish_event(
-                StateChangedEvent(
-                    state=SessionState(
-                        running=False,
-                        queued_prompt_count=2,
-                        pending_prompts=("queued one", "queued two"),
-                    ),
-                ),
-            )
-            await asyncio.sleep(0)
-        finally:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-            await session.close()
-
-    printed_lines = [call.args[0] for call in mock_rich_print.call_args_list if call.args]
-    assert "[dim]idle[/dim]" in printed_lines
-
-
-@pytest.mark.asyncio
 async def test__run_output_prints_status_events_as_info_lines() -> None:
     session = make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
@@ -300,6 +264,36 @@ async def test__run_output_prints_status_events_as_info_lines() -> None:
 
     printed_lines = [call.args[0] for call in mock_rich_print.call_args_list if call.args]
     assert printed_lines == ["[bold blue]ℹ[/bold blue] Retrying LLM request"]
+
+
+@pytest.mark.asyncio
+async def test__run_output_prints_reasoning_deltas_before_content() -> None:
+    session = make_agent_session(
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
+    )
+    system_message = SystemMessage(content="System")
+
+    with (
+        patch("coding_assistant.app.cli.print_system_message"),
+        patch("coding_assistant.app.output.rich_print") as mock_rich_print,
+    ):
+        task = asyncio.create_task(_run_output(session=session, system_message=system_message))
+        try:
+            await asyncio.sleep(0)
+            session._publish_event(ReasoningDeltaEvent(content="Thinking"))
+            session._publish_event(ContentDeltaEvent(content="Answer"))
+            await asyncio.sleep(0)
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            await session.close()
+
+    markdown_calls = [
+        call for call in mock_rich_print.call_args_list if call.args and isinstance(call.args[0], Markdown)
+    ]
+    assert [call.args[0].markup for call in markdown_calls] == ["Thinking", "Answer"]
+    assert markdown_calls[0].kwargs == {"style": "dim"}
+    assert markdown_calls[1].kwargs == {}
 
 
 @pytest.mark.asyncio

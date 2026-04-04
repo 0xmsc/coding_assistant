@@ -31,12 +31,11 @@ from coding_assistant.app.default_agent import (
 )
 from coding_assistant.app.image import get_image
 from coding_assistant.app.output import (
-    DeltaRenderer,
+    StreamRenderer,
     format_prompt_preview,
     format_session_status,
     print_active_prompt,
     print_info_message,
-    print_session_status,
     print_system_message,
     print_tool_calls,
 )
@@ -46,12 +45,12 @@ from coding_assistant.core.agent_session import (
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
-    StateChangedEvent,
     ToolCallsEvent,
 )
 from coding_assistant.infra.paths import get_app_cache_dir
 from coding_assistant.llm.types import (
     ContentDeltaEvent,
+    ReasoningDeltaEvent,
     StatusEvent,
     SystemMessage,
 )
@@ -294,11 +293,9 @@ async def _run_output(
     *,
     session: AgentSession,
     system_message: SystemMessage,
-    show_state_updates: bool = False,
 ) -> None:
     """Display session output to terminal."""
-    renderer = DeltaRenderer()
-    last_summary: str | None = None
+    renderer = StreamRenderer()
     print_system_message(system_message)
 
     async with session.subscribe() as queue:
@@ -306,7 +303,9 @@ async def _run_output(
             while True:
                 event = await queue.get()
                 if isinstance(event, ContentDeltaEvent):
-                    renderer.on_delta(event.content)
+                    renderer.on_content_delta(event.content)
+                elif isinstance(event, ReasoningDeltaEvent):
+                    renderer.on_reasoning_delta(event.content)
                 elif isinstance(event, PromptStartedEvent):
                     renderer.finish()
                     print_active_prompt(event.content)
@@ -320,13 +319,6 @@ async def _run_output(
                 elif isinstance(event, RunFailedEvent):
                     renderer.finish()
                     rich_print(f"[bold red]Run failed:[/bold red] {event.error}")
-                elif isinstance(event, StateChangedEvent):
-                    if not show_state_updates:
-                        continue
-                    summary = format_session_status(event.state)
-                    if summary != last_summary:
-                        last_summary = summary
-                        print_session_status(event.state)
                 elif isinstance(event, StatusEvent):
                     print_info_message(event.message)
         finally:
