@@ -64,7 +64,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--trace",
         action=BooleanOptionalAction,
-        default=False,
+        default=True,
         help="Enable tracing of model requests and responses to a session folder in $XDG_STATE_HOME/coding-assistant/traces.",
     )
     parser.add_argument(
