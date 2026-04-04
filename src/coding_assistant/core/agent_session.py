@@ -9,7 +9,12 @@ from typing import Any
 
 from coding_assistant.core.agent import run_agent_event_stream
 from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
-from coding_assistant.core.tool_calls import ToolCallLifecycleEvent, ToolExecutionCancelled, execute_tool_calls
+from coding_assistant.core.tool_calls import (
+    ToolCallExecutionCompleted,
+    ToolCallLifecycleEvent,
+    ToolExecutionCancelled,
+    stream_tool_call_execution,
+)
 from coding_assistant.llm.openai import stream_completion as openai_stream_completion
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -424,11 +429,20 @@ class AgentSession:
 
                 if isinstance(boundary, AwaitingToolCalls):
                     self._publish_event(ToolCallsEvent(message=boundary.message, source=source))
-                    current_history = await execute_tool_calls(
+                    completed_history: list[BaseMessage] | None = None
+                    async for item in stream_tool_call_execution(
                         boundary=boundary,
                         tools=self._tools,
-                        on_event=lambda event: self._publish_event(ToolCallUpdateEvent(event=event, source=source)),
-                    )
+                    ):
+                        if isinstance(item, ToolCallLifecycleEvent):
+                            self._publish_event(ToolCallUpdateEvent(event=item, source=source))
+                            continue
+                        if isinstance(item, ToolCallExecutionCompleted):
+                            completed_history = item.history
+
+                    if completed_history is None:
+                        raise RuntimeError("Tool execution stopped without returning history.")
+                    current_history = completed_history
                     steering_prompt = await self._pop_next_steering_prompt()
                     if steering_prompt is not None:
                         current_history.append(UserMessage(content=steering_prompt.content))

@@ -7,7 +7,7 @@ import pytest
 
 from coding_assistant.core.agent import run_agent_event_stream
 from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
-from coding_assistant.core.tool_calls import execute_tool_calls
+from coding_assistant.core.tool_calls import ToolCallExecutionCompleted, stream_tool_call_execution
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -92,6 +92,21 @@ class NonTextTool(Tool):
 
 def make_system_history() -> list[BaseMessage]:
     return [SystemMessage(content="# Instructions\n\nTest instructions")]
+
+
+async def _execute_tool_boundary(
+    *,
+    boundary: AwaitingToolCalls,
+    tools: list[Tool],
+) -> list[BaseMessage]:
+    completed_history: list[BaseMessage] | None = None
+    async for item in stream_tool_call_execution(boundary=boundary, tools=tools):
+        if isinstance(item, ToolCallExecutionCompleted):
+            completed_history = item.history
+
+    if completed_history is None:
+        raise RuntimeError("Tool execution stopped without returning history.")
+    return completed_history
 
 
 @pytest.mark.asyncio
@@ -216,7 +231,7 @@ async def test_execute_tool_calls_returns_new_history_without_mutating_boundary_
         history=boundary_history,
     )
 
-    result = await execute_tool_calls(
+    result = await _execute_tool_boundary(
         boundary=boundary,
         tools=[MockTool()],
     )
@@ -244,7 +259,7 @@ async def test_execute_tool_calls_compacts_history_without_orphan_tool_message()
         ],
     )
 
-    result = await execute_tool_calls(
+    result = await _execute_tool_boundary(
         boundary=boundary,
         tools=[],
     )
@@ -269,7 +284,7 @@ async def test_execute_tool_calls_appends_non_text_tool_error() -> None:
         ],
     )
 
-    result = await execute_tool_calls(
+    result = await _execute_tool_boundary(
         boundary=boundary,
         tools=[NonTextTool()],
     )
@@ -295,7 +310,7 @@ async def test_execute_tool_calls_appends_tool_execution_error() -> None:
         ],
     )
 
-    result = await execute_tool_calls(
+    result = await _execute_tool_boundary(
         boundary=boundary,
         tools=[ErrorTool()],
     )
