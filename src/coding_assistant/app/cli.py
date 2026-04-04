@@ -311,7 +311,7 @@ async def _run_output(
                     renderer.finish()
                     print_active_prompt(event.content)
                 elif isinstance(event, ToolCallsEvent):
-                    renderer.finish(trailing_blank_line=False)
+                    renderer.finish()
                     print_tool_calls(event.message)
                 elif isinstance(event, RunFinishedEvent):
                     renderer.finish()
@@ -326,10 +326,8 @@ async def _run_output(
                     summary = format_session_status(event.state)
                     if summary != last_summary:
                         last_summary = summary
-                        renderer.finish(trailing_blank_line=False)
                         print_session_status(event.state)
                 elif isinstance(event, StatusEvent):
-                    renderer.finish(trailing_blank_line=False)
                     print_info_message(event.message)
         finally:
             renderer.finish()
