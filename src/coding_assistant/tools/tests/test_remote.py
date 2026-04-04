@@ -365,5 +365,5 @@ def test_worker_runtime_discovers_other_registered_remotes(monkeypatch: pytest.M
 
 
 async def _wait_for_session_to_idle(session: AgentSession) -> None:
-    while session.state.running or session.state.queued_prompt_count:
+    while session.state.running or session.state.pending_prompts:
         await asyncio.sleep(0)

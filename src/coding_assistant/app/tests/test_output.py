@@ -24,7 +24,7 @@ from coding_assistant.app.output import (
     print_tool_calls,
 )
 from coding_assistant.core.agent_session import SessionState
-from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
+from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, Usage
 
 
 # =============================================================================
@@ -232,46 +232,45 @@ class TestFormatSessionStatus:
     """Tests for session status formatting."""
 
     def test_running_status(self) -> None:
-        state = SessionState(running=True, queued_prompt_count=0)
+        state = SessionState(running=True)
         assert format_session_status(state) == "running"
 
     def test_paused_status(self) -> None:
-        state = SessionState(running=False, queued_prompt_count=0, paused=True)
+        state = SessionState(running=False, paused=True)
         assert format_session_status(state) == "paused"
 
     def test_idle_status(self) -> None:
-        state = SessionState(running=False, queued_prompt_count=5)
+        state = SessionState(running=False, pending_prompts=("a", "b", "c", "d", "e"))
         assert format_session_status(state) == "idle"
 
     def test_pending_prompts_do_not_change_status_text(self) -> None:
         state = SessionState(
             running=True,
-            queued_prompt_count=3,
             pending_prompts=("prompt1", "prompt2"),
         )
         assert format_session_status(state) == "running"
 
     def test_idle_shows_tokens_and_cost(self) -> None:
-        state = SessionState(running=False, queued_prompt_count=0, total_tokens=12345, total_cost=0.23)
+        state = SessionState(running=False, usage=Usage(tokens=12345, cost=0.23))
         result = format_session_status(state)
         assert "idle" in result
         assert "12k tokens" in result
         assert "$0.23" in result
 
     def test_tokens_below_1k_shown_as_number(self) -> None:
-        state = SessionState(running=False, queued_prompt_count=0, total_tokens=500, total_cost=0.01)
+        state = SessionState(running=False, usage=Usage(tokens=500, cost=0.01))
         assert "500 tokens" in format_session_status(state)
 
     def test_running_does_not_show_tokens(self) -> None:
-        state = SessionState(running=True, queued_prompt_count=0, total_tokens=9999, total_cost=1.00)
+        state = SessionState(running=True, usage=Usage(tokens=9999, cost=1.00))
         assert format_session_status(state) == "running"
 
     def test_paused_does_not_show_tokens(self) -> None:
-        state = SessionState(running=False, queued_prompt_count=0, paused=True, total_tokens=5000, total_cost=0.50)
+        state = SessionState(running=False, paused=True, usage=Usage(tokens=5000, cost=0.50))
         assert format_session_status(state) == "paused"
 
     def test_zero_tokens_shows_idle_without_usage(self) -> None:
-        state = SessionState(running=False, queued_prompt_count=0, total_tokens=0, total_cost=0.0)
+        state = SessionState(running=False, usage=Usage(tokens=0, cost=0.0))
         assert format_session_status(state) == "idle"
 
 

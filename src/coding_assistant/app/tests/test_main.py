@@ -209,7 +209,6 @@ def test_delta_renderer_finish_is_idempotent() -> None:
 def test_format_session_status_summarizes_pending_prompts() -> None:
     state = SessionState(
         running=True,
-        queued_prompt_count=3,
         pending_prompts=("first queued prompt", "second queued prompt", "third queued prompt"),
     )
 
@@ -221,7 +220,6 @@ def test_format_session_status_summarizes_pending_prompts() -> None:
 def test_format_session_status_shows_paused_when_queue_is_paused() -> None:
     state = SessionState(
         running=False,
-        queued_prompt_count=2,
         paused=True,
         pending_prompts=("first queued prompt", "second queued prompt"),
     )

@@ -149,7 +149,7 @@ async def test__run_output_renders_system_message_and_streamed_content() -> None
             await asyncio.sleep(0)
             assert await session.enqueue_prompt("Hi") is True
 
-            while session.state.running or session.state.queued_prompt_count:
+            while session.state.running or session.state.pending_prompts:
                 await asyncio.sleep(0)
 
             await asyncio.sleep(0)

@@ -402,7 +402,7 @@ async def test_agent_session_cancel_current_run_publishes_cancellation_and_resto
         cancelled_event = await wait_for_event(queue, RunCancelledEvent)
         assert session.state.running is False
         assert session.state.paused is False
-        assert session.state.queued_prompt_count == 0
+        assert len(session.state.pending_prompts) == 0
         state_event = await wait_for_matching_event(
             queue,
             lambda event: isinstance(event, StateChangedEvent) and not event.state.running,
@@ -413,7 +413,7 @@ async def test_agent_session_cancel_current_run_publishes_cancellation_and_resto
     assert isinstance(state_event, StateChangedEvent)
     assert state_event.state.running is False
     assert state_event.state.paused is False
-    assert state_event.state.queued_prompt_count == 0
+    assert len(state_event.state.pending_prompts) == 0
     assert session.history == [
         *make_system_history(),
         UserMessage(content="Do the task"),
@@ -591,7 +591,7 @@ async def test_agent_session_publishes_run_failed_event() -> None:
         assert await session.enqueue_prompt("Hi") is True
         failed_event = await wait_for_event(queue, RunFailedEvent)
         assert session.state.running is False
-        assert session.state.queued_prompt_count == 0
+        assert len(session.state.pending_prompts) == 0
 
     await session.close()
     assert isinstance(failed_event, RunFailedEvent)
@@ -620,15 +620,16 @@ async def test_agent_session_accumulates_usage_from_completion_event() -> None:
         assert await session.enqueue_prompt("first") is True
         await wait_for_event(queue, RunFinishedEvent)
 
-        assert session.state.total_tokens == 1000
-        assert session.state.total_cost == 0.01
+        assert session.state.usage is not None
+        assert session.state.usage.tokens == 1000
+        assert session.state.usage.cost == 0.01
 
         assert await session.enqueue_prompt("second") is True
         await wait_for_event(queue, RunFinishedEvent)
 
-        # total_tokens is set to latest Usage.tokens; total_cost accumulates
-        assert session.state.total_tokens == 2000
-        assert session.state.total_cost == 0.03
+        # tokens is set to latest Usage.tokens; cost accumulates
+        assert session.state.usage.tokens == 2000
+        assert session.state.usage.cost == 0.03
 
     await session.close()
 
@@ -654,13 +655,15 @@ async def test_agent_session_usage_not_accumulated_when_completion_has_no_usage(
         await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("first") is True
         await wait_for_event(queue, RunFinishedEvent)
-        assert session.state.total_tokens == 500
-        assert session.state.total_cost == 0.005
+        assert session.state.usage is not None
+        assert session.state.usage.tokens == 500
+        assert session.state.usage.cost == 0.005
 
         assert await session.enqueue_prompt("second") is True
         await wait_for_event(queue, RunFinishedEvent)
         # Totals unchanged since usage was None
-        assert session.state.total_tokens == 500
-        assert session.state.total_cost == 0.005
+        assert session.state.usage is not None
+        assert session.state.usage.tokens == 500
+        assert session.state.usage.cost == 0.005
 
     await session.close()
