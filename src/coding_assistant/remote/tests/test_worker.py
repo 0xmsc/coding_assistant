@@ -188,9 +188,9 @@ async def test__run_output_prints_started_prompt_before_run_output() -> None:
             await asyncio.gather(task, return_exceptions=True)
             await session.close()
 
-    # Should call rich_print 2 times: blank line, content (no trailing blank)
+    # print_active_prompt adds: leading blank + prompt line
     assert len(mock_rich_print.call_args_list) == 2
-    assert mock_rich_print.call_args_list[0].args == ()
+    assert mock_rich_print.call_args_list[0].args == ()  # leading blank
     content = mock_rich_print.call_args_list[1].args[0]
     assert "Do the task" in content
 
@@ -228,6 +228,11 @@ async def test__run_output_prints_tool_calls_without_extra_spacing() -> None:
             await asyncio.gather(task, return_exceptions=True)
             await session.close()
 
+    # Each element owns its own spacing:
+    # 1. blank line before content (from _print_markdown)
+    # 2. markdown content
+    # 3. blank line before tool call (from print_tool_calls)
+    # 4. tool call line
     assert len(mock_rich_print.call_args_list) == 4
     assert mock_rich_print.call_args_list[0].args == ()
     assert isinstance(mock_rich_print.call_args_list[1].args[0], Markdown)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 from collections.abc import Callable
+from typing import Any
 from unittest.mock import patch
 
 from rich.console import Console
@@ -121,27 +122,26 @@ class TestDeltaRenderer:
         output = buffer.getvalue()
         assert "Some text without paragraph end" in output
 
-    def test_trailing_blank_line_controlled_by_flag(self) -> None:
-        renderer1 = DeltaRenderer()
-        renderer2 = DeltaRenderer()
+    def test_each_paragraph_gets_leading_newline(self) -> None:
+        """Verify each paragraph (streaming and flushed) gets a leading newline."""
+        renderer = DeltaRenderer()
+        calls: list[tuple[Any, ...]] = []
 
-        buffer1 = io.StringIO()
-        buffer2 = io.StringIO()
-        console1 = Console(file=buffer1, force_terminal=False, width=80)
-        console2 = Console(file=buffer2, force_terminal=False, width=80)
+        def capture(*args: Any) -> None:
+            calls.append(args)
 
-        with patch("coding_assistant.app.output.rich_print", console1.print):
-            renderer1.on_delta("Content\n\nMore")
-            renderer1.finish(trailing_blank_line=False)
+        with patch("coding_assistant.app.output.rich_print", side_effect=capture):
+            renderer.on_delta("Para 1\n\n")  # complete paragraph, streamed
+            renderer.on_delta("Para 2")  # incomplete, held in buffer
+            renderer.finish()  # flush as "Para 2"
 
-        with patch("coding_assistant.app.output.rich_print", console2.print):
-            renderer2.on_delta("Content\n\nMore")
-            renderer2.finish(trailing_blank_line=True)
-
-        output1 = buffer1.getvalue()
-        output2 = buffer2.getvalue()
-        assert "Content" in output1
-        assert "Content" in output2
+        # Each paragraph should have a leading blank line (empty tuple args)
+        blank_lines = [call for call in calls if call == ()]
+        assert len(blank_lines) == 2, f"Expected 2 leading blanks, got {len(blank_lines)}"
+        # Each paragraph should appear in output via Markdown.markup
+        markups = [call[0].markup for call in calls if call and hasattr(call[0], "markup")]
+        assert "Para 1" in markups
+        assert "Para 2" in markups
 
 
 # =============================================================================

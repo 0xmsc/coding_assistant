@@ -47,26 +47,19 @@ class DeltaRenderer:
 
     def __init__(self) -> None:
         self._buffer = ParagraphBuffer()
-        self._first_paragraph = True
 
     def on_delta(self, chunk: str) -> None:
         """Render one streamed content chunk when a paragraph is complete."""
         for paragraph in self._buffer.push(chunk):
             self._print_markdown(paragraph)
 
-    def finish(self, *, trailing_blank_line: bool = True) -> None:
+    def finish(self) -> None:
         """Flush any remaining buffered content at the end of a turn."""
-        had_content = not self._first_paragraph
         if flushed := self._buffer.flush():
             self._print_markdown(flushed)
-        if had_content and trailing_blank_line:
-            rich_print()
-        self._first_paragraph = True
 
     def _print_markdown(self, content: str) -> None:
-        if self._first_paragraph:
-            rich_print()
-            self._first_paragraph = False
+        rich_print()
         rich_print(Markdown(content))
 
 
@@ -85,8 +78,8 @@ def _format_tool_call(tool_call: ToolCall) -> str:
 
 def print_tool_calls(message: AssistantMessage) -> None:
     """Print tool calls in simple format."""
+    rich_print()  # leading blank line
     for tool_call in message.tool_calls:
-        rich_print()
         rich_print(f"[bold yellow]▶[/bold yellow] {_format_tool_call(tool_call)}")
 
 
@@ -104,7 +97,7 @@ def print_active_prompt(content: str | list[dict[str, Any]]) -> None:
         rendered_content = json.dumps(content, indent=2)
 
     lines = rendered_content.split("\n")
-    rich_print()
+    rich_print()  # leading blank
     for line in lines:
         rich_print(f"  [bold cyan]▌[/bold cyan] [white]{line}[/white]")
 

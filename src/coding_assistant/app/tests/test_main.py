@@ -174,9 +174,14 @@ def test_delta_renderer_avoids_double_spacing_before_tool_calls() -> None:
 
     with patch("coding_assistant.app.output.rich_print") as mock_print:
         renderer.on_delta("Can you read README.md?")
-        renderer.finish(trailing_blank_line=False)
+        renderer.finish()
         print_tool_calls(tool_call_message)
 
+    # Each element adds its own spacing:
+    # 1. blank line before content (from _print_markdown)
+    # 2. markdown content
+    # 3. blank line before tool call (from print_tool_calls)
+    # 4. tool call line
     assert len(mock_print.call_args_list) == 4
     assert mock_print.call_args_list[0].args == ()
     assert isinstance(mock_print.call_args_list[1].args[0], Markdown)
@@ -230,10 +235,9 @@ def test_print_prompt_accepted_uses_simple_grey_background() -> None:
 
         print_active_prompt("Do the task")
 
-    # Should call rich_print 2 times: blank line, content (no trailing blank)
+    # print_active_prompt adds: leading blank + prompt line
     assert len(mock_print.call_args_list) == 2
-    # First call should be blank, second should be the prompt with bullet
-    assert mock_print.call_args_list[0].args == ()
+    assert mock_print.call_args_list[0].args == ()  # leading blank
     content = mock_print.call_args_list[1].args[0]
     assert "Do the task" in content
     assert "▌" in content
