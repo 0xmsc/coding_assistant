@@ -1,13 +1,7 @@
 import pytest
 
-from coding_assistant.core.history import build_system_prompt, compact_history
+from coding_assistant.core.history import compact_history
 from coding_assistant.llm.types import SystemMessage, UserMessage
-
-
-def test_build_system_prompt_wraps_instructions() -> None:
-    prompt = build_system_prompt(instructions="# Instructions\n\nBe precise.")
-    assert "## General" in prompt
-    assert "# Instructions\n\nBe precise." in prompt
 
 
 def test_compact_history_preserves_system_prompt() -> None:
