@@ -101,13 +101,24 @@ class StreamRenderer:
             self._reasoning_renderer.finish()
 
 
+# Maximum length for a single argument value before truncation
+_MAX_ARG_VALUE_LENGTH = 50
+
+
+def _truncate_value(value: str) -> str:
+    """Truncate a value string if it exceeds the maximum length."""
+    if len(value) <= _MAX_ARG_VALUE_LENGTH:
+        return value
+    return value[:_MAX_ARG_VALUE_LENGTH] + "[...]"
+
+
 def _format_tool_call(tool_call: ToolCall) -> str:
-    """Format a tool call as a simple one-liner."""
+    """Format a tool call as a simple one-liner with truncated long arguments."""
     tool_name = tool_call.function.name or "<missing>"
     try:
         args = json.loads(tool_call.function.arguments)
         if isinstance(args, dict):
-            params = ", ".join(f"{k}={json.dumps(v)}" for k, v in args.items())
+            params = ", ".join(f"{k}={json.dumps(_truncate_value(str(v)))}" for k, v in args.items())
             return f"{tool_name}({params})"
     except json.JSONDecodeError:
         pass
