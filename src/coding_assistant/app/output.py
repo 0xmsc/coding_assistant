@@ -37,9 +37,11 @@ class ParagraphBuffer:
         return paragraphs
 
     def flush(self) -> str | None:
-        remaining = self._buffer.strip()
+        remaining = self._buffer
         self._buffer = ""
-        return remaining if remaining else None
+        if not remaining.strip():
+            return None
+        return remaining.rstrip("\r\n")
 
 
 class DeltaRenderer:
