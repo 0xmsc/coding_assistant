@@ -12,11 +12,11 @@ from rich.console import Console
 from coding_assistant.app.output import (
     DeltaRenderer,
     ParagraphBuffer,
+    StreamRenderer,
     format_prompt_preview,
     format_session_status,
     print_active_prompt,
     print_info_message,
-    print_session_status,
     print_system_message,
     print_tool_calls,
 )
@@ -143,6 +143,33 @@ class TestDeltaRenderer:
         assert "Para 1" in markups
         assert "Para 2" in markups
 
+    def test_reasoning_renderer_applies_dim_style(self) -> None:
+        renderer = DeltaRenderer(style="dim")
+
+        with patch("coding_assistant.app.output.rich_print") as mock_print:
+            renderer.on_delta("Thinking")
+            renderer.finish()
+
+        assert mock_print.call_args_list[0].args == ()
+        assert mock_print.call_args_list[1].kwargs == {"style": "dim"}
+
+
+class TestStreamRenderer:
+    """Tests for rendering separate content and reasoning streams."""
+
+    def test_switching_from_reasoning_to_content_flushes_reasoning_first(self) -> None:
+        renderer = StreamRenderer()
+
+        with patch("coding_assistant.app.output.rich_print") as mock_print:
+            renderer.on_reasoning_delta("Thinking")
+            renderer.on_content_delta("Answer")
+            renderer.finish()
+
+        markdown_calls = [call for call in mock_print.call_args_list if call.args and hasattr(call.args[0], "markup")]
+        assert [call.args[0].markup for call in markdown_calls] == ["Thinking", "Answer"]
+        assert markdown_calls[0].kwargs == {"style": "dim"}
+        assert markdown_calls[1].kwargs == {}
+
 
 # =============================================================================
 # format_prompt_preview Tests
@@ -220,11 +247,6 @@ class TestPrintFunctions:
         message = SystemMessage(content="# Test System")
         output = _capture_output(lambda: print_system_message(message))
         assert "Test System" in output or "#" in output
-
-    def test_print_session_status(self) -> None:
-        state = SessionState(running=True, queued_prompt_count=0)
-        output = _capture_output(lambda: print_session_status(state))
-        assert "running" in output or "dim" in output.lower()
 
     def test_print_info_message(self) -> None:
         output = _capture_output(lambda: print_info_message("Test message"))
