@@ -24,6 +24,7 @@ from coding_assistant.llm.types import (
     ReasoningDeltaEvent,
     StatusEvent,
     Tool,
+    Usage,
     UserMessage,
 )
 
@@ -36,11 +37,9 @@ class SessionState:
     """Snapshot of whether the session can accept or is running work."""
 
     running: bool
-    queued_prompt_count: int
-    total_tokens: int = 0
-    total_cost: float = 0.0
     paused: bool = False
     pending_prompts: tuple[PromptContent, ...] = ()
+    usage: Usage | None = None
 
 
 @dataclass(frozen=True)
@@ -175,8 +174,7 @@ class AgentSession:
         self._run_loop_wakeup = asyncio.Event()
         self._closed = False
         self._paused = False
-        self._total_tokens = 0
-        self._total_cost = 0.0
+        self._usage = Usage(tokens=0, cost=0.0)
         self._run_loop_task = asyncio.create_task(self._run_loop())
 
     @property
@@ -187,11 +185,9 @@ class AgentSession:
         )
         return SessionState(
             running=self._current_run_task is not None,
-            queued_prompt_count=len(pending_prompts),
-            total_tokens=self._total_tokens,
-            total_cost=self._total_cost,
             paused=self._paused,
             pending_prompts=pending_prompts,
+            usage=self._usage,
         )
 
     @property
@@ -427,8 +423,10 @@ class AgentSession:
                     if isinstance(event, CompletionEvent):
                         if event.completion.usage is not None:
                             async with self._mutation_lock:
-                                self._total_tokens = event.completion.usage.tokens
-                                self._total_cost += event.completion.usage.cost
+                                self._usage = Usage(
+                                    tokens=event.completion.usage.tokens,
+                                    cost=self._usage.cost + event.completion.usage.cost,
+                                )
                         self._publish_event(event)
                         await self._publish_state()
                         continue

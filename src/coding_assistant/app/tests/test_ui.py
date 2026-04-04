@@ -46,7 +46,6 @@ def test_create_application_builds_non_fullscreen_interactive_ui(tmp_path: Path)
     session = Mock()
     session.state = SessionState(
         running=False,
-        queued_prompt_count=2,
         pending_prompts=("first queued prompt", "second queued prompt"),
     )
 
@@ -77,7 +76,7 @@ def test_create_application_builds_non_fullscreen_interactive_ui(tmp_path: Path)
 
 def test_create_application_submits_as_steering_with_enter(tmp_path: Path) -> None:
     session = Mock()
-    session.state = SessionState(running=False, queued_prompt_count=0)
+    session.state = SessionState(running=False)
 
     application, answer_queue = _create_application(
         session=session,
@@ -104,7 +103,7 @@ def test_create_application_submits_as_steering_with_enter(tmp_path: Path) -> No
 
 def test_create_application_submits_as_queued_with_tab(tmp_path: Path) -> None:
     session = Mock()
-    session.state = SessionState(running=False, queued_prompt_count=0)
+    session.state = SessionState(running=False)
 
     application, answer_queue = _create_application(
         session=session,
@@ -131,7 +130,7 @@ def test_create_application_submits_as_queued_with_tab(tmp_path: Path) -> None:
 
 def test_create_application_inserts_newline_with_ctrl_j(tmp_path: Path) -> None:
     session = Mock()
-    session.state = SessionState(running=False, queued_prompt_count=0)
+    session.state = SessionState(running=False)
 
     application, _ = _create_application(
         session=session,
@@ -158,7 +157,6 @@ def test_format_queued_prompts_shows_pending_prompts() -> None:
     session = Mock()
     session.state = SessionState(
         running=True,
-        queued_prompt_count=3,
         pending_prompts=("first queued prompt", "second queued prompt", "third queued prompt"),
     )
 

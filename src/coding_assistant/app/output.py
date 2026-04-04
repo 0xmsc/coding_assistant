@@ -167,9 +167,9 @@ def format_session_status(state: SessionState) -> str:
         return "running"
     if state.paused:
         return "paused"
-    if state.total_tokens > 0:
-        tokens = f"{state.total_tokens // 1000}k" if state.total_tokens >= 1000 else str(state.total_tokens)
-        cost = f"${state.total_cost:.2f}"
+    if state.usage is not None and state.usage.tokens > 0:
+        tokens = f"{state.usage.tokens // 1000}k" if state.usage.tokens >= 1000 else str(state.usage.tokens)
+        cost = f"${state.usage.cost:.2f}"
         return f"idle — {tokens} tokens, {cost}"
     return "idle"
 
