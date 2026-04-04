@@ -178,31 +178,25 @@ class TestFormatPromptPreview:
 class TestFormatSessionStatus:
     """Tests for session status formatting."""
 
-    def test_running_status_with_zero_queue(self) -> None:
+    def test_running_status(self) -> None:
         state = SessionState(running=True, queued_prompt_count=0)
-        assert "running" in format_session_status(state)
-        assert "queued" in format_session_status(state)
+        assert format_session_status(state) == "running"
 
-    def test_paused_status_with_zero_queue(self) -> None:
+    def test_paused_status(self) -> None:
         state = SessionState(running=False, queued_prompt_count=0, paused=True)
-        assert "paused" in format_session_status(state)
-        assert "queued" in format_session_status(state)
+        assert format_session_status(state) == "paused"
 
-    def test_idle_status_with_queued_count(self) -> None:
+    def test_idle_status(self) -> None:
         state = SessionState(running=False, queued_prompt_count=5)
-        result = format_session_status(state)
-        assert "idle" in result
-        assert "queued: 5" in result
+        assert format_session_status(state) == "idle"
 
-    def test_pending_prompts_suppresses_queue_count(self) -> None:
+    def test_pending_prompts_do_not_change_status_text(self) -> None:
         state = SessionState(
             running=True,
             queued_prompt_count=3,
             pending_prompts=("prompt1", "prompt2"),
         )
-        result = format_session_status(state)
-        assert result == "running"
-        assert "queued" not in result
+        assert format_session_status(state) == "running"
 
 
 # =============================================================================
