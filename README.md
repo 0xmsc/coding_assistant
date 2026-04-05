@@ -115,11 +115,11 @@ The core runtime also adds internal helper tools such as `compact_conversation` 
 
 ## Skills
 
-Coding Assistant currently ships one bundled example skill:
+Coding Assistant currently ships one bundled builtin skill:
 
-- `example`
+- `advanced-tool-usage`
 
-It exists to demonstrate the packaged skill mechanism and expected `SKILL.md` layout. Replace or remove it once the project has real builtin skills.
+It documents patterns for large-output handling and multi-stage tool orchestration with `redirect_tool_call`.
 
 You can add more skills with `--skills-directories`. Each additional skill directory should contain child directories with a `SKILL.md` file:
 

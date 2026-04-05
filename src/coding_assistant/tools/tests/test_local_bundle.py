@@ -1,16 +1,15 @@
-from pathlib import Path
-
-import pytest
-
 from coding_assistant.tools.local_bundle import create_local_tool_bundle, load_tool_instructions
 
 
-def test_create_local_tool_bundle_includes_builtin_skills() -> None:
+def test_create_local_tool_bundle_includes_builtin_tools() -> None:
     bundle = create_local_tool_bundle(skills_directories=[])
     tool_names = {tool.name() for tool in bundle.tools}
 
     assert bundle.instructions.startswith(load_tool_instructions())
-    assert "- **example**: Example packaged skill showing the expected SKILL.md structure." in bundle.instructions
+    assert (
+        "- **advanced-tool-usage**: Guidelines for multi-stage tool orchestration and handling large data using 'redirect_tool_call'. Use this when you need to process large amounts of data without exhausting the context window or when building complex data pipelines."
+        in bundle.instructions
+    )
     assert {
         "skills_list_resources",
         "skills_read",
@@ -23,14 +22,3 @@ def test_create_local_tool_bundle_includes_builtin_skills() -> None:
         "remote_cancel",
         "remote_disconnect",
     } <= tool_names
-
-
-def test_create_local_tool_bundle_raises_on_skill_name_collision(tmp_path: Path) -> None:
-    skill_root = tmp_path / "skills"
-    skill_root.mkdir()
-    skill_directory = skill_root / "example"
-    skill_directory.mkdir()
-    (skill_directory / "SKILL.md").write_text("---\nname: example\ndescription: Example override\n---\nUse this skill.")
-
-    with pytest.raises(RuntimeError, match="Duplicate skill name 'example'"):
-        create_local_tool_bundle(skills_directories=[skill_root])

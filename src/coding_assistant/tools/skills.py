@@ -175,9 +175,6 @@ def create_skill_tools(*, skills_directories: Sequence[Path]) -> tuple[list[Tool
     for directory in skills_directories:
         skills.extend(load_skills_from_directory(directory))
 
-    if not skills:
-        return [], []
-
     skills_by_name: dict[str, Skill] = {}
     for skill in skills:
         existing_skill = skills_by_name.get(skill.name)

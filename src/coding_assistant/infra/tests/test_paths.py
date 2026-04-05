@@ -87,4 +87,4 @@ def test_get_app_runtime_dir_falls_back_to_state(monkeypatch: Any) -> None:
 def test_builtin_content_directories_exist() -> None:
     assert (get_builtin_instructions_dir() / "global.md").is_file()
     assert (get_builtin_instructions_dir() / "tools.md").is_file()
-    assert (get_builtin_skills_dir() / "example" / "SKILL.md").is_file()
+    assert (get_builtin_skills_dir() / "advanced-tool-usage" / "SKILL.md").is_file()

@@ -92,7 +92,7 @@ def test_create_skill_tools(tmp_path: Any) -> None:
 def test_create_skill_tools_without_configured_skills() -> None:
     tools, skills = create_skill_tools(skills_directories=[])
 
-    assert tools == []
+    assert {tool.name() for tool in tools} == {"skills_list_resources", "skills_read"}
     assert skills == []
 
 
