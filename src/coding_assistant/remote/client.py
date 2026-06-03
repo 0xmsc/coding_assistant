@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -25,6 +24,13 @@ from coding_assistant.remote.acp import (
     text_block,
 )
 from coding_assistant.remote.protocol import session_update_from_jsonrpc_update
+
+
+def _client_version() -> str:
+    try:
+        return version("coding-assistant-cli")
+    except PackageNotFoundError:
+        return "0.0.0"
 
 
 @dataclass(frozen=True)
@@ -69,8 +75,8 @@ class _ActivePrompt:
     submission_future: asyncio.Future[None]
 
 
-class RemoteWorkerConnection:
-    """One live ACP websocket connection to a remote session."""
+class RemoteSessionClient:
+    """One live JSON-RPC connection to a remote agent session endpoint."""
 
     def __init__(
         self,
@@ -93,28 +99,22 @@ class RemoteWorkerConnection:
         self._receive_task = asyncio.create_task(self._receive_loop())
 
     @classmethod
-    async def open(
+    async def connect(
         cls,
         *,
         endpoint: str,
         on_event: Callable[[RemoteClientEvent], Awaitable[None]],
         on_disconnect: Callable[[str], Awaitable[None]],
-    ) -> RemoteWorkerConnection:
+    ) -> RemoteSessionClient:
         websocket = await connect(endpoint)
-        connection = cls(
+        return cls(
             endpoint=endpoint,
             websocket=websocket,
             on_event=on_event,
             on_disconnect=on_disconnect,
         )
-        try:
-            await connection._initialize()
-        except Exception:
-            await connection.close()
-            raise
-        return connection
 
-    async def _initialize(self) -> None:
+    async def initialize(self) -> None:
         await self._request(
             "initialize",
             {
@@ -127,20 +127,29 @@ class RemoteWorkerConnection:
                 },
             },
         )
+
+    async def new_session(self, params: JsonObject | None = None) -> str:
         result = await self._request(
             "session/new",
-            {
-                "cwd": os.getcwd(),
-                "mcpServers": [],
-            },
+            params or {},
         )
         session_id = result.get("sessionId")
         if not isinstance(session_id, str):
-            raise RuntimeError("ACP session/new response did not include a sessionId.")
+            raise RuntimeError("session/new response did not include a sessionId.")
         self._session_id = session_id
+        return session_id
 
-    async def prompt(self, prompt: str) -> str | None:
-        if self._session_id is None:
+    async def start_session(self, params: JsonObject) -> str:
+        result = await self._request("_session/start", params)
+        session_id = result.get("sessionId")
+        if not isinstance(session_id, str):
+            raise RuntimeError("_session/start response did not include a sessionId.")
+        self._session_id = session_id
+        return session_id
+
+    async def prompt(self, prompt: str, *, session_id: str | None = None) -> str | None:
+        target_session_id = session_id or self._session_id
+        if target_session_id is None:
             return "Remote session is not initialized."
         if self._active_prompt is not None:
             return "This remote connection already has an active prompt turn."
@@ -156,7 +165,7 @@ class RemoteWorkerConnection:
                     request_id,
                     "session/prompt",
                     {
-                        "sessionId": self._session_id,
+                        "sessionId": target_session_id,
                         "prompt": [text_block(prompt)],
                     },
                 ),
@@ -174,15 +183,16 @@ class RemoteWorkerConnection:
             return str(exc)
         return None
 
-    async def cancel(self) -> None:
-        if self._session_id is None:
+    async def cancel(self, *, session_id: str | None = None) -> None:
+        target_session_id = session_id or self._session_id
+        if target_session_id is None:
             raise RuntimeError("Remote session is not initialized.")
         async with self._send_lock:
             await self._websocket.send(
                 jsonrpc_notification(
                     "session/cancel",
                     {
-                        "sessionId": self._session_id,
+                        "sessionId": target_session_id,
                     },
                 ),
             )
@@ -281,7 +291,7 @@ class RemoteWorkerConnection:
         response_id = payload.get("id")
         error = payload.get("error")
         if response_id is None and isinstance(error, dict):
-            message = str(error.get("message", "Unknown ACP error."))
+            message = str(error.get("message", "Unknown remote protocol error."))
             self._fatal_error = message
             for future in self._pending_requests.values():
                 if not future.done():
@@ -294,7 +304,7 @@ class RemoteWorkerConnection:
         response_future = self._pending_requests.pop(response_id) if response_id in self._pending_requests else None
         if response_future is not None:
             if isinstance(error, dict):
-                message = error.get("message", "Unknown ACP error.")
+                message = error.get("message", "Unknown remote protocol error.")
                 response_future.set_exception(RuntimeError(str(message)))
             else:
                 response_future.set_result(payload.get("result", {}))
@@ -304,7 +314,7 @@ class RemoteWorkerConnection:
             return
 
         if isinstance(error, dict):
-            message = str(error.get("message", "Unknown ACP error."))
+            message = str(error.get("message", "Unknown remote protocol error."))
             if not active_prompt.submission_future.done():
                 active_prompt.submission_future.set_exception(RuntimeError(message))
             else:
@@ -322,10 +332,3 @@ class RemoteWorkerConnection:
             active_prompt.submission_future.set_result(None)
         await self._on_event(RemotePromptFinishedEvent(stop_reason=stop_reason))
         self._active_prompt = None
-
-
-def _client_version() -> str:
-    try:
-        return version("coding-assistant-cli")
-    except PackageNotFoundError:
-        return "0.0.0"

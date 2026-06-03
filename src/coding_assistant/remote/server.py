@@ -200,7 +200,7 @@ async def _handle_jsonrpc_message(
             return
         if state.active_prompt_request_id is not None:
             await websocket.send(
-                jsonrpc_error(response_id, ERROR_SERVER, "This ACP connection already has an active prompt turn."),
+                jsonrpc_error(response_id, ERROR_SERVER, "This remote connection already has an active prompt turn."),
             )
             return
 

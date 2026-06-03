@@ -239,7 +239,7 @@ memory while a worker is running.
 Worker stream output is provisional until the manager persists a completed
 turn.
 
-1. The manager hydrates a worker from history version `N`.
+1. The manager starts a worker from history version `N`.
 2. The worker creates an in-memory `AgentSession`.
 3. The worker streams live `session/update` notifications.
 4. The worker sends `_session/commit` with `baseVersion: N`.
@@ -700,19 +700,19 @@ parsing, request/response/error handling, content blocks, `session/update`
 serialization, and normalized update/commit models.
 
 Private methods use the `_session/*` prefix only where the public session
-methods do not define the manager/worker operation, such as hydration and
-completed-turn commit semantics.
+methods do not define the manager/worker operation, such as starting a worker
+from manager-owned state and completed-turn commit semantics.
 
-### _session/hydrate
+### _session/start
 
-Hydrates a worker with manager-owned state.
+Starts a worker session from manager-owned state.
 
 Request params:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `sessionId` | string | yes | Session id. |
-| `baseVersion` | integer | yes | History version used to hydrate the worker. |
+| `baseVersion` | integer | yes | History version used to start the worker session. |
 | `messages` | array | yes | Model-visible committed history from SQLite. |
 | `workspace` | string | yes | Worker workspace path, normally `/workspace`. |
 | `config` | object | yes | Model, MCP, skills, and runtime configuration. |

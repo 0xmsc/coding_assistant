@@ -13,9 +13,9 @@ from coding_assistant.remote.client import (
     RemoteContentDeltaEvent,
     RemotePromptFailedEvent,
     RemotePromptFinishedEvent,
+    RemoteSessionClient,
     RemoteToolCallEvent,
     RemoteToolCallUpdateEvent,
-    RemoteWorkerConnection,
 )
 from coding_assistant.remote.registry import discover_remote_instances
 
@@ -41,7 +41,7 @@ class _WorkerManager:
     """Track active supervisor-side connections to other workers."""
 
     def __init__(self) -> None:
-        self._connections: dict[int, RemoteWorkerConnection] = {}
+        self._connections: dict[int, RemoteSessionClient] = {}
         self._snapshots: dict[int, WorkerSnapshot] = {}
         self._worker_queues: dict[int, asyncio.Queue[WorkerMeaningfulEvent]] = {}
         self._worker_ids_by_endpoint: dict[str, int] = {}
@@ -87,11 +87,13 @@ class _WorkerManager:
         self._snapshots[worker_id] = WorkerSnapshot(worker_id=worker_id, endpoint=endpoint)
         self._worker_queues[worker_id] = asyncio.Queue()
         try:
-            connection = await RemoteWorkerConnection.open(
+            connection = await RemoteSessionClient.connect(
                 endpoint=endpoint,
                 on_event=lambda message: self._handle_message(worker_id, message),
                 on_disconnect=lambda disconnected_endpoint: self._handle_disconnect(worker_id, disconnected_endpoint),
             )
+            await connection.initialize()
+            await connection.new_session({"cwd": os.getcwd(), "mcpServers": []})
         except Exception as exc:
             self._connecting_worker_ids.discard(worker_id)
             self._snapshots.pop(worker_id, None)
