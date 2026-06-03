@@ -1,11 +1,20 @@
 # RPC Protocol
 
-`coding-assistant` exposes an ACP-shaped JSON-RPC 2.0 protocol over WebSocket
-for controlling coding-agent sessions remotely.
+`coding-assistant` uses a custom JSON-RPC 2.0 protocol based on the Agent
+Client Protocol (ACP). It uses ACP method names and payload shapes where they
+fit, but it is not a complete ACP implementation.
 
-The current worker implementation is local-only and single-session. The web app
-protocol described here is the target RPC contract: it supports multiple
-sessions and uses native ACP methods where ACP already defines the operation.
+The interactive CLI does not use this protocol for its own terminal UI. It
+creates and drives `AgentSession` directly, and currently exposes a local
+single-session remote endpoint as an additional endpoint for other clients.
+
+The web chat integration should not introduce a separate remote mode or event
+model. CLI rendering, the CLI-owned local remote endpoint, the web manager,
+remote workers/subagents, and persistence should share the same internal
+session update and committed-message models. JSON-RPC is the single remote
+transport serialization for components that cross a process or container
+boundary.
+
 The minimum Chat WebUI contract is:
 
 - `initialize`
@@ -18,20 +27,71 @@ The minimum Chat WebUI contract is:
 
 Everything else is optional until the UI has a concrete need for it.
 
+## Topology
+
+Browser clients should connect through an authenticated application backend,
+not directly to `coding-assistant`.
+
+```text
+browser
+  -> authenticated application backend WebSocket
+  -> coding_assistant manager service
+  -> per-session worker container
+```
+
+The application backend owns browser authentication. The manager owns canonical
+session state and worker lifecycle. Each active session runs in one worker
+container with its managed workspace mounted at `/workspace`.
+
+The CLI path remains direct:
+
+```text
+terminal UI
+  -> AgentSession
+  -> shared session update model
+  -> CLI renderer
+```
+
+The CLI may continue to expose a local remote endpoint for one live session,
+but that endpoint should use the same protocol helpers as manager-controlled
+remote workers/subagents. The CLI terminal UI itself does not need to become a
+JSON-RPC client.
+
+## Compatibility Boundary
+
+This protocol is ACP-inspired:
+
+- It uses JSON-RPC 2.0 envelopes.
+- It uses ACP method names where possible.
+- It uses ACP-compatible content blocks and `session/update` payloads where
+  practical.
+
+This protocol also has `coding-assistant` extensions:
+
+- Backend-injected `params._meta.scopeId` session scoping.
+- Manager-owned workspaces derived from `sessionId`.
+- Manager-owned SQLite persistence.
+- Private manager/worker `_session/*` methods.
+- Per-active-session worker containers.
+
+Do not treat this document as a promise of complete ACP compatibility.
+
 ## Transport
 
-The local CLI worker starts a WebSocket server and prints its endpoint:
+The current CLI can expose a local single-session WebSocket adapter and print
+its endpoint:
 
 ```text
 Remote endpoint: ws://127.0.0.1:43123
 ```
 
-Each WebSocket text frame contains one JSON-RPC message encoded as UTF-8 JSON.
-Binary frames are not part of the protocol.
+The web manager service listens on a stable host and port configured for the
+deployment. Each WebSocket text frame contains one JSON-RPC message encoded as
+UTF-8 JSON. Binary frames are not part of the protocol.
 
-For a web deployment, terminate browser WebSockets at an authenticated backend.
-The backend owns process lifetime, session storage, workspace access, and tool
-permission policy.
+For web deployment, terminate browser WebSockets at the authenticated
+application backend. The backend forwards JSON-RPC messages to the manager
+service after injecting trusted scope metadata.
 
 ## JSON-RPC Envelope
 
@@ -79,9 +139,9 @@ Notifications:
 }
 ```
 
-## Error Codes
+Notifications have no `id` and must not receive responses.
 
-The server currently uses these JSON-RPC error codes:
+## Error Codes
 
 | Code | Name | Meaning |
 | --- | --- | --- |
@@ -90,11 +150,111 @@ The server currently uses these JSON-RPC error codes:
 | `-32602` | Invalid Params | The method parameters are missing or malformed. |
 | `-32000` | Server Error | The request is valid, but the session cannot perform it. |
 
+## Session Scope
+
+Sessions are scoped by a trusted application-provided scope key. The manager
+does not know how the embedding application identifies callers. It only stores
+and enforces an opaque `scopeId`.
+
+The browser must never be trusted to provide or override scope. Before
+forwarding scope-scoped methods to the manager, the application backend must:
+
+1. Validate the caller through its own auth/session flow.
+2. Strip any browser-provided `params._meta.scopeId`.
+3. Inject `params._meta.scopeId`.
+
+Example forwarded request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "session/list",
+  "params": {
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    }
+  }
+}
+```
+
+The manager requires `params._meta.scopeId` for scoped methods and uses it
+for `session/list`, `session/new`, `session/load`, `session/prompt`, and
+`session/cancel`.
+
+## Managed Workspaces
+
+The web manager does not accept arbitrary `cwd` values for v1 sessions.
+
+Each session gets a managed workspace derived from the session id:
+
+```text
+manager workspace root: /data/workspaces
+host workspace path:    /data/workspaces/<sessionId>
+worker mount:           /workspace
+```
+
+The worker process starts with `/workspace` as its working directory. This is
+the session's execution context, not a promise of ACP `cwd` compatibility. The
+existing `cwd` examples from older versions of this document do not apply to
+the web manager service.
+
+If a session's derived workspace is missing on `session/load`, the manager
+fails clearly instead of recreating an empty workspace or silently switching to
+another path.
+
+Workspace seeding/import is out of scope for v1.
+
+## Persistence
+
+The manager owns canonical session state in SQLite. Worker containers hold an
+in-memory `AgentSession` only while active.
+
+V1 uses two tables:
+
+```text
+sessions
+  session_id text primary key
+  scope_id text not null
+  title text null
+  version integer not null default 0
+  created_at text not null
+  updated_at text not null
+  metadata_json text not null default '{}'
+
+session_messages
+  id integer primary key autoincrement
+  session_id text not null
+  version integer not null
+  role text not null
+  payload_json text not null
+  created_at text not null
+```
+
+Do not add a durable `session_runs` table for v1. Active runs live in manager
+memory while a worker is running.
+
+## Commit Semantics
+
+Worker stream output is provisional until the manager persists a completed
+turn.
+
+1. The manager hydrates a worker from history version `N`.
+2. The worker creates an in-memory `AgentSession`.
+3. The worker streams live `session/update` notifications.
+4. The worker sends `_session/commit` with `baseVersion: N`.
+5. The manager atomically verifies `sessions.version == N`.
+6. The manager inserts committed messages and updates the session to version
+   `N + 1`.
+
+Stale commits are rejected. If a worker crashes before commit, SQLite history
+is not advanced.
+
 ## Connection Lifecycle
 
-Clients must call `initialize` before using session methods. After
-initialization, clients can list existing sessions, create a session, or load a
-session with history replay.
+Clients must call `initialize` before session methods. After initialization,
+clients can list sessions, create a session, or load a session with history
+replay.
 
 ```json
 {
@@ -139,105 +299,17 @@ session with history replay.
 }
 ```
 
-List existing sessions:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "method": "session/list",
-  "params": {
-    "cwd": "/home/user/project"
-  }
-}
-```
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "result": {
-    "sessions": [
-      {
-        "sessionId": "sess_abc123",
-        "cwd": "/home/user/project",
-        "title": "Fix failing tests",
-        "updatedAt": "2026-06-03T10:15:00Z"
-      }
-    ]
-  }
-}
-```
-
-Create a new session:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 3,
-  "method": "session/new",
-  "params": {
-    "cwd": "/home/user/project",
-    "mcpServers": []
-  }
-}
-```
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 3,
-  "result": {
-    "sessionId": "sess_new"
-  }
-}
-```
-
-Load an existing session when the UI needs transcript replay:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 4,
-  "method": "session/load",
-  "params": {
-    "sessionId": "sess_abc123",
-    "cwd": "/home/user/project",
-    "mcpServers": []
-  }
-}
-```
-
 ## Methods
 
 ### initialize
 
-Negotiates protocol version and returns agent capabilities.
-
-Request:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "initialize",
-  "params": {
-    "protocolVersion": 1,
-    "clientCapabilities": {},
-    "clientInfo": {
-      "name": "my-client",
-      "title": "My Client",
-      "version": "1.0.0"
-    }
-  }
-}
-```
+Negotiates protocol version and returns manager capabilities.
 
 Parameters:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `protocolVersion` | integer | yes | Highest ACP protocol version supported by the client. |
+| `protocolVersion` | integer | yes | Highest protocol version supported by the client. |
 | `clientCapabilities` | object | no | Client capabilities. Currently ignored. |
 | `clientInfo` | object | no | Client metadata. Currently ignored. |
 
@@ -251,12 +323,11 @@ Response result:
 | `agentCapabilities.promptCapabilities.image` | boolean | Image prompt blocks are accepted. |
 | `agentCapabilities.promptCapabilities.embeddedContext` | boolean | Embedded resource prompt blocks are accepted. |
 | `agentInfo` | object | Agent name, title, and version. |
-| `authMethods` | array | Always empty in the current implementation. |
+| `authMethods` | array | Empty for v1 because the embedding application owns browser authentication. |
 
 ### session/list
 
-Lists persisted sessions known to the authenticated backend. This is a native
-ACP method.
+Lists persisted sessions in `params._meta.scopeId`.
 
 Request:
 
@@ -266,7 +337,9 @@ Request:
   "id": 2,
   "method": "session/list",
   "params": {
-    "cwd": "/home/user/project",
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
     "cursor": "opaque-page-token"
   }
 }
@@ -276,7 +349,7 @@ Parameters:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `cwd` | string | no | Absolute path used to filter sessions by workspace. |
+| `_meta.scopeId` | string | yes | Trusted opaque scope injected by the application backend. |
 | `cursor` | string | no | Opaque pagination cursor from a previous response. |
 
 Response:
@@ -289,7 +362,6 @@ Response:
     "sessions": [
       {
         "sessionId": "sess_abc123",
-        "cwd": "/home/user/project",
         "title": "Fix failing tests",
         "updatedAt": "2026-06-03T10:15:00Z",
         "_meta": {
@@ -302,26 +374,11 @@ Response:
 }
 ```
 
-Response fields:
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `sessions` | array | Session metadata objects. Empty when no sessions match. |
-| `nextCursor` | string | Optional opaque cursor for the next page. |
-
-Session fields:
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `sessionId` | string | yes | Stable session identifier. |
-| `cwd` | string | yes | Absolute primary workspace path. |
-| `title` | string | no | User-visible session title. |
-| `updatedAt` | string | no | ISO 8601 last activity timestamp. |
-| `_meta` | object | no | Implementation-specific metadata such as message count. |
+Session metadata must not expose arbitrary host workspace paths.
 
 ### session/new
 
-Creates a new session. This is a native ACP method.
+Creates a new session in `params._meta.scopeId`.
 
 Request:
 
@@ -331,8 +388,9 @@ Request:
   "id": 3,
   "method": "session/new",
   "params": {
-    "cwd": "/home/user/project",
-    "mcpServers": []
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    }
   }
 }
 ```
@@ -349,14 +407,16 @@ Response:
 }
 ```
 
-The returned `sessionId` must be included in prompt and cancel messages.
+The manager creates `/data/workspaces/<sessionId>` and initializes the session
+transcript with system instructions for the managed workspace.
+
+External `cwd` input is ignored or rejected until a future workspace import
+feature is designed.
 
 ### session/load
 
-Loads an existing session and replays its transcript to the client via
-`session/update` notifications before the request resolves. This is a native ACP
-method and should be used when the browser needs to hydrate a chat transcript
-from server state.
+Loads an existing session in `params._meta.scopeId` and replays its
+transcript through `session/update` notifications before the request resolves.
 
 Request:
 
@@ -366,9 +426,10 @@ Request:
   "id": 4,
   "method": "session/load",
   "params": {
-    "sessionId": "sess_abc123",
-    "cwd": "/home/user/project",
-    "mcpServers": []
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
+    "sessionId": "sess_abc123"
   }
 }
 ```
@@ -392,23 +453,6 @@ During load, the server streams historical messages:
 }
 ```
 
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "session/update",
-  "params": {
-    "sessionId": "sess_abc123",
-    "update": {
-      "sessionUpdate": "agent_message_chunk",
-      "content": {
-        "type": "text",
-        "text": "I found the failing assertion."
-      }
-    }
-  }
-}
-```
-
 When replay is complete:
 
 ```json
@@ -419,20 +463,26 @@ When replay is complete:
 }
 ```
 
+The manager fails clearly when the session does not exist, belongs to another
+scope, or has a missing derived workspace.
+
 ### session/prompt
 
-Submits one prompt to a session. The request remains open until the run
-finishes, is cancelled, or fails. During the run, the server sends
-`session/update` notifications.
+Submits one prompt to a session in `params._meta.scopeId`. The request
+remains open until the run finishes, is cancelled, or fails. During the run,
+the server sends `session/update` notifications.
 
 Request:
 
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 3,
+  "id": 5,
   "method": "session/prompt",
   "params": {
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
     "sessionId": "sess_abc123",
     "prompt": [
       {
@@ -449,7 +499,7 @@ Response on completion:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 3,
+  "id": 5,
   "result": {
     "stopReason": "end_turn"
   }
@@ -461,19 +511,18 @@ Response on cancellation:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 3,
+  "id": 5,
   "result": {
     "stopReason": "cancelled"
   }
 }
 ```
 
-Only one active prompt should run per session. A backend may allow different
-sessions to run concurrently.
+Only one active prompt may run per session. Different sessions may run
+concurrently. The manager starts or reuses the session worker container and the
+worker runs tools inside `/workspace`.
 
-Prompt blocks:
-
-Text prompt block:
+Prompt blocks follow ACP-compatible content shapes where practical:
 
 ```json
 {
@@ -481,8 +530,6 @@ Text prompt block:
   "text": "Inspect the repository."
 }
 ```
-
-Image prompt block with base64 data:
 
 ```json
 {
@@ -492,49 +539,21 @@ Image prompt block with base64 data:
 }
 ```
 
-Image prompt block with a URI:
-
-```json
-{
-  "type": "image",
-  "mimeType": "image/png",
-  "uri": "https://example.com/screenshot.png"
-}
-```
-
-Embedded resource prompt block:
-
 ```json
 {
   "type": "resource",
   "resource": {
-    "uri": "file:///home/user/project/app.py",
+    "uri": "file:///workspace/app.py",
     "mimeType": "text/x-python",
     "text": "print('hello')"
   }
 }
 ```
 
-Resource link prompt block:
-
-```json
-{
-  "type": "resource_link",
-  "uri": "file:///home/user/project/app.py",
-  "name": "app.py"
-}
-```
-
-Text blocks are passed as text. Image blocks are passed as image URLs. Resource
-and resource link blocks are rendered into text context.
-
-If the prompt contains exactly one text block, it is passed as a string to the
-session. Otherwise it is passed as structured content.
-
 ### session/cancel
 
-Cancels the current run for the session. This method may be sent as either a
-notification or a request.
+Cancels the current run for a session in `params._meta.scopeId`. This
+method may be sent as either a notification or a request.
 
 Notification:
 
@@ -543,6 +562,9 @@ Notification:
   "jsonrpc": "2.0",
   "method": "session/cancel",
   "params": {
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
     "sessionId": "sess_abc123"
   }
 }
@@ -553,9 +575,12 @@ Request:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 4,
+  "id": 6,
   "method": "session/cancel",
   "params": {
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
     "sessionId": "sess_abc123"
   }
 }
@@ -566,25 +591,20 @@ Response when sent as a request:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 4,
+  "id": 6,
   "result": null
 }
 ```
 
-The original `session/prompt` request should later resolve with this result if
-cancellation reaches the active run:
-
-```json
-{
-  "stopReason": "cancelled"
-}
-```
+The original `session/prompt` request should later resolve with
+`stopReason: cancelled` when cancellation reaches the active run.
 
 ## Notifications
 
 ### session/update
 
-The server streams run output and tool status through JSON-RPC notifications.
+The server streams replay, run output, and tool status through JSON-RPC
+notifications.
 
 Assistant text delta:
 
@@ -668,48 +688,96 @@ Supported `sessionUpdate` values:
 | `tool_call_update` | A tool call lifecycle update. |
 | `session_info_update` | Session title, updated timestamp, or metadata changed. |
 
-Session metadata update:
+Live streamed updates are provisional until the worker commits the completed
+turn and the manager persists it.
 
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "session/update",
-  "params": {
-    "sessionId": "sess_abc123",
-    "update": {
-      "sessionUpdate": "session_info_update",
-      "title": "Fix failing tests",
-      "updatedAt": "2026-06-03T10:20:00Z",
-      "_meta": {
-        "messageCount": 14
-      }
-    }
-  }
-}
-```
+## Internal Worker Methods
+
+Manager-to-worker traffic uses the same JSON-RPC protocol family as external
+remote traffic. This is not a second protocol mode: the CLI-owned local remote
+endpoint and manager-controlled remote workers/subagents should share envelope
+parsing, request/response/error handling, content blocks, `session/update`
+serialization, and normalized update/commit models.
+
+Private methods use the `_session/*` prefix only where the public session
+methods do not define the manager/worker operation, such as hydration and
+completed-turn commit semantics.
+
+### _session/hydrate
+
+Hydrates a worker with manager-owned state.
+
+Request params:
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `sessionId` | string | yes | Session id. |
+| `baseVersion` | integer | yes | History version used to hydrate the worker. |
+| `messages` | array | yes | Model-visible committed history from SQLite. |
+| `workspace` | string | yes | Worker workspace path, normally `/workspace`. |
+| `config` | object | yes | Model, MCP, skills, and runtime configuration. |
+
+### _session/commit
+
+Sent by the worker when a prompt turn finishes and should become durable.
+
+Notification params:
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `sessionId` | string | yes | Session id. |
+| `baseVersion` | integer | yes | History version used to start the run. |
+| `messages` | array | yes | Newly committed model-visible messages. |
+| `stopReason` | string | yes | `end_turn` or `cancelled`. |
+| `usage` | object | no | Usage metadata. |
+| `_meta` | object | no | Implementation metadata such as title updates. |
+
+The manager rejects commits when `baseVersion` does not match the current
+SQLite session version.
+
+## Module Naming
+
+Use honest module names:
+
+- `remote/jsonrpc.py` for generic JSON-RPC helpers.
+- `remote/protocol.py` for the custom `coding-assistant` remote protocol.
+
+Do not put manager workspaces, scope metadata, worker commits, or private
+`_session/*` methods into a module named as if it were pure ACP.
 
 ## Current Limitations
 
-- No authentication or authorization.
-- The current CLI worker implementation is still local-only and single-session.
-- No public HTTP API.
+- The current CLI-owned remote endpoint is local-only and single-session.
+- The web manager service is not implemented yet.
 - No permission request round trip before tools execute.
 - No model or configuration methods.
 - No prompt queueing or steering through the remote protocol.
+- Workspace seeding/import is not part of v1.
+
+## Testing Expectations
+
+The protocol must be tested without real model provider credentials by default.
+
+Required coverage:
+
+- JSON-RPC envelope validation and error responses.
+- Scope isolation for list, new, load, prompt, and cancel.
+- Application-backend stripping and injection of `params._meta.scopeId`.
+- Session creation and derived workspace creation.
+- Missing workspace failure on `session/load`.
+- Transcript replay order.
+- Prompt streaming through `session/update`.
+- Tool call and tool call update shapes.
+- Versioned commit success and stale commit rejection.
+- Worker crash before commit does not advance SQLite history.
+- Concurrent prompts on different sessions.
+- Rejection of a second active prompt for one session.
+- Worker container smoke test with `/workspace` as cwd.
+- Fake OpenAI-compatible streaming provider for integration tests.
 
 ## Optional Extensions
 
-Prefer native ACP methods before adding private methods:
-
-| Need | Native ACP method |
-| --- | --- |
-| List sessions | `session/list` |
-| Create a session | `session/new` |
-| Hydrate transcript | `session/load` |
-| Send prompt | `session/prompt` |
-| Cancel run | `session/cancel` |
-
-Optional native ACP methods can be added when the UI needs them:
+Optional methods can be added when the UI needs them:
 
 | Method | Purpose |
 | --- | --- |
@@ -718,32 +786,5 @@ Optional native ACP methods can be added when the UI needs them:
 | `session/request_permission` | Ask the browser to approve risky tool actions. |
 | `session/set_model` | Let the user change model from the UI. |
 
-Add private JSON-RPC methods with a leading underscore only for behavior ACP
-does not define. This avoids collisions with future standard ACP methods.
-
-Possible private methods:
-
-| Method | Purpose |
-| --- | --- |
-| `_session/queue_prompt` | Queue a prompt for later execution. |
-| `_session/steer` | Inject a steering prompt at the next agent boundary. |
-
-## Implementation Notes
-
-Use `agent-client-protocol` for typed ACP schema models and request routing
-where it fits. It already covers the native methods in the minimum Chat WebUI
-contract.
-
-Do not let the SDK expand the protocol surface by default. Implement only the
-methods listed above, and leave optional ACP or private methods unsupported
-until the WebUI needs them.
-
-The SDK's built-in transport support is stdio-oriented. A web deployment still
-needs a backend WebSocket transport that receives JSON-RPC text frames, passes
-validated requests into the ACP router/session manager, and sends JSON-RPC
-responses and `session/update` notifications back to the browser.
-
-For internet-facing deployment, put these methods behind a backend that owns
-authentication, process lifetime, session storage, workspace access, and tool
-permission policy. Do not expose the current local worker server directly to
-browser users.
+Add private JSON-RPC methods with a leading underscore only for behavior this
+custom protocol needs and ACP does not define.
