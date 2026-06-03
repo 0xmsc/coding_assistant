@@ -6,7 +6,17 @@ for controlling coding-agent sessions remotely.
 The current worker implementation is local-only and single-session. The web app
 protocol described here is the target RPC contract: it supports multiple
 sessions and uses native ACP methods where ACP already defines the operation.
-Private `_session/*` methods are reserved for web-specific gaps.
+The minimum Chat WebUI contract is:
+
+- `initialize`
+- `session/list`
+- `session/new`
+- `session/load`
+- `session/prompt`
+- `session/cancel`
+- `session/update`
+
+Everything else is optional until the UI has a concrete need for it.
 
 ## Transport
 
@@ -83,8 +93,8 @@ The server currently uses these JSON-RPC error codes:
 ## Connection Lifecycle
 
 Clients must call `initialize` before using session methods. After
-initialization, clients can list existing sessions, create a session, load a
-session with history replay, or resume a session without history replay.
+initialization, clients can list existing sessions, create a session, or load a
+session with history replay.
 
 ```json
 {
@@ -112,9 +122,7 @@ session with history replay, or resume a session without history replay.
     "agentCapabilities": {
       "loadSession": true,
       "sessionCapabilities": {
-        "list": {},
-        "resume": {},
-        "close": {}
+        "list": {}
       },
       "promptCapabilities": {
         "image": true,
@@ -200,21 +208,6 @@ Load an existing session when the UI needs transcript replay:
 }
 ```
 
-Resume an existing session when the UI already has transcript state:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 5,
-  "method": "session/resume",
-  "params": {
-    "sessionId": "sess_abc123",
-    "cwd": "/home/user/project",
-    "mcpServers": []
-  }
-}
-```
-
 ## Methods
 
 ### initialize
@@ -255,8 +248,6 @@ Response result:
 | `protocolVersion` | integer | Negotiated protocol version. |
 | `agentCapabilities.loadSession` | boolean | Advertise `true` when `session/load` is supported. |
 | `agentCapabilities.sessionCapabilities.list` | object | Present when `session/list` is supported. |
-| `agentCapabilities.sessionCapabilities.resume` | object | Present when `session/resume` is supported. |
-| `agentCapabilities.sessionCapabilities.close` | object | Present when `session/close` is supported. |
 | `agentCapabilities.promptCapabilities.image` | boolean | Image prompt blocks are accepted. |
 | `agentCapabilities.promptCapabilities.embeddedContext` | boolean | Embedded resource prompt blocks are accepted. |
 | `agentInfo` | object | Agent name, title, and version. |
@@ -428,37 +419,6 @@ When replay is complete:
 }
 ```
 
-### session/resume
-
-Reattaches to an existing session without replaying transcript history. This is
-a native ACP method and should be used after browser reconnect when the UI
-already has the transcript.
-
-Request:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 5,
-  "method": "session/resume",
-  "params": {
-    "sessionId": "sess_abc123",
-    "cwd": "/home/user/project",
-    "mcpServers": []
-  }
-}
-```
-
-Response:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 5,
-  "result": {}
-}
-```
-
 ### session/prompt
 
 Submits one prompt to a session. The request remains open until the run
@@ -620,37 +580,6 @@ cancellation reaches the active run:
 }
 ```
 
-### session/close
-
-Closes an active session and frees its live resources. This is a native ACP
-method.
-
-Request:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 6,
-  "method": "session/close",
-  "params": {
-    "sessionId": "sess_abc123"
-  }
-}
-```
-
-Response:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 6,
-  "result": {}
-}
-```
-
-Closing a session should cancel any active run for that session before freeing
-resources.
-
 ## Notifications
 
 ### session/update
@@ -764,37 +693,55 @@ Session metadata update:
 - No authentication or authorization.
 - The current CLI worker implementation is still local-only and single-session.
 - No public HTTP API.
-- No fork support.
 - No permission request round trip before tools execute.
 - No model or configuration methods.
 - No prompt queueing or steering through the remote protocol.
 
-## Recommended Web App Extensions
+## Optional Extensions
 
-For a web chat UI, prefer native ACP methods first:
+Prefer native ACP methods before adding private methods:
 
 | Need | Native ACP method |
 | --- | --- |
 | List sessions | `session/list` |
 | Create a session | `session/new` |
 | Hydrate transcript | `session/load` |
-| Reconnect without replay | `session/resume` |
 | Send prompt | `session/prompt` |
 | Cancel run | `session/cancel` |
-| Close live resources | `session/close` |
 
-Add private JSON-RPC methods with a leading underscore only for behavior that
-ACP does not currently define. This avoids collisions with future standard ACP
-methods.
-
-Useful additions:
+Optional native ACP methods can be added when the UI needs them:
 
 | Method | Purpose |
 | --- | --- |
-| `_session/state` | Fetch running, queued, usage, model, and title state. |
+| `session/resume` | Reconnect to a session without replaying history. |
+| `session/close` | Free live resources for an active session. |
+| `session/request_permission` | Ask the browser to approve risky tool actions. |
+| `session/set_model` | Let the user change model from the UI. |
+
+Add private JSON-RPC methods with a leading underscore only for behavior ACP
+does not define. This avoids collisions with future standard ACP methods.
+
+Possible private methods:
+
+| Method | Purpose |
+| --- | --- |
 | `_session/queue_prompt` | Queue a prompt for later execution. |
 | `_session/steer` | Inject a steering prompt at the next agent boundary. |
-| `_session/set_title` | Set the user-visible session title. |
+
+## Implementation Notes
+
+Use `agent-client-protocol` for typed ACP schema models and request routing
+where it fits. It already covers the native methods in the minimum Chat WebUI
+contract.
+
+Do not let the SDK expand the protocol surface by default. Implement only the
+methods listed above, and leave optional ACP or private methods unsupported
+until the WebUI needs them.
+
+The SDK's built-in transport support is stdio-oriented. A web deployment still
+needs a backend WebSocket transport that receives JSON-RPC text frames, passes
+validated requests into the ACP router/session manager, and sends JSON-RPC
+responses and `session/update` notifications back to the browser.
 
 For internet-facing deployment, put these methods behind a backend that owns
 authentication, process lifetime, session storage, workspace access, and tool
