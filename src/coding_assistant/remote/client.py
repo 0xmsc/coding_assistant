@@ -10,6 +10,12 @@ from importlib.metadata import PackageNotFoundError, version
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
+from coding_assistant.core.session_updates import (
+    AgentMessageChunkUpdate,
+    SessionUpdate,
+    ToolCallLifecycleUpdate,
+    ToolCallStartedUpdate,
+)
 from coding_assistant.remote.acp import (
     ACP_PROTOCOL_VERSION,
     JsonObject,
@@ -18,6 +24,7 @@ from coding_assistant.remote.acp import (
     parse_jsonrpc_message,
     text_block,
 )
+from coding_assistant.remote.protocol import session_update_from_jsonrpc_update
 
 
 @dataclass(frozen=True)
@@ -247,36 +254,26 @@ class RemoteWorkerConnection:
         if not isinstance(update, dict):
             return
 
-        update_type = update.get("sessionUpdate")
-        if update_type == "agent_message_chunk":
-            content = update.get("content", {})
-            if isinstance(content, dict) and content.get("type") == "text" and isinstance(content.get("text"), str):
-                await self._on_event(RemoteContentDeltaEvent(content=content["text"]))
+        session_update = session_update_from_jsonrpc_update(update)
+        if session_update is None:
+            return
+        await self._publish_session_update(session_update)
+
+    async def _publish_session_update(self, update: SessionUpdate) -> None:
+        if isinstance(update, AgentMessageChunkUpdate):
+            await self._on_event(RemoteContentDeltaEvent(content=update.content))
             return
 
-        if update_type == "tool_call":
-            title = update.get("title")
-            if isinstance(title, str):
-                await self._on_event(RemoteToolCallEvent(title=title))
+        if isinstance(update, ToolCallStartedUpdate):
+            await self._on_event(RemoteToolCallEvent(title=update.title))
             return
 
-        if update_type == "tool_call_update":
-            content_text: str | None = None
-            content = update.get("content")
-            if isinstance(content, list) and content:
-                first_item = content[0]
-                if (
-                    isinstance(first_item, dict)
-                    and isinstance(first_item.get("content"), dict)
-                    and first_item["content"].get("type") == "text"
-                    and isinstance(first_item["content"].get("text"), str)
-                ):
-                    content_text = first_item["content"]["text"]
+        if isinstance(update, ToolCallLifecycleUpdate):
             await self._on_event(
                 RemoteToolCallUpdateEvent(
-                    status=str(update.get("status", "")),
-                    title=update.get("title") if isinstance(update.get("title"), str) else None,
-                    content=content_text,
+                    status=update.status,
+                    title=update.title,
+                    content=update.content,
                 ),
             )
 

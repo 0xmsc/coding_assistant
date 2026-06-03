@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
@@ -14,31 +13,28 @@ from websockets.exceptions import ConnectionClosed
 
 from coding_assistant.core.agent_session import (
     AgentSession,
-    AgentSessionEvent,
-    RunCancelledEvent,
-    RunFailedEvent,
-    RunFinishedEvent,
-    ToolCallsEvent,
-    ToolCallUpdateEvent,
 )
-from coding_assistant.llm.types import ContentDeltaEvent
+from coding_assistant.core.session_updates import (
+    AgentMessageChunkUpdate,
+    SessionUpdate,
+    prompt_result_from_update,
+    session_updates_from_agent_event,
+)
 from coding_assistant.remote.acp import (
     ACP_PROTOCOL_VERSION,
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
     ERROR_METHOD_NOT_FOUND,
     ERROR_SERVER,
-    STOP_REASON_CANCELLED,
-    STOP_REASON_END_TURN,
-    agent_message_update,
     initialize_result,
     jsonrpc_error,
+    jsonrpc_notification,
     jsonrpc_result,
     parse_jsonrpc_message,
     prompt_content_from_acp,
-    tool_call_lifecycle_update,
-    tool_call_notification,
-    tool_call_update_notification,
+)
+from coding_assistant.remote.protocol import (
+    session_update_to_jsonrpc_update,
 )
 
 
@@ -64,48 +60,10 @@ def _agent_version() -> str:
         return "0.0.0"
 
 
-def _tool_call_raw_input(arguments: str) -> dict[str, Any] | None:
-    try:
-        parsed = json.loads(arguments)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    return parsed
-
-
-def _event_matches_active_prompt(event: AgentSessionEvent, source: str | None) -> bool:
+def _update_matches_active_prompt(update: SessionUpdate, source: str | None) -> bool:
     if source is None:
         return False
-    event_source = getattr(event, "source", None)
-    return event_source == source
-
-
-def _tool_calls_to_updates(event: ToolCallsEvent) -> list[dict[str, Any]]:
-    updates: list[dict[str, Any]] = []
-    for tool_call in event.message.tool_calls:
-        updates.append(
-            tool_call_notification(
-                tool_call_id=tool_call.id,
-                title=tool_call.function.name or "tool_call",
-                kind="other",
-                status="pending",
-                raw_input=_tool_call_raw_input(tool_call.function.arguments),
-            ),
-        )
-    return updates
-
-
-def _tool_call_update_to_payload(event: ToolCallUpdateEvent) -> dict[str, Any]:
-    return tool_call_lifecycle_update(
-        tool_call_id=event.event.tool_call_id,
-        status=event.event.status,
-        title=event.event.title,
-        kind=event.event.kind,
-        raw_input=event.event.raw_input,
-        raw_output=event.event.raw_output,
-        content_text=event.event.content,
-    )
+    return getattr(update, "source", None) == source
 
 
 async def _publish_session_events(
@@ -118,44 +76,44 @@ async def _publish_session_events(
     async with session.subscribe() as queue:
         while True:
             event = await queue.get()
-            if isinstance(event, ContentDeltaEvent):
-                if state.active_prompt_source is None:
+            for update in session_updates_from_agent_event(event):
+                if isinstance(update, AgentMessageChunkUpdate) and state.active_prompt_source is not None:
+                    payload_update = session_update_to_jsonrpc_update(update)
+                    if payload_update is not None:
+                        await websocket.send(_session_update_notification(session_id, payload_update))
                     continue
-                await websocket.send(agent_message_update(session_id, event.content))
-                continue
 
-            if not _event_matches_active_prompt(event, state.active_prompt_source):
-                continue
+                if not _update_matches_active_prompt(update, state.active_prompt_source):
+                    continue
 
-            if isinstance(event, ToolCallsEvent):
-                for update in _tool_calls_to_updates(event):
-                    await websocket.send(tool_call_update_notification(session_id, update))
-                continue
+                payload_update = session_update_to_jsonrpc_update(update)
+                if payload_update is not None:
+                    await websocket.send(_session_update_notification(session_id, payload_update))
+                    continue
 
-            if isinstance(event, ToolCallUpdateEvent):
-                await websocket.send(tool_call_update_notification(session_id, _tool_call_update_to_payload(event)))
-                continue
+                request_id = state.active_prompt_request_id
+                if request_id is None:
+                    continue
 
-            request_id = state.active_prompt_request_id
-            if request_id is None:
-                continue
-
-            if isinstance(event, RunFinishedEvent):
-                await websocket.send(jsonrpc_result(request_id, {"stopReason": STOP_REASON_END_TURN}))
+                result = prompt_result_from_update(update)
+                if result is None:
+                    continue
+                if result.stop_reason is not None:
+                    await websocket.send(jsonrpc_result(request_id, {"stopReason": result.stop_reason}))
+                else:
+                    await websocket.send(jsonrpc_error(request_id, ERROR_SERVER, result.error or "Run failed."))
                 state.active_prompt_request_id = None
                 state.active_prompt_source = None
-                continue
 
-            if isinstance(event, RunCancelledEvent):
-                await websocket.send(jsonrpc_result(request_id, {"stopReason": STOP_REASON_CANCELLED}))
-                state.active_prompt_request_id = None
-                state.active_prompt_source = None
-                continue
 
-            if isinstance(event, RunFailedEvent):
-                await websocket.send(jsonrpc_error(request_id, ERROR_SERVER, event.error))
-                state.active_prompt_request_id = None
-                state.active_prompt_source = None
+def _session_update_notification(session_id: str, update: dict[str, Any]) -> str:
+    return jsonrpc_notification(
+        "session/update",
+        {
+            "sessionId": session_id,
+            "update": update,
+        },
+    )
 
 
 async def _handle_jsonrpc_message(
