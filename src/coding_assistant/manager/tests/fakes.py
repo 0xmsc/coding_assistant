@@ -5,8 +5,9 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from coding_assistant.core.session_updates import AgentMessageChunkUpdate, SessionUpdate
-from coding_assistant.llm.types import AssistantMessage
+from coding_assistant.llm.types import AssistantMessage, UserMessage
 from coding_assistant.manager.service import WorkerCommit, WorkerPrompt
+from coding_assistant.remote.acp import prompt_content_from_acp
 
 
 @dataclass
@@ -27,7 +28,13 @@ class FakeWorkerRunner:
         await on_update(AgentMessageChunkUpdate(content=self.response_text))
         if self.release is not None:
             await self.release.wait()
-        return WorkerCommit(messages=[AssistantMessage(content=self.response_text)], stop_reason="end_turn")
+        return WorkerCommit(
+            messages=[
+                UserMessage(content=prompt_content_from_acp(prompt.prompt)),
+                AssistantMessage(content=self.response_text),
+            ],
+            stop_reason="end_turn",
+        )
 
     async def cancel(self, *, session_id: str) -> None:
         if self.cancelled_session_ids is None:

@@ -10,7 +10,7 @@ from coding_assistant.core.session_updates import (
     committed_message_from_history_message,
     replay_updates_from_committed_message,
 )
-from coding_assistant.llm.types import BaseMessage, UserMessage
+from coding_assistant.llm.types import BaseMessage
 from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
 from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp
 
@@ -33,7 +33,8 @@ class WorkerPrompt:
     session_id: str
     base_version: int
     history: list[BaseMessage]
-    prompt: str | list[JsonObject]
+    workspace: str
+    prompt: list[JsonObject]
 
 
 @dataclass(frozen=True)
@@ -135,10 +136,10 @@ class ManagerService:
         scope_id = _scope_id_from_params(params)
         session_id = self._session_id_from_params(params)
         prompt_blocks = params.get("prompt")
-        if not isinstance(prompt_blocks, list):
+        if not isinstance(prompt_blocks, list) or not all(isinstance(block, dict) for block in prompt_blocks):
             raise ManagerError("session/prompt requires a prompt array.")
         try:
-            prompt_content = prompt_content_from_acp(prompt_blocks)
+            prompt_content_from_acp(prompt_blocks)
         except ValueError as exc:
             raise ManagerError(str(exc)) from exc
 
@@ -150,7 +151,8 @@ class ManagerService:
                     session_id=session_id,
                     base_version=session.record.version,
                     history=session.messages,
-                    prompt=prompt_content,
+                    workspace=str(session.workspace),
+                    prompt=prompt_blocks,
                 ),
                 on_update=on_update,
             )
@@ -158,7 +160,7 @@ class ManagerService:
                 scope_id=scope_id,
                 session_id=session_id,
                 base_version=session.record.version,
-                messages=[UserMessage(content=prompt_content), *worker_commit.messages],
+                messages=worker_commit.messages,
                 title=worker_commit.title,
                 metadata=worker_commit.metadata,
             )

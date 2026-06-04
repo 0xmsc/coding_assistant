@@ -15,6 +15,7 @@ from coding_assistant.core.session_updates import (
     ToolCallLifecycleUpdate,
     ToolCallStartedUpdate,
 )
+from coding_assistant.llm.types import BaseMessage
 from coding_assistant.remote.acp import (
     ACP_PROTOCOL_VERSION,
     JsonObject,
@@ -23,7 +24,7 @@ from coding_assistant.remote.acp import (
     parse_jsonrpc_message,
     text_block,
 )
-from coding_assistant.remote.protocol import session_update_from_jsonrpc_update
+from coding_assistant.remote.protocol import messages_from_jsonrpc, session_update_from_jsonrpc_update
 
 
 def _client_version() -> str:
@@ -60,6 +61,14 @@ class RemotePromptFailedEvent:
     message: str
 
 
+@dataclass(frozen=True)
+class RemoteCommit:
+    session_id: str
+    base_version: int
+    messages: list[BaseMessage]
+    stop_reason: str
+
+
 RemoteClientEvent = (
     RemoteContentDeltaEvent
     | RemoteToolCallEvent
@@ -85,11 +94,15 @@ class RemoteSessionClient:
         websocket: ClientConnection,
         on_event: Callable[[RemoteClientEvent], Awaitable[None]],
         on_disconnect: Callable[[str], Awaitable[None]],
+        on_session_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
+        on_commit: Callable[[RemoteCommit], Awaitable[None]] | None = None,
     ) -> None:
         self.endpoint = endpoint
         self._websocket = websocket
         self._on_event = on_event
         self._on_disconnect = on_disconnect
+        self._on_session_update = on_session_update
+        self._on_commit = on_commit
         self._send_lock = asyncio.Lock()
         self._next_request_id = 1
         self._pending_requests: dict[int, asyncio.Future[JsonObject]] = {}
@@ -105,6 +118,8 @@ class RemoteSessionClient:
         endpoint: str,
         on_event: Callable[[RemoteClientEvent], Awaitable[None]],
         on_disconnect: Callable[[str], Awaitable[None]],
+        on_session_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
+        on_commit: Callable[[RemoteCommit], Awaitable[None]] | None = None,
     ) -> RemoteSessionClient:
         websocket = await connect(endpoint)
         return cls(
@@ -112,6 +127,8 @@ class RemoteSessionClient:
             websocket=websocket,
             on_event=on_event,
             on_disconnect=on_disconnect,
+            on_session_update=on_session_update,
+            on_commit=on_commit,
         )
 
     async def initialize(self) -> None:
@@ -148,6 +165,9 @@ class RemoteSessionClient:
         return session_id
 
     async def prompt(self, prompt: str, *, session_id: str | None = None) -> str | None:
+        return await self.prompt_blocks([text_block(prompt)], session_id=session_id)
+
+    async def prompt_blocks(self, prompt: list[JsonObject], *, session_id: str | None = None) -> str | None:
         target_session_id = session_id or self._session_id
         if target_session_id is None:
             return "Remote session is not initialized."
@@ -166,7 +186,7 @@ class RemoteSessionClient:
                     "session/prompt",
                     {
                         "sessionId": target_session_id,
-                        "prompt": [text_block(prompt)],
+                        "prompt": prompt,
                     },
                 ),
             )
@@ -250,7 +270,11 @@ class RemoteSessionClient:
             await self._on_disconnect(self.endpoint)
 
     async def _handle_notification(self, payload: JsonObject) -> None:
-        if payload.get("method") != "session/update":
+        method = payload.get("method")
+        if method == "_session/commit":
+            await self._handle_commit_notification(payload)
+            return
+        if method != "session/update":
             return
 
         active_prompt = self._active_prompt
@@ -267,7 +291,36 @@ class RemoteSessionClient:
         session_update = session_update_from_jsonrpc_update(update)
         if session_update is None:
             return
+        if self._on_session_update is not None:
+            await self._on_session_update(session_update)
         await self._publish_session_update(session_update)
+
+    async def _handle_commit_notification(self, payload: JsonObject) -> None:
+        if self._on_commit is None:
+            return
+        params = payload.get("params", {})
+        if not isinstance(params, dict):
+            return
+        session_id = params.get("sessionId")
+        base_version = params.get("baseVersion")
+        messages = params.get("messages")
+        stop_reason = params.get("stopReason")
+        if (
+            not isinstance(session_id, str)
+            or not isinstance(base_version, int)
+            or not isinstance(messages, list)
+            or not all(isinstance(message, dict) for message in messages)
+            or not isinstance(stop_reason, str)
+        ):
+            return
+        await self._on_commit(
+            RemoteCommit(
+                session_id=session_id,
+                base_version=base_version,
+                messages=messages_from_jsonrpc(messages),
+                stop_reason=stop_reason,
+            ),
+        )
 
     async def _publish_session_update(self, update: SessionUpdate) -> None:
         if isinstance(update, AgentMessageChunkUpdate):
