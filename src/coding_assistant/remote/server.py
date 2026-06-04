@@ -4,38 +4,14 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
-from importlib.metadata import PackageNotFoundError, version
-from typing import Any
 from uuid import uuid4
 
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
-from coding_assistant.core.agent_session import (
-    AgentSession,
-)
-from coding_assistant.core.session_updates import (
-    AgentMessageChunkUpdate,
-    SessionUpdate,
-    prompt_result_from_update,
-    session_updates_from_agent_event,
-)
-from coding_assistant.remote.acp import (
-    ACP_PROTOCOL_VERSION,
-    ERROR_INVALID_PARAMS,
-    ERROR_INVALID_REQUEST,
-    ERROR_METHOD_NOT_FOUND,
-    ERROR_SERVER,
-    initialize_result,
-    jsonrpc_error,
-    jsonrpc_notification,
-    jsonrpc_result,
-    parse_jsonrpc_message,
-    prompt_content_from_acp,
-)
-from coding_assistant.remote.protocol import (
-    session_update_to_jsonrpc_update,
-)
+from coding_assistant.core.agent_session import AgentSession
+from coding_assistant.remote.acp import ERROR_INVALID_REQUEST, ERROR_SERVER, jsonrpc_error, parse_jsonrpc_message
+from coding_assistant.remote.control import RemoteAgentController, RemoteAgentInfo, RemoteControlledSession
 
 
 @dataclass(frozen=True)
@@ -45,203 +21,12 @@ class WorkerServer:
     endpoint: str
 
 
-@dataclass
-class _ConnectionState:
-    initialized: bool = False
-    session_opened: bool = False
-    active_prompt_request_id: int | str | None = None
-    active_prompt_source: str | None = None
-
-
-def _agent_version() -> str:
-    try:
-        return version("coding-assistant-cli")
-    except PackageNotFoundError:
-        return "0.0.0"
-
-
-def _update_matches_active_prompt(update: SessionUpdate, source: str | None) -> bool:
-    if source is None:
-        return False
-    return getattr(update, "source", None) == source
-
-
-async def _publish_session_events(
-    *,
-    websocket: ServerConnection,
-    session: AgentSession,
-    session_id: str,
-    state: _ConnectionState,
-) -> None:
-    async with session.subscribe() as queue:
-        while True:
-            event = await queue.get()
-            for update in session_updates_from_agent_event(event):
-                if isinstance(update, AgentMessageChunkUpdate) and state.active_prompt_source is not None:
-                    payload_update = session_update_to_jsonrpc_update(update)
-                    if payload_update is not None:
-                        await websocket.send(_session_update_notification(session_id, payload_update))
-                    continue
-
-                if not _update_matches_active_prompt(update, state.active_prompt_source):
-                    continue
-
-                payload_update = session_update_to_jsonrpc_update(update)
-                if payload_update is not None:
-                    await websocket.send(_session_update_notification(session_id, payload_update))
-                    continue
-
-                request_id = state.active_prompt_request_id
-                if request_id is None:
-                    continue
-
-                result = prompt_result_from_update(update)
-                if result is None:
-                    continue
-                if result.stop_reason is not None:
-                    await websocket.send(jsonrpc_result(request_id, {"stopReason": result.stop_reason}))
-                else:
-                    await websocket.send(jsonrpc_error(request_id, ERROR_SERVER, result.error or "Run failed."))
-                state.active_prompt_request_id = None
-                state.active_prompt_source = None
-
-
-def _session_update_notification(session_id: str, update: dict[str, Any]) -> str:
-    return jsonrpc_notification(
-        "session/update",
-        {
-            "sessionId": session_id,
-            "update": update,
-        },
-    )
-
-
-async def _handle_jsonrpc_message(
-    *,
-    websocket: ServerConnection,
-    session: AgentSession,
-    session_id: str,
-    state: _ConnectionState,
-    payload: dict[str, Any],
-) -> None:
-    request_id = payload.get("id")
-    response_id = request_id if isinstance(request_id, int | str) else None
-    method = payload.get("method")
-    params = payload.get("params", {})
-
-    if payload.get("jsonrpc") != "2.0" or not isinstance(method, str):
-        await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "Invalid JSON-RPC request."))
-        return
-    if params is None:
-        params = {}
-    if not isinstance(params, dict):
-        await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "Request params must be an object."))
-        return
-
-    if method == "initialize":
-        if response_id is None:
-            await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "initialize must be a request."))
-            return
-        protocol_version = params.get("protocolVersion")
-        if not isinstance(protocol_version, int):
-            await websocket.send(
-                jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "initialize requires an integer protocolVersion."),
-            )
-            return
-        negotiated_version = min(protocol_version, ACP_PROTOCOL_VERSION)
-        state.initialized = True
-        await websocket.send(
-            jsonrpc_result(
-                response_id,
-                initialize_result(
-                    agent_name="coding-assistant",
-                    agent_title="Coding Assistant",
-                    agent_version=_agent_version(),
-                )
-                | {"protocolVersion": negotiated_version},
-            ),
-        )
-        return
-
-    if method == "session/new":
-        if response_id is None:
-            await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "session/new must be a request."))
-            return
-        if not state.initialized:
-            await websocket.send(
-                jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "initialize must be called before session/new."),
-            )
-            return
-        state.session_opened = True
-        await websocket.send(jsonrpc_result(response_id, {"sessionId": session_id}))
-        return
-
-    if method == "session/prompt":
-        if response_id is None:
-            await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "session/prompt must be a request."))
-            return
-        if not state.initialized or not state.session_opened:
-            await websocket.send(
-                jsonrpc_error(
-                    response_id,
-                    ERROR_INVALID_REQUEST,
-                    "initialize and session/new must be completed before session/prompt.",
-                ),
-            )
-            return
-        if params.get("sessionId") != session_id:
-            await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "Unknown sessionId."))
-            return
-        prompt_blocks = params.get("prompt")
-        if not isinstance(prompt_blocks, list):
-            await websocket.send(
-                jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "session/prompt requires a prompt array."),
-            )
-            return
-        if state.active_prompt_request_id is not None:
-            await websocket.send(
-                jsonrpc_error(response_id, ERROR_SERVER, "This remote connection already has an active prompt turn."),
-            )
-            return
-
-        try:
-            prompt_content = prompt_content_from_acp(prompt_blocks)
-        except ValueError as exc:
-            await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, str(exc)))
-            return
-
-        prompt_source = f"acp:{session_id}:{response_id}:{uuid4().hex}"
-        state.active_prompt_request_id = response_id
-        state.active_prompt_source = prompt_source
-        accepted = await session.enqueue_prompt_if_idle(prompt_content, source=prompt_source)
-        if not accepted:
-            state.active_prompt_request_id = None
-            state.active_prompt_source = None
-            await websocket.send(
-                jsonrpc_error(response_id, ERROR_SERVER, "Session is busy. Wait for the current turn or cancel it."),
-            )
-            return
-        return
-
-    if method == "session/cancel":
-        if not state.initialized or not state.session_opened:
-            return
-        if params.get("sessionId") != session_id:
-            return
-        await session.cancel_current_run()
-        if response_id is not None:
-            await websocket.send(jsonrpc_result(response_id, None))
-        return
-
-    await websocket.send(jsonrpc_error(response_id, ERROR_METHOD_NOT_FOUND, f"Unsupported ACP method: {method}"))
-
-
 @asynccontextmanager
 async def start_worker_server(
     *,
     session: AgentSession,
 ) -> AsyncIterator[WorkerServer]:
-    """Serve one ACP websocket connection at a time for a live session."""
+    """Serve one JSON-RPC remote-control connection for a live session."""
     connection_lock = asyncio.Lock()
     active_connection: ServerConnection | None = None
     session_id = f"sess_{uuid4().hex}"
@@ -258,15 +43,17 @@ async def start_worker_server(
                 return
             active_connection = websocket
 
-        state = _ConnectionState()
-        sender_task = asyncio.create_task(
-            _publish_session_events(
-                websocket=websocket,
-                session=session,
+        controller = RemoteAgentController(
+            agent_info=RemoteAgentInfo(name="coding-assistant", title="Coding Assistant"),
+            controlled_session=RemoteControlledSession(
                 session_id=session_id,
-                state=state,
+                session=session,
+                base_message_count=len(session.history),
             ),
+            supports_session_new=True,
+            busy_message="Session is busy. Wait for the current turn or cancel it.",
         )
+        sender_task = asyncio.create_task(controller.publish_session_events(websocket=websocket))
         try:
             async for raw_message in websocket:
                 try:
@@ -274,13 +61,7 @@ async def start_worker_server(
                 except ValueError:
                     await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "Invalid JSON-RPC payload."))
                     continue
-                await _handle_jsonrpc_message(
-                    websocket=websocket,
-                    session=session,
-                    session_id=session_id,
-                    state=state,
-                    payload=payload,
-                )
+                await controller.handle_jsonrpc_message(websocket=websocket, payload=payload)
         except ConnectionClosed:
             pass
         finally:

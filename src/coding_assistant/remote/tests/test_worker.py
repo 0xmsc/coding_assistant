@@ -327,12 +327,17 @@ async def test_worker_server_completes_acp_prompt_turn() -> None:
                         updates.append(payload)
                     else:
                         response = payload
+                commit = parse_jsonrpc_message(await websocket.recv())
 
         assert response == {
             "jsonrpc": "2.0",
             "id": 3,
             "result": {"stopReason": "end_turn"},
         }
+        assert commit["method"] == "_session/commit"
+        assert commit["params"]["sessionId"] == session_id
+        assert commit["params"]["baseVersion"] == 0
+        assert [message["role"] for message in commit["params"]["messages"]] == ["user", "assistant"]
         assert any(
             update["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
             and update["params"]["update"]["content"]["text"] == "Hello from the worker"

@@ -148,7 +148,7 @@ async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> 
     runtime = WorkerRuntimeConfig(
         model="test-model",
         tools=[],
-        completion_streamer=ScriptedStreamer([AssistantMessage(content="hello")]),
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="hello"), AssistantMessage(content="again")]),
     )
 
     async with start_session_worker_server(runtime=runtime) as server:
@@ -162,6 +162,12 @@ async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> 
             update = parse_jsonrpc_message(await websocket.recv())
             response = parse_jsonrpc_message(await websocket.recv())
             commit = parse_jsonrpc_message(await websocket.recv())
+            await websocket.send(
+                jsonrpc_request(4, "session/prompt", {"sessionId": session_id, "prompt": [text_block("Again")]}),
+            )
+            second_update = parse_jsonrpc_message(await websocket.recv())
+            second_response = parse_jsonrpc_message(await websocket.recv())
+            second_commit = parse_jsonrpc_message(await websocket.recv())
 
     assert update["method"] == "session/update"
     assert update["params"]["update"]["content"]["text"] == "hello"
@@ -171,6 +177,12 @@ async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> 
     assert commit["params"]["baseVersion"] == 7
     assert commit["params"]["stopReason"] == "end_turn"
     assert [message["role"] for message in commit["params"]["messages"]] == ["user", "assistant"]
+    assert second_update["method"] == "session/update"
+    assert second_update["params"]["update"]["content"]["text"] == "again"
+    assert second_response["result"] == {"stopReason": "end_turn"}
+    assert second_commit["method"] == "_session/commit"
+    assert second_commit["params"]["baseVersion"] == 8
+    assert [message["role"] for message in second_commit["params"]["messages"]] == ["user", "assistant"]
 
 
 @pytest.mark.asyncio
