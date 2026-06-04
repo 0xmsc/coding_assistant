@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+import argparse
+import asyncio
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from pathlib import Path
+
+from coding_assistant.app.default_agent import (
+    DefaultAgentConfig,
+    build_initial_system_message,
+    create_default_agent,
+)
+from coding_assistant.app.main import setup_logging
+from coding_assistant.llm.types import BaseMessage
+from coding_assistant.manager.docker_worker import DockerWorkerConfig, DockerWorkerRunner
+from coding_assistant.manager.server import start_manager_server
+from coding_assistant.manager.service import ManagerService
+from coding_assistant.manager.store import SessionStore
+from coding_assistant.manager.workspace import WorkspacePaths
+
+
+def _environment_from_args(values: list[str]) -> dict[str, str]:
+    environment: dict[str, str] = {}
+    for value in values:
+        key, separator, env_value = value.partition("=")
+        if not key or not separator:
+            raise ValueError(f"Worker environment entry must be KEY=VALUE: {value}")
+        environment[key] = env_value
+    return environment
+
+
+def parse_args() -> argparse.Namespace:
+    parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant manager")
+    parser.add_argument("--model", required=True, help="Model to use for worker agents.")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind the manager WebSocket server.")
+    parser.add_argument("--port", type=int, default=8764, help="Port to bind the manager WebSocket server.")
+    parser.add_argument("--database", default="/data/sessions.sqlite", help="SQLite database path.")
+    parser.add_argument("--workspace-root", default="/data/workspaces", help="Host workspace root for sessions.")
+    parser.add_argument("--worker-image", default="coding-assistant:latest", help="Docker image for worker containers.")
+    parser.add_argument("--worker-network", default="coding-assistant", help="Docker network for worker containers.")
+    parser.add_argument("--worker-port", type=int, default=8765, help="Worker container WebSocket port.")
+    parser.add_argument("--worker-workspace", default="/workspace", help="Worker container workspace mount path.")
+    parser.add_argument("--worker-env", nargs="*", default=[], help="Environment entries for workers as KEY=VALUE.")
+    parser.add_argument("--instructions", nargs="*", default=[], help="Additional worker instructions.")
+    parser.add_argument("--skills-directories", nargs="*", default=[], help="Additional Agent Skill directories.")
+    parser.add_argument("--mcp-servers", nargs="*", default=[], help="MCP server configurations as JSON strings.")
+    return parser.parse_args()
+
+
+async def _main(args: argparse.Namespace) -> None:
+    workspace_root = Path(args.workspace_root)
+    workspace_root.mkdir(parents=True, exist_ok=True)
+    store = SessionStore(
+        database_path=Path(args.database),
+        workspaces=WorkspacePaths(root=workspace_root),
+    )
+    worker_config = DockerWorkerConfig(
+        image=args.worker_image,
+        model=args.model,
+        network=args.worker_network,
+        worker_port=args.worker_port,
+        workspace_mount=args.worker_workspace,
+        environment=_environment_from_args(args.worker_env),
+        instructions=tuple(args.instructions),
+        skills_directories=tuple(args.skills_directories),
+        mcp_servers=tuple(args.mcp_servers),
+    )
+    service = ManagerService(store=store, worker_runner=DockerWorkerRunner(config=worker_config))
+    agent_config = DefaultAgentConfig(
+        working_directory=Path(args.worker_workspace),
+        user_instructions=tuple(args.instructions),
+        skills_directories=tuple(args.skills_directories),
+    )
+    async with create_default_agent(config=agent_config) as bundle:
+        initial_messages: list[BaseMessage] = [build_initial_system_message(instructions=bundle.instructions)]
+        async with start_manager_server(
+            service=service,
+            initial_messages=initial_messages,
+            host=args.host,
+            port=args.port,
+        ) as server:
+            print(f"Manager endpoint: {server.endpoint}", flush=True)
+            await asyncio.Event().wait()
+
+
+def main() -> None:
+    args = parse_args()
+    setup_logging()
+    asyncio.run(_main(args))
+
+
+if __name__ == "__main__":
+    main()
