@@ -54,8 +54,6 @@ async def _get_tools_payload(tools: Sequence[ToolDefinition]) -> list[dict[str, 
 
 def _get_base_url_and_api_key() -> tuple[str, str]:
     """Resolve the API base URL and key from the configured provider env vars."""
-    if os.environ.get("OPENROUTER_API_KEY"):
-        return ("https://openrouter.ai/api/v1", os.environ["OPENROUTER_API_KEY"])
     if os.environ.get("OPENAI_BASE_URL"):
         return (os.environ["OPENAI_BASE_URL"], os.environ["OPENAI_API_KEY"])
     else:

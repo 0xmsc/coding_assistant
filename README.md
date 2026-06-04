@@ -14,7 +14,8 @@ Coding Assistant is a Python-based CLI for coding workflows. It combines a bound
 
 - Python 3.12+.
 - `uv` is recommended for installation and running.
-- API keys for your chosen OpenAI-compatible provider, for example `OPENAI_API_KEY` or `OPENROUTER_API_KEY`.
+- API keys for your chosen OpenAI-compatible provider. Set `OPENAI_API_KEY`
+  and optionally `OPENAI_BASE_URL` for providers such as OpenRouter.
 - Optional dependencies for external MCP servers, such as Node.js/npm for NPM-based servers.
 
 ## Installation

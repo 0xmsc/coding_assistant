@@ -232,7 +232,6 @@ async def test_remote_worker_smoke_uses_fake_openai_adapter(
     with run_fake_openai_server() as fake_openai:
         monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         runtime = WorkerRuntimeConfig(model="fake-model", tools=[])
 
         async with start_session_worker_server(runtime=runtime) as worker_server:

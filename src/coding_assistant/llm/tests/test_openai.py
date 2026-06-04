@@ -664,23 +664,14 @@ class TestHelperFunctions:
 
     def test_get_base_url_and_api_key_openai(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
         url, key = _get_base_url_and_api_key()
         assert url == "https://api.openai.com/v1"
         assert key == "sk-openai"
 
-    def test_get_base_url_and_api_key_openrouter(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
-        url, key = _get_base_url_and_api_key()
-        assert url == "https://openrouter.ai/api/v1"
-        assert key == "sk-openrouter"
-
     def test_get_base_url_and_api_key_custom(self, monkeypatch: Any) -> None:
         monkeypatch.setenv("OPENAI_BASE_URL", "https://custom.api/v1")
         monkeypatch.setenv("OPENAI_API_KEY", "sk-custom")
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         url, key = _get_base_url_and_api_key()
         assert url == "https://custom.api/v1"
         assert key == "sk-custom"

@@ -46,7 +46,6 @@ async def test_openai_adapter_streams_against_fake_openai(monkeypatch: pytest.Mo
     with run_fake_openai_server() as server:
         monkeypatch.setenv("OPENAI_BASE_URL", server.base_url)
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
         events = [
             event
@@ -73,7 +72,6 @@ async def test_openai_adapter_uses_configured_fake_response(monkeypatch: pytest.
     with run_fake_openai_server() as server:
         monkeypatch.setenv("OPENAI_BASE_URL", server.base_url)
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
         events = [
             event
@@ -110,7 +108,6 @@ async def test_openai_adapter_streams_fake_tool_call_and_tool_result(monkeypatch
     with run_fake_openai_server() as server:
         monkeypatch.setenv("OPENAI_BASE_URL", server.base_url)
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
         tool_call_events = [
             event

@@ -162,7 +162,6 @@ async def test_default_agent_smoke_runs_against_fake_openai(
     with run_fake_openai_server() as fake_openai:
         monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
         config = build_default_agent_config(args)
         async with create_default_agent(config=config) as bundle:
