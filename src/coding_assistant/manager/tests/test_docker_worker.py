@@ -83,7 +83,7 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.slow
-async def test_docker_worker_runner_starts_real_worker_container(tmp_path: Path) -> None:
+async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: Path) -> None:
     _require_docker()
     suffix = uuid.uuid4().hex[:12]
     image = f"coding-assistant:test-{suffix}"
@@ -109,6 +109,8 @@ async def test_docker_worker_runner_starts_real_worker_container(tmp_path: Path)
                 fake_openai,
                 "--network",
                 network,
+                "-e",
+                "FAKE_OPENAI_TOOL_CALLS=1",
                 image,
                 "coding-assistant-fake-openai",
                 "--host",
@@ -124,43 +126,74 @@ async def test_docker_worker_runner_starts_real_worker_container(tmp_path: Path)
             """
             import asyncio
             import os
+            from pathlib import Path
 
             from coding_assistant.core.session_updates import SessionUpdate
             from coding_assistant.llm.types import SystemMessage
             from coding_assistant.manager.docker_worker import DockerWorkerConfig, DockerWorkerRunner
-            from coding_assistant.manager.service import WorkerPrompt
+            from coding_assistant.manager.service import ManagerService
+            from coding_assistant.manager.store import SessionStore
+            from coding_assistant.manager.workspace import WorkspacePaths
+            from coding_assistant.remote.acp import text_block
 
             async def ignore_update(update: SessionUpdate) -> None:
                 pass
 
+            def prompt_params(session_id: str) -> dict[str, object]:
+                return {
+                    "_meta": {"scopeId": "scope-a"},
+                    "sessionId": session_id,
+                    "prompt": [text_block("read smoke.txt")],
+                }
+
+            def message_contents(messages: list[object]) -> list[object]:
+                return [getattr(message, "content", None) for message in messages]
+
             async def main() -> None:
                 assert os.geteuid() != 0
                 assert os.environ["SMOKE_IMAGE_USER"]
-                runner = DockerWorkerRunner(
-                    config=DockerWorkerConfig(
-                        image=os.environ["SMOKE_IMAGE"],
-                        model="fake-model",
-                        network=os.environ["SMOKE_NETWORK"],
-                        startup_timeout=30,
-                        environment={
-                            "OPENAI_BASE_URL": os.environ["SMOKE_OPENAI_BASE_URL"],
-                            "OPENAI_API_KEY": "test-key",
-                        },
+                store = SessionStore(
+                    database_path=Path(os.environ["SMOKE_STORE"]),
+                    workspaces=WorkspacePaths(root=Path(os.environ["SMOKE_WORKSPACES"])),
+                )
+                service = ManagerService(
+                    store=store,
+                    worker_runner=DockerWorkerRunner(
+                        config=DockerWorkerConfig(
+                            image=os.environ["SMOKE_IMAGE"],
+                            model="fake-model",
+                            network=os.environ["SMOKE_NETWORK"],
+                            startup_timeout=30,
+                            environment={
+                                "OPENAI_BASE_URL": os.environ["SMOKE_OPENAI_BASE_URL"],
+                                "OPENAI_API_KEY": "test-key",
+                            },
+                        ),
                     ),
                 )
-                commit = await runner.run_prompt(
-                    prompt=WorkerPrompt(
-                        session_id=os.environ["SMOKE_SESSION_ID"],
-                        base_version=0,
-                        history=[SystemMessage(content="system")],
-                        workspace=os.environ["SMOKE_WORKSPACE"],
-                        prompt=[{"type": "text", "text": "docker smoke"}],
-                    ),
+
+                first = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+                second = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+                (first.workspace / "smoke.txt").write_text("alpha from first workspace", encoding="utf-8")
+                (second.workspace / "smoke.txt").write_text("bravo from second workspace", encoding="utf-8")
+
+                first_result = await service.prompt(
+                    params=prompt_params(first.record.session_id),
                     on_update=ignore_update,
                 )
-                contents = [getattr(message, "content", None) for message in commit.messages]
-                assert commit.stop_reason == "end_turn", commit
-                assert contents == ["docker smoke", "fake response: docker smoke"], contents
+                second_result = await service.prompt(
+                    params=prompt_params(second.record.session_id),
+                    on_update=ignore_update,
+                )
+                first_loaded = store.load_session(scope_id="scope-a", session_id=first.record.session_id)
+                second_loaded = store.load_session(scope_id="scope-a", session_id=second.record.session_id)
+
+                assert first_result.stop_reason == "end_turn", first_result
+                assert second_result.stop_reason == "end_turn", second_result
+                assert first_loaded.record.version == 1
+                assert second_loaded.record.version == 1
+                assert "tool result: alpha from first workspace" in message_contents(first_loaded.messages)
+                assert "tool result: bravo from second workspace" in message_contents(second_loaded.messages)
 
             asyncio.run(main())
             """,
@@ -194,6 +227,10 @@ async def test_docker_worker_runner_starts_real_worker_container(tmp_path: Path)
                 f"SMOKE_SESSION_ID={session_id}",
                 "-e",
                 f"SMOKE_WORKSPACE={tmp_path}",
+                "-e",
+                f"SMOKE_STORE={tmp_path / 'sessions.sqlite'}",
+                "-e",
+                f"SMOKE_WORKSPACES={tmp_path / 'workspaces'}",
                 image,
                 "python",
                 "-c",

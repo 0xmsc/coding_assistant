@@ -18,28 +18,73 @@ class FakeOpenAIServer:
     base_url: str
 
 
+def _messages_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    messages = payload.get("messages")
+    if not isinstance(messages, list):
+        return []
+    return [message for message in messages if isinstance(message, dict)]
+
+
 def _response_text(payload: dict[str, Any]) -> str:
     configured = os.environ.get("FAKE_OPENAI_RESPONSE")
     if configured is not None:
         return configured
-    messages = payload.get("messages")
-    if isinstance(messages, list) and messages:
+    messages = _messages_from_payload(payload)
+    if messages:
         last_message = messages[-1]
-        if isinstance(last_message, dict):
-            content = last_message.get("content")
-            if isinstance(content, str) and content.strip():
-                return f"fake response: {content}"
+        content = last_message.get("content")
+        if isinstance(content, str) and content.strip():
+            return f"fake response: {content}"
     return "fake response"
 
 
-def _chunk_payload(*, content: str = "", finish_reason: str | None = None, usage: dict[str, Any] | None = None) -> str:
+def _tool_result_response_text(payload: dict[str, Any]) -> str | None:
+    if os.environ.get("FAKE_OPENAI_TOOL_CALLS") != "1":
+        return None
+    messages = _messages_from_payload(payload)
+    if not messages:
+        return None
+    last_message = messages[-1]
+    if last_message.get("role") != "tool":
+        return None
+    content = last_message.get("content")
+    if not isinstance(content, str):
+        return "tool result"
+    return f"tool result: {content.strip()}"
+
+
+def _should_call_shell(payload: dict[str, Any]) -> bool:
+    if os.environ.get("FAKE_OPENAI_TOOL_CALLS") != "1":
+        return False
+    messages = _messages_from_payload(payload)
+    if not messages:
+        return False
+    last_message = messages[-1]
+    if last_message.get("role") != "user":
+        return False
+    content = last_message.get("content")
+    return isinstance(content, str) and "smoke.txt" in content
+
+
+def _chunk_payload(
+    *,
+    content: str = "",
+    tool_calls: list[dict[str, Any]] | None = None,
+    finish_reason: str | None = None,
+    usage: dict[str, Any] | None = None,
+) -> str:
+    delta: dict[str, Any] = {}
+    if content:
+        delta["content"] = content
+    if tool_calls is not None:
+        delta["tool_calls"] = tool_calls
     payload: dict[str, Any] = {
         "id": "chatcmpl-fake",
         "object": "chat.completion.chunk",
         "choices": [
             {
                 "index": 0,
-                "delta": {"content": content} if content else {},
+                "delta": delta,
                 "finish_reason": finish_reason,
             },
         ],
@@ -81,6 +126,14 @@ class _FakeOpenAIHandler(BaseHTTPRequestHandler):
 
         if payload.get("stream") is not True:
             self._write_json({"error": "Only stream=true is supported."}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if _should_call_shell(payload):
+            self._write_sse_tool_call_response()
+            return
+
+        if tool_result_text := _tool_result_response_text(payload):
+            self._write_sse_response(tool_result_text)
             return
 
         self._write_sse_response(_response_text(payload))
@@ -129,9 +182,44 @@ class _FakeOpenAIHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
 
+    def _write_sse_tool_call_response(self) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        self._write_sse_event(
+            _chunk_payload(
+                tool_calls=[
+                    {
+                        "index": 0,
+                        "id": "call_fake_shell",
+                        "type": "function",
+                        "function": {
+                            "name": "shell_execute",
+                            "arguments": '{"command": "cat smoke.txt"}',
+                        },
+                    },
+                ],
+            ),
+        )
+        self._write_sse_event(_chunk_payload(finish_reason="tool_calls", usage=_usage(completion_tokens=1)))
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
+
     def _write_sse_event(self, payload: str) -> None:
         self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
         self.wfile.flush()
+
+
+def _usage(*, completion_tokens: int) -> dict[str, Any]:
+    return {
+        "prompt_tokens": 1,
+        "completion_tokens": completion_tokens,
+        "total_tokens": completion_tokens + 1,
+        "cost": 0.0,
+    }
 
 
 @contextmanager
