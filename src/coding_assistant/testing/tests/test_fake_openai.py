@@ -90,7 +90,23 @@ async def test_openai_adapter_uses_configured_fake_response(monkeypatch: pytest.
 
 @pytest.mark.asyncio
 async def test_openai_adapter_streams_fake_tool_call_and_tool_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FAKE_OPENAI_TOOL_CALLS", "1")
+    monkeypatch.setenv(
+        "FAKE_OPENAI_RESPONSES_JSON",
+        json.dumps(
+            [
+                {
+                    "tool_calls": [
+                        {
+                            "id": "call_shell",
+                            "name": "shell_execute",
+                            "arguments": {"command": "cat smoke.txt"},
+                        },
+                    ],
+                },
+                {"content": "configured final answer"},
+            ],
+        ),
+    )
     with run_fake_openai_server() as server:
         monkeypatch.setenv("OPENAI_BASE_URL", server.base_url)
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -124,4 +140,4 @@ async def test_openai_adapter_streams_fake_tool_call_and_tool_result(monkeypatch
     assert tool_call.function.name == "shell_execute"
     assert tool_call.function.arguments == '{"command": "cat smoke.txt"}'
     assert isinstance(final_events[-1], CompletionEvent)
-    assert final_events[-1].completion.message.content == "tool result: file contents"
+    assert final_events[-1].completion.message.content == "configured final answer"

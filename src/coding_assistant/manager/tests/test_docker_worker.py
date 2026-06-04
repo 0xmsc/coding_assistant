@@ -192,6 +192,38 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
     manager = f"coding-assistant-manager-smoke-{suffix}"
     session_id = f"sess-{suffix}"
     worker_container = f"coding-assistant-worker-{session_id}"
+    fake_openai_script = tmp_path / "fake-openai-responses.json"
+    fake_openai_script.write_text(
+        """
+[
+  {
+    "tool_calls": [
+      {
+        "id": "call_shell_first",
+        "name": "shell_execute",
+        "arguments": {"command": "cat smoke.txt"}
+      }
+    ]
+  },
+  {
+    "content": "tool result: alpha from first workspace"
+  },
+  {
+    "tool_calls": [
+      {
+        "id": "call_shell_second",
+        "name": "shell_execute",
+        "arguments": {"command": "cat smoke.txt"}
+      }
+    ]
+  },
+  {
+    "content": "tool result: bravo from second workspace"
+  }
+]
+""".strip(),
+        encoding="utf-8",
+    )
 
     try:
         build = _docker(["build", "-t", image, "."], timeout=180)
@@ -210,7 +242,9 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
                 "--network",
                 network,
                 "-e",
-                "FAKE_OPENAI_TOOL_CALLS=1",
+                f"FAKE_OPENAI_RESPONSES_FILE={fake_openai_script}",
+                "-v",
+                f"{fake_openai_script}:{fake_openai_script}:ro",
                 image,
                 "coding-assistant-fake-openai",
                 "--host",

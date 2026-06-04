@@ -9,13 +9,53 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from threading import Thread
+from pathlib import Path
+from threading import Lock, Thread
 from typing import Any
 
 
 @dataclass(frozen=True)
 class FakeOpenAIServer:
     base_url: str
+
+
+class _ScriptedResponses:
+    def __init__(self, responses: list[dict[str, Any]]) -> None:
+        self._responses = responses
+        self._index = 0
+        self._lock = Lock()
+
+    def next_response(self) -> dict[str, Any] | None:
+        with self._lock:
+            if self._index >= len(self._responses):
+                return None
+            response = self._responses[self._index]
+            self._index += 1
+            return response
+
+
+class _FakeOpenAIHTTPServer(ThreadingHTTPServer):
+    def __init__(self, server_address: tuple[str, int], handler_class: type[BaseHTTPRequestHandler]) -> None:
+        super().__init__(server_address, handler_class)
+        self.scripted_responses = _ScriptedResponses(_load_scripted_responses())
+
+
+def _load_scripted_responses() -> list[dict[str, Any]]:
+    script_file = os.environ.get("FAKE_OPENAI_RESPONSES_FILE")
+    script_json = os.environ.get("FAKE_OPENAI_RESPONSES_JSON")
+    if script_file is not None:
+        raw = Path(script_file).read_text(encoding="utf-8")
+    elif script_json is not None:
+        raw = script_json
+    else:
+        return []
+
+    decoded = json.loads(raw)
+    if not isinstance(decoded, list):
+        raise ValueError("Fake OpenAI responses must be a JSON array.")
+    if not all(isinstance(item, dict) for item in decoded):
+        raise ValueError("Every fake OpenAI response must be a JSON object.")
+    return decoded
 
 
 def _messages_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -39,8 +79,6 @@ def _response_text(payload: dict[str, Any]) -> str:
 
 
 def _tool_result_response_text(payload: dict[str, Any]) -> str | None:
-    if os.environ.get("FAKE_OPENAI_TOOL_CALLS") != "1":
-        return None
     messages = _messages_from_payload(payload)
     if not messages:
         return None
@@ -51,19 +89,6 @@ def _tool_result_response_text(payload: dict[str, Any]) -> str | None:
     if not isinstance(content, str):
         return "tool result"
     return f"tool result: {content.strip()}"
-
-
-def _should_call_shell(payload: dict[str, Any]) -> bool:
-    if os.environ.get("FAKE_OPENAI_TOOL_CALLS") != "1":
-        return False
-    messages = _messages_from_payload(payload)
-    if not messages:
-        return False
-    last_message = messages[-1]
-    if last_message.get("role") != "user":
-        return False
-    content = last_message.get("content")
-    return isinstance(content, str) and "smoke.txt" in content
 
 
 def _chunk_payload(
@@ -92,6 +117,27 @@ def _chunk_payload(
     if usage is not None:
         payload["usage"] = usage
     return json.dumps(payload)
+
+
+def _scripted_tool_call_payload(tool_call: dict[str, Any], *, index: int) -> dict[str, Any]:
+    identifier = tool_call.get("id")
+    name = tool_call.get("name")
+    arguments = tool_call.get("arguments", {})
+    if not isinstance(identifier, str) or not identifier:
+        raise ValueError("Scripted tool calls require a non-empty string id.")
+    if not isinstance(name, str) or not name:
+        raise ValueError("Scripted tool calls require a non-empty string name.")
+    if not isinstance(arguments, str):
+        arguments = json.dumps(arguments)
+    return {
+        "index": index,
+        "id": identifier,
+        "type": "function",
+        "function": {
+            "name": name,
+            "arguments": arguments,
+        },
+    }
 
 
 def _content_chunks(text: str) -> list[str]:
@@ -128,8 +174,12 @@ class _FakeOpenAIHandler(BaseHTTPRequestHandler):
             self._write_json({"error": "Only stream=true is supported."}, status=HTTPStatus.BAD_REQUEST)
             return
 
-        if _should_call_shell(payload):
-            self._write_sse_tool_call_response()
+        response = self._next_scripted_response()
+        if response is not None:
+            try:
+                self._write_sse_scripted_response(response)
+            except ValueError as exc:
+                self._write_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
         if tool_result_text := _tool_result_response_text(payload):
@@ -159,6 +209,12 @@ class _FakeOpenAIHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    def _next_scripted_response(self) -> dict[str, Any] | None:
+        server = self.server
+        if not isinstance(server, _FakeOpenAIHTTPServer):
+            return None
+        return server.scripted_responses.next_response()
+
     def _write_sse_response(self, text: str) -> None:
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream")
@@ -182,29 +238,40 @@ class _FakeOpenAIHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
 
-    def _write_sse_tool_call_response(self) -> None:
+    def _write_sse_scripted_response(self, response: dict[str, Any]) -> None:
+        content = response.get("content")
+        tool_calls = response.get("tool_calls")
+        if isinstance(content, str):
+            chunks = [_chunk_payload(content=chunk) for chunk in _content_chunks(content)]
+            finish_reason = "stop"
+            completion_tokens = max(1, len(content.split()))
+        elif isinstance(tool_calls, list):
+            if not all(isinstance(tool_call, dict) for tool_call in tool_calls):
+                raise ValueError("Scripted tool_calls must be JSON objects.")
+            chunks = [
+                _chunk_payload(
+                    tool_calls=[
+                        _scripted_tool_call_payload(tool_call, index=index)
+                        for index, tool_call in enumerate(tool_calls)
+                    ],
+                ),
+            ]
+            finish_reason = "tool_calls"
+            completion_tokens = 1
+        else:
+            raise ValueError("Scripted fake OpenAI response requires content or tool_calls.")
+
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "close")
         self.end_headers()
 
+        for chunk in chunks:
+            self._write_sse_event(chunk)
         self._write_sse_event(
-            _chunk_payload(
-                tool_calls=[
-                    {
-                        "index": 0,
-                        "id": "call_fake_shell",
-                        "type": "function",
-                        "function": {
-                            "name": "shell_execute",
-                            "arguments": '{"command": "cat smoke.txt"}',
-                        },
-                    },
-                ],
-            ),
+            _chunk_payload(finish_reason=finish_reason, usage=_usage(completion_tokens=completion_tokens)),
         )
-        self._write_sse_event(_chunk_payload(finish_reason="tool_calls", usage=_usage(completion_tokens=1)))
         self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
 
@@ -224,7 +291,7 @@ def _usage(*, completion_tokens: int) -> dict[str, Any]:
 
 @contextmanager
 def run_fake_openai_server(*, host: str = "127.0.0.1", port: int = 0) -> Iterator[FakeOpenAIServer]:
-    server = ThreadingHTTPServer((host, port), _FakeOpenAIHandler)
+    server = _FakeOpenAIHTTPServer((host, port), _FakeOpenAIHandler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -244,7 +311,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    server = ThreadingHTTPServer((args.host, args.port), _FakeOpenAIHandler)
+    server = _FakeOpenAIHTTPServer((args.host, args.port), _FakeOpenAIHandler)
     print(f"Fake OpenAI endpoint: http://{args.host}:{server.server_port}/v1", flush=True)
     try:
         server.serve_forever()
