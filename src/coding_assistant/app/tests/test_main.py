@@ -1,3 +1,4 @@
+import asyncio
 from argparse import Namespace
 from contextlib import asynccontextmanager
 from typing import Any
@@ -7,7 +8,12 @@ import pytest
 from rich.markdown import Markdown
 
 from coding_assistant.app.cli import _handle_submission, PromptSubmitType, run_cli
-from coding_assistant.app.default_agent import DefaultAgentBundle, build_default_agent_config
+from coding_assistant.app.default_agent import (
+    DefaultAgentBundle,
+    build_default_agent_config,
+    build_initial_system_message,
+    create_default_agent,
+)
 from coding_assistant.app.main import main, parse_args
 from coding_assistant.app.output import (
     DeltaRenderer,
@@ -15,9 +21,10 @@ from coding_assistant.app.output import (
     format_session_status,
     print_tool_calls,
 )
-from coding_assistant.core.agent_session import AgentSession, SessionState
-from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall
+from coding_assistant.core.agent_session import AgentSession, RunFinishedEvent, SessionState
+from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, UserMessage
 from coding_assistant.remote.server import WorkerServer
+from coding_assistant.testing.fake_openai import run_fake_openai_server
 
 
 def test_parse_args_valid() -> None:
@@ -134,6 +141,54 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     )
     assert mock_run_ui.await_args.kwargs["history_path"].name == "history"
     mock_rich_print.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_default_agent_smoke_runs_against_fake_openai(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    args = Namespace(
+        instructions=[],
+        mcp_servers=[],
+        model="fake-model",
+        skills_directories=[],
+        trace=False,
+        wait_for_debugger=False,
+    )
+    monkeypatch.setattr("coding_assistant.app.default_agent.os.getcwd", lambda: str(tmp_path))
+    monkeypatch.setenv("FAKE_OPENAI_RESPONSE", "default agent smoke response")
+
+    with run_fake_openai_server() as fake_openai:
+        monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+        config = build_default_agent_config(args)
+        async with create_default_agent(config=config) as bundle:
+            system_message = build_initial_system_message(instructions=bundle.instructions)
+            session = AgentSession(
+                history=[system_message],
+                model=args.model,
+                tools=bundle.tools,
+            )
+            try:
+                async with session.subscribe() as queue:
+                    assert await session.enqueue_prompt("Run the fake smoke test.") is True
+                    while True:
+                        event = await asyncio.wait_for(queue.get(), timeout=2)
+                        if isinstance(event, RunFinishedEvent):
+                            break
+            finally:
+                await session.close()
+
+    assert session.history[-2:] == [
+        UserMessage(content="Run the fake smoke test."),
+        AssistantMessage(
+            content="default agent smoke response",
+            provider_specific_fields={"reasoning_details": []},
+        ),
+    ]
 
 
 def test_paragraph_buffer_respects_code_fences() -> None:

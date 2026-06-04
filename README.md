@@ -175,11 +175,7 @@ Run linting, formatting, and type checks:
 just lint
 ```
 
-There is also an integration test target:
-
-```bash
-just test-integration
-```
+Deterministic fake OpenAI integration smoke tests run as part of `just test`.
 
 ## License
 
