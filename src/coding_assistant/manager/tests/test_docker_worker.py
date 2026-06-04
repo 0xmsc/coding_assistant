@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import subprocess
-import textwrap
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
+from websockets.asyncio.client import ClientConnection, connect
 
 from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.manager.docker_worker import (
@@ -16,6 +20,7 @@ from coding_assistant.manager.docker_worker import (
     _run_command,
 )
 from coding_assistant.manager.service import WorkerPrompt
+from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
 
 
 def _docker(args: list[str], *, timeout: int = 60) -> subprocess.CompletedProcess[str]:
@@ -49,6 +54,101 @@ def _remove_image(name: str) -> None:
 
 def _docker_socket_group_id() -> str:
     return str(Path("/var/run/docker.sock").stat().st_gid)
+
+
+def _published_port(container_name: str, container_port: int) -> str:
+    result = _docker(["port", container_name, str(container_port)], timeout=20)
+    assert result.returncode == 0, result.stderr or result.stdout
+    first_mapping = result.stdout.strip().splitlines()[0]
+    return first_mapping.rsplit(":", maxsplit=1)[1]
+
+
+async def _wait_for_manager_endpoint(endpoint: str) -> None:
+    deadline = asyncio.get_running_loop().time() + 30
+    last_error = "manager did not respond"
+    while asyncio.get_running_loop().time() < deadline:
+        try:
+            async with connect(endpoint) as websocket:
+                await _initialize(websocket)
+                return
+        except Exception as exc:
+            last_error = str(exc)
+            await asyncio.sleep(0.2)
+    raise AssertionError(f"Manager endpoint {endpoint} did not become ready: {last_error}")
+
+
+@asynccontextmanager
+async def _connect_initialized(endpoint: str) -> AsyncIterator[ClientConnection]:
+    async with connect(endpoint) as websocket:
+        await _initialize(websocket)
+        yield websocket
+
+
+async def _initialize(websocket: ClientConnection) -> dict[str, Any]:
+    await websocket.send(
+        jsonrpc_request(
+            1,
+            "initialize",
+            {
+                "protocolVersion": ACP_PROTOCOL_VERSION,
+                "clientCapabilities": {},
+                "clientInfo": {"name": "docker-smoke", "title": "Docker Smoke", "version": "0.0.0"},
+            },
+        ),
+    )
+    response = parse_jsonrpc_message(await websocket.recv())
+    assert "result" in response, response
+    return response
+
+
+def _scope_params(session_id: str | None = None, **params: Any) -> dict[str, Any]:
+    result = {
+        "_meta": {
+            "scopeId": "scope-a",
+        },
+        **params,
+    }
+    if session_id is not None:
+        result["sessionId"] = session_id
+    return result
+
+
+async def _new_session(websocket: ClientConnection, *, request_id: int) -> str:
+    await websocket.send(jsonrpc_request(request_id, "session/new", _scope_params()))
+    response = parse_jsonrpc_message(await websocket.recv())
+    session_id = response["result"]["sessionId"]
+    assert isinstance(session_id, str)
+    return session_id
+
+
+async def _prompt_session(websocket: ClientConnection, *, request_id: int, session_id: str) -> dict[str, Any]:
+    await websocket.send(
+        jsonrpc_request(
+            request_id,
+            "session/prompt",
+            _scope_params(session_id, prompt=[text_block("read smoke.txt")]),
+        ),
+    )
+    while True:
+        message = parse_jsonrpc_message(await websocket.recv())
+        if message.get("id") == request_id:
+            assert "result" in message, message
+            return message
+
+
+async def _load_session(websocket: ClientConnection, *, request_id: int, session_id: str) -> list[str]:
+    await websocket.send(jsonrpc_request(request_id, "session/load", _scope_params(session_id)))
+    texts: list[str] = []
+    while True:
+        message = parse_jsonrpc_message(await websocket.recv())
+        if message.get("id") == request_id:
+            assert "result" in message, message
+            return texts
+        if message.get("method") != "session/update":
+            continue
+        update = message["params"]["update"]
+        if update.get("sessionUpdate") == "agent_message_chunk":
+            texts.append(update["content"]["text"])
 
 
 def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
@@ -122,88 +222,13 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
         )
         assert fake_started.returncode == 0, fake_started.stderr or fake_started.stdout
 
-        script = textwrap.dedent(
-            """
-            import asyncio
-            import os
-            from pathlib import Path
-
-            from coding_assistant.core.session_updates import SessionUpdate
-            from coding_assistant.llm.types import SystemMessage
-            from coding_assistant.manager.docker_worker import DockerWorkerConfig, DockerWorkerRunner
-            from coding_assistant.manager.service import ManagerService
-            from coding_assistant.manager.store import SessionStore
-            from coding_assistant.manager.workspace import WorkspacePaths
-            from coding_assistant.remote.acp import text_block
-
-            async def ignore_update(update: SessionUpdate) -> None:
-                pass
-
-            def prompt_params(session_id: str) -> dict[str, object]:
-                return {
-                    "_meta": {"scopeId": "scope-a"},
-                    "sessionId": session_id,
-                    "prompt": [text_block("read smoke.txt")],
-                }
-
-            def message_contents(messages: list[object]) -> list[object]:
-                return [getattr(message, "content", None) for message in messages]
-
-            async def main() -> None:
-                assert os.geteuid() != 0
-                assert os.environ["SMOKE_IMAGE_USER"]
-                store = SessionStore(
-                    database_path=Path(os.environ["SMOKE_STORE"]),
-                    workspaces=WorkspacePaths(root=Path(os.environ["SMOKE_WORKSPACES"])),
-                )
-                service = ManagerService(
-                    store=store,
-                    worker_runner=DockerWorkerRunner(
-                        config=DockerWorkerConfig(
-                            image=os.environ["SMOKE_IMAGE"],
-                            model="fake-model",
-                            network=os.environ["SMOKE_NETWORK"],
-                            startup_timeout=30,
-                            environment={
-                                "OPENAI_BASE_URL": os.environ["SMOKE_OPENAI_BASE_URL"],
-                                "OPENAI_API_KEY": "test-key",
-                            },
-                        ),
-                    ),
-                )
-
-                first = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
-                second = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
-                (first.workspace / "smoke.txt").write_text("alpha from first workspace", encoding="utf-8")
-                (second.workspace / "smoke.txt").write_text("bravo from second workspace", encoding="utf-8")
-
-                first_result = await service.prompt(
-                    params=prompt_params(first.record.session_id),
-                    on_update=ignore_update,
-                )
-                second_result = await service.prompt(
-                    params=prompt_params(second.record.session_id),
-                    on_update=ignore_update,
-                )
-                first_loaded = store.load_session(scope_id="scope-a", session_id=first.record.session_id)
-                second_loaded = store.load_session(scope_id="scope-a", session_id=second.record.session_id)
-
-                assert first_result.stop_reason == "end_turn", first_result
-                assert second_result.stop_reason == "end_turn", second_result
-                assert first_loaded.record.version == 1
-                assert second_loaded.record.version == 1
-                assert "tool result: alpha from first workspace" in message_contents(first_loaded.messages)
-                assert "tool result: bravo from second workspace" in message_contents(second_loaded.messages)
-
-            asyncio.run(main())
-            """,
-        )
         image_user = _docker(["image", "inspect", image, "--format", "{{.Config.User}}"], timeout=20)
         assert image_user.returncode == 0, image_user.stderr or image_user.stdout
         assert image_user.stdout.strip(), image_user.stdout
-        manager_result = _docker(
+        manager_started = _docker(
             [
                 "run",
+                "--detach",
                 "--rm",
                 "--name",
                 manager,
@@ -215,40 +240,65 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
                 "/var/run/docker.sock:/var/run/docker.sock",
                 "-v",
                 f"{tmp_path}:{tmp_path}",
-                "-e",
-                f"SMOKE_IMAGE={image}",
-                "-e",
-                f"SMOKE_IMAGE_USER={image_user.stdout.strip()}",
-                "-e",
-                f"SMOKE_NETWORK={network}",
-                "-e",
-                f"SMOKE_OPENAI_BASE_URL=http://{fake_openai}:8000/v1",
-                "-e",
-                f"SMOKE_SESSION_ID={session_id}",
-                "-e",
-                f"SMOKE_WORKSPACE={tmp_path}",
-                "-e",
-                f"SMOKE_STORE={tmp_path / 'sessions.sqlite'}",
-                "-e",
-                f"SMOKE_WORKSPACES={tmp_path / 'workspaces'}",
+                "-p",
+                "127.0.0.1::8764",
                 image,
-                "python",
-                "-c",
-                script,
+                "coding-assistant-manager",
+                "--model",
+                "fake-model",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8764",
+                "--database",
+                str(tmp_path / "sessions.sqlite"),
+                "--workspace-root",
+                str(tmp_path / "workspaces"),
+                "--worker-image",
+                image,
+                "--worker-network",
+                network,
+                "--worker-env",
+                f"OPENAI_BASE_URL=http://{fake_openai}:8000/v1",
+                "OPENAI_API_KEY=test-key",
             ],
-            timeout=120,
+            timeout=30,
         )
-        if manager_result.returncode != 0:
+        assert manager_started.returncode == 0, manager_started.stderr or manager_started.stdout
+        endpoint = f"ws://127.0.0.1:{_published_port(manager, 8764)}"
+        try:
+            await _wait_for_manager_endpoint(endpoint)
+            async with _connect_initialized(endpoint) as websocket:
+                first_session_id = await _new_session(websocket, request_id=2)
+                second_session_id = await _new_session(websocket, request_id=3)
+                (tmp_path / "workspaces" / first_session_id / "smoke.txt").write_text(
+                    "alpha from first workspace",
+                    encoding="utf-8",
+                )
+                (tmp_path / "workspaces" / second_session_id / "smoke.txt").write_text(
+                    "bravo from second workspace",
+                    encoding="utf-8",
+                )
+
+                first_prompt = await _prompt_session(websocket, request_id=4, session_id=first_session_id)
+                second_prompt = await _prompt_session(websocket, request_id=5, session_id=second_session_id)
+                first_texts = await _load_session(websocket, request_id=6, session_id=first_session_id)
+                second_texts = await _load_session(websocket, request_id=7, session_id=second_session_id)
+
+            assert first_prompt["result"] == {"stopReason": "end_turn"}
+            assert second_prompt["result"] == {"stopReason": "end_turn"}
+            assert "tool result: alpha from first workspace" in first_texts
+            assert "tool result: bravo from second workspace" in second_texts
+        except Exception:
             worker_logs = _docker(["logs", worker_container], timeout=20)
+            manager_logs = _docker(["logs", manager], timeout=20)
             fake_logs = _docker(["logs", fake_openai], timeout=20)
             pytest.fail(
                 "\n".join(
                     [
-                        "Manager smoke container failed.",
-                        "manager stdout:",
-                        manager_result.stdout,
-                        "manager stderr:",
-                        manager_result.stderr,
+                        "Manager end-to-end smoke failed.",
+                        "manager logs:",
+                        manager_logs.stdout or manager_logs.stderr,
                         "worker logs:",
                         worker_logs.stdout or worker_logs.stderr,
                         "fake OpenAI logs:",
