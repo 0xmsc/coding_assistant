@@ -4,7 +4,7 @@ import asyncio
 import os
 import re
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from time import monotonic
 
 from coding_assistant.core.session_updates import SessionUpdate
@@ -63,7 +63,8 @@ class DockerWorkerRunner:
         await self._register_active(session_id=prompt.session_id, container_name=container_name, runner=runner)
         try:
             await self._wait_until_ready(endpoint)
-            return await runner.run_prompt(prompt=prompt, on_update=on_update)
+            worker_prompt = replace(prompt, workspace=self._config.workspace_mount)
+            return await runner.run_prompt(prompt=worker_prompt, on_update=on_update)
         finally:
             await self._unregister_active(session_id=prompt.session_id, runner=runner)
             await self._remove_container(container_name, allow_failure=True)
@@ -144,8 +145,6 @@ def _docker_run_args(*, config: DockerWorkerConfig, container_name: str, workspa
         config.network,
         "--workdir",
         config.workspace_mount,
-        "--cap-drop",
-        "ALL",
         "--security-opt",
         "no-new-privileges",
         "-v",

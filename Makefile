@@ -1,4 +1,4 @@
-.PHONY: test lint lint-check ci
+.PHONY: test test-integration lint lint-check ci
 
 all: ci
 
@@ -6,6 +6,9 @@ ci: lint-check test
 
 test:
 	uv run pytest -n auto -m "not slow"
+
+test-integration:
+	uv run pytest -m slow
 
 lint:
 	uv run ruff check --fix

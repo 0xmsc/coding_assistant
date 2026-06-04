@@ -177,6 +177,12 @@ just lint
 
 Deterministic fake OpenAI integration smoke tests run as part of `just test`.
 
+Run integration tests:
+
+```bash
+just test-integration
+```
+
 ## License
 
 MIT
