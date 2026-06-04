@@ -23,6 +23,7 @@ from coding_assistant.manager.service import ManagerService
 from coding_assistant.manager.store import SessionStore
 from coding_assistant.manager.workspace import WorkspacePaths
 from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
+from coding_assistant.testing.fake_openai import run_fake_openai_server
 from coding_assistant.worker.server import WorkerRuntimeConfig, start_session_worker_server
 
 
@@ -221,3 +222,37 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     assert [message["params"]["update"]["content"]["text"] for message in replay] == ["server prompt", "server answer"]
     assert load_response["result"]["_meta"]["version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_remote_worker_smoke_uses_fake_openai_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    with run_fake_openai_server() as fake_openai:
+        monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        runtime = WorkerRuntimeConfig(model="fake-model", tools=[])
+
+        async with start_session_worker_server(runtime=runtime) as worker_server:
+            service, store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
+            created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+            updates: list[SessionUpdate] = []
+
+            async def collect_update(update: SessionUpdate) -> None:
+                updates.append(update)
+
+            result = await service.prompt(
+                params=_scope_params(created.record.session_id, "container smoke"),
+                on_update=collect_update,
+            )
+            loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    assert result.stop_reason == "end_turn"
+    assert loaded.record.version == 1
+    assert [getattr(message, "content", None) for message in loaded.messages] == [
+        "system",
+        "container smoke",
+        "fake response: container smoke",
+    ]
