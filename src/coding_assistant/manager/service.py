@@ -41,7 +41,7 @@ class WorkerCommit:
     messages: list[BaseMessage]
     stop_reason: str
     title: str | None = None
-    metadata: dict[str, object] | None = None
+    metadata: JsonObject | None = None
 
 
 class WorkerRunner(Protocol):

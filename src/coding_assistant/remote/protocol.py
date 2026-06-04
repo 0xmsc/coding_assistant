@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, TypeGuard
+
 from coding_assistant.core.session_updates import (
     AgentMessageChunkUpdate,
     SessionUpdate,
@@ -7,11 +9,16 @@ from coding_assistant.core.session_updates import (
     ToolCallStartedUpdate,
     UserMessageChunkUpdate,
 )
+from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
 from coding_assistant.remote.acp import JsonObject, text_block, tool_content_text
 
 
-def _content_text_from_tool_content(content: object) -> str | None:
-    if not isinstance(content, list) or not content:
+def _is_json_object_list(value: Any) -> TypeGuard[list[JsonObject]]:
+    return isinstance(value, list) and all(isinstance(item, dict) for item in value)
+
+
+def _content_text_from_tool_content(content: list[JsonObject] | None) -> str | None:
+    if not content:
         return None
     first_item = content[0]
     if not (
@@ -74,6 +81,14 @@ def session_update_to_jsonrpc_update(update: SessionUpdate) -> JsonObject | None
     return None
 
 
+def messages_to_jsonrpc(messages: list[BaseMessage]) -> list[JsonObject]:
+    return [message_to_dict(message) for message in messages]
+
+
+def messages_from_jsonrpc(messages: list[JsonObject]) -> list[BaseMessage]:
+    return [message_from_dict(message) for message in messages]
+
+
 def session_update_from_jsonrpc_update(update: JsonObject) -> SessionUpdate | None:
     """Parse a session/update payload update object into a normalized update."""
     update_type = update.get("sessionUpdate")
@@ -104,13 +119,14 @@ def session_update_from_jsonrpc_update(update: JsonObject) -> SessionUpdate | No
         )
 
     if update_type == "tool_call_update":
+        content = update.get("content")
         return ToolCallLifecycleUpdate(
             source="remote",
             tool_call_id=str(update.get("toolCallId", "")),
             status=str(update.get("status", "")),
             title=update.get("title") if isinstance(update.get("title"), str) else None,
             tool_kind=update.get("kind") if isinstance(update.get("kind"), str) else None,
-            content=_content_text_from_tool_content(update.get("content")),
+            content=_content_text_from_tool_content(content if _is_json_object_list(content) else None),
         )
 
     return None
