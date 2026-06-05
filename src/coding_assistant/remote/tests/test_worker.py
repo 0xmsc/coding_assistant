@@ -9,7 +9,7 @@ import pytest
 from rich.markdown import Markdown
 from websockets.asyncio.client import ClientConnection, connect
 
-from coding_assistant.app.cli import _run_output
+from coding_assistant.cli.ui import _run_output
 from coding_assistant.core.agent_session import (
     AgentSession,
     PromptStartedEvent,
@@ -141,8 +141,8 @@ async def test__run_output_renders_system_message_and_streamed_content() -> None
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.cli.print_system_message") as mock_print_system,
-        patch("coding_assistant.app.output.rich_print") as mock_rich_print,
+        patch("coding_assistant.cli.ui.print_system_message") as mock_print_system,
+        patch("coding_assistant.cli.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:
@@ -174,8 +174,8 @@ async def test__run_output_prints_started_prompt_before_run_output() -> None:
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.cli.print_system_message"),
-        patch("coding_assistant.app.output.rich_print") as mock_rich_print,
+        patch("coding_assistant.cli.ui.print_system_message"),
+        patch("coding_assistant.cli.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:
@@ -213,8 +213,8 @@ async def test__run_output_prints_tool_calls_without_extra_spacing() -> None:
     )
 
     with (
-        patch("coding_assistant.app.cli.print_system_message"),
-        patch("coding_assistant.app.output.rich_print") as mock_rich_print,
+        patch("coding_assistant.cli.ui.print_system_message"),
+        patch("coding_assistant.cli.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:
@@ -249,8 +249,8 @@ async def test__run_output_prints_status_events_as_info_lines() -> None:
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.cli.print_system_message"),
-        patch("coding_assistant.app.output.rich_print") as mock_rich_print,
+        patch("coding_assistant.cli.ui.print_system_message"),
+        patch("coding_assistant.cli.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:
@@ -274,8 +274,8 @@ async def test__run_output_prints_reasoning_deltas_before_content() -> None:
     system_message = SystemMessage(content="System")
 
     with (
-        patch("coding_assistant.app.cli.print_system_message"),
-        patch("coding_assistant.app.output.rich_print") as mock_rich_print,
+        patch("coding_assistant.cli.ui.print_system_message"),
+        patch("coding_assistant.cli.output.rich_print") as mock_rich_print,
     ):
         task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:

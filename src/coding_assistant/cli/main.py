@@ -5,8 +5,8 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, BooleanOptio
 
 import debugpy
 
-from coding_assistant.app.cli import run_cli
-from coding_assistant.infra.paths import get_log_file
+from coding_assistant.cli.ui import run_cli
+from coding_assistant.infra.logging import setup_logging
 from coding_assistant.infra.trace import enable_tracing, get_default_trace_dir
 
 logger = logging.getLogger("coding_assistant")
@@ -20,23 +20,6 @@ async def _main(args: argparse.Namespace) -> None:
         await run_cli(args)
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
-
-
-def setup_logging() -> None:
-    """Setup logging to file only."""
-    log_file = get_log_file()
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    file_handler.setFormatter(formatter)
-
-    root_logger = logging.getLogger()
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-
-    root_logger.addHandler(file_handler)
-    root_logger.setLevel(logging.INFO)
-    logger.setLevel(logging.INFO)
 
 
 def parse_args() -> argparse.Namespace:

@@ -7,21 +7,21 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from rich.markdown import Markdown
 
-from coding_assistant.app.cli import _handle_submission, PromptSubmitType, run_cli
-from coding_assistant.app.default_agent import (
-    DefaultAgentBundle,
-    build_default_agent_config,
-    build_initial_system_message,
-    create_default_agent,
+from coding_assistant.cli.ui import _handle_submission, PromptSubmitType, run_cli
+from coding_assistant.cli.agent import (
+    CliAgentBundle,
+    build_cli_agent_config,
+    create_cli_agent,
 )
-from coding_assistant.app.main import main, parse_args
-from coding_assistant.app.output import (
+from coding_assistant.cli.main import main, parse_args
+from coding_assistant.cli.output import (
     DeltaRenderer,
     ParagraphBuffer,
     format_session_status,
     print_tool_calls,
 )
 from coding_assistant.core.agent_session import AgentSession, RunFinishedEvent, SessionState
+from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, UserMessage
 from coding_assistant.remote.server import WorkerServer
 from coding_assistant.testing.fake_openai import run_fake_openai_server
@@ -45,22 +45,22 @@ def test_parse_args_with_multiple_flags() -> None:
         assert args.trace is True
 
 
-def test_build_default_agent_config_from_args(tmp_path: Any) -> None:
+def test_build_cli_agent_config_from_args(tmp_path: Any) -> None:
     args = type("MockArgs", (), {})()
     args.mcp_servers = []
     args.skills_directories = []
     args.instructions = []
 
-    with patch("coding_assistant.app.default_agent.os.getcwd", return_value=str(tmp_path)):
-        config = build_default_agent_config(args)
+    with patch("coding_assistant.cli.agent.os.getcwd", return_value=str(tmp_path)):
+        config = build_cli_agent_config(args)
 
     assert config.working_directory == tmp_path
     assert config.skills_directories == ()
     assert config.user_instructions == ()
 
 
-@patch("coding_assistant.app.main.run_cli")
-@patch("coding_assistant.app.main.enable_tracing")
+@patch("coding_assistant.cli.main.run_cli")
+@patch("coding_assistant.cli.main.enable_tracing")
 def test_main_enables_tracing_when_flag_set(mock_enable_tracing: Any, mock_run_cli: Any) -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--trace"]):
         main()
@@ -68,9 +68,9 @@ def test_main_enables_tracing_when_flag_set(mock_enable_tracing: Any, mock_run_c
         mock_run_cli.assert_called_once()
 
 
-@patch("coding_assistant.app.main.run_cli")
-@patch("coding_assistant.app.main.debugpy.wait_for_client")
-@patch("coding_assistant.app.main.debugpy.listen")
+@patch("coding_assistant.cli.main.run_cli")
+@patch("coding_assistant.cli.main.debugpy.wait_for_client")
+@patch("coding_assistant.cli.main.debugpy.listen")
 def test_main_waits_for_debugger(mock_listen: Any, mock_wait: Any, mock_run_cli: Any) -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "test-model", "--wait-for-debugger"]):
         main()
@@ -79,7 +79,7 @@ def test_main_waits_for_debugger(mock_listen: Any, mock_wait: Any, mock_run_cli:
         mock_run_cli.assert_called_once()
 
 
-@patch("coding_assistant.app.main.run_cli")
+@patch("coding_assistant.cli.main.run_cli")
 def test_main_runs_cli(mock_run_cli: Any) -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "test-model"]):
         main()
@@ -105,9 +105,9 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     )
 
     @asynccontextmanager
-    async def fake_create_default_agent(*, config: Any) -> Any:
+    async def fake_create_cli_agent(*, config: Any) -> Any:
         del config
-        yield DefaultAgentBundle(
+        yield CliAgentBundle(
             tools=[],
             instructions="Follow the repo instructions.",
         )
@@ -122,11 +122,11 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         yield
 
     with (
-        patch("coding_assistant.app.cli.create_default_agent", fake_create_default_agent),
-        patch("coding_assistant.app.cli.start_worker_server", fake_start_worker_server),
-        patch("coding_assistant.app.cli.register_remote_instance", fake_register_remote_instance),
-        patch("coding_assistant.app.cli.rich_print") as mock_rich_print,
-        patch("coding_assistant.app.cli._run_ui", new=AsyncMock()) as mock_run_ui,
+        patch("coding_assistant.cli.ui.create_cli_agent", fake_create_cli_agent),
+        patch("coding_assistant.cli.ui.start_worker_server", fake_start_worker_server),
+        patch("coding_assistant.cli.ui.register_remote_instance", fake_register_remote_instance),
+        patch("coding_assistant.cli.ui.rich_print") as mock_rich_print,
+        patch("coding_assistant.cli.ui._run_ui", new=AsyncMock()) as mock_run_ui,
     ):
         await run_cli(args)
 
@@ -144,7 +144,7 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_default_agent_smoke_runs_against_fake_openai(
+async def test_cli_agent_smoke_runs_against_fake_openai(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
@@ -156,15 +156,15 @@ async def test_default_agent_smoke_runs_against_fake_openai(
         trace=False,
         wait_for_debugger=False,
     )
-    monkeypatch.setattr("coding_assistant.app.default_agent.os.getcwd", lambda: str(tmp_path))
-    monkeypatch.setenv("FAKE_OPENAI_RESPONSE", "default agent smoke response")
+    monkeypatch.setattr("coding_assistant.cli.agent.os.getcwd", lambda: str(tmp_path))
+    monkeypatch.setenv("FAKE_OPENAI_RESPONSE", "cli agent smoke response")
 
     with run_fake_openai_server() as fake_openai:
         monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
-        config = build_default_agent_config(args)
-        async with create_default_agent(config=config) as bundle:
+        config = build_cli_agent_config(args)
+        async with create_cli_agent(config=config) as bundle:
             system_message = build_initial_system_message(instructions=bundle.instructions)
             session = AgentSession(
                 history=[system_message],
@@ -184,7 +184,7 @@ async def test_default_agent_smoke_runs_against_fake_openai(
     assert session.history[-2:] == [
         UserMessage(content="Run the fake smoke test."),
         AssistantMessage(
-            content="default agent smoke response",
+            content="cli agent smoke response",
             provider_specific_fields={"reasoning_details": []},
         ),
     ]
@@ -201,7 +201,7 @@ def test_paragraph_buffer_respects_code_fences() -> None:
 def test_delta_renderer_prints_markdown_paragraphs() -> None:
     renderer = DeltaRenderer()
 
-    with patch("coding_assistant.app.output.rich_print") as mock_print:
+    with patch("coding_assistant.cli.output.rich_print") as mock_print:
         renderer.on_delta("First paragraph")
         renderer.on_delta("\n\nSecond paragraph")
         renderer.finish()
@@ -226,7 +226,7 @@ def test_delta_renderer_avoids_double_spacing_before_tool_calls() -> None:
         ],
     )
 
-    with patch("coding_assistant.app.output.rich_print") as mock_print:
+    with patch("coding_assistant.cli.output.rich_print") as mock_print:
         renderer.on_delta("Can you read README.md?")
         renderer.finish()
         print_tool_calls(tool_call_message)
@@ -248,7 +248,7 @@ def test_delta_renderer_avoids_double_spacing_before_tool_calls() -> None:
 def test_delta_renderer_finish_is_idempotent() -> None:
     renderer = DeltaRenderer()
 
-    with patch("coding_assistant.app.output.rich_print") as mock_print:
+    with patch("coding_assistant.cli.output.rich_print") as mock_print:
         renderer.on_delta("Hello")
         renderer.finish()
         renderer.finish()
@@ -282,8 +282,8 @@ def test_format_session_status_shows_paused_when_queue_is_paused() -> None:
 
 
 def test_print_prompt_accepted_uses_simple_grey_background() -> None:
-    with patch("coding_assistant.app.output.rich_print") as mock_print:
-        from coding_assistant.app.output import print_active_prompt
+    with patch("coding_assistant.cli.output.rich_print") as mock_print:
+        from coding_assistant.cli.output import print_active_prompt
 
         print_active_prompt("Do the task")
 

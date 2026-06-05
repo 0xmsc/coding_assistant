@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from rich.console import Console
 
-from coding_assistant.app.output import (
+from coding_assistant.cli.output import (
     DeltaRenderer,
     ParagraphBuffer,
     StreamRenderer,
@@ -100,7 +100,7 @@ class TestDeltaRenderer:
 
     def test_empty_renderer_finishes_cleanly(self) -> None:
         renderer = DeltaRenderer()
-        with patch("coding_assistant.app.output.rich_print"):
+        with patch("coding_assistant.cli.output.rich_print"):
             renderer.finish()
 
     def test_single_delta_renders_markdown(self) -> None:
@@ -108,7 +108,7 @@ class TestDeltaRenderer:
         buffer = io.StringIO()
         console = Console(file=buffer, force_terminal=False, width=80)
 
-        with patch("coding_assistant.app.output.rich_print", console.print):
+        with patch("coding_assistant.cli.output.rich_print", console.print):
             renderer.on_delta("Hello\n\nWorld")
 
         output = buffer.getvalue()
@@ -120,7 +120,7 @@ class TestDeltaRenderer:
         buffer = io.StringIO()
         console = Console(file=buffer, force_terminal=False, width=80)
 
-        with patch("coding_assistant.app.output.rich_print", console.print):
+        with patch("coding_assistant.cli.output.rich_print", console.print):
             renderer.on_delta("Hello\n\nWorld")
             renderer.finish()
 
@@ -133,7 +133,7 @@ class TestDeltaRenderer:
         buffer = io.StringIO()
         console = Console(file=buffer, force_terminal=False, width=80)
 
-        with patch("coding_assistant.app.output.rich_print", console.print):
+        with patch("coding_assistant.cli.output.rich_print", console.print):
             renderer.on_delta("Some text without paragraph end")
             renderer.finish()
 
@@ -148,7 +148,7 @@ class TestDeltaRenderer:
         def capture(*args: Any) -> None:
             calls.append(args)
 
-        with patch("coding_assistant.app.output.rich_print", side_effect=capture):
+        with patch("coding_assistant.cli.output.rich_print", side_effect=capture):
             renderer.on_delta("Para 1\n\n")  # complete paragraph, streamed
             renderer.on_delta("Para 2")  # incomplete, held in buffer
             renderer.finish()  # flush as "Para 2"
@@ -164,7 +164,7 @@ class TestDeltaRenderer:
     def test_reasoning_renderer_applies_dim_style(self) -> None:
         renderer = DeltaRenderer(style="dim")
 
-        with patch("coding_assistant.app.output.rich_print") as mock_print:
+        with patch("coding_assistant.cli.output.rich_print") as mock_print:
             renderer.on_delta("Thinking")
             renderer.finish()
 
@@ -178,14 +178,14 @@ class TestStreamRenderer:
 
     def test_empty_renderer_finishes_cleanly(self) -> None:
         renderer = StreamRenderer()
-        with patch("coding_assistant.app.output.rich_print"):
+        with patch("coding_assistant.cli.output.rich_print"):
             renderer.finish()
         # No deltas, no output.
 
     def test_switching_from_reasoning_to_content_flushes_reasoning_first(self) -> None:
         renderer = StreamRenderer()
 
-        with patch("coding_assistant.app.output.rich_print") as mock_print:
+        with patch("coding_assistant.cli.output.rich_print") as mock_print:
             renderer.on_reasoning_delta("Thinking")
             renderer.on_content_delta("Answer")
             renderer.finish()
@@ -283,7 +283,7 @@ def _capture_output(func: Callable[[], None]) -> str:
     """Capture output from a function that uses rich_print."""
     buffer = io.StringIO()
     console = Console(file=buffer, force_terminal=False, width=80)
-    with patch("coding_assistant.app.output.rich_print", console.print):
+    with patch("coding_assistant.cli.output.rich_print", console.print):
         func()
     return buffer.getvalue()
 
@@ -344,7 +344,7 @@ class TestOutputIntegration:
         buffer = io.StringIO()
         console = Console(file=buffer, force_terminal=False, width=80)
 
-        with patch("coding_assistant.app.output.rich_print", console.print):
+        with patch("coding_assistant.cli.output.rich_print", console.print):
             renderer.on_delta("# Heading\n\nSome **bold** text\n\n")
             renderer.finish()
 

@@ -8,7 +8,7 @@ from prompt_toolkit.layout import HSplit, VSplit, Window
 from prompt_toolkit.layout.containers import ConditionalContainer
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 
-from coding_assistant.app.cli import (
+from coding_assistant.cli.ui import (
     PromptSubmitType,
     SlashCompleter,
     _create_application,

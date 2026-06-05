@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from coding_assistant.app.instructions import get_instructions
+from coding_assistant.core.instructions import get_instructions
 
 
 def _get_project_root() -> Path:

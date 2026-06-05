@@ -159,7 +159,6 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
         environment={"OPENAI_API_KEY": "test-key"},
         instructions=("Be concise.",),
         skills_directories=("/skills",),
-        mcp_servers=('{"name":"test","command":"server"}',),
     )
 
     args = _docker_run_args(config=config, container_name="coding-assistant-worker-sess", workspace="/data/ws/sess")
@@ -178,6 +177,7 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
     assert args[args.index("--workspace") + 1] == "/workspace"
     assert "OPENAI_API_KEY=test-key" in args
     assert "Be concise." in args
+    assert "--mcp-servers" not in args
     assert "/skills" in args
 
 

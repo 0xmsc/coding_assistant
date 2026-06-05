@@ -20,7 +20,7 @@ share the same core types instead of inventing separate event or history models.
 executed by `AgentSession` and the core agent loop, not by the manager or the
 JSON-RPC transport.
 
-`coding_assistant.app` owns the interactive terminal application. It builds an
+`coding_assistant.cli` owns the interactive terminal application. It builds an
 agent, creates an `AgentSession` directly, renders session updates in the
 terminal, and may expose a local single-session remote endpoint for other
 clients. The terminal UI itself is not a JSON-RPC client.
@@ -59,7 +59,7 @@ history.
 
 ```text
 terminal UI
-  -> app
+  -> cli
   -> AgentSession
   -> tools / model
   -> shared session updates

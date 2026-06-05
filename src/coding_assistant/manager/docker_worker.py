@@ -37,7 +37,6 @@ class DockerWorkerConfig:
     environment: dict[str, str] = field(default_factory=dict)
     instructions: tuple[str, ...] = ()
     skills_directories: tuple[str, ...] = ()
-    mcp_servers: tuple[str, ...] = ()
 
 
 class DockerWorkerRunner:
@@ -172,8 +171,6 @@ def _docker_run_args(*, config: DockerWorkerConfig, container_name: str, workspa
         args.extend(["--instructions", *config.instructions])
     if config.skills_directories:
         args.extend(["--skills-directories", *config.skills_directories])
-    if config.mcp_servers:
-        args.extend(["--mcp-servers", *config.mcp_servers])
     return args
 
 

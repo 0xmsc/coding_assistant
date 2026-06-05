@@ -5,18 +5,15 @@ import asyncio
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from pathlib import Path
 
-from coding_assistant.app.default_agent import (
-    DefaultAgentConfig,
-    build_initial_system_message,
-    create_default_agent,
-)
-from coding_assistant.app.main import setup_logging
+from coding_assistant.core.runtime import build_initial_system_message
+from coding_assistant.infra.logging import setup_logging
 from coding_assistant.llm.types import BaseMessage
 from coding_assistant.manager.docker_worker import DockerWorkerConfig, DockerWorkerRunner
 from coding_assistant.manager.server import start_manager_server
 from coding_assistant.manager.service import ManagerService
 from coding_assistant.manager.store import SessionStore
 from coding_assistant.manager.workspace import WorkspacePaths
+from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
 
 def _environment_from_args(values: list[str]) -> dict[str, str]:
@@ -43,7 +40,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--worker-env", nargs="*", default=[], help="Environment entries for workers as KEY=VALUE.")
     parser.add_argument("--instructions", nargs="*", default=[], help="Additional worker instructions.")
     parser.add_argument("--skills-directories", nargs="*", default=[], help="Additional Agent Skill directories.")
-    parser.add_argument("--mcp-servers", nargs="*", default=[], help="MCP server configurations as JSON strings.")
     return parser.parse_args()
 
 
@@ -63,24 +59,23 @@ async def _main(args: argparse.Namespace) -> None:
         environment=_environment_from_args(args.worker_env),
         instructions=tuple(args.instructions),
         skills_directories=tuple(args.skills_directories),
-        mcp_servers=tuple(args.mcp_servers),
     )
     service = ManagerService(store=store, worker_runner=DockerWorkerRunner(config=worker_config))
-    agent_config = DefaultAgentConfig(
+    agent_config = WorkerAgentConfig(
         working_directory=Path(args.worker_workspace),
         user_instructions=tuple(args.instructions),
         skills_directories=tuple(args.skills_directories),
     )
-    async with create_default_agent(config=agent_config) as bundle:
-        initial_messages: list[BaseMessage] = [build_initial_system_message(instructions=bundle.instructions)]
-        async with start_manager_server(
-            service=service,
-            initial_messages=initial_messages,
-            host=args.host,
-            port=args.port,
-        ) as server:
-            print(f"Manager endpoint: {server.endpoint}", flush=True)
-            await asyncio.Event().wait()
+    instructions = build_worker_instructions(config=agent_config)
+    initial_messages: list[BaseMessage] = [build_initial_system_message(instructions=instructions)]
+    async with start_manager_server(
+        service=service,
+        initial_messages=initial_messages,
+        host=args.host,
+        port=args.port,
+    ) as server:
+        print(f"Manager endpoint: {server.endpoint}", flush=True)
+        await asyncio.Event().wait()
 
 
 def main() -> None:

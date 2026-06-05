@@ -24,13 +24,9 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
 from rich import print as rich_print
 
-from coding_assistant.app.default_agent import (
-    build_default_agent_config,
-    build_initial_system_message,
-    create_default_agent,
-)
-from coding_assistant.app.image import get_image
-from coding_assistant.app.output import (
+from coding_assistant.cli.agent import build_cli_agent_config, create_cli_agent
+from coding_assistant.cli.image import get_image
+from coding_assistant.cli.output import (
     StreamRenderer,
     format_prompt_preview,
     format_session_status,
@@ -39,6 +35,7 @@ from coding_assistant.app.output import (
     print_system_message,
     print_tool_calls,
 )
+from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.core.agent_session import (
     AgentSession,
 )
@@ -107,9 +104,9 @@ def _format_queued_prompts(session: AgentSession) -> str:
 
 async def run_cli(args: Namespace) -> None:
     """Run the interactive CLI."""
-    config = build_default_agent_config(args)
+    config = build_cli_agent_config(args)
 
-    async with create_default_agent(config=config) as bundle:
+    async with create_cli_agent(config=config) as bundle:
         system_message = build_initial_system_message(instructions=bundle.instructions)
         session = AgentSession(
             history=[system_message],

@@ -10,16 +10,16 @@ from coding_assistant.tools.filesystem import create_filesystem_tools
 from coding_assistant.tools.mcp_manager import MCPServerConfig, MCPServerManager
 from coding_assistant.tools.mcp_tools import create_mcp_tools
 from coding_assistant.tools.python import create_python_tools
+from coding_assistant.tools.remote import WorkerToolRuntime
 from coding_assistant.tools.shell import create_shell_tools
 from coding_assistant.tools.skills import create_skill_tools, format_skills_instructions
 from coding_assistant.tools.tasks import TaskManager, create_task_tools
 from coding_assistant.tools.todo import TodoManager, create_todo_tools
-from coding_assistant.tools.remote import WorkerToolRuntime
 
 
 @dataclass(slots=True)
-class LocalToolBundle:
-    """Local built-in tools plus their instruction block."""
+class CliToolBundle:
+    """Built-in CLI tools plus their instruction block."""
 
     tools: list[Tool]
     instructions: str
@@ -37,13 +37,13 @@ def load_tool_instructions() -> str:
     return (get_builtin_instructions_dir() / "tools.md").read_text(encoding="utf-8").strip()
 
 
-def create_local_tool_bundle(
+def create_cli_tool_bundle(
     *,
     skills_directories: Sequence[Path],
     mcp_server_configs: Sequence[MCPServerConfig] = (),
     working_directory: Path | None = None,
-) -> LocalToolBundle:
-    """Build the in-process tool bundle used by the default CLI."""
+) -> CliToolBundle:
+    """Build the in-process tool bundle used by the interactive CLI."""
     task_manager = TaskManager()
     todo_manager = TodoManager()
     worker_runtime = WorkerToolRuntime()
@@ -61,11 +61,9 @@ def create_local_tool_bundle(
         *create_filesystem_tools(),
         *create_task_tools(manager=task_manager),
         *skill_tools,
+        *worker_runtime.tools,
     ]
 
-    tools.extend(worker_runtime.tools)
-
-    # Add MCP tools if configs provided
     mcp_manager: MCPServerManager | None = None
     if mcp_server_configs and working_directory:
         mcp_manager = MCPServerManager(
@@ -74,7 +72,7 @@ def create_local_tool_bundle(
         )
         tools.extend(create_mcp_tools(mcp_manager))
 
-    return LocalToolBundle(
+    return CliToolBundle(
         tools=tools,
         instructions=instructions,
         _worker_runtime=worker_runtime,
