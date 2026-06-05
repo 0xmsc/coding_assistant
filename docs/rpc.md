@@ -21,6 +21,7 @@ The minimum Chat WebUI contract is:
 - `session/list`
 - `session/new`
 - `session/load`
+- `session/rename`
 - `session/prompt`
 - `session/cancel`
 - `session/update`
@@ -179,8 +180,8 @@ Example forwarded request:
 ```
 
 The manager requires `params._meta.scopeId` for scoped methods and uses it
-for `session/list`, `session/new`, `session/load`, `session/prompt`, and
-`session/cancel`.
+for `session/list`, `session/new`, `session/load`, `session/rename`,
+`session/prompt`, and `session/cancel`.
 
 ## Managed Workspaces
 
@@ -466,6 +467,47 @@ When replay is complete:
 The manager fails clearly when the session does not exist, belongs to another
 scope, or has a missing derived workspace.
 
+### session/rename
+
+Renames an existing session in `params._meta.scopeId`. A `null` or blank title
+clears the custom title.
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "method": "session/rename",
+  "params": {
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
+    "sessionId": "sess_abc123",
+    "title": "Fix failing tests"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "result": {
+    "sessionId": "sess_abc123",
+    "title": "Fix failing tests",
+    "updatedAt": "2026-06-03T10:20:00Z",
+    "_meta": {
+      "version": 1
+    }
+  }
+}
+```
+
+The manager fails when the session does not exist or belongs to another scope.
+
 ### session/prompt
 
 Submits one prompt to a session in `params._meta.scopeId`. The request
@@ -477,7 +519,7 @@ Request:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 5,
+  "id": 6,
   "method": "session/prompt",
   "params": {
     "_meta": {
@@ -499,7 +541,7 @@ Response on completion:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 5,
+  "id": 6,
   "result": {
     "stopReason": "end_turn"
   }
@@ -511,7 +553,7 @@ Response on cancellation:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 5,
+  "id": 6,
   "result": {
     "stopReason": "cancelled"
   }
@@ -575,7 +617,7 @@ Request:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 6,
+  "id": 7,
   "method": "session/cancel",
   "params": {
     "_meta": {

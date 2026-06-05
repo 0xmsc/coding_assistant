@@ -113,6 +113,20 @@ class ManagerService:
         session = self._store.create_session(scope_id=scope_id, messages=initial_messages)
         return {"sessionId": session.record.session_id}
 
+    def rename_session(self, *, params: JsonObject) -> JsonObject:
+        scope_id = _scope_id_from_params(params)
+        session_id = self._session_id_from_params(params)
+        title = params.get("title")
+        if title is None:
+            next_title = None
+        elif isinstance(title, str):
+            stripped_title = title.strip()
+            next_title = stripped_title or None
+        else:
+            raise ManagerError("session/rename requires a string or null title.")
+        record = self._store.rename_session(scope_id=scope_id, session_id=session_id, title=next_title)
+        return _record_metadata(record)
+
     async def load_session(
         self, *, params: JsonObject, on_update: Callable[[SessionUpdate], Awaitable[None]]
     ) -> JsonObject:

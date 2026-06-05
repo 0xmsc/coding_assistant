@@ -109,6 +109,25 @@ async def test_manager_load_replays_persisted_transcript(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
+async def test_manager_renames_session(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(
+                jsonrpc_request(3, "session/rename", _scope_params("scope-a", sessionId=session_id, title="Renamed"))
+            )
+            rename_response = parse_jsonrpc_message(await websocket.recv())
+            await websocket.send(jsonrpc_request(4, "session/list", _scope_params("scope-a")))
+            list_response = parse_jsonrpc_message(await websocket.recv())
+
+    assert rename_response["result"]["sessionId"] == session_id
+    assert rename_response["result"]["title"] == "Renamed"
+    assert list_response["result"]["sessions"][0]["title"] == "Renamed"
+
+
+@pytest.mark.asyncio
 async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path, worker=FakeWorkerRunner(response_text="done")) as endpoint:
         async with connect(endpoint) as websocket:
@@ -137,7 +156,7 @@ async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path
 
 
 @pytest.mark.asyncio
-async def test_manager_rejects_cross_scope_load_prompt_and_cancel(tmp_path: Path) -> None:
+async def test_manager_rejects_cross_scope_load_rename_prompt_and_cancel(tmp_path: Path) -> None:
     worker = FakeWorkerRunner()
     async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
         async with connect(endpoint) as websocket:
@@ -148,18 +167,24 @@ async def test_manager_rejects_cross_scope_load_prompt_and_cancel(tmp_path: Path
             load_response = parse_jsonrpc_message(await websocket.recv())
 
             await websocket.send(
+                jsonrpc_request(4, "session/rename", _scope_params("scope-b", sessionId=session_id, title="Bad"))
+            )
+            rename_response = parse_jsonrpc_message(await websocket.recv())
+
+            await websocket.send(
                 jsonrpc_request(
-                    4,
+                    5,
                     "session/prompt",
                     _scope_params("scope-b", sessionId=session_id, prompt=[text_block("bad")]),
                 ),
             )
             prompt_response = parse_jsonrpc_message(await websocket.recv())
 
-            await websocket.send(jsonrpc_request(5, "session/cancel", _scope_params("scope-b", sessionId=session_id)))
+            await websocket.send(jsonrpc_request(6, "session/cancel", _scope_params("scope-b", sessionId=session_id)))
             cancel_response = parse_jsonrpc_message(await websocket.recv())
 
     assert load_response["error"]["code"] == -32602
+    assert rename_response["error"]["code"] == -32602
     assert prompt_response["error"]["code"] == -32602
     assert cancel_response["error"]["code"] == -32602
     assert worker.cancelled_session_ids is None

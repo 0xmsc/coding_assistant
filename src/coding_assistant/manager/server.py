@@ -181,6 +181,10 @@ async def _handle_session_method(
         await websocket.send(_jsonrpc_result_required(response_id, result))
         return
 
+    if method == "session/rename":
+        await websocket.send(_jsonrpc_result_required(response_id, service.rename_session(params=params)))
+        return
+
     if method == "session/prompt":
         if response_id is None:
             await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "session/prompt must be a request."))

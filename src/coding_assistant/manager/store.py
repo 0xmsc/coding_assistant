@@ -152,6 +152,21 @@ class SessionStore:
         messages = [_message_from_json(str(row["payload_json"])) for row in message_rows]
         return LoadedSession(record=record, messages=messages, workspace=workspace)
 
+    def rename_session(self, *, scope_id: str, session_id: str, title: str | None) -> SessionRecord:
+        now = _now_iso()
+        with self._connect() as connection:
+            with connection:
+                self._get_session_record(connection, scope_id=scope_id, session_id=session_id)
+                connection.execute(
+                    """
+                    update sessions
+                    set title = ?, updated_at = ?
+                    where scope_id = ? and session_id = ?
+                    """,
+                    (title, now, scope_id, session_id),
+                )
+                return self._get_session_record(connection, scope_id=scope_id, session_id=session_id)
+
     def commit_messages(
         self,
         *,

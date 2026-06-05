@@ -112,6 +112,36 @@ def test_commit_messages_rejects_stale_base_version(tmp_path: Path) -> None:
     assert loaded.messages == [UserMessage(content="first")]
 
 
+def test_rename_session_updates_title_without_changing_version(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+    )
+    created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+
+    renamed = store.rename_session(scope_id="scope-a", session_id=created.record.session_id, title="Renamed")
+    cleared = store.rename_session(scope_id="scope-a", session_id=created.record.session_id, title=None)
+
+    assert renamed.title == "Renamed"
+    assert renamed.version == 0
+    assert cleared.title is None
+    assert cleared.version == 0
+    assert store.load_session(scope_id="scope-a", session_id=created.record.session_id).messages == [
+        SystemMessage(content="system"),
+    ]
+
+
+def test_rename_session_rejects_cross_scope_access(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+    )
+    created = store.create_session(scope_id="scope-a", messages=[])
+
+    with pytest.raises(SessionNotFoundError):
+        store.rename_session(scope_id="scope-b", session_id=created.record.session_id, title="Bad")
+
+
 def test_load_session_fails_when_workspace_is_missing(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
