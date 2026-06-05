@@ -6,3 +6,9 @@ test-integration:
 
 lint:
     make lint
+
+dev-manager:
+    docker compose --env-file docker/.env -f docker/compose.manager.yml up --build manager
+
+dev-manager-down:
+    docker compose --env-file docker/.env -f docker/compose.manager.yml down

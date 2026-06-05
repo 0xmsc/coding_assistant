@@ -40,6 +40,16 @@ Start an interactive session:
 coding-assistant --model "openai/gpt-5-mini"
 ```
 
+Run a local manager for app integrations:
+
+```bash
+cp docker/.env.example docker/.env
+just dev-manager
+```
+
+The manager listens on `ws://localhost:8764` and starts one Docker worker
+container per session.
+
 Show available options:
 
 ```bash

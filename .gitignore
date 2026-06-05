@@ -12,3 +12,5 @@ memory.json
 .github
 .serena
 dist
+docker/.env
+.docker-data/
