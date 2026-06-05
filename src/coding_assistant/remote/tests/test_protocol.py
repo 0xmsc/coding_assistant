@@ -12,7 +12,14 @@ from coding_assistant.core.session_updates import (
     session_updates_from_agent_event,
 )
 from coding_assistant.core.tool_calls import ToolCallLifecycleEvent
-from coding_assistant.llm.types import AssistantMessage, ContentDeltaEvent, FunctionCall, ToolCall, UserMessage
+from coding_assistant.llm.types import (
+    AssistantMessage,
+    ContentDeltaEvent,
+    FunctionCall,
+    ToolCall,
+    ToolMessage,
+    UserMessage,
+)
 from coding_assistant.remote.protocol import (
     session_update_notification,
     session_update_from_jsonrpc_update,
@@ -105,6 +112,8 @@ def test_jsonrpc_tool_call_update_parses_to_normalized_update() -> None:
             "toolCallId": "call-1",
             "status": "completed",
             "title": "shell_execute",
+            "rawInput": {"command": "pwd"},
+            "rawOutput": "/workspace",
             "content": [{"type": "content", "content": {"type": "text", "text": "done"}}],
         },
     )
@@ -114,6 +123,8 @@ def test_jsonrpc_tool_call_update_parses_to_normalized_update() -> None:
     assert update.tool_call_id == "call-1"
     assert update.status == "completed"
     assert update.title == "shell_execute"
+    assert update.raw_input == {"command": "pwd"}
+    assert update.raw_output == "/workspace"
     assert update.content == "done"
 
 
@@ -157,3 +168,42 @@ def test_committed_assistant_message_converts_to_replay_update_and_jsonrpc_paylo
         "sessionUpdate": "agent_message_chunk",
         "content": {"type": "text", "text": "answer"},
     }
+
+
+def test_committed_tool_call_history_converts_to_replay_updates_and_jsonrpc_payloads() -> None:
+    tool_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="shell_execute", arguments='{"command": "cat smoke.txt"}'),
+    )
+
+    assistant = committed_message_from_history_message(AssistantMessage(tool_calls=[tool_call]))
+    tool_result = committed_message_from_history_message(
+        ToolMessage(tool_call_id="call-1", name="shell_execute", content="smoke output")
+    )
+
+    assert assistant is not None
+    assert tool_result is not None
+    updates = [
+        *replay_updates_from_committed_message(assistant),
+        *replay_updates_from_committed_message(tool_result),
+    ]
+
+    assert [session_update_to_jsonrpc_update(update) for update in updates] == [
+        {
+            "sessionUpdate": "tool_call",
+            "toolCallId": "call-1",
+            "title": "shell_execute",
+            "kind": "other",
+            "status": "pending",
+            "rawInput": {"command": "cat smoke.txt"},
+        },
+        {
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call-1",
+            "status": "completed",
+            "title": "shell_execute",
+            "kind": "other",
+            "rawOutput": "smoke output",
+            "content": [{"type": "content", "content": {"type": "text", "text": "smoke output"}}],
+        },
+    ]

@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from websockets.asyncio.client import ClientConnection, connect
 
-from coding_assistant.llm.types import SystemMessage
+from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, ToolMessage, UserMessage
 from coding_assistant.manager.server import start_manager_server
 from coding_assistant.manager.service import ManagerService
 from coding_assistant.manager.store import SessionStore
@@ -106,6 +106,64 @@ async def test_manager_load_replays_persisted_transcript(tmp_path: Path) -> None
             response = parse_jsonrpc_message(await websocket.recv())
 
     assert response["result"]["sessionId"] == session_id
+
+
+@pytest.mark.asyncio
+async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+    )
+    service = ManagerService(store=store, worker_runner=FakeWorkerRunner())
+    created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+    tool_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="shell_execute", arguments='{"command": "cat smoke.txt"}'),
+    )
+    store.commit_messages(
+        scope_id="scope-a",
+        session_id=created.record.session_id,
+        base_version=0,
+        messages=[
+            UserMessage(content="Read smoke.txt"),
+            AssistantMessage(tool_calls=[tool_call]),
+            ToolMessage(tool_call_id="call-1", name="shell_execute", content="smoke output"),
+            AssistantMessage(content="Done"),
+        ],
+    )
+
+    async with start_manager_server(service=service, initial_messages=[SystemMessage(content="system")]) as server:
+        async with connect(server.endpoint) as websocket:
+            await _initialize(websocket)
+            await websocket.send(
+                jsonrpc_request(2, "session/load", _scope_params("scope-a", sessionId=created.record.session_id))
+            )
+            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(4)]
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    replay_updates = [message["params"]["update"] for message in replay]
+    assert replay_updates == [
+        {"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "Read smoke.txt"}},
+        {
+            "sessionUpdate": "tool_call",
+            "toolCallId": "call-1",
+            "title": "shell_execute",
+            "kind": "other",
+            "status": "pending",
+            "rawInput": {"command": "cat smoke.txt"},
+        },
+        {
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call-1",
+            "status": "completed",
+            "title": "shell_execute",
+            "kind": "other",
+            "rawOutput": "smoke output",
+            "content": [{"type": "content", "content": {"type": "text", "text": "smoke output"}}],
+        },
+        {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "Done"}},
+    ]
+    assert response["result"]["sessionId"] == created.record.session_id
 
 
 @pytest.mark.asyncio

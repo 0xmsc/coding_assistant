@@ -133,12 +133,15 @@ def session_update_from_jsonrpc_update(update: JsonObject) -> SessionUpdate | No
 
     if update_type == "tool_call_update":
         content = update.get("content")
+        raw_input = update.get("rawInput")
         return ToolCallLifecycleUpdate(
             source="remote",
             tool_call_id=str(update.get("toolCallId", "")),
             status=str(update.get("status", "")),
             title=update.get("title") if isinstance(update.get("title"), str) else None,
             tool_kind=update.get("kind") if isinstance(update.get("kind"), str) else None,
+            raw_input=raw_input if isinstance(raw_input, dict) else None,
+            raw_output=update.get("rawOutput"),
             content=_content_text_from_tool_content(content if _is_json_object_list(content) else None),
         )
 

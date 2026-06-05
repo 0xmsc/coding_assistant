@@ -20,6 +20,8 @@ from coding_assistant.llm.types import (
     ContentDeltaEvent,
     ReasoningDeltaEvent,
     StatusEvent,
+    ToolCall,
+    ToolMessage,
     UserMessage,
 )
 
@@ -112,6 +114,9 @@ class CommittedMessage:
 
     role: str
     content: str | list[JsonObject] | None
+    tool_calls: list[ToolCall] | None = None
+    tool_call_id: str | None = None
+    name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -215,7 +220,14 @@ def committed_message_from_history_message(message: BaseMessage) -> CommittedMes
     if isinstance(message, UserMessage):
         return CommittedMessage(role="user", content=message.content)
     if isinstance(message, AssistantMessage):
-        return CommittedMessage(role="assistant", content=message.content)
+        return CommittedMessage(role="assistant", content=message.content, tool_calls=message.tool_calls)
+    if isinstance(message, ToolMessage):
+        return CommittedMessage(
+            role="tool",
+            content=message.content,
+            tool_call_id=message.tool_call_id,
+            name=message.name,
+        )
     return None
 
 
@@ -226,8 +238,34 @@ def replay_updates_from_committed_message(message: CommittedMessage) -> list[Ses
             return []
         return [UserMessageChunkUpdate(content=text)]
     if message.role == "assistant":
+        updates: list[SessionUpdate] = []
         text = _committed_content_text(message.content)
-        if text is None:
-            return []
-        return [AgentMessageChunkUpdate(content=text)]
+        if text is not None:
+            updates.append(AgentMessageChunkUpdate(content=text))
+        for tool_call in message.tool_calls or []:
+            updates.append(
+                ToolCallStartedUpdate(
+                    source="history",
+                    tool_call_id=tool_call.id,
+                    title=tool_call.function.name or "tool_call",
+                    tool_kind="other",
+                    status="pending",
+                    raw_input=_tool_call_raw_input(tool_call.function.arguments),
+                    message=None,
+                )
+            )
+        return updates
+    if message.role == "tool" and message.tool_call_id:
+        text = _committed_content_text(message.content)
+        return [
+            ToolCallLifecycleUpdate(
+                source="history",
+                tool_call_id=message.tool_call_id,
+                status="completed",
+                title=message.name,
+                tool_kind="other",
+                raw_output=message.content,
+                content=text,
+            )
+        ]
     return []
