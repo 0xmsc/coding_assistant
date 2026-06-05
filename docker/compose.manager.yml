@@ -31,7 +31,6 @@ services:
       - coding-assistant-dev
       - --worker-env
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - --worker-env
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
 
 networks:
