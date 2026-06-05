@@ -12,7 +12,7 @@ from coding_assistant.core.session_updates import (
 )
 from coding_assistant.llm.types import BaseMessage
 from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
-from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp
+from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp, session_id_from_params
 
 
 class ManagerError(RuntimeError):
@@ -115,7 +115,7 @@ class ManagerService:
 
     def rename_session(self, *, params: JsonObject) -> JsonObject:
         scope_id = _scope_id_from_params(params)
-        session_id = self._session_id_from_params(params)
+        session_id = session_id_from_params(params)
         title = params.get("title")
         if title is None:
             next_title = None
@@ -131,7 +131,7 @@ class ManagerService:
         self, *, params: JsonObject, on_update: Callable[[SessionUpdate], Awaitable[None]]
     ) -> JsonObject:
         scope_id = _scope_id_from_params(params)
-        session_id = self._session_id_from_params(params)
+        session_id = session_id_from_params(params)
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         for message in session.messages:
             committed = committed_message_from_history_message(message)
@@ -148,7 +148,7 @@ class ManagerService:
         on_update: Callable[[SessionUpdate], Awaitable[None]],
     ) -> PromptResult:
         scope_id = _scope_id_from_params(params)
-        session_id = self._session_id_from_params(params)
+        session_id = session_id_from_params(params)
         prompt_blocks = params.get("prompt")
         if not isinstance(prompt_blocks, list) or not all(isinstance(block, dict) for block in prompt_blocks):
             raise ManagerError("session/prompt requires a prompt array.")
@@ -184,7 +184,7 @@ class ManagerService:
 
     async def cancel(self, *, params: JsonObject) -> None:
         scope_id = _scope_id_from_params(params)
-        session_id = self._session_id_from_params(params)
+        session_id = session_id_from_params(params)
         self._store.load_session(scope_id=scope_id, session_id=session_id)
         await self._worker_runner.cancel(session_id=session_id)
 
@@ -197,9 +197,3 @@ class ManagerService:
     async def _mark_prompt_idle(self, session_id: str) -> None:
         async with self._active_lock:
             self._active_prompts.discard(session_id)
-
-    def _session_id_from_params(self, params: JsonObject) -> str:
-        session_id = params.get("sessionId")
-        if not isinstance(session_id, str) or not session_id:
-            raise ManagerError("Request params must include sessionId.")
-        return session_id

@@ -4,7 +4,6 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
-from importlib.metadata import PackageNotFoundError, version
 
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
@@ -15,19 +14,21 @@ from coding_assistant.manager.service import ManagerError, ManagerService, Sessi
 from coding_assistant.manager.store import SessionNotFoundError, StaleSessionCommitError
 from coding_assistant.manager.workspace import WorkspaceMissingError
 from coding_assistant.remote.acp import (
-    ACP_PROTOCOL_VERSION,
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
     ERROR_METHOD_NOT_FOUND,
     ERROR_SERVER,
     JsonObject,
-    initialize_result,
+    initialize_response,
     jsonrpc_error,
-    jsonrpc_notification,
     jsonrpc_result,
+    jsonrpc_result_required,
+    params_from_payload,
     parse_jsonrpc_message,
+    response_id_from_payload,
+    session_id_from_params,
 )
-from coding_assistant.remote.protocol import session_update_to_jsonrpc_update
+from coding_assistant.remote.protocol import session_update_notification
 
 
 @dataclass(frozen=True)
@@ -41,29 +42,8 @@ class _ConnectionState:
     prompt_tasks: set[asyncio.Task[None]] = field(default_factory=set)
 
 
-def _agent_version() -> str:
-    try:
-        return version("coding-assistant-cli")
-    except PackageNotFoundError:
-        return "0.0.0"
-
-
-def _response_id(payload: JsonObject) -> int | str | None:
-    request_id = payload.get("id")
-    return request_id if isinstance(request_id, int | str) else None
-
-
-def _params_from_payload(payload: JsonObject) -> JsonObject:
-    params = payload.get("params", {})
-    if params is None:
-        return {}
-    if not isinstance(params, dict):
-        raise ManagerError("Request params must be an object.")
-    return params
-
-
 def _error_code_for_exception(exc: Exception) -> int:
-    if isinstance(exc, (ManagerError, SessionNotFoundError, WorkspaceMissingError)):
+    if isinstance(exc, (ValueError, ManagerError, SessionNotFoundError, WorkspaceMissingError)):
         return ERROR_INVALID_PARAMS
     if isinstance(exc, (SessionBusyError, StaleSessionCommitError)):
         return ERROR_SERVER
@@ -76,18 +56,10 @@ async def _send_session_update(
     session_id: str,
     update: SessionUpdate,
 ) -> None:
-    payload_update = session_update_to_jsonrpc_update(update)
-    if payload_update is None:
+    notification = session_update_notification(session_id=session_id, update=update)
+    if notification is None:
         return
-    await websocket.send(
-        jsonrpc_notification(
-            "session/update",
-            {
-                "sessionId": session_id,
-                "update": payload_update,
-            },
-        ),
-    )
+    await websocket.send(notification)
 
 
 async def _run_prompt_request(
@@ -97,7 +69,7 @@ async def _run_prompt_request(
     response_id: int | str,
     params: JsonObject,
 ) -> None:
-    session_id = _session_id_from_params(params)
+    session_id = session_id_from_params(params)
 
     async def send_update(update: SessionUpdate) -> None:
         await _send_session_update(websocket=websocket, session_id=session_id, update=update)
@@ -129,21 +101,18 @@ async def _handle_initialize(
     await websocket.send(
         jsonrpc_result(
             response_id,
-            initialize_result(
+            initialize_response(
+                requested_protocol_version=protocol_version,
                 agent_name="coding-assistant",
                 agent_title="Coding Assistant",
-                agent_version=_agent_version(),
-            )
-            | {
-                "protocolVersion": min(protocol_version, ACP_PROTOCOL_VERSION),
-                "agentCapabilities": {
+                capabilities={
                     "loadSession": True,
                     "promptCapabilities": {
                         "image": True,
                         "embeddedContext": True,
                     },
                 },
-            },
+            ),
         ),
     )
 
@@ -159,12 +128,12 @@ async def _handle_session_method(
     state: _ConnectionState,
 ) -> None:
     if method == "session/list":
-        await websocket.send(_jsonrpc_result_required(response_id, service.list_sessions(params=params)))
+        await websocket.send(jsonrpc_result_required(response_id, service.list_sessions(params=params)))
         return
 
     if method == "session/new":
         await websocket.send(
-            _jsonrpc_result_required(
+            jsonrpc_result_required(
                 response_id,
                 service.new_session(params=params, initial_messages=initial_messages),
             ),
@@ -172,17 +141,17 @@ async def _handle_session_method(
         return
 
     if method == "session/load":
-        session_id = _session_id_from_params(params)
+        session_id = session_id_from_params(params)
 
         async def send_update(update: SessionUpdate) -> None:
             await _send_session_update(websocket=websocket, session_id=session_id, update=update)
 
         result = await service.load_session(params=params, on_update=send_update)
-        await websocket.send(_jsonrpc_result_required(response_id, result))
+        await websocket.send(jsonrpc_result_required(response_id, result))
         return
 
     if method == "session/rename":
-        await websocket.send(_jsonrpc_result_required(response_id, service.rename_session(params=params)))
+        await websocket.send(jsonrpc_result_required(response_id, service.rename_session(params=params)))
         return
 
     if method == "session/prompt":
@@ -210,19 +179,6 @@ async def _handle_session_method(
     await websocket.send(jsonrpc_error(response_id, ERROR_METHOD_NOT_FOUND, f"Unsupported manager method: {method}"))
 
 
-def _session_id_from_params(params: JsonObject) -> str:
-    session_id = params.get("sessionId")
-    if not isinstance(session_id, str) or not session_id:
-        raise ManagerError("Request params must include sessionId.")
-    return session_id
-
-
-def _jsonrpc_result_required(response_id: int | str | None, result: JsonObject) -> str:
-    if response_id is None:
-        return jsonrpc_error(None, ERROR_INVALID_REQUEST, "Method must be a request.")
-    return jsonrpc_result(response_id, result)
-
-
 async def _handle_jsonrpc_message(
     *,
     websocket: ServerConnection,
@@ -231,14 +187,14 @@ async def _handle_jsonrpc_message(
     payload: JsonObject,
     initial_messages: list[BaseMessage],
 ) -> None:
-    response_id = _response_id(payload)
+    response_id = response_id_from_payload(payload)
     method = payload.get("method")
     if payload.get("jsonrpc") != "2.0" or not isinstance(method, str):
         await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "Invalid JSON-RPC request."))
         return
 
     try:
-        params = _params_from_payload(payload)
+        params = params_from_payload(payload)
         if method == "initialize":
             await _handle_initialize(websocket=websocket, state=state, response_id=response_id, params=params)
             return

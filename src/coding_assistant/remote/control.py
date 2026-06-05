@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from importlib.metadata import PackageNotFoundError, version
 from uuid import uuid4
 
 from websockets.asyncio.server import ServerConnection
@@ -16,19 +15,21 @@ from coding_assistant.core.session_updates import (
 )
 from coding_assistant.llm.types import BaseMessage
 from coding_assistant.remote.acp import (
-    ACP_PROTOCOL_VERSION,
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
     ERROR_METHOD_NOT_FOUND,
     ERROR_SERVER,
     JsonObject,
-    initialize_result,
+    initialize_response,
     jsonrpc_error,
     jsonrpc_notification,
     jsonrpc_result,
+    params_from_payload,
     prompt_content_from_acp,
+    response_id_from_payload,
+    session_id_from_params,
 )
-from coding_assistant.remote.protocol import messages_to_jsonrpc, session_update_to_jsonrpc_update
+from coding_assistant.remote.protocol import messages_to_jsonrpc, session_update_notification
 
 
 UnhandledMethod = Callable[[str, int | str | None, JsonObject], Awaitable[bool]]
@@ -56,48 +57,10 @@ class _RemoteControlState:
     active_prompt_source: str | None = None
 
 
-def _agent_version() -> str:
-    try:
-        return version("coding-assistant-cli")
-    except PackageNotFoundError:
-        return "0.0.0"
-
-
-def _response_id(payload: JsonObject) -> int | str | None:
-    request_id = payload.get("id")
-    return request_id if isinstance(request_id, int | str) else None
-
-
-def _params_from_payload(payload: JsonObject) -> JsonObject:
-    params = payload.get("params", {})
-    if params is None:
-        return {}
-    if not isinstance(params, dict):
-        raise ValueError("Request params must be an object.")
-    return params
-
-
-def _session_id_from_params(params: JsonObject) -> str:
-    session_id = params.get("sessionId")
-    if not isinstance(session_id, str) or not session_id:
-        raise ValueError("Request params must include sessionId.")
-    return session_id
-
-
 def _update_matches_active_prompt(update: SessionUpdate, source: str | None) -> bool:
     if source is None:
         return False
     return getattr(update, "source", None) == source
-
-
-def _session_update_notification(session_id: str, update: JsonObject) -> str:
-    return jsonrpc_notification(
-        "session/update",
-        {
-            "sessionId": session_id,
-            "update": update,
-        },
-    )
 
 
 def _commit_notification(
@@ -124,10 +87,10 @@ async def _send_session_update(
     session_id: str,
     update: SessionUpdate,
 ) -> None:
-    payload_update = session_update_to_jsonrpc_update(update)
-    if payload_update is None:
+    notification = session_update_notification(session_id=session_id, update=update)
+    if notification is None:
         return
-    await websocket.send(_session_update_notification(session_id, payload_update))
+    await websocket.send(notification)
 
 
 class RemoteAgentController:
@@ -201,14 +164,14 @@ class RemoteAgentController:
         payload: JsonObject,
         on_unhandled: UnhandledMethod | None = None,
     ) -> None:
-        response_id = _response_id(payload)
+        response_id = response_id_from_payload(payload)
         method = payload.get("method")
         if payload.get("jsonrpc") != "2.0" or not isinstance(method, str):
             await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "Invalid JSON-RPC request."))
             return
 
         try:
-            params = _params_from_payload(payload)
+            params = params_from_payload(payload)
         except ValueError as exc:
             await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, str(exc)))
             return
@@ -298,12 +261,11 @@ class RemoteAgentController:
         await websocket.send(
             jsonrpc_result(
                 response_id,
-                initialize_result(
+                initialize_response(
+                    requested_protocol_version=protocol_version,
                     agent_name=self._agent_info.name,
                     agent_title=self._agent_info.title,
-                    agent_version=_agent_version(),
-                )
-                | {"protocolVersion": min(protocol_version, ACP_PROTOCOL_VERSION)},
+                ),
             ),
         )
 
@@ -336,7 +298,7 @@ class RemoteAgentController:
         if controlled_session is None or not self._state.session_opened:
             await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_REQUEST, self._unopened_message))
             return
-        if _session_id_from_params(params) != controlled_session.session_id:
+        if session_id_from_params(params) != controlled_session.session_id:
             await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "Unknown sessionId."))
             return
         prompt_blocks = params.get("prompt")
@@ -374,7 +336,7 @@ class RemoteAgentController:
         controlled_session = self._controlled_session
         if controlled_session is None or not self._state.session_opened:
             return
-        if _session_id_from_params(params) != controlled_session.session_id:
+        if session_id_from_params(params) != controlled_session.session_id:
             return
         await controlled_session.session.cancel_current_run()
         if response_id is not None:

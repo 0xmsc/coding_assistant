@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 JsonObject = dict[str, Any]
@@ -23,6 +24,34 @@ def parse_jsonrpc_message(data: str | bytes) -> JsonObject:
     if not isinstance(payload, dict):
         raise ValueError("JSON-RPC payload must be an object.")
     return payload
+
+
+def agent_version() -> str:
+    try:
+        return version("coding-assistant-cli")
+    except PackageNotFoundError:
+        return "0.0.0"
+
+
+def response_id_from_payload(payload: JsonObject) -> int | str | None:
+    request_id = payload.get("id")
+    return request_id if isinstance(request_id, int | str) else None
+
+
+def params_from_payload(payload: JsonObject) -> JsonObject:
+    params = payload.get("params", {})
+    if params is None:
+        return {}
+    if not isinstance(params, dict):
+        raise ValueError("Request params must be an object.")
+    return params
+
+
+def session_id_from_params(params: JsonObject) -> str:
+    session_id = params.get("sessionId")
+    if not isinstance(session_id, str) or not session_id:
+        raise ValueError("Request params must include sessionId.")
+    return session_id
 
 
 def jsonrpc_request(message_id: int | str, method: str, params: JsonObject | None = None) -> str:
@@ -69,6 +98,12 @@ def jsonrpc_error(message_id: int | str | None, code: int, message: str) -> str:
     )
 
 
+def jsonrpc_result_required(message_id: int | str | None, result: JsonObject) -> str:
+    if message_id is None:
+        return jsonrpc_error(None, ERROR_INVALID_REQUEST, "Method must be a request.")
+    return jsonrpc_result(message_id, result)
+
+
 def text_block(text: str) -> JsonObject:
     return {"type": "text", "text": text}
 
@@ -94,6 +129,24 @@ def initialize_result(*, agent_name: str, agent_title: str, agent_version: str) 
         },
         "authMethods": [],
     }
+
+
+def initialize_response(
+    *,
+    requested_protocol_version: int,
+    agent_name: str,
+    agent_title: str,
+    capabilities: JsonObject | None = None,
+) -> JsonObject:
+    result = initialize_result(
+        agent_name=agent_name,
+        agent_title=agent_title,
+        agent_version=agent_version(),
+    )
+    result["protocolVersion"] = min(requested_protocol_version, ACP_PROTOCOL_VERSION)
+    if capabilities is not None:
+        result["agentCapabilities"] = capabilities
+    return result
 
 
 def prompt_content_from_acp(prompt_blocks: list[JsonObject]) -> str | list[JsonObject]:

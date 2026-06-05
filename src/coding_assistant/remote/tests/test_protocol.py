@@ -14,6 +14,7 @@ from coding_assistant.core.session_updates import (
 from coding_assistant.core.tool_calls import ToolCallLifecycleEvent
 from coding_assistant.llm.types import AssistantMessage, ContentDeltaEvent, FunctionCall, ToolCall, UserMessage
 from coding_assistant.remote.protocol import (
+    session_update_notification,
     session_update_from_jsonrpc_update,
     session_update_to_jsonrpc_update,
 )
@@ -29,6 +30,17 @@ def test_content_delta_converts_to_normalized_update_and_jsonrpc_payload() -> No
         "sessionUpdate": "agent_message_chunk",
         "content": {"type": "text", "text": "hello"},
     }
+
+
+def test_session_update_notification_wraps_serialized_update() -> None:
+    notification = session_update_notification(
+        session_id="sess_1",
+        update=AgentMessageChunkUpdate(content="hello"),
+    )
+
+    assert notification is not None
+    assert '"method": "session/update"' in notification
+    assert '"sessionId": "sess_1"' in notification
 
 
 def test_tool_calls_convert_to_normalized_updates_and_jsonrpc_payloads() -> None:

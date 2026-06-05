@@ -18,6 +18,7 @@ from coding_assistant.remote.acp import (
     JsonObject,
     jsonrpc_error,
     parse_jsonrpc_message,
+    session_id_from_params,
 )
 from coding_assistant.remote.control import RemoteAgentController, RemoteAgentInfo, RemoteControlledSession
 from coding_assistant.remote.protocol import messages_from_jsonrpc
@@ -40,13 +41,6 @@ def _base_version_from_params(params: JsonObject) -> int:
     if not isinstance(base_version, int):
         raise ValueError("_session/start requires integer baseVersion.")
     return base_version
-
-
-def _session_id_from_params(params: JsonObject) -> str:
-    session_id = params.get("sessionId")
-    if not isinstance(session_id, str) or not session_id:
-        raise ValueError("Request params must include sessionId.")
-    return session_id
 
 
 def _workspace_from_params(params: JsonObject) -> Path:
@@ -84,7 +78,7 @@ async def _handle_start(
         return
 
     try:
-        session_id = _session_id_from_params(params)
+        session_id = session_id_from_params(params)
         base_version = _base_version_from_params(params)
         _workspace_from_params(params)
         messages = _messages_from_params(params)

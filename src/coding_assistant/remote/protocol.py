@@ -10,7 +10,7 @@ from coding_assistant.core.session_updates import (
     UserMessageChunkUpdate,
 )
 from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
-from coding_assistant.remote.acp import JsonObject, text_block, tool_content_text
+from coding_assistant.remote.acp import JsonObject, jsonrpc_notification, text_block, tool_content_text
 
 
 def _is_json_object_list(value: Any) -> TypeGuard[list[JsonObject]]:
@@ -79,6 +79,19 @@ def session_update_to_jsonrpc_update(update: SessionUpdate) -> JsonObject | None
         return payload
 
     return None
+
+
+def session_update_notification(*, session_id: str, update: SessionUpdate) -> str | None:
+    payload_update = session_update_to_jsonrpc_update(update)
+    if payload_update is None:
+        return None
+    return jsonrpc_notification(
+        "session/update",
+        {
+            "sessionId": session_id,
+            "update": payload_update,
+        },
+    )
 
 
 def messages_to_jsonrpc(messages: list[BaseMessage]) -> list[JsonObject]:
