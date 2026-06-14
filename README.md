@@ -47,8 +47,8 @@ cp docker/.env.example docker/.env
 just dev-manager
 ```
 
-The manager listens on `ws://localhost:8764` and starts one Docker worker
-container per session.
+The manager listens on `ws://localhost:8764` and starts a temporary Docker
+worker container for each active prompt.
 
 Show available options:
 

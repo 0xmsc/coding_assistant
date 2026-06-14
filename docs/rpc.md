@@ -37,12 +37,12 @@ not directly to `coding-assistant`.
 browser
   -> authenticated application backend WebSocket
   -> coding_assistant manager service
-  -> per-session worker container
+  -> temporary per-prompt worker container
 ```
 
 The application backend owns browser authentication. The manager owns canonical
-session state and worker lifecycle. Each active session runs in one worker
-container with its managed workspace mounted at `/workspace`.
+session state and worker lifecycle. Each active prompt runs in a temporary
+worker container with the session's managed workspace mounted at `/workspace`.
 
 The CLI path remains direct:
 
@@ -73,7 +73,7 @@ This protocol also has `coding-assistant` extensions:
 - Manager-owned workspaces derived from `sessionId`.
 - Manager-owned SQLite persistence.
 - Private manager/worker `_session/*` methods.
-- Per-active-session worker containers.
+- Per-active-prompt worker containers.
 
 Do not treat this document as a promise of complete ACP compatibility.
 
@@ -561,8 +561,9 @@ Response on cancellation:
 ```
 
 Only one active prompt may run per session. Different sessions may run
-concurrently. The manager starts or reuses the session worker container and the
-worker runs tools inside `/workspace`.
+concurrently. For each active prompt, the manager starts a temporary worker
+container. The worker receives the session history, runs tools inside
+`/workspace`, and is removed after the prompt finishes.
 
 Prompt blocks follow ACP-compatible content shapes where practical:
 
@@ -790,7 +791,6 @@ Do not put manager workspaces, scope metadata, worker commits, or private
 ## Current Limitations
 
 - The current CLI-owned remote endpoint is local-only and single-session.
-- The web manager service is not implemented yet.
 - No permission request round trip before tools execute.
 - No model or configuration methods.
 - No prompt queueing or steering through the remote protocol.
