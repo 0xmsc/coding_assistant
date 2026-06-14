@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from pathlib import Path
 
@@ -16,14 +17,27 @@ from coding_assistant.manager.workspace import WorkspacePaths
 from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
 
-def _environment_from_args(values: list[str]) -> dict[str, str]:
+MANAGER_AUTH_SECRET_ENV = "MANAGER_AUTH_SECRET"
+
+
+def _environment_from_args(values: list[str], *, forbidden_keys: set[str] | None = None) -> dict[str, str]:
     environment: dict[str, str] = {}
+    forbidden = forbidden_keys or set()
     for value in values:
         key, separator, env_value = value.partition("=")
         if not key or not separator:
             raise ValueError(f"Worker environment entry must be KEY=VALUE: {value}")
+        if key in forbidden:
+            raise ValueError(f"Worker environment must not include manager secret variable: {key}")
         environment[key] = env_value
     return environment
+
+
+def _manager_auth_secret_from_env() -> str:
+    value = os.environ.get(MANAGER_AUTH_SECRET_ENV)
+    if not value:
+        raise ValueError(f"{MANAGER_AUTH_SECRET_ENV} must be set to start the manager.")
+    return value
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,7 +70,7 @@ async def _main(args: argparse.Namespace) -> None:
         network=args.worker_network,
         worker_port=args.worker_port,
         workspace_mount=args.worker_workspace,
-        environment=_environment_from_args(args.worker_env),
+        environment=_environment_from_args(args.worker_env, forbidden_keys={MANAGER_AUTH_SECRET_ENV}),
         instructions=tuple(args.instructions),
         skills_directories=tuple(args.skills_directories),
     )
@@ -73,6 +87,7 @@ async def _main(args: argparse.Namespace) -> None:
         initial_messages=initial_messages,
         host=args.host,
         port=args.port,
+        auth_secret=_manager_auth_secret_from_env(),
     ) as server:
         print(f"Manager endpoint: {server.endpoint}", flush=True)
         await asyncio.Event().wait()

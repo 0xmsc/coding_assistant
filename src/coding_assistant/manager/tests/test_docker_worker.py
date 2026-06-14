@@ -63,12 +63,12 @@ def _published_port(container_name: str, container_port: int) -> str:
     return first_mapping.rsplit(":", maxsplit=1)[1]
 
 
-async def _wait_for_manager_endpoint(endpoint: str) -> None:
+async def _wait_for_manager_endpoint(endpoint: str, *, auth_token: str) -> None:
     deadline = asyncio.get_running_loop().time() + 30
     last_error = "manager did not respond"
     while asyncio.get_running_loop().time() < deadline:
         try:
-            async with connect(endpoint) as websocket:
+            async with connect(endpoint, additional_headers={"Authorization": f"Bearer {auth_token}"}) as websocket:
                 await _initialize(websocket)
                 return
         except Exception as exc:
@@ -78,8 +78,8 @@ async def _wait_for_manager_endpoint(endpoint: str) -> None:
 
 
 @asynccontextmanager
-async def _connect_initialized(endpoint: str) -> AsyncIterator[ClientConnection]:
-    async with connect(endpoint) as websocket:
+async def _connect_initialized(endpoint: str, *, auth_token: str) -> AsyncIterator[ClientConnection]:
+    async with connect(endpoint, additional_headers={"Authorization": f"Bearer {auth_token}"}) as websocket:
         await _initialize(websocket)
         yield websocket
 
@@ -190,6 +190,7 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
     network = f"coding-assistant-test-{suffix}"
     fake_openai = f"coding-assistant-fake-openai-{suffix}"
     manager = f"coding-assistant-manager-smoke-{suffix}"
+    manager_auth_secret = f"manager-secret-{suffix}"
     session_id = f"sess-{suffix}"
     worker_container = f"coding-assistant-worker-{session_id}"
     fake_openai_script = tmp_path / "fake-openai-responses.json"
@@ -270,6 +271,8 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
                 network,
                 "--group-add",
                 _docker_socket_group_id(),
+                "-e",
+                f"MANAGER_AUTH_SECRET={manager_auth_secret}",
                 "-v",
                 "/var/run/docker.sock:/var/run/docker.sock",
                 "-v",
@@ -301,8 +304,8 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
         assert manager_started.returncode == 0, manager_started.stderr or manager_started.stdout
         endpoint = f"ws://127.0.0.1:{_published_port(manager, 8764)}"
         try:
-            await _wait_for_manager_endpoint(endpoint)
-            async with _connect_initialized(endpoint) as websocket:
+            await _wait_for_manager_endpoint(endpoint, auth_token=manager_auth_secret)
+            async with _connect_initialized(endpoint, auth_token=manager_auth_secret) as websocket:
                 first_session_id = await _new_session(websocket, request_id=2)
                 second_session_id = await _new_session(websocket, request_id=3)
                 (tmp_path / "workspaces" / first_session_id / "smoke.txt").write_text(

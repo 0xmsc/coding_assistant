@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
+from http import HTTPStatus
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
+from websockets.http11 import Request, Response
 
 from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.llm.types import BaseMessage
@@ -216,6 +219,12 @@ async def _handle_jsonrpc_message(
         await websocket.send(jsonrpc_error(response_id, _error_code_for_exception(exc), str(exc)))
 
 
+def _is_authorized_request(request: Request, auth_secret: str) -> bool:
+    expected = f"Bearer {auth_secret}"
+    provided = request.headers.get("Authorization")
+    return provided is not None and hmac.compare_digest(provided, expected)
+
+
 @asynccontextmanager
 async def start_manager_server(
     *,
@@ -223,7 +232,13 @@ async def start_manager_server(
     initial_messages: list[BaseMessage],
     host: str = "127.0.0.1",
     port: int = 0,
+    auth_secret: str | None = None,
 ) -> AsyncIterator[ManagerServer]:
+    def process_request(connection: ServerConnection, request: Request) -> Response | None:
+        if auth_secret is None or _is_authorized_request(request, auth_secret):
+            return None
+        return connection.respond(HTTPStatus.UNAUTHORIZED, "Unauthorized\n")
+
     async def handle_connection(websocket: ServerConnection) -> None:
         state = _ConnectionState()
         try:
@@ -249,7 +264,7 @@ async def start_manager_server(
                 with suppress(asyncio.CancelledError):
                     await task
 
-    async with serve(handle_connection, host, port) as server:
+    async with serve(handle_connection, host, port, process_request=process_request) as server:
         socket = server.sockets[0]
         bound_port = socket.getsockname()[1]
         endpoint = f"ws://{host}:{bound_port}"

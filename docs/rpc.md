@@ -92,7 +92,14 @@ UTF-8 JSON. Binary frames are not part of the protocol.
 
 For web deployment, terminate browser WebSockets at the authenticated
 application backend. The backend forwards JSON-RPC messages to the manager
-service after injecting trusted scope metadata.
+service after injecting trusted scope metadata. Backend-to-manager WebSocket
+connections must include the manager secret:
+
+```text
+Authorization: Bearer $MANAGER_AUTH_SECRET
+```
+
+Browser clients and worker containers must not receive `MANAGER_AUTH_SECRET`.
 
 ## JSON-RPC Envelope
 

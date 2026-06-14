@@ -47,8 +47,9 @@ cp docker/.env.example docker/.env
 just dev-manager
 ```
 
-The manager listens on `ws://localhost:8764` and starts a temporary Docker
-worker container for each active prompt.
+The manager listens on `ws://localhost:8764`, requires `MANAGER_AUTH_SECRET`
+as a bearer token for API clients, and starts a temporary Docker worker
+container for each active prompt.
 
 Show available options:
 

@@ -120,8 +120,10 @@ class RemoteSessionClient:
         on_disconnect: Callable[[str], Awaitable[None]],
         on_session_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
         on_commit: Callable[[RemoteCommit], Awaitable[None]] | None = None,
+        auth_token: str | None = None,
     ) -> RemoteSessionClient:
-        websocket = await connect(endpoint)
+        headers = {"Authorization": f"Bearer {auth_token}"} if auth_token is not None else None
+        websocket = await connect(endpoint, additional_headers=headers)
         return cls(
             endpoint=endpoint,
             websocket=websocket,

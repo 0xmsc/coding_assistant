@@ -6,6 +6,19 @@ import signal
 from collections.abc import Sequence
 
 
+DEFAULT_PROCESS_ENV_KEYS = {
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "LOGNAME",
+    "PATH",
+    "SHELL",
+    "TERM",
+    "USER",
+}
+
+
 class OutputBuffer:
     """Continuously read subprocess output into an in-memory buffer."""
 
@@ -107,6 +120,11 @@ class ProcessHandle:
         await self.wait(timeout=5.0)
 
 
+def default_process_env() -> dict[str, str]:
+    """Return the default scrubbed environment for tool subprocesses."""
+    return {key: value for key, value in os.environ.items() if key in DEFAULT_PROCESS_ENV_KEYS}
+
+
 async def start_process(
     *,
     args: Sequence[str],
@@ -116,7 +134,7 @@ async def start_process(
     """Start a process and return a handle to it."""
     stdin = asyncio.subprocess.PIPE if stdin_input is not None else asyncio.subprocess.DEVNULL
 
-    merged_env = os.environ.copy()
+    merged_env = default_process_env()
     if env:
         merged_env.update(env)
 

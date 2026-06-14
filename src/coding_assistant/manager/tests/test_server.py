@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from websockets.asyncio.client import ClientConnection, connect
+from websockets.exceptions import InvalidStatus
 
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, ToolMessage, UserMessage
 from coding_assistant.manager.server import start_manager_server
@@ -16,6 +17,7 @@ from coding_assistant.manager.store import SessionStore
 from coding_assistant.manager.tests.fakes import FakeWorkerRunner
 from coding_assistant.manager.workspace import WorkspacePaths
 from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
+from coding_assistant.remote.client import RemoteClientEvent, RemoteSessionClient
 
 
 def _scope_params(scope_id: str, **params: Any) -> dict[str, Any]:
@@ -50,11 +52,20 @@ async def _new_session(websocket: ClientConnection, *, scope_id: str, request_id
     return session_id
 
 
+async def _ignore_remote_event(event: RemoteClientEvent) -> None:
+    del event
+
+
+async def _ignore_disconnect(endpoint: str) -> None:
+    del endpoint
+
+
 @asynccontextmanager
 async def _manager_endpoint(
     *,
     tmp_path: Path,
     worker: FakeWorkerRunner | None = None,
+    auth_secret: str | None = None,
 ) -> AsyncIterator[str]:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
@@ -64,8 +75,56 @@ async def _manager_endpoint(
     async with start_manager_server(
         service=service,
         initial_messages=[SystemMessage(content="system")],
+        auth_secret=auth_secret,
     ) as server:
         yield server.endpoint
+
+
+@pytest.mark.asyncio
+async def test_manager_auth_rejects_missing_bearer_token(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path, auth_secret="secret-token") as endpoint:
+        with pytest.raises(InvalidStatus) as error:
+            async with connect(endpoint):
+                pass
+
+    assert error.value.response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_manager_auth_rejects_wrong_bearer_token(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path, auth_secret="secret-token") as endpoint:
+        with pytest.raises(InvalidStatus) as error:
+            async with connect(endpoint, additional_headers={"Authorization": "Bearer wrong"}):
+                pass
+
+    assert error.value.response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_manager_auth_accepts_correct_bearer_token(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path, auth_secret="secret-token") as endpoint:
+        async with connect(endpoint, additional_headers={"Authorization": "Bearer secret-token"}) as websocket:
+            response = await _initialize(websocket)
+
+    assert response["result"]["agentCapabilities"]["loadSession"] is True
+
+
+@pytest.mark.asyncio
+async def test_remote_session_client_sends_manager_auth_token(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path, auth_secret="secret-token") as endpoint:
+        client = await RemoteSessionClient.connect(
+            endpoint=endpoint,
+            auth_token="secret-token",
+            on_event=_ignore_remote_event,
+            on_disconnect=_ignore_disconnect,
+        )
+        try:
+            await client.initialize()
+            session_id = await client.new_session(_scope_params("scope-a"))
+        finally:
+            await client.close()
+
+    assert session_id.startswith("sess_")
 
 
 @pytest.mark.asyncio

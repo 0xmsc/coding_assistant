@@ -9,32 +9,22 @@ from coding_assistant.tools.process import start_process
 
 
 @pytest.mark.asyncio
-async def test_start_process_env_merging() -> None:
-    # Set a unique env var in the parent process
-    os.environ["PARENT_VAR"] = "parent_value"
+async def test_start_process_uses_scrubbed_environment_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PARENT_VAR", "parent_value")
 
-    # Define a new var to be merged
-    extra_env = {"EXTRA_VAR": "extra_value"}
+    cmd = ["python3", "-c", "import os; print(os.environ.get('PARENT_VAR')); print(bool(os.environ.get('PATH')))"]
 
-    # Run a command that prints both environment variables
-    # We use python -c for cross-platform compatibility if needed,
-    # but here we know we are in a unix-like environment.
-    cmd = ["python3", "-c", "import os; print(os.environ.get('PARENT_VAR')); print(os.environ.get('EXTRA_VAR'))"]
-
-    handle = await start_process(args=cmd, env=extra_env)
+    handle = await start_process(args=cmd)
     await handle.wait(timeout=5.0)
 
     output = handle.stdout.strip().split("\n")
 
-    assert "parent_value" in output
-    assert "extra_value" in output
+    assert output == ["None", "True"]
 
 
 @pytest.mark.asyncio
-async def test_start_process_env_override() -> None:
-    os.environ["OVERRIDE_VAR"] = "original"
-
-    # Override the existing var
+async def test_start_process_explicit_env_is_added(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OVERRIDE_VAR", "original")
     extra_env = {"OVERRIDE_VAR": "new_value"}
 
     cmd = ["python3", "-c", "import os; print(os.environ.get('OVERRIDE_VAR'))"]
@@ -46,16 +36,26 @@ async def test_start_process_env_override() -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_process_no_env_provided() -> None:
-    os.environ["STAY_VAR"] = "stay"
+async def test_start_process_does_not_expose_provider_or_manager_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://example.invalid/v1")
+    monkeypatch.setenv("MANAGER_AUTH_SECRET", "manager-secret")
 
-    cmd = ["python3", "-c", "import os; print(os.environ.get('STAY_VAR'))"]
+    cmd = [
+        "python3",
+        "-c",
+        (
+            "import os; "
+            "print(os.environ.get('OPENAI_API_KEY')); "
+            "print(os.environ.get('OPENAI_BASE_URL')); "
+            "print(os.environ.get('MANAGER_AUTH_SECRET'))"
+        ),
+    ]
 
-    # Pass None as env
-    handle = await start_process(args=cmd, env=None)
+    handle = await start_process(args=cmd)
     await handle.wait(timeout=5.0)
 
-    assert handle.stdout.strip() == "stay"
+    assert handle.stdout.strip().split("\n") == ["None", "None", "None"]
 
 
 @pytest.mark.asyncio
