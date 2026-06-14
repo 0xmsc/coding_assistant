@@ -53,6 +53,7 @@ class RunningMCPServer:
     name: str
     client: Client[Any]
     tools: list[Any]  # MCP tool objects
+    exit_stack: AsyncExitStack
 
 
 def _get_default_env() -> dict[str, str]:
@@ -67,7 +68,6 @@ class MCPServerManager:
         self._configs = {c.name: c for c in configs}
         self._running: dict[str, RunningMCPServer] = {}
         self._working_directory = working_directory
-        self._exit_stack: AsyncExitStack | None = None
 
     @property
     def available_servers(self) -> list[str]:
@@ -120,20 +120,23 @@ class MCPServerManager:
 
         client = Client(backend.to_transport(), name=name)
 
+        exit_stack = AsyncExitStack()
         try:
-            async with client:
-                await client.initialize()
-                tools = await client.list_tools()
+            await exit_stack.enter_async_context(client)
+            await client.initialize()
+            tools = await client.list_tools()
 
-                self._running[name] = RunningMCPServer(
-                    name=name,
-                    client=client,
-                    tools=list(tools),
-                )
+            self._running[name] = RunningMCPServer(
+                name=name,
+                client=client,
+                tools=list(tools),
+                exit_stack=exit_stack,
+            )
 
-                tool_names = [t.name for t in tools]
-                return f"Started '{name}' with {len(tools)} tools: {', '.join(tool_names)}"
+            tool_names = [t.name for t in tools]
+            return f"Started '{name}' with {len(tools)} tools: {', '.join(tool_names)}"
         except Exception as exc:
+            await exit_stack.aclose()
             return f"Failed to start '{name}': {exc}"
 
     async def stop(self, name: str) -> str:
@@ -142,7 +145,7 @@ class MCPServerManager:
         if not server:
             return f"Server '{name}' is not running."
 
-        # Client is closed when exiting async context
+        await server.exit_stack.aclose()
         return f"Stopped '{name}'."
 
     async def list_tools(self, name: str) -> str:
