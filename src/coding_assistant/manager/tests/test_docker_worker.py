@@ -377,7 +377,14 @@ async def test_docker_worker_runner_reports_real_container_start_failure(tmp_pat
         startup_timeout=0.1,
     )
     runner = DockerWorkerRunner(config=config)
-    prompt = WorkerPrompt(session_id=session_id, base_version=0, history=[], workspace=str(tmp_path), prompt=[])
+    prompt = WorkerPrompt(
+        session_id=session_id,
+        base_version=0,
+        history=[],
+        model="test-model",
+        workspace=str(tmp_path),
+        prompt=[],
+    )
 
     try:
         with pytest.raises(DockerWorkerError, match="Failed to start worker container"):

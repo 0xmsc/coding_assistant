@@ -28,6 +28,11 @@ OPENAI_API_KEY=sk-...
 `CODING_ASSISTANT_MANAGER_AUTH_SECRET` is the bearer token clients use when
 connecting to the manager.
 
+`CODING_ASSISTANT_MODEL` is the default model for new sessions and for existing
+sessions without stored model metadata. The manager queries the configured
+OpenAI-compatible provider's model list for UI choices and falls back to this
+default if provider model discovery fails.
+
 The manager always stores state under `/data` inside the manager container.
 Mount persistent storage at `/data`, and set `CODING_ASSISTANT_HOST_DATA_DIR`
 to the absolute Docker-host path backing that mount.

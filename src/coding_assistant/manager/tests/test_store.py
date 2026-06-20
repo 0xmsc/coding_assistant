@@ -142,6 +142,44 @@ def test_rename_session_rejects_cross_scope_access(tmp_path: Path) -> None:
         store.rename_session(scope_id="scope-b", session_id=created.record.session_id, title="Bad")
 
 
+def test_update_session_metadata_merges_without_changing_version(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+    )
+    created = store.create_session(
+        scope_id="scope-a",
+        messages=[SystemMessage(content="system")],
+        metadata={"model": "test-model", "messageCount": 1},
+    )
+
+    updated = store.update_session_metadata(
+        scope_id="scope-a",
+        session_id=created.record.session_id,
+        metadata={"model": "alternate-model"},
+    )
+    loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    assert updated.version == 0
+    assert loaded.record.metadata == {"model": "alternate-model", "messageCount": 1}
+    assert loaded.messages == [SystemMessage(content="system")]
+
+
+def test_update_session_metadata_rejects_cross_scope_access(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+    )
+    created = store.create_session(scope_id="scope-a", messages=[])
+
+    with pytest.raises(SessionNotFoundError):
+        store.update_session_metadata(
+            scope_id="scope-b",
+            session_id=created.record.session_id,
+            metadata={"model": "bad-model"},
+        )
+
+
 def test_load_session_fails_when_workspace_is_missing(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",

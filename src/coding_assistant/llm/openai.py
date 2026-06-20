@@ -60,6 +60,33 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
         return ("https://api.openai.com/v1", os.environ["OPENAI_API_KEY"])
 
 
+async def list_models() -> list[str]:
+    """Return model IDs from the configured OpenAI-compatible provider."""
+    base_url, api_key = _get_base_url_and_api_key()
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+    }
+    async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=httpx.Timeout(15)) as client:
+        response = await client.get("/models")
+        response.raise_for_status()
+
+    decoded = response.json()
+    if not isinstance(decoded, dict):
+        raise ValueError("Provider model list response must be a JSON object.")
+    data = decoded.get("data")
+    if not isinstance(data, list):
+        raise ValueError("Provider model list response must include a data array.")
+
+    model_ids: list[str] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        model_id = item.get("id")
+        if isinstance(model_id, str) and model_id.strip():
+            model_ids.append(model_id.strip())
+    return sorted(dict.fromkeys(model_ids))
+
+
 def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
     """Collapse streamed provider chunks into one assistant message."""
     full_content = ""

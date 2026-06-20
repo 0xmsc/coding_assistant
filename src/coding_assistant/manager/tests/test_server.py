@@ -60,6 +60,14 @@ async def _ignore_disconnect(endpoint: str) -> None:
     del endpoint
 
 
+async def _test_model_lister() -> list[str]:
+    return ["test-model", "alternate-model"]
+
+
+async def _failing_model_lister() -> list[str]:
+    raise RuntimeError("model provider unavailable")
+
+
 @asynccontextmanager
 async def _manager_endpoint(
     *,
@@ -71,7 +79,12 @@ async def _manager_endpoint(
         database_path=tmp_path / "sessions.sqlite",
         workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
     )
-    service = ManagerService(store=store, worker_runner=worker or FakeWorkerRunner())
+    service = ManagerService(
+        store=store,
+        worker_runner=worker or FakeWorkerRunner(),
+        default_model="test-model",
+        model_lister=_test_model_lister,
+    )
     async with start_manager_server(
         service=service,
         initial_messages=[SystemMessage(content="system")],
@@ -139,6 +152,45 @@ async def test_manager_requires_initialize_before_session_methods(tmp_path: Path
 
 
 @pytest.mark.asyncio
+async def test_manager_lists_models_from_provider(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            await websocket.send(jsonrpc_request(2, "model/list", {}))
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["result"] == {
+        "defaultModel": "test-model",
+        "models": [{"id": "test-model"}, {"id": "alternate-model"}],
+    }
+
+
+@pytest.mark.asyncio
+async def test_manager_model_list_falls_back_to_default_when_provider_fails(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+    )
+    service = ManagerService(
+        store=store,
+        worker_runner=FakeWorkerRunner(),
+        default_model="fallback-model",
+        model_lister=_failing_model_lister,
+    )
+
+    async with start_manager_server(service=service, initial_messages=[SystemMessage(content="system")]) as server:
+        async with connect(server.endpoint) as websocket:
+            await _initialize(websocket)
+            await websocket.send(jsonrpc_request(2, "model/list", {}))
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["result"] == {
+        "defaultModel": "fallback-model",
+        "models": [{"id": "fallback-model"}],
+    }
+
+
+@pytest.mark.asyncio
 async def test_manager_creates_and_lists_sessions_by_scope(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
         async with connect(endpoint) as websocket:
@@ -152,6 +204,36 @@ async def test_manager_creates_and_lists_sessions_by_scope(tmp_path: Path) -> No
     sessions = response["result"]["sessions"]
     assert [session["sessionId"] for session in sessions] == [session_id]
     assert sessions[0]["_meta"]["version"] == 0
+    assert sessions[0]["_meta"]["model"] == "test-model"
+
+
+@pytest.mark.asyncio
+async def test_manager_uses_default_model_for_existing_sessions_without_metadata(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+    )
+    service = ManagerService(
+        store=store,
+        worker_runner=FakeWorkerRunner(),
+        default_model="default-model",
+        model_lister=_test_model_lister,
+    )
+    created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+
+    async with start_manager_server(service=service, initial_messages=[SystemMessage(content="system")]) as server:
+        async with connect(server.endpoint) as websocket:
+            await _initialize(websocket)
+            await websocket.send(jsonrpc_request(2, "session/list", _scope_params("scope-a")))
+            list_response = parse_jsonrpc_message(await websocket.recv())
+
+            await websocket.send(
+                jsonrpc_request(3, "session/load", _scope_params("scope-a", sessionId=created.record.session_id))
+            )
+            load_response = parse_jsonrpc_message(await websocket.recv())
+
+    assert list_response["result"]["sessions"][0]["_meta"]["model"] == "default-model"
+    assert load_response["result"]["_meta"]["model"] == "default-model"
 
 
 @pytest.mark.asyncio
@@ -173,7 +255,12 @@ async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None
         database_path=tmp_path / "sessions.sqlite",
         workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
     )
-    service = ManagerService(store=store, worker_runner=FakeWorkerRunner())
+    service = ManagerService(
+        store=store,
+        worker_runner=FakeWorkerRunner(),
+        default_model="test-model",
+        model_lister=_test_model_lister,
+    )
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
     tool_call = ToolCall(
         id="call-1",
@@ -245,6 +332,103 @@ async def test_manager_renames_session(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path) -> None:
+    worker = FakeWorkerRunner(response_text="done")
+    async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(
+                jsonrpc_request(
+                    3,
+                    "session/set_model",
+                    _scope_params("scope-a", sessionId=session_id, model="alternate-model"),
+                ),
+            )
+            set_model_response = parse_jsonrpc_message(await websocket.recv())
+
+            await websocket.send(
+                jsonrpc_request(
+                    4,
+                    "session/prompt",
+                    _scope_params("scope-a", sessionId=session_id, prompt=[text_block("Do it")]),
+                ),
+            )
+            update = parse_jsonrpc_message(await websocket.recv())
+            prompt_response = parse_jsonrpc_message(await websocket.recv())
+
+            await websocket.send(jsonrpc_request(5, "session/load", _scope_params("scope-a", sessionId=session_id)))
+            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(2)]
+            load_response = parse_jsonrpc_message(await websocket.recv())
+
+    assert set_model_response["result"]["_meta"]["model"] == "alternate-model"
+    assert update["params"]["update"]["content"]["text"] == "done"
+    assert prompt_response["result"] == {"stopReason": "end_turn"}
+    assert [message["params"]["update"]["content"]["text"] for message in replay] == ["Do it", "done"]
+    assert load_response["result"]["_meta"]["model"] == "alternate-model"
+    assert worker.prompts is not None
+    assert worker.prompts[0].model == "alternate-model"
+
+
+@pytest.mark.asyncio
+async def test_manager_rejects_unavailable_session_model(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(
+                jsonrpc_request(
+                    3,
+                    "session/set_model",
+                    _scope_params("scope-a", sessionId=session_id, model="missing-model"),
+                ),
+            )
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == "Model missing-model is not available."
+
+
+@pytest.mark.asyncio
+async def test_manager_rejects_model_change_during_active_prompt(tmp_path: Path) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    worker = FakeWorkerRunner(started=started, release=release)
+
+    async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(
+                jsonrpc_request(
+                    3,
+                    "session/prompt",
+                    _scope_params("scope-a", sessionId=session_id, prompt=[text_block("first")]),
+                ),
+            )
+            first_update = parse_jsonrpc_message(await websocket.recv())
+            await asyncio.wait_for(started.wait(), timeout=1)
+
+            await websocket.send(
+                jsonrpc_request(
+                    4,
+                    "session/set_model",
+                    _scope_params("scope-a", sessionId=session_id, model="alternate-model"),
+                ),
+            )
+            busy_response = parse_jsonrpc_message(await websocket.recv())
+            release.set()
+            first_response = parse_jsonrpc_message(await websocket.recv())
+
+    assert first_update["params"]["update"]["content"]["text"] == "fake response"
+    assert busy_response["error"]["message"] == "Cannot change model while session has an active prompt."
+    assert first_response["result"] == {"stopReason": "end_turn"}
+
+
+@pytest.mark.asyncio
 async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path, worker=FakeWorkerRunner(response_text="done")) as endpoint:
         async with connect(endpoint) as websocket:
@@ -273,7 +457,7 @@ async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path
 
 
 @pytest.mark.asyncio
-async def test_manager_rejects_cross_scope_load_rename_prompt_and_cancel(tmp_path: Path) -> None:
+async def test_manager_rejects_cross_scope_load_rename_model_prompt_and_cancel(tmp_path: Path) -> None:
     worker = FakeWorkerRunner()
     async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
         async with connect(endpoint) as websocket:
@@ -291,17 +475,27 @@ async def test_manager_rejects_cross_scope_load_rename_prompt_and_cancel(tmp_pat
             await websocket.send(
                 jsonrpc_request(
                     5,
+                    "session/set_model",
+                    _scope_params("scope-b", sessionId=session_id, model="alternate-model"),
+                ),
+            )
+            set_model_response = parse_jsonrpc_message(await websocket.recv())
+
+            await websocket.send(
+                jsonrpc_request(
+                    6,
                     "session/prompt",
                     _scope_params("scope-b", sessionId=session_id, prompt=[text_block("bad")]),
                 ),
             )
             prompt_response = parse_jsonrpc_message(await websocket.recv())
 
-            await websocket.send(jsonrpc_request(6, "session/cancel", _scope_params("scope-b", sessionId=session_id)))
+            await websocket.send(jsonrpc_request(7, "session/cancel", _scope_params("scope-b", sessionId=session_id)))
             cancel_response = parse_jsonrpc_message(await websocket.recv())
 
     assert load_response["error"]["code"] == -32602
     assert rename_response["error"]["code"] == -32602
+    assert set_model_response["error"]["code"] == -32602
     assert prompt_response["error"]["code"] == -32602
     assert cancel_response["error"]["code"] == -32602
     assert worker.cancelled_session_ids is None

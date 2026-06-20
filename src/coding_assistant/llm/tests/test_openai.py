@@ -25,6 +25,7 @@ from coding_assistant.llm.types import (
     Usage,
     UserMessage,
 )
+from coding_assistant.testing.fake_openai import run_fake_openai_server
 
 
 class FakeSource:
@@ -691,6 +692,15 @@ class TestHelperFunctions:
         assert prepared[1]["role"] == "assistant"
         assert prepared[1]["reasoning_details"] == [{"thought": "planned"}]
         assert "provider_specific_fields" not in prepared[1]
+
+    @pytest.mark.asyncio
+    async def test_list_models(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("CODING_ASSISTANT_FAKE_OPENAI_MODELS_JSON", '["z-model", "a-model", "z-model"]')
+        with run_fake_openai_server() as fake_openai:
+            monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
+            monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+            assert await openai_model.list_models() == ["a-model", "z-model"]
 
 
 async def collect_events(*, messages: list[UserMessage], model: str, tools: Any) -> list[Any]:

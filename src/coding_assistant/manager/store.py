@@ -167,6 +167,28 @@ class SessionStore:
                 )
                 return self._get_session_record(connection, scope_id=scope_id, session_id=session_id)
 
+    def update_session_metadata(
+        self,
+        *,
+        scope_id: str,
+        session_id: str,
+        metadata: dict[str, Any],
+    ) -> SessionRecord:
+        now = _now_iso()
+        with self._connect() as connection:
+            with connection:
+                record = self._get_session_record(connection, scope_id=scope_id, session_id=session_id)
+                next_metadata = {**record.metadata, **metadata}
+                connection.execute(
+                    """
+                    update sessions
+                    set updated_at = ?, metadata_json = ?
+                    where scope_id = ? and session_id = ?
+                    """,
+                    (now, _metadata_to_json(next_metadata), scope_id, session_id),
+                )
+                return self._get_session_record(connection, scope_id=scope_id, session_id=session_id)
+
     def commit_messages(
         self,
         *,

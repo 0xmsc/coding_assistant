@@ -61,7 +61,7 @@ class DockerWorkerRunner:
         endpoint = f"ws://{container_name}:{self._config.worker_port}"
         runner = RemoteWorkerRunner(endpoint=endpoint)
         await self._remove_container(container_name, allow_failure=True)
-        await self._start_container(container_name=container_name, workspace=prompt.workspace)
+        await self._start_container(container_name=container_name, workspace=prompt.workspace, model=prompt.model)
         await self._register_active(session_id=prompt.session_id, container_name=container_name, runner=runner)
         try:
             await self._wait_until_ready(endpoint)
@@ -95,8 +95,8 @@ class DockerWorkerRunner:
                 self._active_runners.pop(session_id, None)
                 self._active_containers.pop(session_id, None)
 
-    async def _start_container(self, *, container_name: str, workspace: str) -> None:
-        args = _docker_run_args(config=self._config, container_name=container_name, workspace=workspace)
+    async def _start_container(self, *, container_name: str, workspace: str, model: str) -> None:
+        args = _docker_run_args(config=self._config, container_name=container_name, workspace=workspace, model=model)
         result = await _run_command(args)
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
@@ -145,7 +145,13 @@ def _workspace_source(*, config: DockerWorkerConfig, workspace: str) -> str:
     return str(Path(config.workspace_source_root) / relative_workspace)
 
 
-def _docker_run_args(*, config: DockerWorkerConfig, container_name: str, workspace: str) -> list[str]:
+def _docker_run_args(
+    *,
+    config: DockerWorkerConfig,
+    container_name: str,
+    workspace: str,
+    model: str | None = None,
+) -> list[str]:
     args = [
         config.docker_command,
         "run",
@@ -169,7 +175,7 @@ def _docker_run_args(*, config: DockerWorkerConfig, container_name: str, workspa
             config.image,
             "coding-assistant-worker",
             "--model",
-            config.model,
+            model or config.model,
             "--host",
             "0.0.0.0",
             "--port",

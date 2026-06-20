@@ -16,6 +16,7 @@ class FakeWorkerRunner:
     release: asyncio.Event | None = None
     started: asyncio.Event | None = None
     cancelled_session_ids: list[str] | None = None
+    prompts: list[WorkerPrompt] | None = None
 
     async def run_prompt(
         self,
@@ -23,6 +24,9 @@ class FakeWorkerRunner:
         prompt: WorkerPrompt,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
     ) -> WorkerCommit:
+        if self.prompts is None:
+            self.prompts = []
+        self.prompts.append(prompt)
         if self.started is not None:
             self.started.set()
         await on_update(AgentMessageChunkUpdate(content=self.response_text))

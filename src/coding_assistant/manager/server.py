@@ -157,6 +157,10 @@ async def _handle_session_method(
         await websocket.send(jsonrpc_result_required(response_id, service.rename_session(params=params)))
         return
 
+    if method == "session/set_model":
+        await websocket.send(jsonrpc_result_required(response_id, await service.set_session_model(params=params)))
+        return
+
     if method == "session/prompt":
         if response_id is None:
             await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "session/prompt must be a request."))
@@ -204,6 +208,10 @@ async def _handle_jsonrpc_message(
 
         if not state.initialized:
             await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "initialize must be called first."))
+            return
+
+        if method == "model/list":
+            await websocket.send(jsonrpc_result_required(response_id, await service.list_models()))
             return
 
         await _handle_session_method(

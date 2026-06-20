@@ -109,7 +109,11 @@ async def _main(config: ManagerConfig) -> None:
         workspace_mount=WORKER_WORKSPACE,
         environment=_worker_environment_from_env(),
     )
-    service = ManagerService(store=store, worker_runner=DockerWorkerRunner(config=worker_config))
+    service = ManagerService(
+        store=store,
+        worker_runner=DockerWorkerRunner(config=worker_config),
+        default_model=config.model,
+    )
     agent_config = WorkerAgentConfig(
         working_directory=Path(WORKER_WORKSPACE),
         user_instructions=(),

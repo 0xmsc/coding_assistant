@@ -58,6 +58,21 @@ def _load_scripted_responses() -> list[dict[str, Any]]:
     return decoded
 
 
+def _model_list_payload() -> dict[str, Any]:
+    configured = os.environ.get("CODING_ASSISTANT_FAKE_OPENAI_MODELS_JSON")
+    if configured is None:
+        model_ids = ["fake-model"]
+    else:
+        decoded = json.loads(configured)
+        if not isinstance(decoded, list) or not all(isinstance(model_id, str) for model_id in decoded):
+            raise ValueError("Fake OpenAI models must be a JSON string array.")
+        model_ids = decoded
+    return {
+        "object": "list",
+        "data": [{"id": model_id, "object": "model"} for model_id in model_ids],
+    }
+
+
 def _messages_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     messages = payload.get("messages")
     if not isinstance(messages, list):
@@ -156,6 +171,9 @@ class _FakeOpenAIHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/health":
             self._write_json({"ok": True})
+            return
+        if self.path == "/v1/models":
+            self._write_json(_model_list_payload())
             return
         self._write_json({"error": "not found"}, status=HTTPStatus.NOT_FOUND)
 

@@ -72,7 +72,11 @@ def _manager_service(*, tmp_path: Path, endpoint: str) -> tuple[ManagerService, 
         database_path=tmp_path / "sessions.sqlite",
         workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
     )
-    return ManagerService(store=store, worker_runner=RemoteWorkerRunner(endpoint=endpoint)), store
+    return ManagerService(
+        store=store,
+        worker_runner=RemoteWorkerRunner(endpoint=endpoint),
+        default_model="test-model",
+    ), store
 
 
 async def _ignore_update(update: SessionUpdate) -> None:

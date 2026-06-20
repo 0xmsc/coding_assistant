@@ -335,6 +335,46 @@ Response result:
 | `agentInfo` | object | Agent name, title, and version. |
 | `authMethods` | array | Empty for v1 because the embedding application owns browser authentication. |
 
+### model/list
+
+Lists model IDs available from the configured OpenAI-compatible provider. This
+method is authenticated by the manager connection but is not session-scoped.
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "model/list",
+  "params": {}
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "defaultModel": "gpt-5.1-codex-mini",
+    "models": [
+      {
+        "id": "gpt-5.1-codex-mini"
+      },
+      {
+        "id": "openai/gpt-5.1"
+      }
+    ]
+  }
+}
+```
+
+The manager caches provider results briefly. If provider discovery fails and no
+cached list is available, the response contains only the configured
+`defaultModel`.
+
 ### session/list
 
 Lists persisted sessions in `params._meta.scopeId`.
@@ -375,6 +415,8 @@ Response:
         "title": "Fix failing tests",
         "updatedAt": "2026-06-03T10:15:00Z",
         "_meta": {
+          "version": 1,
+          "model": "gpt-5.1-codex-mini",
           "messageCount": 12
         }
       }
@@ -470,7 +512,15 @@ When replay is complete:
 {
   "jsonrpc": "2.0",
   "id": 4,
-  "result": null
+  "result": {
+    "sessionId": "sess_abc123",
+    "title": "Fix failing tests",
+    "updatedAt": "2026-06-03T10:15:00Z",
+    "_meta": {
+      "version": 1,
+      "model": "gpt-5.1-codex-mini"
+    }
+  }
 }
 ```
 
@@ -510,13 +560,58 @@ Response:
     "title": "Fix failing tests",
     "updatedAt": "2026-06-03T10:20:00Z",
     "_meta": {
-      "version": 1
+      "version": 1,
+      "model": "gpt-5.1-codex-mini"
     }
   }
 }
 ```
 
 The manager fails when the session does not exist or belongs to another scope.
+
+### session/set_model
+
+Sets the model used for future prompts in an existing session in
+`params._meta.scopeId`. Changing the model updates session metadata but does
+not rewrite transcript history or increment the transcript version.
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 6,
+  "method": "session/set_model",
+  "params": {
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
+    "sessionId": "sess_abc123",
+    "model": "openai/gpt-5.1"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 6,
+  "result": {
+    "sessionId": "sess_abc123",
+    "title": "Fix failing tests",
+    "updatedAt": "2026-06-03T10:25:00Z",
+    "_meta": {
+      "version": 1,
+      "model": "openai/gpt-5.1"
+    }
+  }
+}
+```
+
+The manager rejects models that are not in `model/list` and rejects model
+changes while the session has an active prompt.
 
 ### session/prompt
 
@@ -529,7 +624,7 @@ Request:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 6,
+  "id": 7,
   "method": "session/prompt",
   "params": {
     "_meta": {
@@ -551,7 +646,7 @@ Response on completion:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 6,
+  "id": 7,
   "result": {
     "stopReason": "end_turn"
   }
@@ -563,7 +658,7 @@ Response on cancellation:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 6,
+  "id": 7,
   "result": {
     "stopReason": "cancelled"
   }
@@ -628,7 +723,7 @@ Request:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 7,
+  "id": 8,
   "method": "session/cancel",
   "params": {
     "_meta": {
@@ -644,7 +739,7 @@ Response when sent as a request:
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 6,
+  "id": 8,
   "result": null
 }
 ```
@@ -824,6 +919,8 @@ Required coverage:
 - Worker crash before commit does not advance SQLite history.
 - Concurrent prompts on different sessions.
 - Rejection of a second active prompt for one session.
+- Model listing, default fallback, per-session model changes, and per-prompt
+  worker model selection.
 - Worker container smoke test with `/workspace` as cwd.
 - Fake OpenAI-compatible streaming provider for integration tests.
 
@@ -836,7 +933,6 @@ Optional methods can be added when the UI needs them:
 | `session/resume` | Reconnect to a session without replaying history. |
 | `session/close` | Free live resources for an active session. |
 | `session/request_permission` | Ask the browser to approve risky tool actions. |
-| `session/set_model` | Let the user change model from the UI. |
 
 Add private JSON-RPC methods with a leading underscore only for behavior this
 custom protocol needs and ACP does not define.
