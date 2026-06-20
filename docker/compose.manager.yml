@@ -6,6 +6,18 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    develop:
+      watch:
+        - action: rebuild
+          path: ../src
+        - action: rebuild
+          path: ../pyproject.toml
+        - action: rebuild
+          path: ../uv.lock
+        - action: rebuild
+          path: ../README.md
+        - action: rebuild
+          path: ./Dockerfile
     group_add:
       - "${CODING_ASSISTANT_DOCKER_SOCKET_GID}"
     volumes:

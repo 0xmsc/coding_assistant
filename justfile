@@ -11,7 +11,7 @@ publish:
     ./docker/publish.sh
 
 dev-manager:
-    docker compose --env-file docker/.env -f docker/compose.manager.yml up --build manager
+    docker compose --env-file docker/.env -f docker/compose.manager.yml watch manager
 
 dev-manager-down:
     docker compose --env-file docker/.env -f docker/compose.manager.yml down
