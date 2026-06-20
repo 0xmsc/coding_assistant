@@ -18,19 +18,11 @@ from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instru
 
 
 CODING_ASSISTANT_MANAGER_AUTH_SECRET_ENV = "CODING_ASSISTANT_MANAGER_AUTH_SECRET"
+WORKER_PROVIDER_ENV_KEYS = ("OPENAI_API_KEY", "OPENAI_BASE_URL")
 
 
-def _environment_from_args(values: list[str], *, forbidden_keys: set[str] | None = None) -> dict[str, str]:
-    environment: dict[str, str] = {}
-    forbidden = forbidden_keys or set()
-    for value in values:
-        key, separator, env_value = value.partition("=")
-        if not key or not separator:
-            raise ValueError(f"Worker environment entry must be KEY=VALUE: {value}")
-        if key in forbidden:
-            raise ValueError(f"Worker environment must not include manager secret variable: {key}")
-        environment[key] = env_value
-    return environment
+def _worker_environment_from_env() -> dict[str, str]:
+    return {key: os.environ[key] for key in WORKER_PROVIDER_ENV_KEYS if key in os.environ}
 
 
 def _manager_auth_secret_from_env() -> str:
@@ -51,7 +43,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--worker-network", default="coding-assistant", help="Docker network for worker containers.")
     parser.add_argument("--worker-port", type=int, default=8765, help="Worker container WebSocket port.")
     parser.add_argument("--worker-workspace", default="/workspace", help="Worker container workspace mount path.")
-    parser.add_argument("--worker-env", nargs="*", default=[], help="Environment entries for workers as KEY=VALUE.")
     parser.add_argument("--instructions", nargs="*", default=[], help="Additional worker instructions.")
     parser.add_argument("--skills-directories", nargs="*", default=[], help="Additional Agent Skill directories.")
     return parser.parse_args()
@@ -70,7 +61,7 @@ async def _main(args: argparse.Namespace) -> None:
         network=args.worker_network,
         worker_port=args.worker_port,
         workspace_mount=args.worker_workspace,
-        environment=_environment_from_args(args.worker_env, forbidden_keys={CODING_ASSISTANT_MANAGER_AUTH_SECRET_ENV}),
+        environment=_worker_environment_from_env(),
         instructions=tuple(args.instructions),
         skills_directories=tuple(args.skills_directories),
     )

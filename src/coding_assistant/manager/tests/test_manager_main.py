@@ -1,6 +1,6 @@
 import pytest
 
-from coding_assistant.manager.main import _environment_from_args, _manager_auth_secret_from_env
+from coding_assistant.manager.main import _manager_auth_secret_from_env, _worker_environment_from_env
 
 
 def test_manager_auth_secret_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -16,9 +16,20 @@ def test_manager_auth_secret_is_read_from_fixed_env(monkeypatch: pytest.MonkeyPa
     assert _manager_auth_secret_from_env() == "secret-token"
 
 
-def test_worker_env_rejects_manager_auth_secret() -> None:
-    with pytest.raises(ValueError, match="CODING_ASSISTANT_MANAGER_AUTH_SECRET"):
-        _environment_from_args(
-            ["CODING_ASSISTANT_MANAGER_AUTH_SECRET=secret-token"],
-            forbidden_keys={"CODING_ASSISTANT_MANAGER_AUTH_SECRET"},
-        )
+def test_worker_environment_forwards_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://example.invalid/v1")
+    monkeypatch.setenv("CODING_ASSISTANT_MANAGER_AUTH_SECRET", "secret-token")
+    monkeypatch.setenv("UNRELATED_ENV", "ignored")
+
+    assert _worker_environment_from_env() == {
+        "OPENAI_API_KEY": "test-key",
+        "OPENAI_BASE_URL": "https://example.invalid/v1",
+    }
+
+
+def test_worker_environment_omits_missing_provider_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+
+    assert _worker_environment_from_env() == {}

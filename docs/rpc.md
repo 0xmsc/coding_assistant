@@ -100,8 +100,8 @@ Authorization: Bearer <manager-secret>
 ```
 
 Browser clients and worker containers must not receive the manager secret. For
-the Docker manager deployment, `docker/.env.example` is the deployer-facing
-source of truth for environment variables and security notes.
+the Docker manager deployment, see [deployment.md](deployment.md) for
+environment variables, deployment commands, and security notes.
 
 ## JSON-RPC Envelope
 
