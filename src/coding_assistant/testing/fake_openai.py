@@ -41,8 +41,8 @@ class _FakeOpenAIHTTPServer(ThreadingHTTPServer):
 
 
 def _load_scripted_responses() -> list[dict[str, Any]]:
-    script_file = os.environ.get("FAKE_OPENAI_RESPONSES_FILE")
-    script_json = os.environ.get("FAKE_OPENAI_RESPONSES_JSON")
+    script_file = os.environ.get("CODING_ASSISTANT_FAKE_OPENAI_RESPONSES_FILE")
+    script_json = os.environ.get("CODING_ASSISTANT_FAKE_OPENAI_RESPONSES_JSON")
     if script_file is not None:
         raw = Path(script_file).read_text(encoding="utf-8")
     elif script_json is not None:
@@ -66,7 +66,7 @@ def _messages_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _response_text(payload: dict[str, Any]) -> str:
-    configured = os.environ.get("FAKE_OPENAI_RESPONSE")
+    configured = os.environ.get("CODING_ASSISTANT_FAKE_OPENAI_RESPONSE")
     if configured is not None:
         return configured
     messages = _messages_from_payload(payload)

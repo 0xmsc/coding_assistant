@@ -7,14 +7,14 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     group_add:
-      - "${DOCKER_SOCKET_GID}"
+      - "${CODING_ASSISTANT_DOCKER_SOCKET_GID}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${CODING_ASSISTANT_DATA_DIR}:${CODING_ASSISTANT_DATA_DIR}
     ports:
       - "127.0.0.1:8764:8764"
     environment:
-      - MANAGER_AUTH_SECRET=${MANAGER_AUTH_SECRET}
+      - CODING_ASSISTANT_MANAGER_AUTH_SECRET=${CODING_ASSISTANT_MANAGER_AUTH_SECRET}
     command:
       - coding-assistant-manager
       - --model

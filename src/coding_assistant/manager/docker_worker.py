@@ -148,8 +148,6 @@ def _docker_run_args(*, config: DockerWorkerConfig, container_name: str, workspa
         "no-new-privileges",
         "-v",
         f"{workspace}:{config.workspace_mount}:rw",
-        "-e",
-        f"PORT={config.worker_port}",
     ]
     for key, value in config.environment.items():
         args.extend(["-e", f"{key}={value}"])

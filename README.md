@@ -47,9 +47,11 @@ cp docker/.env.example docker/.env
 just dev-manager
 ```
 
-The manager listens on `ws://localhost:8764`, requires `MANAGER_AUTH_SECRET`
-as a bearer token for API clients, and starts a temporary Docker worker
-container for each active prompt.
+`docker/.env.example` is the deployer-facing source of truth for required
+Docker manager environment variables and security notes. The manager listens on
+`ws://localhost:8764`, requires the configured manager secret as a bearer token
+for API clients, and starts a temporary Docker worker container for each active
+prompt.
 
 Show available options:
 

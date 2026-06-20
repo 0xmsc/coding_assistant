@@ -68,7 +68,7 @@ async def test_openai_adapter_streams_against_fake_openai(monkeypatch: pytest.Mo
 
 @pytest.mark.asyncio
 async def test_openai_adapter_uses_configured_fake_response(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FAKE_OPENAI_RESPONSE", "configured smoke response")
+    monkeypatch.setenv("CODING_ASSISTANT_FAKE_OPENAI_RESPONSE", "configured smoke response")
     with run_fake_openai_server() as server:
         monkeypatch.setenv("OPENAI_BASE_URL", server.base_url)
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -89,7 +89,7 @@ async def test_openai_adapter_uses_configured_fake_response(monkeypatch: pytest.
 @pytest.mark.asyncio
 async def test_openai_adapter_streams_fake_tool_call_and_tool_result(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
-        "FAKE_OPENAI_RESPONSES_JSON",
+        "CODING_ASSISTANT_FAKE_OPENAI_RESPONSES_JSON",
         json.dumps(
             [
                 {

@@ -39,7 +39,7 @@ async def test_start_process_explicit_env_is_added(monkeypatch: pytest.MonkeyPat
 async def test_start_process_does_not_expose_provider_or_manager_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
     monkeypatch.setenv("OPENAI_BASE_URL", "https://example.invalid/v1")
-    monkeypatch.setenv("MANAGER_AUTH_SECRET", "manager-secret")
+    monkeypatch.setenv("CODING_ASSISTANT_MANAGER_AUTH_SECRET", "manager-secret")
 
     cmd = [
         "python3",
@@ -48,7 +48,7 @@ async def test_start_process_does_not_expose_provider_or_manager_secrets(monkeyp
             "import os; "
             "print(os.environ.get('OPENAI_API_KEY')); "
             "print(os.environ.get('OPENAI_BASE_URL')); "
-            "print(os.environ.get('MANAGER_AUTH_SECRET'))"
+            "print(os.environ.get('CODING_ASSISTANT_MANAGER_AUTH_SECRET'))"
         ),
     ]
 

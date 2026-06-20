@@ -157,7 +157,7 @@ async def test_cli_agent_smoke_runs_against_fake_openai(
         wait_for_debugger=False,
     )
     monkeypatch.setattr("coding_assistant.cli.agent.os.getcwd", lambda: str(tmp_path))
-    monkeypatch.setenv("FAKE_OPENAI_RESPONSE", "cli agent smoke response")
+    monkeypatch.setenv("CODING_ASSISTANT_FAKE_OPENAI_RESPONSE", "cli agent smoke response")
 
     with run_fake_openai_server() as fake_openai:
         monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
