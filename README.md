@@ -40,18 +40,10 @@ Start an interactive session:
 coding-assistant --model "openai/gpt-5-mini"
 ```
 
-Run a local manager for app integrations:
-
-```bash
-cp docker/.env.example docker/.env
-just dev-manager
-```
-
-See [docs/deployment.md](docs/deployment.md) for Docker manager environment
-variables, deployment commands, and security notes. The manager listens on
-`ws://localhost:8764`, requires the configured manager secret as a bearer token
-for API clients, and starts a temporary Docker worker container for each active
-prompt.
+For Docker manager deployment and app integrations, see
+[docs/deployment.md](docs/deployment.md). That document covers required
+container environment variables, runtime requirements, client authentication,
+worker containers, and security notes.
 
 Show available options:
 

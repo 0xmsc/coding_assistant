@@ -101,7 +101,7 @@ Authorization: Bearer <manager-secret>
 
 Browser clients and worker containers must not receive the manager secret. For
 the Docker manager deployment, see [deployment.md](deployment.md) for
-environment variables, deployment commands, and security notes.
+container environment variables, runtime requirements, and security notes.
 
 ## JSON-RPC Envelope
 

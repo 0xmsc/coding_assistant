@@ -1,96 +1,110 @@
 # Deployment
 
-This document is the deployer-facing source of truth for running the Docker
-manager service.
+This document defines the container interface for deploying the Docker manager
+service. It does not require a specific orchestrator. `docker/compose.manager.yml`
+is only a reference implementation of this contract.
 
-## Docker Manager
+## Manager Container
 
-Copy the example environment file and fill in the values:
+Run the Coding Assistant image as a manager service with the
+`coding-assistant-manager` command.
 
-```bash
-cp docker/.env.example docker/.env
+The manager process needs:
+
+- `--model`: model used by worker agents.
+- `--host`: bind host inside the container. Use `0.0.0.0` when exposing the
+  service through a container port.
+- `--port`: manager WebSocket port. The reference Compose configuration uses
+  `8764`.
+- `--database`: SQLite database path inside the persistent data mount.
+- `--workspace-root`: session workspace root inside the persistent data mount.
+- `--worker-image`: image used for worker containers.
+- `--worker-network`: container network where workers are reachable by
+  container name from the manager.
+
+## Environment Variables
+
+Set these environment variables on the manager container:
+
+```dotenv
+CODING_ASSISTANT_MANAGER_AUTH_SECRET=<long-random-secret>
+OPENAI_API_KEY=sk-...
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-Start the manager with:
+`CODING_ASSISTANT_MANAGER_AUTH_SECRET` is required. Clients use it as a bearer
+token when connecting to the manager.
 
-```bash
-just dev-manager
-```
-
-That runs:
-
-```bash
-docker compose --env-file docker/.env -f docker/compose.manager.yml up --build manager
-```
-
-Stop it with:
-
-```bash
-just dev-manager-down
-```
-
-The manager listens on `ws://localhost:8764`. Clients must connect with:
-
-```text
-Authorization: Bearer <value of CODING_ASSISTANT_MANAGER_AUTH_SECRET>
-```
-
-## Environment
+`OPENAI_API_KEY` is required for normal worker operation. `OPENAI_BASE_URL` is
+optional; set it for OpenAI-compatible providers such as OpenRouter, or leave
+it unset to use the default OpenAI API base URL.
 
 Project-owned variables use the `CODING_ASSISTANT_` prefix. Provider and tool
 variables keep their standard names, such as `OPENAI_API_KEY` and
 `OPENAI_BASE_URL`.
 
-`docker/.env.example` is the copyable template. These values are required:
+`docker/.env.example` is a copyable helper for the reference Compose
+configuration. It includes the manager container environment variables above
+plus Compose interpolation values for the host data path and Docker socket
+group.
 
-| Variable | Required | Secret | Used by | Description |
-| --- | --- | --- | --- | --- |
-| `CODING_ASSISTANT_DATA_DIR` | yes | no | Compose, manager | Absolute host path for SQLite state and session workspaces. It is bind-mounted at the same path inside the manager because worker containers are created through the host Docker socket. |
-| `CODING_ASSISTANT_DOCKER_SOCKET_GID` | yes | no | Compose | Host group id for `/var/run/docker.sock`, used as a supplemental group so the non-root manager user can access Docker. On Linux, get it with `stat -c '%g' /var/run/docker.sock`. |
-| `CODING_ASSISTANT_MANAGER_AUTH_SECRET` | yes | yes | Manager | Bearer token for trusted manager API clients. Browser clients and worker containers must not receive it. |
-| `OPENAI_API_KEY` | yes | yes | Manager, worker | OpenAI-compatible provider API key. The manager forwards it to worker containers. |
-| `OPENAI_BASE_URL` | no | no | Manager, worker | Optional OpenAI-compatible provider base URL, for example `https://openrouter.ai/api/v1`. The manager forwards it to worker containers when set. |
+## Runtime Requirements
 
-Docker Compose also considers exported shell variables during interpolation. If
-your shell exports one of these names, it may override the value in
-`docker/.env`. For repeatable deployments, keep these values in `docker/.env`
-and avoid exporting conflicting values in the shell that starts Compose.
+The manager container must be able to run Docker commands against the host
+Docker daemon. The reference deployment does this by mounting
+`/var/run/docker.sock` into the manager container and adding the host Docker
+socket group as a supplemental group.
 
-## Worker Environment
+The manager container also needs a persistent data mount for:
 
-The manager starts a temporary worker container for each active prompt. Worker
-containers do not automatically inherit the manager container environment.
-Instead, the manager forwards only the provider variables the built-in worker
-needs:
+- SQLite session state.
+- Session workspaces.
+
+Use the same absolute path inside the manager container and on the Docker host
+when the manager creates worker containers through the host Docker socket. This
+lets host-created worker containers mount the same session workspace path.
+
+In the reference Compose configuration, `CODING_ASSISTANT_DATA_DIR` supplies
+this host path and `CODING_ASSISTANT_DOCKER_SOCKET_GID` supplies the Docker
+socket group id.
+
+## Client Authentication
+
+Clients connect to the manager WebSocket endpoint and send:
+
+```text
+Authorization: Bearer <value of CODING_ASSISTANT_MANAGER_AUTH_SECRET>
+```
+
+Do not expose `CODING_ASSISTANT_MANAGER_AUTH_SECRET` to browser clients or
+worker containers. Browser traffic should terminate at a trusted backend that
+connects to the manager with this secret.
+
+## Worker Containers
+
+The manager starts one temporary worker container for each active prompt.
+Workers run from `--worker-image` and join `--worker-network`.
+
+Worker containers do not inherit the full manager environment. The manager
+forwards only the provider variables the built-in worker needs:
 
 ```text
 OPENAI_API_KEY
 OPENAI_BASE_URL
 ```
 
-This explicit allowlist is intentional:
+This allowlist keeps manager-only secrets out of workers and makes the worker
+runtime environment predictable. There is no generic worker environment
+pass-through option.
 
-- It prevents manager-only secrets, especially
-  `CODING_ASSISTANT_MANAGER_AUTH_SECRET`, from leaking into worker containers.
-- It keeps worker runtime inputs narrow and predictable.
-- It allows provider variables such as `OPENAI_API_KEY` and `OPENAI_BASE_URL`
-  to keep their standard names inside the worker.
-
-For the normal Docker manager deployment, set `OPENAI_API_KEY` and optionally
-`OPENAI_BASE_URL` in `docker/.env`. Compose passes them into the manager, and
-the manager passes those known provider values to each worker. There is no
-generic worker environment pass-through option.
+Workers do not receive the Docker socket. They receive only their generated
+session workspace mount and the provider environment allowlist.
 
 ## Docker Socket Trust Boundary
 
-The manager container mounts `/var/run/docker.sock` so it can start and remove
-worker containers. Access to that socket is effectively access to the host
-Docker daemon.
+Access to `/var/run/docker.sock` is effectively access to the host Docker
+daemon. Treat the manager as trusted infrastructure.
 
-Treat the manager as trusted infrastructure. The manager secret protects the
-manager API, but it does not sandbox the manager container itself. If an
-attacker gets code execution inside the manager container, they can usually
-control Docker on the host.
-
-Workers do not receive the Docker socket. They receive only their generated
-session workspace mount and the manager's provider environment allowlist.
+The manager secret protects the manager API, but it does not sandbox the
+manager container itself. If an attacker gets code execution inside the manager
+container, they can usually control Docker on the host.
