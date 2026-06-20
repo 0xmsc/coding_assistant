@@ -5,7 +5,7 @@ services:
     image: coding-assistant:dev
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
     group_add:
       - "${DOCKER_SOCKET_GID}"
     volumes:

@@ -227,7 +227,7 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
     )
 
     try:
-        build = _docker(["build", "-t", image, "."], timeout=180)
+        build = _docker(["build", "-f", "docker/Dockerfile", "-t", image, "."], timeout=180)
         assert build.returncode == 0, build.stderr or build.stdout
 
         created_network = _docker(["network", "create", network], timeout=20)
