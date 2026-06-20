@@ -6,47 +6,50 @@ is only a reference implementation of this contract.
 
 ## Manager Container
 
-Run the Coding Assistant image as a manager service with the
-`coding-assistant-manager` command.
+Run the Coding Assistant image with its default command. The image starts
+`coding-assistant-manager`, and the manager reads deployment configuration only
+from environment variables.
 
-The manager process needs:
+Expose manager port `8764`.
 
-- `--model`: model used by worker agents.
-- `--host`: bind host inside the container. Use `0.0.0.0` when exposing the
-  service through a container port.
-- `--port`: manager WebSocket port. The reference Compose configuration uses
-  `8764`.
-- `--database`: SQLite database path inside the persistent data mount.
-- `--workspace-root`: session workspace root inside the persistent data mount.
-- `--worker-image`: image used for worker containers.
-- `--worker-network`: container network where workers are reachable by
-  container name from the manager.
-
-## Environment Variables
+## Required Environment
 
 Set these environment variables on the manager container:
 
 ```dotenv
 CODING_ASSISTANT_MANAGER_AUTH_SECRET=<long-random-secret>
+CODING_ASSISTANT_MODEL=gpt-5.1-codex-mini
+CODING_ASSISTANT_HOST_DATA_DIR=/absolute/host/path/backing/manager-data
+CODING_ASSISTANT_WORKER_IMAGE=<worker-image>
+CODING_ASSISTANT_WORKER_NETWORK=<worker-network>
 OPENAI_API_KEY=sk-...
+```
+
+`CODING_ASSISTANT_MANAGER_AUTH_SECRET` is the bearer token clients use when
+connecting to the manager.
+
+The manager always stores state under `/data` inside the manager container.
+Mount persistent storage at `/data`, and set `CODING_ASSISTANT_HOST_DATA_DIR`
+to the absolute Docker-host path backing that mount.
+
+`CODING_ASSISTANT_WORKER_IMAGE` is the image used for temporary worker
+containers. `CODING_ASSISTANT_WORKER_NETWORK` is the container network where
+workers are reachable by container name from the manager.
+
+`OPENAI_API_KEY` is forwarded to worker containers. Provider and tool variables
+keep their standard names; project-owned variables use the
+`CODING_ASSISTANT_` prefix.
+
+## Optional Environment
+
+Set this variable only when using an OpenAI-compatible provider with a custom
+base URL:
+
+```dotenv
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-`CODING_ASSISTANT_MANAGER_AUTH_SECRET` is required. Clients use it as a bearer
-token when connecting to the manager.
-
-`OPENAI_API_KEY` is required for normal worker operation. `OPENAI_BASE_URL` is
-optional; set it for OpenAI-compatible providers such as OpenRouter, or leave
-it unset to use the default OpenAI API base URL.
-
-Project-owned variables use the `CODING_ASSISTANT_` prefix. Provider and tool
-variables keep their standard names, such as `OPENAI_API_KEY` and
-`OPENAI_BASE_URL`.
-
-`docker/.env.example` is a copyable helper for the reference Compose
-configuration. It includes the manager container environment variables above
-plus Compose interpolation values for the host data path and Docker socket
-group.
+Leave it unset to use the default OpenAI API base URL.
 
 ## Runtime Requirements
 
@@ -60,13 +63,18 @@ The manager container also needs a persistent data mount for:
 - SQLite session state.
 - Session workspaces.
 
-Use the same absolute path inside the manager container and on the Docker host
-when the manager creates worker containers through the host Docker socket. This
-lets host-created worker containers mount the same session workspace path.
+Mount the host path from `CODING_ASSISTANT_HOST_DATA_DIR` at `/data` inside the
+manager container. The manager stores `sessions.sqlite` at `/data/sessions.sqlite`
+and session workspaces below `/data/workspaces`.
 
-In the reference Compose configuration, `CODING_ASSISTANT_DATA_DIR` supplies
-this host path and `CODING_ASSISTANT_DOCKER_SOCKET_GID` supplies the Docker
-socket group id.
+The manager creates worker containers through the host Docker socket, so worker
+workspace bind mounts must use host paths. The manager maps
+`/data/workspaces/<session>` to
+`$CODING_ASSISTANT_HOST_DATA_DIR/workspaces/<session>` when starting a worker.
+
+In the reference Compose configuration, `CODING_ASSISTANT_DOCKER_SOCKET_GID`
+is only a Compose interpolation value for the Docker socket group. It is not a
+manager environment variable.
 
 ## Client Authentication
 
@@ -83,7 +91,9 @@ connects to the manager with this secret.
 ## Worker Containers
 
 The manager starts one temporary worker container for each active prompt.
-Workers run from `--worker-image` and join `--worker-network`.
+Workers run from `CODING_ASSISTANT_WORKER_IMAGE` and join
+`CODING_ASSISTANT_WORKER_NETWORK`. Workers listen on port `8765`, and their
+session workspace is mounted at `/workspace`.
 
 Worker containers do not inherit the full manager environment. The manager
 forwards only the provider variables the built-in worker needs:

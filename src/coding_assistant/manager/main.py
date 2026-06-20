@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import argparse
 import asyncio
 import os
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+import sys
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from coding_assistant.core.runtime import build_initial_system_message
@@ -17,77 +18,120 @@ from coding_assistant.manager.workspace import WorkspacePaths
 from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
 
+CODING_ASSISTANT_HOST_DATA_DIR_ENV = "CODING_ASSISTANT_HOST_DATA_DIR"
 CODING_ASSISTANT_MANAGER_AUTH_SECRET_ENV = "CODING_ASSISTANT_MANAGER_AUTH_SECRET"
-WORKER_PROVIDER_ENV_KEYS = ("OPENAI_API_KEY", "OPENAI_BASE_URL")
+CODING_ASSISTANT_MODEL_ENV = "CODING_ASSISTANT_MODEL"
+CODING_ASSISTANT_WORKER_IMAGE_ENV = "CODING_ASSISTANT_WORKER_IMAGE"
+CODING_ASSISTANT_WORKER_NETWORK_ENV = "CODING_ASSISTANT_WORKER_NETWORK"
+OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
+OPENAI_BASE_URL_ENV = "OPENAI_BASE_URL"
+MANAGER_DATA_DIR = Path("/data")
+MANAGER_HOST = "0.0.0.0"
+MANAGER_PORT = 8764
+WORKER_PORT = 8765
+WORKER_WORKSPACE = "/workspace"
+WORKER_PROVIDER_ENV_KEYS = (OPENAI_API_KEY_ENV, OPENAI_BASE_URL_ENV)
+
+
+@dataclass(frozen=True)
+class ManagerConfig:
+    auth_secret: str
+    data_dir: Path
+    host_data_dir: Path
+    model: str
+    worker_image: str
+    worker_network: str
+    workspace_source_root: Path
+
+    @property
+    def database_path(self) -> Path:
+        return self.data_dir / "sessions.sqlite"
+
+    @property
+    def workspace_root(self) -> Path:
+        return self.data_dir / "workspaces"
 
 
 def _worker_environment_from_env() -> dict[str, str]:
-    return {key: os.environ[key] for key in WORKER_PROVIDER_ENV_KEYS if key in os.environ}
+    return {key: os.environ[key] for key in WORKER_PROVIDER_ENV_KEYS if os.environ.get(key)}
 
 
-def _manager_auth_secret_from_env() -> str:
-    value = os.environ.get(CODING_ASSISTANT_MANAGER_AUTH_SECRET_ENV)
+def _required_env(name: str) -> str:
+    value = os.environ.get(name)
     if not value:
-        raise ValueError(f"{CODING_ASSISTANT_MANAGER_AUTH_SECRET_ENV} must be set to start the manager.")
+        raise ValueError(f"{name} must be set to start the manager.")
     return value
 
 
-def parse_args() -> argparse.Namespace:
-    parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter, description="Coding Assistant manager")
-    parser.add_argument("--model", required=True, help="Model to use for worker agents.")
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind the manager WebSocket server.")
-    parser.add_argument("--port", type=int, default=8764, help="Port to bind the manager WebSocket server.")
-    parser.add_argument("--database", default="/data/sessions.sqlite", help="SQLite database path.")
-    parser.add_argument("--workspace-root", default="/data/workspaces", help="Host workspace root for sessions.")
-    parser.add_argument("--worker-image", default="coding-assistant:latest", help="Docker image for worker containers.")
-    parser.add_argument("--worker-network", default="coding-assistant", help="Docker network for worker containers.")
-    parser.add_argument("--worker-port", type=int, default=8765, help="Worker container WebSocket port.")
-    parser.add_argument("--worker-workspace", default="/workspace", help="Worker container workspace mount path.")
-    parser.add_argument("--instructions", nargs="*", default=[], help="Additional worker instructions.")
-    parser.add_argument("--skills-directories", nargs="*", default=[], help="Additional Agent Skill directories.")
-    return parser.parse_args()
+def _absolute_path_env(name: str) -> Path:
+    path = Path(_required_env(name))
+    if not path.is_absolute():
+        raise ValueError(f"{name} must be an absolute path.")
+    return path
 
 
-async def _main(args: argparse.Namespace) -> None:
-    workspace_root = Path(args.workspace_root)
-    workspace_root.mkdir(parents=True, exist_ok=True)
+def _manager_auth_secret_from_env() -> str:
+    return _required_env(CODING_ASSISTANT_MANAGER_AUTH_SECRET_ENV)
+
+
+def _manager_config_from_env() -> ManagerConfig:
+    _required_env(OPENAI_API_KEY_ENV)
+    host_data_dir = _absolute_path_env(CODING_ASSISTANT_HOST_DATA_DIR_ENV)
+    return ManagerConfig(
+        auth_secret=_manager_auth_secret_from_env(),
+        data_dir=MANAGER_DATA_DIR,
+        host_data_dir=host_data_dir,
+        model=_required_env(CODING_ASSISTANT_MODEL_ENV),
+        worker_image=_required_env(CODING_ASSISTANT_WORKER_IMAGE_ENV),
+        worker_network=_required_env(CODING_ASSISTANT_WORKER_NETWORK_ENV),
+        workspace_source_root=host_data_dir / "workspaces",
+    )
+
+
+def _reject_cli_args(argv: Sequence[str]) -> None:
+    if len(argv) > 1:
+        raise ValueError("coding-assistant-manager is configured only through environment variables.")
+
+
+async def _main(config: ManagerConfig) -> None:
+    config.workspace_root.mkdir(parents=True, exist_ok=True)
     store = SessionStore(
-        database_path=Path(args.database),
-        workspaces=WorkspacePaths(root=workspace_root),
+        database_path=config.database_path,
+        workspaces=WorkspacePaths(root=config.workspace_root),
     )
     worker_config = DockerWorkerConfig(
-        image=args.worker_image,
-        model=args.model,
-        network=args.worker_network,
-        worker_port=args.worker_port,
-        workspace_mount=args.worker_workspace,
+        image=config.worker_image,
+        model=config.model,
+        network=config.worker_network,
+        manager_workspace_root=str(config.workspace_root),
+        worker_port=WORKER_PORT,
+        workspace_source_root=str(config.workspace_source_root),
+        workspace_mount=WORKER_WORKSPACE,
         environment=_worker_environment_from_env(),
-        instructions=tuple(args.instructions),
-        skills_directories=tuple(args.skills_directories),
     )
     service = ManagerService(store=store, worker_runner=DockerWorkerRunner(config=worker_config))
     agent_config = WorkerAgentConfig(
-        working_directory=Path(args.worker_workspace),
-        user_instructions=tuple(args.instructions),
-        skills_directories=tuple(args.skills_directories),
+        working_directory=Path(WORKER_WORKSPACE),
+        user_instructions=(),
+        skills_directories=(),
     )
     instructions = build_worker_instructions(config=agent_config)
     initial_messages: list[BaseMessage] = [build_initial_system_message(instructions=instructions)]
     async with start_manager_server(
         service=service,
         initial_messages=initial_messages,
-        host=args.host,
-        port=args.port,
-        auth_secret=_manager_auth_secret_from_env(),
+        host=MANAGER_HOST,
+        port=MANAGER_PORT,
+        auth_secret=config.auth_secret,
     ) as server:
         print(f"Manager endpoint: {server.endpoint}", flush=True)
         await asyncio.Event().wait()
 
 
 def main() -> None:
-    args = parse_args()
+    _reject_cli_args(sys.argv)
     setup_logging()
-    asyncio.run(_main(args))
+    asyncio.run(_main(_manager_config_from_env()))
 
 
 if __name__ == "__main__":

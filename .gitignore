@@ -15,4 +15,4 @@ memory.json
 .serena
 dist
 docker/.env
-.docker-data/
+docker/.data/

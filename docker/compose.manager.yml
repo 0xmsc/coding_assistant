@@ -10,29 +10,17 @@ services:
       - "${CODING_ASSISTANT_DOCKER_SOCKET_GID}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${CODING_ASSISTANT_DATA_DIR}:${CODING_ASSISTANT_DATA_DIR}
+      - ${CODING_ASSISTANT_HOST_DATA_DIR:?set CODING_ASSISTANT_HOST_DATA_DIR}:/data
     ports:
       - "127.0.0.1:8764:8764"
     environment:
-      - CODING_ASSISTANT_MANAGER_AUTH_SECRET=${CODING_ASSISTANT_MANAGER_AUTH_SECRET}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
-    command:
-      - coding-assistant-manager
-      - --model
-      - gpt-5.1-codex-mini
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8764"
-      - --database
-      - ${CODING_ASSISTANT_DATA_DIR}/sessions.sqlite
-      - --workspace-root
-      - ${CODING_ASSISTANT_DATA_DIR}/workspaces
-      - --worker-image
-      - coding-assistant:dev
-      - --worker-network
-      - coding-assistant-dev
+      CODING_ASSISTANT_MANAGER_AUTH_SECRET: ${CODING_ASSISTANT_MANAGER_AUTH_SECRET:?set CODING_ASSISTANT_MANAGER_AUTH_SECRET}
+      CODING_ASSISTANT_MODEL: gpt-5.1-codex-mini
+      CODING_ASSISTANT_HOST_DATA_DIR: ${CODING_ASSISTANT_HOST_DATA_DIR:?set CODING_ASSISTANT_HOST_DATA_DIR}
+      CODING_ASSISTANT_WORKER_IMAGE: coding-assistant:dev
+      CODING_ASSISTANT_WORKER_NETWORK: coding-assistant-dev
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
 
 networks:
   default:

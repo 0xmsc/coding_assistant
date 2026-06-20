@@ -181,6 +181,24 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
     assert "/skills" in args
 
 
+def test_docker_run_args_maps_manager_workspace_to_host_source() -> None:
+    config = DockerWorkerConfig(
+        image="coding-assistant:test",
+        model="test-model",
+        network="assistant-net",
+        manager_workspace_root="/data/workspaces",
+        workspace_source_root="/host/coding-assistant/workspaces",
+    )
+
+    args = _docker_run_args(
+        config=config,
+        container_name="coding-assistant-worker-sess",
+        workspace="/data/workspaces/sess",
+    )
+
+    assert "/host/coding-assistant/workspaces/sess:/workspace:rw" in args
+
+
 @pytest.mark.asyncio
 @pytest.mark.slow
 async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: Path) -> None:
@@ -274,31 +292,24 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
                 "-e",
                 f"CODING_ASSISTANT_MANAGER_AUTH_SECRET={manager_auth_secret}",
                 "-e",
+                "CODING_ASSISTANT_MODEL=fake-model",
+                "-e",
+                f"CODING_ASSISTANT_HOST_DATA_DIR={tmp_path}",
+                "-e",
+                f"CODING_ASSISTANT_WORKER_IMAGE={image}",
+                "-e",
+                f"CODING_ASSISTANT_WORKER_NETWORK={network}",
+                "-e",
                 f"OPENAI_BASE_URL=http://{fake_openai}:8000/v1",
                 "-e",
                 "OPENAI_API_KEY=test-key",
                 "-v",
                 "/var/run/docker.sock:/var/run/docker.sock",
                 "-v",
-                f"{tmp_path}:{tmp_path}",
+                f"{tmp_path}:/data",
                 "-p",
                 "127.0.0.1::8764",
                 image,
-                "coding-assistant-manager",
-                "--model",
-                "fake-model",
-                "--host",
-                "0.0.0.0",
-                "--port",
-                "8764",
-                "--database",
-                str(tmp_path / "sessions.sqlite"),
-                "--workspace-root",
-                str(tmp_path / "workspaces"),
-                "--worker-image",
-                image,
-                "--worker-network",
-                network,
             ],
             timeout=30,
         )

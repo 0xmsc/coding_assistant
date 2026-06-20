@@ -21,8 +21,10 @@ COPY src ./src
 RUN uv sync --locked --no-editable
 
 RUN groupadd --gid 1000 app \
-    && useradd --uid 1000 --gid 1000 --create-home app
+    && useradd --uid 1000 --gid 1000 --create-home app \
+    && mkdir /data \
+    && chown app:app /data
 
 USER app
 
-CMD ["coding-assistant-manager", "--help"]
+CMD ["coding-assistant-manager"]

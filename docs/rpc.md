@@ -200,7 +200,7 @@ Each session gets a managed workspace derived from the session id:
 
 ```text
 manager workspace root: /data/workspaces
-host workspace path:    /data/workspaces/<sessionId>
+host workspace path:    $CODING_ASSISTANT_HOST_DATA_DIR/workspaces/<sessionId>
 worker mount:           /workspace
 ```
 
@@ -417,8 +417,9 @@ Response:
 }
 ```
 
-The manager creates `/data/workspaces/<sessionId>` and initializes the session
-transcript with system instructions for the managed workspace.
+The manager creates `/data/workspaces/<sessionId>` inside the manager
+container and initializes the session transcript with system instructions for
+the managed workspace.
 
 External `cwd` input is ignored or rejected until a future workspace import
 feature is designed.

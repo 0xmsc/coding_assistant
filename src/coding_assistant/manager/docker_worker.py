@@ -5,6 +5,7 @@ import os
 import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from time import monotonic
 
 from coding_assistant.core.session_updates import SessionUpdate
@@ -30,7 +31,9 @@ class DockerWorkerConfig:
     model: str
     network: str
     container_prefix: str = "coding-assistant-worker-"
+    manager_workspace_root: str | None = None
     worker_port: int = 8765
+    workspace_source_root: str | None = None
     workspace_mount: str = "/workspace"
     docker_command: str = "docker"
     startup_timeout: float = 15.0
@@ -132,6 +135,16 @@ def _container_name(*, prefix: str, session_id: str) -> str:
     return f"{prefix}{normalized or 'session'}"
 
 
+def _workspace_source(*, config: DockerWorkerConfig, workspace: str) -> str:
+    if config.manager_workspace_root is None or config.workspace_source_root is None:
+        return workspace
+    try:
+        relative_workspace = Path(workspace).relative_to(config.manager_workspace_root)
+    except ValueError:
+        return workspace
+    return str(Path(config.workspace_source_root) / relative_workspace)
+
+
 def _docker_run_args(*, config: DockerWorkerConfig, container_name: str, workspace: str) -> list[str]:
     args = [
         config.docker_command,
@@ -147,7 +160,7 @@ def _docker_run_args(*, config: DockerWorkerConfig, container_name: str, workspa
         "--security-opt",
         "no-new-privileges",
         "-v",
-        f"{workspace}:{config.workspace_mount}:rw",
+        f"{_workspace_source(config=config, workspace=workspace)}:{config.workspace_mount}:rw",
     ]
     for key, value in config.environment.items():
         args.extend(["-e", f"{key}={value}"])
