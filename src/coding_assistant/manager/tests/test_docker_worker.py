@@ -154,14 +154,18 @@ async def _load_session(websocket: ClientConnection, *, request_id: int, session
 def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
     config = DockerWorkerConfig(
         image="coding-assistant:test",
-        model="test-model",
         network="assistant-net",
         environment={"OPENAI_API_KEY": "test-key"},
         instructions=("Be concise.",),
         skills_directories=("/skills",),
     )
 
-    args = _docker_run_args(config=config, container_name="coding-assistant-worker-sess", workspace="/data/ws/sess")
+    args = _docker_run_args(
+        config=config,
+        container_name="coding-assistant-worker-sess",
+        workspace="/data/ws/sess",
+        model="test-model",
+    )
 
     assert args[:4] == ["docker", "run", "--detach", "--rm"]
     assert ["--name", "coding-assistant-worker-sess"] == args[4:6]
@@ -184,7 +188,6 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
 def test_docker_run_args_maps_manager_workspace_to_host_source() -> None:
     config = DockerWorkerConfig(
         image="coding-assistant:test",
-        model="test-model",
         network="assistant-net",
         manager_workspace_root="/data/workspaces",
         workspace_source_root="/host/coding-assistant/workspaces",
@@ -194,6 +197,7 @@ def test_docker_run_args_maps_manager_workspace_to_host_source() -> None:
         config=config,
         container_name="coding-assistant-worker-sess",
         workspace="/data/workspaces/sess",
+        model="test-model",
     )
 
     assert "/host/coding-assistant/workspaces/sess:/workspace:rw" in args
@@ -292,8 +296,6 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
                 "-e",
                 f"CODING_ASSISTANT_MANAGER_AUTH_SECRET={manager_auth_secret}",
                 "-e",
-                "CODING_ASSISTANT_MODEL=fake-model",
-                "-e",
                 f"CODING_ASSISTANT_HOST_DATA_DIR={tmp_path}",
                 "-e",
                 f"CODING_ASSISTANT_WORKER_IMAGE={image}",
@@ -320,6 +322,14 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
             async with _connect_initialized(endpoint, auth_token=manager_auth_secret) as websocket:
                 first_session_id = await _new_session(websocket, request_id=2)
                 second_session_id = await _new_session(websocket, request_id=3)
+                await websocket.send(
+                    jsonrpc_request(4, "session/set_model", _scope_params(first_session_id, model="fake-model"))
+                )
+                first_set_model = parse_jsonrpc_message(await websocket.recv())
+                await websocket.send(
+                    jsonrpc_request(5, "session/set_model", _scope_params(second_session_id, model="fake-model"))
+                )
+                second_set_model = parse_jsonrpc_message(await websocket.recv())
                 (tmp_path / "workspaces" / first_session_id / "smoke.txt").write_text(
                     "alpha from first workspace",
                     encoding="utf-8",
@@ -329,11 +339,13 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
                     encoding="utf-8",
                 )
 
-                first_prompt = await _prompt_session(websocket, request_id=4, session_id=first_session_id)
-                second_prompt = await _prompt_session(websocket, request_id=5, session_id=second_session_id)
-                first_texts = await _load_session(websocket, request_id=6, session_id=first_session_id)
-                second_texts = await _load_session(websocket, request_id=7, session_id=second_session_id)
+                first_prompt = await _prompt_session(websocket, request_id=6, session_id=first_session_id)
+                second_prompt = await _prompt_session(websocket, request_id=7, session_id=second_session_id)
+                first_texts = await _load_session(websocket, request_id=8, session_id=first_session_id)
+                second_texts = await _load_session(websocket, request_id=9, session_id=second_session_id)
 
+            assert first_set_model["result"]["_meta"]["model"] == "fake-model"
+            assert second_set_model["result"]["_meta"]["model"] == "fake-model"
             assert first_prompt["result"] == {"stopReason": "end_turn"}
             assert second_prompt["result"] == {"stopReason": "end_turn"}
             assert "tool result: alpha from first workspace" in first_texts
@@ -372,7 +384,6 @@ async def test_docker_worker_runner_reports_real_container_start_failure(tmp_pat
     container_name = f"coding-assistant-worker-{session_id}"
     config = DockerWorkerConfig(
         image=f"missing-coding-assistant-image:{suffix}",
-        model="test-model",
         network="bridge",
         startup_timeout=0.1,
     )

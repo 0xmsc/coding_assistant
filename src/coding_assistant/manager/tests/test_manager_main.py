@@ -13,7 +13,6 @@ from coding_assistant.manager.main import (
 MANAGER_ENV_KEYS = (
     "CODING_ASSISTANT_HOST_DATA_DIR",
     "CODING_ASSISTANT_MANAGER_AUTH_SECRET",
-    "CODING_ASSISTANT_MODEL",
     "CODING_ASSISTANT_WORKER_IMAGE",
     "CODING_ASSISTANT_WORKER_NETWORK",
     "OPENAI_API_KEY",
@@ -42,7 +41,6 @@ def test_manager_auth_secret_is_read_from_fixed_env(monkeypatch: pytest.MonkeyPa
 def test_manager_config_is_read_from_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _clear_manager_env(monkeypatch)
     monkeypatch.setenv("CODING_ASSISTANT_MANAGER_AUTH_SECRET", "secret-token")
-    monkeypatch.setenv("CODING_ASSISTANT_MODEL", "test-model")
     monkeypatch.setenv("CODING_ASSISTANT_HOST_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("CODING_ASSISTANT_WORKER_IMAGE", "coding-assistant:test")
     monkeypatch.setenv("CODING_ASSISTANT_WORKER_NETWORK", "test-network")
@@ -51,7 +49,6 @@ def test_manager_config_is_read_from_environment(monkeypatch: pytest.MonkeyPatch
     config = _manager_config_from_env()
 
     assert config.auth_secret == "secret-token"
-    assert config.model == "test-model"
     assert config.data_dir == Path("/data")
     assert config.database_path == Path("/data/sessions.sqlite")
     assert config.workspace_root == Path("/data/workspaces")
@@ -64,7 +61,6 @@ def test_manager_config_is_read_from_environment(monkeypatch: pytest.MonkeyPatch
 def test_manager_config_requires_provider_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _clear_manager_env(monkeypatch)
     monkeypatch.setenv("CODING_ASSISTANT_MANAGER_AUTH_SECRET", "secret-token")
-    monkeypatch.setenv("CODING_ASSISTANT_MODEL", "test-model")
     monkeypatch.setenv("CODING_ASSISTANT_HOST_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("CODING_ASSISTANT_WORKER_IMAGE", "coding-assistant:test")
     monkeypatch.setenv("CODING_ASSISTANT_WORKER_NETWORK", "test-network")
@@ -76,7 +72,6 @@ def test_manager_config_requires_provider_key(monkeypatch: pytest.MonkeyPatch, t
 def test_manager_config_requires_absolute_host_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_manager_env(monkeypatch)
     monkeypatch.setenv("CODING_ASSISTANT_MANAGER_AUTH_SECRET", "secret-token")
-    monkeypatch.setenv("CODING_ASSISTANT_MODEL", "test-model")
     monkeypatch.setenv("CODING_ASSISTANT_HOST_DATA_DIR", "relative-data")
     monkeypatch.setenv("CODING_ASSISTANT_WORKER_IMAGE", "coding-assistant:test")
     monkeypatch.setenv("CODING_ASSISTANT_WORKER_NETWORK", "test-network")

@@ -19,7 +19,6 @@ Set these environment variables on the manager container:
 
 ```dotenv
 CODING_ASSISTANT_MANAGER_AUTH_SECRET=<long-random-secret>
-CODING_ASSISTANT_MODEL=gpt-5.1-codex-mini
 CODING_ASSISTANT_HOST_DATA_DIR=/absolute/host/path/backing/manager-data
 CODING_ASSISTANT_WORKER_IMAGE=<worker-image>
 CODING_ASSISTANT_WORKER_NETWORK=<worker-network>
@@ -28,11 +27,6 @@ OPENAI_API_KEY=sk-...
 
 `CODING_ASSISTANT_MANAGER_AUTH_SECRET` is the bearer token clients use when
 connecting to the manager.
-
-`CODING_ASSISTANT_MODEL` is the default model for new sessions and for existing
-sessions without stored model metadata. The manager queries the configured
-OpenAI-compatible provider's model list for UI choices and falls back to this
-default if provider model discovery fails.
 
 The manager always stores state under `/data` inside the manager container.
 Mount persistent storage at `/data`, and set `CODING_ASSISTANT_HOST_DATA_DIR`
@@ -45,6 +39,10 @@ workers are reachable by container name from the manager.
 `OPENAI_API_KEY` is forwarded to worker containers. Provider and tool variables
 keep their standard names; project-owned variables use the
 `CODING_ASSISTANT_` prefix.
+
+The manager does not choose a default model. Clients must call `model/list`,
+let the user or application select a model, and persist it with
+`session/set_model` before prompting a session.
 
 ## Optional Environment
 

@@ -20,7 +20,6 @@ from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instru
 
 CODING_ASSISTANT_HOST_DATA_DIR_ENV = "CODING_ASSISTANT_HOST_DATA_DIR"
 CODING_ASSISTANT_MANAGER_AUTH_SECRET_ENV = "CODING_ASSISTANT_MANAGER_AUTH_SECRET"
-CODING_ASSISTANT_MODEL_ENV = "CODING_ASSISTANT_MODEL"
 CODING_ASSISTANT_WORKER_IMAGE_ENV = "CODING_ASSISTANT_WORKER_IMAGE"
 CODING_ASSISTANT_WORKER_NETWORK_ENV = "CODING_ASSISTANT_WORKER_NETWORK"
 OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
@@ -38,7 +37,6 @@ class ManagerConfig:
     auth_secret: str
     data_dir: Path
     host_data_dir: Path
-    model: str
     worker_image: str
     worker_network: str
     workspace_source_root: Path
@@ -81,7 +79,6 @@ def _manager_config_from_env() -> ManagerConfig:
         auth_secret=_manager_auth_secret_from_env(),
         data_dir=MANAGER_DATA_DIR,
         host_data_dir=host_data_dir,
-        model=_required_env(CODING_ASSISTANT_MODEL_ENV),
         worker_image=_required_env(CODING_ASSISTANT_WORKER_IMAGE_ENV),
         worker_network=_required_env(CODING_ASSISTANT_WORKER_NETWORK_ENV),
         workspace_source_root=host_data_dir / "workspaces",
@@ -101,7 +98,6 @@ async def _main(config: ManagerConfig) -> None:
     )
     worker_config = DockerWorkerConfig(
         image=config.worker_image,
-        model=config.model,
         network=config.worker_network,
         manager_workspace_root=str(config.workspace_root),
         worker_port=WORKER_PORT,
@@ -112,7 +108,6 @@ async def _main(config: ManagerConfig) -> None:
     service = ManagerService(
         store=store,
         worker_runner=DockerWorkerRunner(config=worker_config),
-        default_model=config.model,
     )
     agent_config = WorkerAgentConfig(
         working_directory=Path(WORKER_WORKSPACE),

@@ -73,25 +73,11 @@ def _scope_id_from_params(params: JsonObject) -> str:
     return scope_id
 
 
-def _metadata_with_model(metadata: JsonObject, *, default_model: str) -> JsonObject:
-    model = metadata.get(MODEL_METADATA_KEY)
-    return {
-        **metadata,
-        MODEL_METADATA_KEY: model if isinstance(model, str) and model else default_model,
-    }
-
-
-def _model_from_record(record: SessionRecord, *, default_model: str) -> str:
+def _model_from_record(record: SessionRecord) -> str:
     model = record.metadata.get(MODEL_METADATA_KEY)
-    return model if isinstance(model, str) and model else default_model
-
-
-def _models_with_default(*, default_model: str, provider_models: list[str]) -> list[str]:
-    result: list[str] = []
-    for model in [default_model, *provider_models]:
-        if model and model not in result:
-            result.append(model)
-    return result
+    if isinstance(model, str) and model.strip():
+        return model.strip()
+    raise ManagerError("Session has no model selected.")
 
 
 def _model_entries(models: list[str]) -> list[JsonObject]:
@@ -105,13 +91,13 @@ def _model_param(params: JsonObject) -> str:
     return model.strip()
 
 
-def _session_metadata(session: LoadedSession, *, default_model: str) -> JsonObject:
+def _session_metadata(session: LoadedSession) -> JsonObject:
     payload: JsonObject = {
         "sessionId": session.record.session_id,
         "updatedAt": session.record.updated_at,
         "_meta": {
             "version": session.record.version,
-            **_metadata_with_model(session.record.metadata, default_model=default_model),
+            **session.record.metadata,
         },
     }
     if session.record.title is not None:
@@ -119,13 +105,13 @@ def _session_metadata(session: LoadedSession, *, default_model: str) -> JsonObje
     return payload
 
 
-def _record_metadata(record: SessionRecord, *, default_model: str) -> JsonObject:
+def _record_metadata(record: SessionRecord) -> JsonObject:
     payload: JsonObject = {
         "sessionId": record.session_id,
         "updatedAt": record.updated_at,
         "_meta": {
             "version": record.version,
-            **_metadata_with_model(record.metadata, default_model=default_model),
+            **record.metadata,
         },
     }
     if record.title is not None:
@@ -139,15 +125,11 @@ class ManagerService:
         *,
         store: SessionStore,
         worker_runner: WorkerRunner,
-        default_model: str,
         model_lister: ModelLister = list_provider_models,
         model_cache_ttl_seconds: float = MODEL_CACHE_TTL_SECONDS,
     ) -> None:
-        if not default_model.strip():
-            raise ValueError("ManagerService requires a non-empty default model.")
         self._store = store
         self._worker_runner = worker_runner
-        self._default_model = default_model.strip()
         self._model_lister = model_lister
         self._model_cache_ttl_seconds = model_cache_ttl_seconds
         self._model_cache: tuple[float, list[str]] | None = None
@@ -157,17 +139,13 @@ class ManagerService:
     async def list_models(self) -> JsonObject:
         models = await self._available_models()
         return {
-            "defaultModel": self._default_model,
             "models": _model_entries(models),
         }
 
     def list_sessions(self, *, params: JsonObject) -> JsonObject:
         scope_id = _scope_id_from_params(params)
         return {
-            "sessions": [
-                _record_metadata(record, default_model=self._default_model)
-                for record in self._store.list_sessions(scope_id=scope_id)
-            ],
+            "sessions": [_record_metadata(record) for record in self._store.list_sessions(scope_id=scope_id)],
             "nextCursor": None,
         }
 
@@ -176,7 +154,6 @@ class ManagerService:
         session = self._store.create_session(
             scope_id=scope_id,
             messages=initial_messages,
-            metadata={MODEL_METADATA_KEY: self._default_model},
         )
         return {"sessionId": session.record.session_id}
 
@@ -192,7 +169,7 @@ class ManagerService:
         else:
             raise ManagerError("session/rename requires a string or null title.")
         record = self._store.rename_session(scope_id=scope_id, session_id=session_id, title=next_title)
-        return _record_metadata(record, default_model=self._default_model)
+        return _record_metadata(record)
 
     async def set_session_model(self, *, params: JsonObject) -> JsonObject:
         scope_id = _scope_id_from_params(params)
@@ -212,7 +189,7 @@ class ManagerService:
             session_id=session_id,
             metadata={MODEL_METADATA_KEY: model},
         )
-        return _record_metadata(record, default_model=self._default_model)
+        return _record_metadata(record)
 
     async def load_session(
         self, *, params: JsonObject, on_update: Callable[[SessionUpdate], Awaitable[None]]
@@ -226,7 +203,7 @@ class ManagerService:
                 continue
             for update in replay_updates_from_committed_message(committed):
                 await on_update(update)
-        return _session_metadata(session, default_model=self._default_model)
+        return _session_metadata(session)
 
     async def prompt(
         self,
@@ -244,15 +221,16 @@ class ManagerService:
         except ValueError as exc:
             raise ManagerError(str(exc)) from exc
 
+        session = self._store.load_session(scope_id=scope_id, session_id=session_id)
+        model = _model_from_record(session.record)
         await self._mark_prompt_active(session_id)
         try:
-            session = self._store.load_session(scope_id=scope_id, session_id=session_id)
             worker_commit = await self._worker_runner.run_prompt(
                 prompt=WorkerPrompt(
                     session_id=session_id,
                     base_version=session.record.version,
                     history=session.messages,
-                    model=_model_from_record(session.record, default_model=self._default_model),
+                    model=model,
                     workspace=str(session.workspace),
                     prompt=prompt_blocks,
                 ),
@@ -298,8 +276,8 @@ class ManagerService:
         except Exception:
             if self._model_cache is not None:
                 return self._model_cache[1]
-            return [self._default_model]
+            return []
 
-        models = _models_with_default(default_model=self._default_model, provider_models=provider_models)
+        models = list(dict.fromkeys(model for model in provider_models if model))
         self._model_cache = (now, models)
         return models

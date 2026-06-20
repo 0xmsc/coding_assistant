@@ -28,7 +28,6 @@ class DockerCommandResult:
 @dataclass(frozen=True)
 class DockerWorkerConfig:
     image: str
-    model: str
     network: str
     container_prefix: str = "coding-assistant-worker-"
     manager_workspace_root: str | None = None
@@ -150,7 +149,7 @@ def _docker_run_args(
     config: DockerWorkerConfig,
     container_name: str,
     workspace: str,
-    model: str | None = None,
+    model: str,
 ) -> list[str]:
     args = [
         config.docker_command,
@@ -175,7 +174,7 @@ def _docker_run_args(
             config.image,
             "coding-assistant-worker",
             "--model",
-            model or config.model,
+            model,
             "--host",
             "0.0.0.0",
             "--port",

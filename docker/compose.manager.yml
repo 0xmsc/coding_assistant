@@ -27,7 +27,6 @@ services:
       - "127.0.0.1:8764:8764"
     environment:
       CODING_ASSISTANT_MANAGER_AUTH_SECRET:
-      CODING_ASSISTANT_MODEL: gpt-5.1-codex-mini
       CODING_ASSISTANT_HOST_DATA_DIR:
       CODING_ASSISTANT_WORKER_IMAGE: coding-assistant:dev
       CODING_ASSISTANT_WORKER_NETWORK: coding-assistant-dev

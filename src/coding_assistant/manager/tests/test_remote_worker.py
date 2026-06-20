@@ -67,6 +67,10 @@ def _scope_params(session_id: str, prompt: str) -> dict[str, Any]:
     }
 
 
+async def _test_model_lister() -> list[str]:
+    return ["test-model"]
+
+
 def _manager_service(*, tmp_path: Path, endpoint: str) -> tuple[ManagerService, SessionStore]:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
@@ -75,7 +79,7 @@ def _manager_service(*, tmp_path: Path, endpoint: str) -> tuple[ManagerService, 
     return ManagerService(
         store=store,
         worker_runner=RemoteWorkerRunner(endpoint=endpoint),
-        default_model="test-model",
+        model_lister=_test_model_lister,
     ), store
 
 
@@ -93,7 +97,11 @@ async def test_remote_worker_prompt_streams_update_and_commits_to_sqlite(tmp_pat
 
     async with start_session_worker_server(runtime=runtime) as worker_server:
         service, store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
-        created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+        created = store.create_session(
+            scope_id="scope-a",
+            messages=[SystemMessage(content="system")],
+            metadata={"model": "test-model"},
+        )
         updates: list[SessionUpdate] = []
 
         async def collect_update(update: SessionUpdate) -> None:
@@ -127,7 +135,11 @@ async def test_remote_worker_two_sequential_prompts_advance_history_once(tmp_pat
 
     async with start_session_worker_server(runtime=runtime) as worker_server:
         service, store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
-        created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+        created = store.create_session(
+            scope_id="scope-a",
+            messages=[SystemMessage(content="system")],
+            metadata={"model": "test-model"},
+        )
 
         first = await service.prompt(
             params=_scope_params(created.record.session_id, "first"),
@@ -159,7 +171,11 @@ async def test_remote_worker_cancel_reaches_active_worker(tmp_path: Path) -> Non
 
     async with start_session_worker_server(runtime=runtime) as worker_server:
         service, store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
-        created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+        created = store.create_session(
+            scope_id="scope-a",
+            messages=[SystemMessage(content="system")],
+            metadata={"model": "test-model"},
+        )
         prompt_task = asyncio.create_task(
             service.prompt(
                 params=_scope_params(created.record.session_id, "cancel me"),
@@ -208,6 +224,19 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
                 await websocket.send(
                     jsonrpc_request(
                         3,
+                        "session/set_model",
+                        {
+                            "_meta": {"scopeId": "scope-a"},
+                            "sessionId": session_id,
+                            "model": "test-model",
+                        },
+                    ),
+                )
+                set_model_response = parse_jsonrpc_message(await websocket.recv())
+
+                await websocket.send(
+                    jsonrpc_request(
+                        4,
                         "session/prompt",
                         _scope_params(session_id, "server prompt"),
                     ),
@@ -216,12 +245,13 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
                 prompt_response = parse_jsonrpc_message(await websocket.recv())
 
                 await websocket.send(
-                    jsonrpc_request(4, "session/load", {"_meta": {"scopeId": "scope-a"}, "sessionId": session_id}),
+                    jsonrpc_request(5, "session/load", {"_meta": {"scopeId": "scope-a"}, "sessionId": session_id}),
                 )
                 replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(2)]
                 load_response = parse_jsonrpc_message(await websocket.recv())
 
     assert initialize_response["result"]["protocolVersion"] == ACP_PROTOCOL_VERSION
+    assert set_model_response["result"]["_meta"]["model"] == "test-model"
     assert update["params"]["update"]["content"]["text"] == "server answer"
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     assert [message["params"]["update"]["content"]["text"] for message in replay] == ["server prompt", "server answer"]
@@ -240,7 +270,11 @@ async def test_remote_worker_smoke_uses_fake_openai_adapter(
 
         async with start_session_worker_server(runtime=runtime) as worker_server:
             service, store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
-            created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+            created = store.create_session(
+                scope_id="scope-a",
+                messages=[SystemMessage(content="system")],
+                metadata={"model": "test-model"},
+            )
             updates: list[SessionUpdate] = []
 
             async def collect_update(update: SessionUpdate) -> None:

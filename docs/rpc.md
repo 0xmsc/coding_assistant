@@ -358,11 +358,7 @@ Response:
   "jsonrpc": "2.0",
   "id": 2,
   "result": {
-    "defaultModel": "gpt-5.1-codex-mini",
     "models": [
-      {
-        "id": "gpt-5.1-codex-mini"
-      },
       {
         "id": "openai/gpt-5.1"
       }
@@ -372,8 +368,9 @@ Response:
 ```
 
 The manager caches provider results briefly. If provider discovery fails and no
-cached list is available, the response contains only the configured
-`defaultModel`.
+cached list is available, `models` is empty. The manager does not choose a
+default model; clients must persist a session model with `session/set_model`
+before sending `session/prompt`.
 
 ### session/list
 
@@ -618,6 +615,9 @@ changes while the session has an active prompt.
 Submits one prompt to a session in `params._meta.scopeId`. The request
 remains open until the run finishes, is cancelled, or fails. During the run,
 the server sends `session/update` notifications.
+
+The session must already have a model in metadata. Use `session/set_model`
+before prompting new sessions or older sessions without a stored model.
 
 Request:
 
