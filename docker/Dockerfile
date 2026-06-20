@@ -16,8 +16,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock README.md ./
-COPY src ./src
 
+RUN uv sync --locked --no-editable --no-install-project
+
+COPY src ./src
 RUN uv sync --locked --no-editable
 
 RUN groupadd --gid 1000 app \
