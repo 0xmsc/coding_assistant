@@ -8,7 +8,8 @@ is only a reference implementation of this contract.
 
 Run the Coding Assistant image with its default command. The image starts
 `coding-assistant-manager`, and the manager reads deployment configuration only
-from environment variables.
+from environment variables. The manager fails during startup when a required
+environment variable is missing or empty.
 
 Expose manager port `8764`.
 
