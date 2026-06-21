@@ -385,6 +385,129 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_manager_passes_prompt_capabilities_to_worker_without_persisting(tmp_path: Path) -> None:
+    worker = FakeWorkerRunner(response_text="done")
+    async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+            await _set_model(websocket, scope_id="scope-a", session_id=session_id, request_id=3)
+            params = _scope_params(
+                "scope-a",
+                sessionId=session_id,
+                prompt=[text_block("Do it")],
+            )
+            params["_meta"]["capabilities"] = {
+                "workerEnv": {
+                    "APPS_API_BASE_URL": "http://apps-api",
+                    "APPS_API_TOKEN": "secret-token",
+                },
+                "skills": [
+                    {
+                        "name": "apps-api",
+                        "description": "Use apps REST APIs.",
+                        "files": {
+                            "SKILL.md": "---\nname: apps-api\ndescription: Use apps REST APIs.\n---\n",
+                            "references/calories.md": "calories",
+                        },
+                    },
+                ],
+            }
+
+            await websocket.send(jsonrpc_request(4, "session/prompt", params))
+            update = parse_jsonrpc_message(await websocket.recv())
+            prompt_response = parse_jsonrpc_message(await websocket.recv())
+
+            await websocket.send(jsonrpc_request(5, "session/load", _scope_params("scope-a", sessionId=session_id)))
+            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(2)]
+            load_response = parse_jsonrpc_message(await websocket.recv())
+
+    assert update["params"]["update"]["content"]["text"] == "done"
+    assert prompt_response["result"] == {"stopReason": "end_turn"}
+    assert [message["params"]["update"]["content"]["text"] for message in replay] == ["Do it", "done"]
+    assert "capabilities" not in load_response["result"]["_meta"]
+    assert worker.prompts is not None
+    capabilities = worker.prompts[0].capabilities
+    assert capabilities.worker_env == {
+        "APPS_API_BASE_URL": "http://apps-api",
+        "APPS_API_TOKEN": "secret-token",
+    }
+    assert len(capabilities.skills) == 1
+    assert capabilities.skills[0].name == "apps-api"
+    assert capabilities.skills[0].files["references/calories.md"] == "calories"
+
+
+@pytest.mark.asyncio
+async def test_manager_rejects_capabilities_on_non_prompt_methods(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            params = _scope_params("scope-a")
+            params["_meta"]["capabilities"] = {"workerEnv": {"APPS_API_TOKEN": "secret"}}
+
+            await websocket.send(jsonrpc_request(2, "session/list", params))
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == "_meta.capabilities is only accepted on session/prompt."
+
+
+@pytest.mark.asyncio
+async def test_manager_validates_prompt_capabilities(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+            await _set_model(websocket, scope_id="scope-a", session_id=session_id, request_id=3)
+            params = _scope_params(
+                "scope-a",
+                sessionId=session_id,
+                prompt=[text_block("Do it")],
+            )
+            params["_meta"]["capabilities"] = {
+                "workerEnv": {"not-valid": "value"},
+            }
+
+            await websocket.send(jsonrpc_request(4, "session/prompt", params))
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == "Invalid worker environment variable name: 'not-valid'."
+
+
+@pytest.mark.asyncio
+async def test_manager_validates_injected_skill_paths(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+            await _set_model(websocket, scope_id="scope-a", session_id=session_id, request_id=3)
+            params = _scope_params(
+                "scope-a",
+                sessionId=session_id,
+                prompt=[text_block("Do it")],
+            )
+            params["_meta"]["capabilities"] = {
+                "skills": [
+                    {
+                        "name": "apps-api",
+                        "description": "Use apps REST APIs.",
+                        "files": {
+                            "SKILL.md": "skill",
+                            "../escape.md": "bad",
+                        },
+                    },
+                ],
+            }
+
+            await websocket.send(jsonrpc_request(4, "session/prompt", params))
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == "Injected skill apps-api has an invalid file path: '../escape.md'."
+
+
+@pytest.mark.asyncio
 async def test_manager_rejects_unavailable_session_model(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
         async with connect(endpoint) as websocket:

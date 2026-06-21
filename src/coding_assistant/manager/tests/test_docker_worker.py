@@ -18,8 +18,9 @@ from coding_assistant.manager.docker_worker import (
     DockerWorkerRunner,
     _docker_run_args,
     _run_command,
+    _write_prompt_skill_bundles,
 )
-from coding_assistant.manager.service import WorkerPrompt
+from coding_assistant.manager.service import PromptCapabilities, SkillBundle, WorkerPrompt
 from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
 
 
@@ -183,6 +184,87 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
     assert "Be concise." in args
     assert "--mcp-servers" not in args
     assert "/skills" in args
+
+
+def test_docker_run_args_merges_prompt_environment_and_skills_directory() -> None:
+    config = DockerWorkerConfig(
+        image="coding-assistant:test",
+        network="assistant-net",
+        environment={"OPENAI_API_KEY": "test-key"},
+        skills_directories=("/skills",),
+    )
+
+    args = _docker_run_args(
+        config=config,
+        container_name="coding-assistant-worker-sess",
+        workspace="/data/ws/sess",
+        model="test-model",
+        extra_environment={
+            "APPS_API_BASE_URL": "http://apps-api",
+            "APPS_API_TOKEN": "secret-token",
+        },
+        extra_skills_directories=("/workspace/.agents/skills",),
+    )
+
+    assert "OPENAI_API_KEY=test-key" in args
+    assert "APPS_API_BASE_URL=http://apps-api" in args
+    assert "APPS_API_TOKEN=secret-token" in args
+    skills_index = args.index("--skills-directories")
+    assert args[skills_index + 1 : skills_index + 3] == [
+        "/skills",
+        "/workspace/.agents/skills",
+    ]
+
+
+def test_docker_run_args_rejects_prompt_environment_collision() -> None:
+    config = DockerWorkerConfig(
+        image="coding-assistant:test",
+        network="assistant-net",
+        environment={"OPENAI_API_KEY": "test-key"},
+    )
+
+    with pytest.raises(
+        DockerWorkerError,
+        match="Prompt worker environment collides with manager environment: OPENAI_API_KEY",
+    ):
+        _docker_run_args(
+            config=config,
+            container_name="coding-assistant-worker-sess",
+            workspace="/data/ws/sess",
+            model="test-model",
+            extra_environment={"OPENAI_API_KEY": "attacker-key"},
+        )
+
+
+def test_write_prompt_skill_bundles_replaces_existing_skill_files(tmp_path: Path) -> None:
+    stale_file = tmp_path / ".agents" / "skills" / "apps-api" / "stale.md"
+    stale_file.parent.mkdir(parents=True)
+    stale_file.write_text("old", encoding="utf-8")
+    capabilities = PromptCapabilities(
+        skills=(
+            SkillBundle(
+                name="apps-api",
+                description="Use apps REST APIs.",
+                files={
+                    "SKILL.md": "skill",
+                    "references/calories.md": "calories",
+                },
+            ),
+        ),
+    )
+
+    directories = _write_prompt_skill_bundles(
+        workspace=str(tmp_path),
+        workspace_mount="/workspace",
+        capabilities=capabilities,
+    )
+
+    assert directories == ("/workspace/.agents/skills",)
+    assert not stale_file.exists()
+    assert (tmp_path / ".agents" / "skills" / "apps-api" / "SKILL.md").read_text(encoding="utf-8") == "skill"
+    assert (tmp_path / ".agents" / "skills" / "apps-api" / "references" / "calories.md").read_text(
+        encoding="utf-8"
+    ) == "calories"
 
 
 def test_docker_run_args_maps_manager_workspace_to_host_source() -> None:

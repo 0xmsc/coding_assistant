@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from time import monotonic
 from typing import Protocol
 
@@ -19,6 +21,14 @@ from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp, ses
 MODEL_METADATA_KEY = "model"
 MODEL_CACHE_TTL_SECONDS = 300.0
 ModelLister = Callable[[], Awaitable[list[str]]]
+ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+SKILL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+MAX_WORKER_ENV_VARS = 32
+MAX_WORKER_ENV_VALUE_BYTES = 8192
+MAX_SKILL_BUNDLES = 8
+MAX_SKILL_FILES_PER_BUNDLE = 32
+MAX_SKILL_FILE_BYTES = 64 * 1024
+MAX_SKILL_BUNDLE_BYTES = 256 * 1024
 
 
 class ManagerError(RuntimeError):
@@ -35,6 +45,19 @@ class PromptResult:
 
 
 @dataclass(frozen=True)
+class SkillBundle:
+    name: str
+    description: str
+    files: dict[str, str]
+
+
+@dataclass(frozen=True)
+class PromptCapabilities:
+    worker_env: dict[str, str] = field(default_factory=dict)
+    skills: tuple[SkillBundle, ...] = ()
+
+
+@dataclass(frozen=True)
 class WorkerPrompt:
     session_id: str
     base_version: int
@@ -42,6 +65,7 @@ class WorkerPrompt:
     model: str
     workspace: str
     prompt: list[JsonObject]
+    capabilities: PromptCapabilities = field(default_factory=PromptCapabilities)
 
 
 @dataclass(frozen=True)
@@ -63,14 +87,111 @@ class WorkerRunner(Protocol):
     async def cancel(self, *, session_id: str) -> None: ...
 
 
-def _scope_id_from_params(params: JsonObject) -> str:
+def _scope_id_from_params(params: JsonObject, *, allow_capabilities: bool = False) -> str:
     metadata = params.get("_meta")
     if not isinstance(metadata, dict):
         raise ManagerError("Request params must include _meta.scopeId.")
+    if not allow_capabilities and "capabilities" in metadata:
+        raise ManagerError("_meta.capabilities is only accepted on session/prompt.")
     scope_id = metadata.get("scopeId")
     if not isinstance(scope_id, str) or not scope_id:
         raise ManagerError("Request params must include _meta.scopeId.")
     return scope_id
+
+
+def _prompt_capabilities_from_params(params: JsonObject) -> PromptCapabilities:
+    metadata = params.get("_meta")
+    if not isinstance(metadata, dict):
+        return PromptCapabilities()
+    raw_capabilities = metadata.get("capabilities")
+    if raw_capabilities is None:
+        return PromptCapabilities()
+    if not isinstance(raw_capabilities, dict):
+        raise ManagerError("_meta.capabilities must be an object.")
+    return PromptCapabilities(
+        worker_env=_worker_env_from_capabilities(raw_capabilities),
+        skills=tuple(_skill_bundles_from_capabilities(raw_capabilities)),
+    )
+
+
+def _worker_env_from_capabilities(raw_capabilities: JsonObject) -> dict[str, str]:
+    worker_env = raw_capabilities.get("workerEnv", {})
+    if worker_env is None:
+        return {}
+    if not isinstance(worker_env, dict):
+        raise ManagerError("_meta.capabilities.workerEnv must be an object.")
+    if len(worker_env) > MAX_WORKER_ENV_VARS:
+        raise ManagerError("_meta.capabilities.workerEnv has too many entries.")
+
+    result: dict[str, str] = {}
+    for key, value in worker_env.items():
+        if not isinstance(key, str) or not ENV_NAME_RE.fullmatch(key):
+            raise ManagerError(f"Invalid worker environment variable name: {key!r}.")
+        if not isinstance(value, str):
+            raise ManagerError(f"Worker environment variable {key} must be a string.")
+        if len(value.encode("utf-8")) > MAX_WORKER_ENV_VALUE_BYTES:
+            raise ManagerError(f"Worker environment variable {key} is too large.")
+        result[key] = value
+    return result
+
+
+def _skill_bundles_from_capabilities(raw_capabilities: JsonObject) -> list[SkillBundle]:
+    raw_skills = raw_capabilities.get("skills", [])
+    if raw_skills is None:
+        return []
+    if not isinstance(raw_skills, list):
+        raise ManagerError("_meta.capabilities.skills must be an array.")
+    if len(raw_skills) > MAX_SKILL_BUNDLES:
+        raise ManagerError("_meta.capabilities.skills has too many bundles.")
+
+    bundles: list[SkillBundle] = []
+    seen_names: set[str] = set()
+    for raw_skill in raw_skills:
+        if not isinstance(raw_skill, dict):
+            raise ManagerError("Each injected skill must be an object.")
+        name = raw_skill.get("name")
+        description = raw_skill.get("description")
+        raw_files = raw_skill.get("files")
+        if not isinstance(name, str) or not SKILL_NAME_RE.fullmatch(name):
+            raise ManagerError(f"Invalid injected skill name: {name!r}.")
+        if name in seen_names:
+            raise ManagerError(f"Duplicate injected skill name: {name}.")
+        if not isinstance(description, str) or not description.strip():
+            raise ManagerError(f"Injected skill {name} requires a description.")
+        if not isinstance(raw_files, dict):
+            raise ManagerError(f"Injected skill {name} files must be an object.")
+        files = _skill_files_from_payload(name=name, raw_files=raw_files)
+        if "SKILL.md" not in files:
+            raise ManagerError(f"Injected skill {name} requires SKILL.md.")
+        bundles.append(SkillBundle(name=name, description=description, files=files))
+        seen_names.add(name)
+    return bundles
+
+
+def _skill_files_from_payload(*, name: str, raw_files: dict[object, object]) -> dict[str, str]:
+    if len(raw_files) > MAX_SKILL_FILES_PER_BUNDLE:
+        raise ManagerError(f"Injected skill {name} has too many files.")
+
+    total_size = 0
+    files: dict[str, str] = {}
+    for raw_path, raw_content in raw_files.items():
+        if not isinstance(raw_path, str) or not _safe_skill_file_path(raw_path):
+            raise ManagerError(f"Injected skill {name} has an invalid file path: {raw_path!r}.")
+        if not isinstance(raw_content, str):
+            raise ManagerError(f"Injected skill {name} file {raw_path} must be a string.")
+        content_size = len(raw_content.encode("utf-8"))
+        if content_size > MAX_SKILL_FILE_BYTES:
+            raise ManagerError(f"Injected skill {name} file {raw_path} is too large.")
+        total_size += content_size
+        if total_size > MAX_SKILL_BUNDLE_BYTES:
+            raise ManagerError(f"Injected skill {name} bundle is too large.")
+        files[raw_path] = raw_content
+    return files
+
+
+def _safe_skill_file_path(path: str) -> bool:
+    parsed = PurePosixPath(path)
+    return path == parsed.as_posix() and not parsed.is_absolute() and bool(parsed.parts) and ".." not in parsed.parts
 
 
 def _model_from_record(record: SessionRecord) -> str:
@@ -211,8 +332,9 @@ class ManagerService:
         params: JsonObject,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
     ) -> PromptResult:
-        scope_id = _scope_id_from_params(params)
+        scope_id = _scope_id_from_params(params, allow_capabilities=True)
         session_id = session_id_from_params(params)
+        capabilities = _prompt_capabilities_from_params(params)
         prompt_blocks = params.get("prompt")
         if not isinstance(prompt_blocks, list) or not all(isinstance(block, dict) for block in prompt_blocks):
             raise ManagerError("session/prompt requires a prompt array.")
@@ -233,6 +355,7 @@ class ManagerService:
                     model=model,
                     workspace=str(session.workspace),
                     prompt=prompt_blocks,
+                    capabilities=capabilities,
                 ),
                 on_update=on_update,
             )
