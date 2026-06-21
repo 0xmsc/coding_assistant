@@ -16,6 +16,7 @@ from coding_assistant.manager.docker_worker import (
     DockerWorkerConfig,
     DockerWorkerError,
     DockerWorkerRunner,
+    TOOL_ENV_KEYS_ENV,
     _docker_run_args,
     _run_command,
     _write_prompt_skill_bundles,
@@ -159,6 +160,7 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
         environment={"OPENAI_API_KEY": "test-key"},
         instructions=("Be concise.",),
         skills_directories=("/skills",),
+        extra_hosts=("host.docker.internal:host-gateway",),
     )
 
     args = _docker_run_args(
@@ -181,6 +183,9 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
     assert args[args.index("--host") + 1] == "0.0.0.0"
     assert args[args.index("--workspace") + 1] == "/workspace"
     assert "OPENAI_API_KEY=test-key" in args
+    assert ["--add-host", "host.docker.internal:host-gateway"] == args[
+        args.index("--add-host") : args.index("--add-host") + 2
+    ]
     assert "Be concise." in args
     assert "--mcp-servers" not in args
     assert "/skills" in args
@@ -209,6 +214,7 @@ def test_docker_run_args_merges_prompt_environment_and_skills_directory() -> Non
     assert "OPENAI_API_KEY=test-key" in args
     assert "APPS_API_BASE_URL=http://apps-api" in args
     assert "APPS_API_TOKEN=secret-token" in args
+    assert f"{TOOL_ENV_KEYS_ENV}=APPS_API_BASE_URL,APPS_API_TOKEN" in args
     skills_index = args.index("--skills-directories")
     assert args[skills_index + 1 : skills_index + 3] == [
         "/skills",
@@ -233,6 +239,35 @@ def test_docker_run_args_rejects_prompt_environment_collision() -> None:
             workspace="/data/ws/sess",
             model="test-model",
             extra_environment={"OPENAI_API_KEY": "attacker-key"},
+        )
+
+
+@pytest.mark.parametrize(
+    ("base_environment", "extra_environment"),
+    [
+        ({TOOL_ENV_KEYS_ENV: "OPENAI_API_KEY"}, {}),
+        ({}, {TOOL_ENV_KEYS_ENV: "APPS_API_TOKEN"}),
+    ],
+)
+def test_docker_run_args_rejects_reserved_tool_env_key(
+    base_environment: dict[str, str], extra_environment: dict[str, str]
+) -> None:
+    config = DockerWorkerConfig(
+        image="coding-assistant:test",
+        network="assistant-net",
+        environment=base_environment,
+    )
+
+    with pytest.raises(
+        DockerWorkerError,
+        match=f"{TOOL_ENV_KEYS_ENV} is reserved for manager-provided worker tool env.",
+    ):
+        _docker_run_args(
+            config=config,
+            container_name="coding-assistant-worker-sess",
+            workspace="/data/ws/sess",
+            model="test-model",
+            extra_environment=extra_environment,
         )
 
 

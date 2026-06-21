@@ -73,6 +73,24 @@ async def test_shell_execute_echo(execute: Tool) -> None:
 
 
 @pytest.mark.asyncio
+async def test_shell_execute_uses_explicit_process_env(manager: TaskManager) -> None:
+    tool = create_shell_tools(manager=manager, process_env={"APPS_API_TOKEN": "prompt-token"})[0]
+
+    out = _text(await tool.execute({"command": 'printf "$APPS_API_TOKEN"'}))
+
+    assert out == "prompt-token"
+
+
+@pytest.mark.asyncio
+async def test_shell_execute_does_not_inherit_unlisted_env(execute: Tool, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "provider-secret")
+
+    out = _text(await execute.execute({"command": 'printf "${OPENAI_API_KEY-unset}"'}))
+
+    assert out == "unset"
+
+
+@pytest.mark.asyncio
 async def test_shell_execute_cancellation_terminates_foreground_process(execute: Tool, manager: TaskManager) -> None:
     task = asyncio.create_task(execute.execute({"command": "sleep 10"}))
 

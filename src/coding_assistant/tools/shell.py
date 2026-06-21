@@ -31,8 +31,9 @@ class ShellExecuteInput(BaseModel):
 class ShellExecuteTool(Tool):
     """Execute shell commands through the local task manager."""
 
-    def __init__(self, *, manager: TaskManager) -> None:
+    def __init__(self, *, manager: TaskManager, process_env: dict[str, str] | None = None) -> None:
         self._manager = manager
+        self._process_env = dict(process_env or {})
 
     def name(self) -> str:
         return "shell_execute"
@@ -48,7 +49,7 @@ class ShellExecuteTool(Tool):
         command = validated.command.strip()
 
         try:
-            handle = await start_process(args=["bash", "-c", command])
+            handle = await start_process(args=["bash", "-c", command], env=self._process_env)
             task_name = f"shell: {command[:30]}..."
             task_id = self._manager.register_task(task_name, handle)
 
@@ -82,6 +83,6 @@ class ShellExecuteTool(Tool):
             return TextToolResult(content=f"Error: {exc}")
 
 
-def create_shell_tools(*, manager: TaskManager) -> list[Tool]:
+def create_shell_tools(*, manager: TaskManager, process_env: dict[str, str] | None = None) -> list[Tool]:
     """Create the local shell execution tool."""
-    return [ShellExecuteTool(manager=manager)]
+    return [ShellExecuteTool(manager=manager, process_env=process_env)]

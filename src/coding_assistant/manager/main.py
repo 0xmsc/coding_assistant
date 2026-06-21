@@ -22,6 +22,7 @@ CODING_ASSISTANT_HOST_DATA_DIR_ENV = "CODING_ASSISTANT_HOST_DATA_DIR"
 CODING_ASSISTANT_MANAGER_AUTH_SECRET_ENV = "CODING_ASSISTANT_MANAGER_AUTH_SECRET"
 CODING_ASSISTANT_WORKER_IMAGE_ENV = "CODING_ASSISTANT_WORKER_IMAGE"
 CODING_ASSISTANT_WORKER_NETWORK_ENV = "CODING_ASSISTANT_WORKER_NETWORK"
+CODING_ASSISTANT_WORKER_EXTRA_HOSTS_ENV = "CODING_ASSISTANT_WORKER_EXTRA_HOSTS"
 OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
 OPENAI_BASE_URL_ENV = "OPENAI_BASE_URL"
 MANAGER_DATA_DIR = Path("/data")
@@ -39,6 +40,7 @@ class ManagerConfig:
     host_data_dir: Path
     worker_image: str
     worker_network: str
+    worker_extra_hosts: tuple[str, ...]
     workspace_source_root: Path
 
     @property
@@ -52,6 +54,11 @@ class ManagerConfig:
 
 def _worker_environment_from_env() -> dict[str, str]:
     return {key: os.environ[key] for key in WORKER_PROVIDER_ENV_KEYS if os.environ.get(key)}
+
+
+def _worker_extra_hosts_from_env() -> tuple[str, ...]:
+    raw_value = os.environ.get(CODING_ASSISTANT_WORKER_EXTRA_HOSTS_ENV, "")
+    return tuple(host.strip() for host in raw_value.split(",") if host.strip())
 
 
 def _required_env(name: str) -> str:
@@ -81,6 +88,7 @@ def _manager_config_from_env() -> ManagerConfig:
         host_data_dir=host_data_dir,
         worker_image=_required_env(CODING_ASSISTANT_WORKER_IMAGE_ENV),
         worker_network=_required_env(CODING_ASSISTANT_WORKER_NETWORK_ENV),
+        worker_extra_hosts=_worker_extra_hosts_from_env(),
         workspace_source_root=host_data_dir / "workspaces",
     )
 
@@ -104,6 +112,7 @@ async def _main(config: ManagerConfig) -> None:
         workspace_source_root=str(config.workspace_source_root),
         workspace_mount=WORKER_WORKSPACE,
         environment=_worker_environment_from_env(),
+        extra_hosts=config.worker_extra_hosts,
     )
     service = ManagerService(
         store=store,

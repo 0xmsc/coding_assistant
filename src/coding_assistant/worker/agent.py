@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from coding_assistant.core.instructions import get_instructions
@@ -17,6 +17,7 @@ class WorkerAgentConfig:
     working_directory: Path
     skills_directories: tuple[str, ...] = ()
     user_instructions: tuple[str, ...] = ()
+    process_env: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -31,6 +32,7 @@ def build_worker_instructions(*, config: WorkerAgentConfig) -> str:
     """Resolve the worker system instructions without starting an agent session."""
     tool_bundle = create_worker_tool_bundle(
         skills_directories=[Path(path).resolve() for path in config.skills_directories],
+        process_env=config.process_env,
     )
     return get_instructions(
         working_directory=config.working_directory,
@@ -44,6 +46,7 @@ async def create_worker_agent(*, config: WorkerAgentConfig) -> AsyncIterator[Wor
     """Resolve instructions and tools for a worker run."""
     tool_bundle = create_worker_tool_bundle(
         skills_directories=[Path(path).resolve() for path in config.skills_directories],
+        process_env=config.process_env,
     )
     instructions = get_instructions(
         working_directory=config.working_directory,

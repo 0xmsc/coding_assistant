@@ -15,6 +15,9 @@ from coding_assistant.manager.service import PromptCapabilities, WorkerCommit, W
 from coding_assistant.remote.client import RemoteClientEvent, RemoteSessionClient
 
 
+TOOL_ENV_KEYS_ENV = "CODING_ASSISTANT_TOOL_ENV_KEYS"
+
+
 class DockerWorkerError(RuntimeError):
     pass
 
@@ -40,6 +43,7 @@ class DockerWorkerConfig:
     environment: dict[str, str] = field(default_factory=dict)
     instructions: tuple[str, ...] = ()
     skills_directories: tuple[str, ...] = ()
+    extra_hosts: tuple[str, ...] = ()
 
 
 class DockerWorkerRunner:
@@ -201,7 +205,12 @@ def _merged_environment(
     if collisions:
         joined = ", ".join(collisions)
         raise DockerWorkerError(f"Prompt worker environment collides with manager environment: {joined}")
-    return {**config.environment, **extra_environment}
+    if TOOL_ENV_KEYS_ENV in config.environment or TOOL_ENV_KEYS_ENV in extra_environment:
+        raise DockerWorkerError(f"{TOOL_ENV_KEYS_ENV} is reserved for manager-provided worker tool env.")
+    environment = {**config.environment, **extra_environment}
+    if extra_environment:
+        environment[TOOL_ENV_KEYS_ENV] = ",".join(sorted(extra_environment))
+    return environment
 
 
 def _docker_run_args(
@@ -232,6 +241,8 @@ def _docker_run_args(
     environment = _merged_environment(config=config, extra_environment=extra_environment or {})
     for key, value in environment.items():
         args.extend(["-e", f"{key}={value}"])
+    for host in config.extra_hosts:
+        args.extend(["--add-host", host])
     args.extend(
         [
             config.image,

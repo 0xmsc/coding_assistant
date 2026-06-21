@@ -27,10 +27,13 @@ def load_tool_instructions() -> str:
     return (get_builtin_instructions_dir() / "worker_tools.md").read_text(encoding="utf-8").strip()
 
 
-def create_worker_tool_bundle(*, skills_directories: Sequence[Path]) -> WorkerToolBundle:
+def create_worker_tool_bundle(
+    *, skills_directories: Sequence[Path], process_env: dict[str, str] | None = None
+) -> WorkerToolBundle:
     """Build the local execution tool bundle used by worker agents."""
     task_manager = TaskManager()
     todo_manager = TodoManager()
+    tool_process_env = process_env or {}
 
     skill_tools, skills = create_skill_tools(skills_directories=[get_builtin_skills_dir(), *skills_directories])
     instructions = load_tool_instructions()
@@ -40,8 +43,8 @@ def create_worker_tool_bundle(*, skills_directories: Sequence[Path]) -> WorkerTo
 
     tools: list[Tool] = [
         *create_todo_tools(manager=todo_manager),
-        *create_shell_tools(manager=task_manager),
-        *create_python_tools(manager=task_manager),
+        *create_shell_tools(manager=task_manager, process_env=tool_process_env),
+        *create_python_tools(manager=task_manager, process_env=tool_process_env),
         *create_filesystem_tools(),
         *create_task_tools(manager=task_manager),
         *skill_tools,
