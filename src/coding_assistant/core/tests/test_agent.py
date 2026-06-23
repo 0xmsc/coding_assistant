@@ -20,6 +20,7 @@ from coding_assistant.llm.types import (
     TextToolResult,
     Tool,
     ToolCall,
+    ToolContextResult,
     ToolMessage,
     Usage,
     UserMessage,
@@ -95,6 +96,21 @@ class CompactingTool(Tool):
     async def execute(self, parameters: dict[str, Any]) -> CompactConversationResult:
         del parameters
         return CompactConversationResult(summary=self._summary)
+
+
+class ContextTool(Tool):
+    def name(self) -> str:
+        return "context_tool"
+
+    def description(self) -> str:
+        return "Tool that returns extra context messages"
+
+    def parameters(self) -> dict[str, Any]:
+        return {"type": "object", "properties": {}, "additionalProperties": False}
+
+    async def execute(self, parameters: dict[str, Any]) -> ToolContextResult:
+        del parameters
+        return ToolContextResult(content="loaded context", extra_messages=[UserMessage(content="extra context")])
 
 
 class NonTextTool(Tool):
@@ -289,6 +305,31 @@ async def test_execute_tool_calls_compacts_history_without_orphan_tool_message()
     assert result == [
         *make_system_history(),
         UserMessage(content="A summary of your conversation until now:\n\nsummary text\n\nPlease continue your work."),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_calls_appends_context_result_messages() -> None:
+    context_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="context_tool", arguments="{}"),
+    )
+    boundary = AwaitingToolCalls(
+        history=[
+            *make_system_history(),
+            UserMessage(content="Load it"),
+            AssistantMessage(tool_calls=[context_call]),
+        ],
+    )
+
+    result = await _execute_tool_boundary(
+        boundary=boundary,
+        tools=[ContextTool()],
+    )
+
+    assert result[-2:] == [
+        ToolMessage(tool_call_id="call-1", name="context_tool", content="loaded context"),
+        UserMessage(content="extra context"),
     ]
 
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from enum import Enum
@@ -34,9 +36,6 @@ class CompactConversationResult:
     """A request to compact transcript history around a summary."""
 
     summary: str
-
-
-ToolResult = TextToolResult | CompactConversationResult
 
 
 class Tool(ToolDefinition, ABC):
@@ -94,6 +93,17 @@ class ToolMessage(BaseMessage):
     content: str
     tool_call_id: str
     role: Literal["tool"] = "tool"
+
+
+@dataclass(frozen=True)
+class ToolContextResult:
+    """Tool output plus extra model-visible context messages."""
+
+    content: str
+    extra_messages: list[BaseMessage] = field(default_factory=list)
+
+
+ToolResult = TextToolResult | CompactConversationResult | ToolContextResult
 
 
 class StatusLevel(Enum):

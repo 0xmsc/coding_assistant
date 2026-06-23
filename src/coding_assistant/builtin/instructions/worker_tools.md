@@ -26,6 +26,12 @@
 - Use filesystem tools to read, write, and edit files.
 - Try not to use shell commands for file operations.
 
+## Attachments
+
+- Use `load_file(path)` before reasoning from an uploaded session attachment.
+- `load_file` only reads files under the session `attachments/` directory.
+- It can load bounded UTF-8 text and supported image attachments into conversation context.
+
 ## Tasks
 
 - Use tasks tools to monitor and manage background tasks.

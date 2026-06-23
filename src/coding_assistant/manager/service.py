@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import hashlib
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from time import monotonic
 from typing import Protocol
 
 from coding_assistant.core.session_updates import (
     SessionUpdate,
+    UserMessageChunkUpdate,
     committed_message_from_history_message,
     replay_updates_from_committed_message,
 )
 from coding_assistant.llm.openai import list_models as list_provider_models
-from coding_assistant.llm.types import BaseMessage
+from coding_assistant.llm.types import BaseMessage, UserMessage
 from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
 from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp, session_id_from_params
 
@@ -29,6 +33,21 @@ MAX_SKILL_BUNDLES = 8
 MAX_SKILL_FILES_PER_BUNDLE = 32
 MAX_SKILL_FILE_BYTES = 64 * 1024
 MAX_SKILL_BUNDLE_BYTES = 256 * 1024
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+SAFE_ATTACHMENT_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+SUPPORTED_ATTACHMENT_TYPES = {
+    "application/csv",
+    "application/json",
+    "application/markdown",
+    "application/x-ndjson",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "text/csv",
+    "text/markdown",
+    "text/plain",
+}
 
 
 class ManagerError(RuntimeError):
@@ -55,6 +74,26 @@ class SkillBundle:
 class PromptCapabilities:
     worker_env: dict[str, str] = field(default_factory=dict)
     skills: tuple[SkillBundle, ...] = ()
+
+
+@dataclass(frozen=True)
+class SessionAttachment:
+    attachment_id: str
+    name: str
+    mime_type: str
+    size: int
+    path: str
+    sha256: str
+
+    def to_json(self) -> JsonObject:
+        return {
+            "id": self.attachment_id,
+            "name": self.name,
+            "mimeType": self.mime_type,
+            "size": self.size,
+            "path": self.path,
+            "sha256": self.sha256,
+        }
 
 
 @dataclass(frozen=True)
@@ -194,6 +233,79 @@ def _safe_skill_file_path(path: str) -> bool:
     return path == parsed.as_posix() and not parsed.is_absolute() and bool(parsed.parts) and ".." not in parsed.parts
 
 
+def _safe_attachment_name(name: object) -> str:
+    if not isinstance(name, str) or not name.strip():
+        raise ManagerError("session/upload_file requires a non-empty file name.")
+    candidate = PurePosixPath(name).name.strip()
+    candidate = SAFE_ATTACHMENT_NAME_RE.sub("-", candidate).strip(".-")
+    if not candidate:
+        candidate = "attachment"
+    return candidate[:120]
+
+
+def _attachment_mime_type(*, raw_mime_type: object, name: str) -> str:
+    if isinstance(raw_mime_type, str) and raw_mime_type.strip():
+        mime_type = raw_mime_type.strip().lower()
+    elif name.lower().endswith(".json"):
+        mime_type = "application/json"
+    elif name.lower().endswith(".md"):
+        mime_type = "text/markdown"
+    elif name.lower().endswith(".csv"):
+        mime_type = "text/csv"
+    elif name.lower().endswith(".txt"):
+        mime_type = "text/plain"
+    else:
+        raise ManagerError("session/upload_file requires a supported MIME type.")
+
+    if mime_type.startswith("text/") or mime_type in SUPPORTED_ATTACHMENT_TYPES:
+        return mime_type
+    raise ManagerError(f"Unsupported attachment MIME type: {mime_type}.")
+
+
+def _upload_bytes(raw_data: object) -> bytes:
+    if not isinstance(raw_data, str) or not raw_data:
+        raise ManagerError("session/upload_file requires base64 file data.")
+    if len(raw_data) > MAX_ATTACHMENT_BYTES * 2:
+        raise ManagerError("Attachment upload is too large.")
+    try:
+        data = base64.b64decode(raw_data, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ManagerError("session/upload_file data must be valid base64.") from exc
+    if not data:
+        raise ManagerError("Attachment upload cannot be empty.")
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise ManagerError("Attachment upload is too large.")
+    return data
+
+
+def _write_attachment(*, workspace: Path, params: JsonObject) -> SessionAttachment:
+    name = _safe_attachment_name(params.get("name"))
+    mime_type = _attachment_mime_type(raw_mime_type=params.get("mimeType"), name=name)
+    data = _upload_bytes(params.get("data"))
+    content_hash = hashlib.sha256(data).hexdigest()
+    attachment_id = f"att_{content_hash[:16]}"
+    relative_path = f"attachments/{attachment_id}-{name}"
+    target = workspace / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return SessionAttachment(
+        attachment_id=attachment_id,
+        name=name,
+        mime_type=mime_type,
+        size=len(data),
+        path=relative_path,
+        sha256=content_hash,
+    )
+
+
+def _attachment_message(attachment: SessionAttachment) -> str:
+    return (
+        f"Attached file `{attachment.name}` as `{attachment.path}` "
+        f"({attachment.mime_type}, {attachment.size} bytes). "
+        f'Use `load_file("{attachment.path}")` before reasoning from this file.'
+    )
+
+
 def _model_from_record(record: SessionRecord) -> str:
     model = record.metadata.get(MODEL_METADATA_KEY)
     if isinstance(model, str) and model.strip():
@@ -325,6 +437,32 @@ class ManagerService:
             for update in replay_updates_from_committed_message(committed):
                 await on_update(update)
         return _session_metadata(session)
+
+    async def upload_file(
+        self,
+        *,
+        params: JsonObject,
+        on_update: Callable[[SessionUpdate], Awaitable[None]],
+    ) -> JsonObject:
+        scope_id = _scope_id_from_params(params)
+        session_id = session_id_from_params(params)
+
+        async with self._active_lock:
+            if session_id in self._active_prompts:
+                raise SessionBusyError("Cannot upload a file while session has an active prompt.")
+            session = self._store.load_session(scope_id=scope_id, session_id=session_id)
+            attachment = _write_attachment(workspace=session.workspace, params=params)
+            message_text = _attachment_message(attachment)
+            self._store.commit_messages(
+                scope_id=scope_id,
+                session_id=session_id,
+                base_version=session.record.version,
+                messages=[UserMessage(content=message_text)],
+            )
+
+        await on_update(UserMessageChunkUpdate(content=message_text))
+        updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
+        return {"attachment": attachment.to_json(), "session": _record_metadata(updated.record)}
 
     async def prompt(
         self,

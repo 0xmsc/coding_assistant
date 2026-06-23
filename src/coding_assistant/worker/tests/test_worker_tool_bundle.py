@@ -1,8 +1,10 @@
+from pathlib import Path
+
 from coding_assistant.worker.tool_bundle import create_worker_tool_bundle, load_tool_instructions
 
 
 def test_create_worker_tool_bundle_excludes_cli_remote_tools() -> None:
-    bundle = create_worker_tool_bundle(skills_directories=[])
+    bundle = create_worker_tool_bundle(workspace=Path("/workspace"), skills_directories=[])
     tool_names = {tool.name() for tool in bundle.tools}
 
     assert bundle.instructions.startswith(load_tool_instructions())
@@ -16,6 +18,7 @@ def test_create_worker_tool_bundle_excludes_cli_remote_tools() -> None:
         "python_execute",
         "filesystem_write_file",
         "filesystem_edit_file",
+        "load_file",
     } <= tool_names
     assert {
         "remote_connect",

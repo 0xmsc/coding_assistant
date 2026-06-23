@@ -31,6 +31,7 @@ class WorkerAgentBundle:
 def build_worker_instructions(*, config: WorkerAgentConfig) -> str:
     """Resolve the worker system instructions without starting an agent session."""
     tool_bundle = create_worker_tool_bundle(
+        workspace=config.working_directory,
         skills_directories=[Path(path).resolve() for path in config.skills_directories],
         process_env=config.process_env,
     )
@@ -45,6 +46,7 @@ def build_worker_instructions(*, config: WorkerAgentConfig) -> str:
 async def create_worker_agent(*, config: WorkerAgentConfig) -> AsyncIterator[WorkerAgentBundle]:
     """Resolve instructions and tools for a worker run."""
     tool_bundle = create_worker_tool_bundle(
+        workspace=config.working_directory,
         skills_directories=[Path(path).resolve() for path in config.skills_directories],
         process_env=config.process_env,
     )

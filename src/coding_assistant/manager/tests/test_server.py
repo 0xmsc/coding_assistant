@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,7 +13,7 @@ from websockets.exceptions import InvalidStatus
 
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, ToolMessage, UserMessage
 from coding_assistant.manager.server import start_manager_server
-from coding_assistant.manager.service import ManagerService
+from coding_assistant.manager.service import MAX_ATTACHMENT_BYTES, ManagerError, ManagerService
 from coding_assistant.manager.store import SessionStore
 from coding_assistant.manager.tests.fakes import FakeWorkerRunner
 from coding_assistant.manager.workspace import WorkspacePaths
@@ -86,6 +87,10 @@ async def _test_model_lister() -> list[str]:
 
 async def _failing_model_lister() -> list[str]:
     raise RuntimeError("model provider unavailable")
+
+
+async def _ignore_session_update(update: Any) -> None:
+    del update
 
 
 @asynccontextmanager
@@ -260,6 +265,132 @@ async def test_manager_load_replays_persisted_transcript(tmp_path: Path) -> None
             response = parse_jsonrpc_message(await websocket.recv())
 
     assert response["result"]["sessionId"] == session_id
+
+
+@pytest.mark.asyncio
+async def test_manager_upload_file_writes_attachment_and_replays_visible_message(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(
+                jsonrpc_request(
+                    3,
+                    "session/upload_file",
+                    _scope_params(
+                        "scope-a",
+                        sessionId=session_id,
+                        name="../Meal Photo.PNG",
+                        mimeType="image/png",
+                        data=base64.b64encode(b"\x89PNG\r\n\x1a\nimage").decode("ascii"),
+                    ),
+                )
+            )
+            update = parse_jsonrpc_message(await websocket.recv())
+            upload_response = parse_jsonrpc_message(await websocket.recv())
+
+            await websocket.send(jsonrpc_request(4, "session/load", _scope_params("scope-a", sessionId=session_id)))
+            replay = parse_jsonrpc_message(await websocket.recv())
+            load_response = parse_jsonrpc_message(await websocket.recv())
+
+    attachment = upload_response["result"]["attachment"]
+    assert attachment["name"] == "Meal-Photo.PNG"
+    assert attachment["mimeType"] == "image/png"
+    assert attachment["size"] == 13
+    assert attachment["path"].startswith("attachments/att_")
+    assert attachment["path"].endswith("-Meal-Photo.PNG")
+    assert (tmp_path / "workspaces" / session_id / attachment["path"]).read_bytes() == b"\x89PNG\r\n\x1a\nimage"
+
+    expected_text = (
+        f"Attached file `Meal-Photo.PNG` as `{attachment['path']}` (image/png, 13 bytes). "
+        f'Use `load_file("{attachment["path"]}")` before reasoning from this file.'
+    )
+    assert update["params"]["update"] == {
+        "sessionUpdate": "user_message_chunk",
+        "content": {"type": "text", "text": expected_text},
+    }
+    assert replay["params"]["update"] == update["params"]["update"]
+    assert upload_response["result"]["session"]["_meta"]["version"] == 1
+    assert load_response["result"]["_meta"]["version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_manager_upload_file_rejects_cross_scope_session(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(
+                jsonrpc_request(
+                    3,
+                    "session/upload_file",
+                    _scope_params(
+                        "scope-b",
+                        sessionId=session_id,
+                        name="meal.txt",
+                        mimeType="text/plain",
+                        data=base64.b64encode(b"meal").decode("ascii"),
+                    ),
+                )
+            )
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == f"Session {session_id} was not found."
+
+
+@pytest.mark.asyncio
+async def test_manager_upload_file_rejects_unsupported_mime_type(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(
+                jsonrpc_request(
+                    3,
+                    "session/upload_file",
+                    _scope_params(
+                        "scope-a",
+                        sessionId=session_id,
+                        name="archive.zip",
+                        mimeType="application/zip",
+                        data=base64.b64encode(b"zip").decode("ascii"),
+                    ),
+                )
+            )
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == "Unsupported attachment MIME type: application/zip."
+
+
+@pytest.mark.asyncio
+async def test_manager_upload_file_rejects_too_large_attachment(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+    )
+    service = ManagerService(
+        store=store,
+        worker_runner=FakeWorkerRunner(),
+        model_lister=_test_model_lister,
+    )
+    session = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+
+    with pytest.raises(ManagerError, match="too large"):
+        await service.upload_file(
+            params=_scope_params(
+                "scope-a",
+                sessionId=session.record.session_id,
+                name="large.txt",
+                mimeType="text/plain",
+                data=base64.b64encode(b"x" * (MAX_ATTACHMENT_BYTES + 1)).decode("ascii"),
+            ),
+            on_update=_ignore_session_update,
+        )
 
 
 @pytest.mark.asyncio

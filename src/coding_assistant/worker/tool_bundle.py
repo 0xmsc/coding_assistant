@@ -7,6 +7,7 @@ from typing import Sequence
 from coding_assistant.infra.paths import get_builtin_instructions_dir, get_builtin_skills_dir
 from coding_assistant.llm.types import Tool
 from coding_assistant.tools.filesystem import create_filesystem_tools
+from coding_assistant.tools.load_file import create_load_file_tools
 from coding_assistant.tools.python import create_python_tools
 from coding_assistant.tools.shell import create_shell_tools
 from coding_assistant.tools.skills import create_skill_tools, format_skills_instructions
@@ -28,7 +29,10 @@ def load_tool_instructions() -> str:
 
 
 def create_worker_tool_bundle(
-    *, skills_directories: Sequence[Path], process_env: dict[str, str] | None = None
+    *,
+    workspace: Path,
+    skills_directories: Sequence[Path],
+    process_env: dict[str, str] | None = None,
 ) -> WorkerToolBundle:
     """Build the local execution tool bundle used by worker agents."""
     task_manager = TaskManager()
@@ -46,6 +50,7 @@ def create_worker_tool_bundle(
         *create_shell_tools(manager=task_manager, process_env=tool_process_env),
         *create_python_tools(manager=task_manager, process_env=tool_process_env),
         *create_filesystem_tools(),
+        *create_load_file_tools(workspace=workspace),
         *create_task_tools(manager=task_manager),
         *skill_tools,
     ]

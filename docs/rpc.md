@@ -698,6 +698,62 @@ Prompt blocks follow ACP-compatible content shapes where practical:
 }
 ```
 
+### session/upload_file
+
+Uploads one bounded file into a visible session workspace in
+`params._meta.scopeId`. The manager validates scope, file name, MIME type, and
+size, writes the bytes under `attachments/`, commits a visible user transcript
+message, and returns attachment metadata.
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 8,
+  "method": "session/upload_file",
+  "params": {
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
+    "sessionId": "sess_abc123",
+    "name": "meal.jpg",
+    "mimeType": "image/jpeg",
+    "data": "base64-encoded-file"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 8,
+  "result": {
+    "attachment": {
+      "id": "att_abc123",
+      "name": "meal.jpg",
+      "mimeType": "image/jpeg",
+      "size": 12345,
+      "path": "attachments/att_abc123-meal.jpg",
+      "sha256": "..."
+    },
+    "session": {
+      "sessionId": "sess_abc123",
+      "updatedAt": "2026-06-23T19:30:00Z",
+      "_meta": {
+        "version": 2
+      }
+    }
+  }
+}
+```
+
+Workers do not receive attachment bytes automatically. Use the worker
+`load_file(path)` tool with the returned `attachment.path` before reasoning
+from an uploaded text or image file.
+
 ### session/cancel
 
 Cancels the current run for a session in `params._meta.scopeId`. This
