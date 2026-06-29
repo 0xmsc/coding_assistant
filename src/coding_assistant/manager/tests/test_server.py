@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -11,9 +11,22 @@ import pytest
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import InvalidStatus
 
+from coding_assistant.core.session_updates import (
+    AgentMessageChunkUpdate,
+    SessionUpdate,
+    ToolCallLifecycleUpdate,
+    ToolCallStartedUpdate,
+)
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, ToolMessage, UserMessage
 from coding_assistant.manager.server import start_manager_server
-from coding_assistant.manager.service import MAX_ATTACHMENT_BYTES, ManagerError, ManagerService
+from coding_assistant.manager.service import (
+    MAX_ATTACHMENT_BYTES,
+    ManagerError,
+    ManagerService,
+    WorkerCommit,
+    WorkerPrompt,
+    WorkerRunner,
+)
 from coding_assistant.manager.store import SessionStore
 from coding_assistant.manager.tests.fakes import FakeWorkerRunner
 from coding_assistant.manager.workspace import WorkspacePaths
@@ -120,7 +133,7 @@ async def _ignore_session_update(update: Any) -> None:
 async def _manager_endpoint(
     *,
     tmp_path: Path,
-    worker: FakeWorkerRunner | None = None,
+    worker: WorkerRunner | None = None,
     auth_secret: str | None = None,
 ) -> AsyncIterator[str]:
     store = SessionStore(
@@ -942,6 +955,100 @@ async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path
     assert _item_payload(replay_payloads[2]) == {"role": "assistant", "content": "done"}
     assert replay_payloads[3] == {"sessionUpdate": "history_complete", "version": 1}
     assert load_response["result"]["_meta"]["version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_manager_translates_live_tool_updates_to_session_items(tmp_path: Path) -> None:
+    class ToolStreamingWorker:
+        async def run_prompt(
+            self,
+            *,
+            prompt: WorkerPrompt,
+            on_update: Callable[[SessionUpdate], Awaitable[None]],
+        ) -> WorkerCommit:
+            del prompt
+            await on_update(
+                ToolCallStartedUpdate(
+                    source="worker",
+                    tool_call_id="call-1",
+                    title="shell_execute",
+                    tool_kind="other",
+                    status="pending",
+                    raw_input={"command": "cat smoke.txt"},
+                    message=None,
+                )
+            )
+            await on_update(
+                ToolCallLifecycleUpdate(
+                    source="worker",
+                    tool_call_id="call-1",
+                    title="shell_execute",
+                    tool_kind="other",
+                    status="completed",
+                    raw_input={"command": "cat smoke.txt"},
+                    raw_output="smoke output",
+                    content="smoke output",
+                )
+            )
+            await on_update(AgentMessageChunkUpdate(content="done"))
+            return WorkerCommit(
+                messages=[
+                    UserMessage(content="Use tool"),
+                    AssistantMessage(content="done"),
+                ],
+                stop_reason="end_turn",
+            )
+
+        async def cancel(self, *, session_id: str) -> None:
+            del session_id
+
+    async with _manager_endpoint(tmp_path=tmp_path, worker=ToolStreamingWorker()) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+            await _set_model(websocket, scope_id="scope-a", session_id=session_id, request_id=3)
+
+            await websocket.send(
+                jsonrpc_request(
+                    4,
+                    "session/prompt",
+                    _scope_params("scope-a", sessionId=session_id, prompt=[text_block("Use tool")]),
+                ),
+            )
+            live_messages = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    live_payloads = [_update(message) for message in live_messages]
+    assert _item_payload(live_payloads[0]) == {"role": "user", "content": "Use tool"}
+    assert live_payloads[1]["sessionUpdate"] == "item_added"
+    assert live_payloads[1]["item"]["kind"] == "tool_call"
+    tool_item_id = live_payloads[1]["item"]["id"]
+    assert _item_payload(live_payloads[1]) == {
+        "toolCallId": "call-1",
+        "title": "shell_execute",
+        "kind": "other",
+        "status": "pending",
+        "rawInput": {"command": "cat smoke.txt"},
+    }
+    assert live_payloads[2] == {
+        "sessionUpdate": "item_updated",
+        "itemId": tool_item_id,
+        "patch": {
+            "payload": {
+                "status": "completed",
+                "title": "shell_execute",
+                "kind": "other",
+                "rawInput": {"command": "cat smoke.txt"},
+                "rawOutput": "smoke output",
+                "content": "smoke output",
+            }
+        },
+    }
+    assert _item_payload(live_payloads[3]) == {"role": "assistant", "content": ""}
+    assert live_payloads[4]["sessionUpdate"] == "item_delta"
+    assert live_payloads[4]["itemId"] == live_payloads[3]["item"]["id"]
+    assert live_payloads[4]["appendText"] == "done"
+    assert response["result"] == {"stopReason": "end_turn"}
 
 
 @pytest.mark.asyncio
