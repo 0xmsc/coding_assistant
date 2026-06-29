@@ -243,7 +243,6 @@ session_messages
   session_id text not null
   version integer not null
   role text not null
-  public integer not null default 1
   payload_json text not null
   created_at text not null
 
@@ -251,6 +250,7 @@ session_attachments
   id integer primary key autoincrement
   attachment_id text not null
   session_id text not null
+  message_id integer not null references session_messages(id) on delete cascade
   sequence integer not null
   name text not null
   mime_type text not null
@@ -263,11 +263,10 @@ session_attachments
 `metadata_json` is public session metadata returned in `_meta`.
 `worker_env_json` is private manager state and must not be returned by
 `session/list`, `session/load`, or other public session metadata responses.
-`session_messages` is the source of truth for LLM history. The `public` flag
-controls which message rows are replayed to clients; system messages and hidden
-model-context messages such as attachment instructions are private. Session
-attachments are stored separately in `session_attachments`, while their hidden
-model-visible context remains in `session_messages`.
+`session_messages` is the source of truth for LLM history and replay. Every
+message row is replayed to clients in insertion order, including system
+messages and upload messages. Session attachments are metadata rows in
+`session_attachments` linked to the upload message row that introduced them.
 
 Do not add a durable `session_runs` table for v1. Active runs live in manager
 memory while a worker is running.
@@ -766,11 +765,11 @@ Prompt blocks follow ACP-compatible content shapes where practical:
 
 Uploads one bounded file into the session attachments directory in
 `params._meta.scopeId`. The manager validates scope, file name, MIME type, and
-size, writes the bytes under the session attachments directory, commits
-model-visible attachment context, emits an attachment event through
-`session/update`, and returns attachment metadata. If `name` is `null` or
-blank, the manager derives a generic filename with an extension from the MIME
-type.
+size, writes the bytes under the session attachments directory, commits an
+upload message and linked attachment metadata, emits message and attachment
+events through `session/update`, and returns attachment metadata. If `name` is
+`null` or blank, the manager derives a generic filename with an extension from
+the MIME type.
 
 Request:
 
@@ -921,14 +920,14 @@ The original `session/prompt` request should later resolve with
 
 ### session/update
 
-The server sends all visible transcript history through JSON-RPC
-notifications. `session/load`, `session/prompt`, and `session/upload_file`
+The server sends transcript history through JSON-RPC notifications.
+`session/load`, `session/prompt`, and `session/upload_file`
 all use this same update path; RPC responses acknowledge commands and return
 metadata, but clients should not render transcript content from those
 responses.
 
-History replay starts with `history_reset`, sends persisted public messages
-and attachments as update events, and ends with `history_complete`:
+History replay starts with `history_reset`, sends persisted messages and linked
+attachments as update events, and ends with `history_complete`:
 
 ```json
 {
@@ -943,7 +942,7 @@ and attachments as update events, and ends with `history_complete`:
 }
 ```
 
-Public message added:
+Message added:
 
 ```json
 {
@@ -1009,10 +1008,10 @@ Supported `sessionUpdate` values:
 
 | Value | Description |
 | --- | --- |
-| `history_reset` | Clear local visible transcript before replay. |
-| `message_added` | Add a public canonical message. |
+| `history_reset` | Clear local transcript before replay. |
+| `message_added` | Add a canonical message. |
 | `message_delta` | Append streamed text to an existing assistant message. |
-| `attachment_added` | Add a public attachment metadata record. |
+| `attachment_added` | Add an attachment metadata record linked to a message. |
 | `history_complete` | Replay is complete and includes the durable session version. |
 
 Live streamed assistant message updates are provisional until the worker

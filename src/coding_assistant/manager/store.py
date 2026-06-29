@@ -36,13 +36,13 @@ class SessionRecord:
 class StoredMessage:
     message_id: int
     message: BaseMessage
-    public: bool
     created_at: str
 
 
 @dataclass(frozen=True)
 class StoredAttachment:
     attachment: SessionAttachment
+    message_id: int
     sequence: int
     created_at: str
 
@@ -180,7 +180,6 @@ class SessionStore:
                     version=0,
                     messages=messages,
                     created_at=now,
-                    public=False,
                 )
 
         record = SessionRecord(
@@ -221,7 +220,7 @@ class SessionStore:
             record = _record_from_row(session_row)
             message_rows = connection.execute(
                 """
-                select id, payload_json, public, created_at
+                select id, payload_json, created_at
                 from session_messages
                 where session_id = ?
                 order by id asc
@@ -230,10 +229,10 @@ class SessionStore:
             ).fetchall()
             attachment_rows = connection.execute(
                 """
-                select attachment_id, sequence, name, mime_type, size, path, sha256, created_at
+                select attachment_id, message_id, sequence, name, mime_type, size, path, sha256, created_at
                 from session_attachments
                 where session_id = ?
-                order by sequence asc, attachment_id asc
+                order by message_id asc, sequence asc, attachment_id asc
                 """,
                 (session_id,),
             ).fetchall()
@@ -242,7 +241,6 @@ class SessionStore:
             StoredMessage(
                 message_id=int(row["id"]),
                 message=_message_from_json(str(row["payload_json"])),
-                public=bool(row["public"]),
                 created_at=str(row["created_at"]),
             )
             for row in message_rows
@@ -258,6 +256,7 @@ class SessionStore:
                     path=str(row["path"]),
                     sha256=str(row["sha256"]),
                 ),
+                message_id=int(row["message_id"]),
                 sequence=int(row["sequence"]),
                 created_at=str(row["created_at"]),
             )
@@ -319,7 +318,6 @@ class SessionStore:
         base_version: int,
         messages: list[BaseMessage],
         attachments: list[SessionAttachment] | None = None,
-        public: bool = True,
         title: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> int:
@@ -332,17 +330,19 @@ class SessionStore:
                         f"Session {session_id} is at version {record.version}, not {base_version}.",
                     )
                 new_version = base_version + 1
-                self._insert_messages(
+                inserted_messages = self._insert_messages(
                     connection,
                     session_id=session_id,
                     version=new_version,
                     messages=messages,
                     created_at=now,
-                    public=public,
                 )
+                if attachments and not inserted_messages:
+                    raise ValueError("Attachments must be linked to an inserted message.")
                 self._insert_attachments(
                     connection,
                     session_id=session_id,
+                    message_id=inserted_messages[-1].message_id if attachments else None,
                     attachments=attachments or [],
                     created_at=now,
                 )
@@ -387,14 +387,10 @@ class SessionStore:
                   session_id text not null references sessions(session_id) on delete cascade,
                   version integer not null,
                   role text not null,
-                  public integer not null default 1,
                   payload_json text not null,
                   created_at text not null
                 )
                 """,
-            )
-            self._ensure_column(
-                connection, table="session_messages", column="public", definition="integer not null default 1"
             )
             connection.execute(
                 """
@@ -402,6 +398,7 @@ class SessionStore:
                   id integer primary key autoincrement,
                   attachment_id text not null,
                   session_id text not null references sessions(session_id) on delete cascade,
+                  message_id integer not null references session_messages(id) on delete cascade,
                   sequence integer not null,
                   name text not null,
                   mime_type text not null,
@@ -425,12 +422,9 @@ class SessionStore:
             connection.execute(
                 "create index if not exists idx_session_attachments_id on session_attachments(session_id, attachment_id)",
             )
-
-    def _ensure_column(self, connection: sqlite3.Connection, *, table: str, column: str, definition: str) -> None:
-        rows = connection.execute(f"pragma table_info({table})").fetchall()
-        if any(str(row["name"]) == column for row in rows):
-            return
-        connection.execute(f"alter table {table} add column {column} {definition}")
+            connection.execute(
+                "create index if not exists idx_session_attachments_message on session_attachments(session_id, message_id)",
+            )
 
     def _get_session_row(self, connection: sqlite3.Connection, *, scope_id: str, session_id: str) -> sqlite3.Row:
         row = connection.execute(
@@ -457,16 +451,15 @@ class SessionStore:
         version: int,
         messages: list[BaseMessage],
         created_at: str,
-        public: bool,
     ) -> list[StoredMessage]:
         stored_messages: list[StoredMessage] = []
         for message in messages:
             cursor = connection.execute(
                 """
-                insert into session_messages (session_id, version, role, public, payload_json, created_at)
-                values (?, ?, ?, ?, ?, ?)
+                insert into session_messages (session_id, version, role, payload_json, created_at)
+                values (?, ?, ?, ?, ?)
                 """,
-                (session_id, version, message.role, 1 if public else 0, _message_to_json(message), created_at),
+                (session_id, version, message.role, _message_to_json(message), created_at),
             )
             if cursor.lastrowid is None:
                 raise RuntimeError("Inserted session message did not return a row id.")
@@ -474,7 +467,6 @@ class SessionStore:
                 StoredMessage(
                     message_id=cursor.lastrowid,
                     message=message,
-                    public=public,
                     created_at=created_at,
                 )
             )
@@ -485,11 +477,14 @@ class SessionStore:
         connection: sqlite3.Connection,
         *,
         session_id: str,
+        message_id: int | None,
         attachments: list[SessionAttachment],
         created_at: str,
     ) -> None:
         if not attachments:
             return
+        if message_id is None:
+            raise ValueError("Attachments must be linked to a message.")
         row = connection.execute(
             "select coalesce(max(sequence), 0) as sequence from session_attachments where session_id = ?",
             (session_id,),
@@ -498,13 +493,14 @@ class SessionStore:
         connection.executemany(
             """
             insert into session_attachments
-              (attachment_id, session_id, sequence, name, mime_type, size, path, sha256, created_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (attachment_id, session_id, message_id, sequence, name, mime_type, size, path, sha256, created_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     attachment.attachment_id,
                     session_id,
+                    message_id,
                     next_sequence + index,
                     attachment.name,
                     attachment.mime_type,

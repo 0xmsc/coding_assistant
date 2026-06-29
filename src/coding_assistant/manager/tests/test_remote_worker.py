@@ -269,7 +269,7 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
                 await websocket.send(
                     jsonrpc_request(5, "session/load", {"_meta": {"scopeId": "scope-a"}, "sessionId": session_id}),
                 )
-                replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(4)]
+                replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
                 load_response = parse_jsonrpc_message(await websocket.recv())
 
     assert initialize_response["result"]["protocolVersion"] == ACP_PROTOCOL_VERSION
@@ -281,9 +281,10 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     replay_payloads = [_update(message) for message in replay]
     assert replay_payloads[0] == {"sessionUpdate": "history_reset"}
-    assert _message_payload(replay_payloads[1]) == {"role": "user", "content": "server prompt"}
-    assert _message_payload(replay_payloads[2]) == {"role": "assistant", "content": "server answer"}
-    assert replay_payloads[3] == {"sessionUpdate": "history_complete", "version": 1}
+    assert _message_payload(replay_payloads[1])["role"] == "system"
+    assert _message_payload(replay_payloads[2]) == {"role": "user", "content": "server prompt"}
+    assert _message_payload(replay_payloads[3]) == {"role": "assistant", "content": "server answer"}
+    assert replay_payloads[4] == {"sessionUpdate": "history_complete", "version": 1}
     assert load_response["result"]["_meta"]["version"] == 1
 
 

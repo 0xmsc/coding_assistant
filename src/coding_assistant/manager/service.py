@@ -24,7 +24,7 @@ from coding_assistant.core.session_updates import (
     content_text,
 )
 from coding_assistant.llm.openai import list_models as list_provider_models
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, SystemMessage, ToolMessage, UserMessage
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolMessage, UserMessage
 from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
 from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp, session_id_from_params
 from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
@@ -351,32 +351,26 @@ def _stored_message_update_id(message_id: int) -> str:
 
 
 def _history_updates(session: LoadedSession) -> list[SessionUpdate]:
-    updates: list[tuple[str, int, SessionUpdate]] = []
-    for record in session.message_records:
-        if record.public and not isinstance(record.message, SystemMessage):
-            updates.append(
-                (
-                    record.created_at,
-                    record.message_id,
-                    MessageAddedUpdate(
-                        message_id=_stored_message_update_id(record.message_id),
-                        message=record.message,
-                        created_at=record.created_at,
-                    ),
-                )
-            )
+    updates: list[SessionUpdate] = []
+    attachments_by_message_id: dict[int, list[AttachmentAddedUpdate]] = {}
     for attachment_record in session.attachment_records:
-        updates.append(
-            (
-                attachment_record.created_at,
-                attachment_record.sequence,
-                AttachmentAddedUpdate(
-                    attachment=attachment_record.attachment,
-                    created_at=attachment_record.created_at,
-                ),
+        attachments_by_message_id.setdefault(attachment_record.message_id, []).append(
+            AttachmentAddedUpdate(
+                attachment=attachment_record.attachment,
+                created_at=attachment_record.created_at,
             )
         )
-    return [update for _, _, update in sorted(updates, key=lambda item: (item[0], item[1]))]
+
+    for record in session.message_records:
+        updates.append(
+            MessageAddedUpdate(
+                message_id=_stored_message_update_id(record.message_id),
+                message=record.message,
+                created_at=record.created_at,
+            )
+        )
+        updates.extend(attachments_by_message_id.get(record.message_id, []))
+    return updates
 
 
 def _post_commit_updates(messages: list[BaseMessage]) -> list[MessageAddedUpdate]:
@@ -571,9 +565,14 @@ class ManagerService:
                 base_version=session.record.version,
                 messages=[UserMessage(content=message_text)],
                 attachments=[attachment],
-                public=False,
             )
 
+        await on_update(
+            MessageAddedUpdate(
+                message_id=_new_message_update_id(),
+                message=UserMessage(content=message_text),
+            )
+        )
         await on_update(AttachmentAddedUpdate(attachment=attachment))
         updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
         return {"attachment": attachment.to_json(), "session": _record_metadata(updated.record)}

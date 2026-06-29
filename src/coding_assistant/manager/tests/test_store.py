@@ -87,7 +87,7 @@ def test_commit_messages_persists_attachments_separately(tmp_path: Path) -> None
     loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert loaded.message_records[1].message == UserMessage(content="hello")
-    assert loaded.message_records[1].public is True
+    assert loaded.attachment_records[0].message_id == loaded.message_records[1].message_id
     assert loaded.attachment_records[0].sequence == 1
     assert loaded.attachment_records[0].attachment.name == "photo.png"
     assert loaded.attachment_records[0].attachment.path == "/attachments/att_1-photo.png"
@@ -113,14 +113,14 @@ def test_attachment_ids_can_repeat_across_sessions(tmp_path: Path) -> None:
         scope_id="scope-a",
         session_id=first.record.session_id,
         base_version=0,
-        messages=[],
+        messages=[UserMessage(content="first file")],
         attachments=[attachment],
     )
     store.commit_messages(
         scope_id="scope-a",
         session_id=second.record.session_id,
         base_version=0,
-        messages=[],
+        messages=[UserMessage(content="second file")],
         attachments=[attachment],
     )
 

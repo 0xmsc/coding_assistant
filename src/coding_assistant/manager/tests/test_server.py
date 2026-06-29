@@ -297,6 +297,7 @@ async def test_manager_preserves_existing_sessions_without_model_metadata(tmp_pa
             )
             _ = parse_jsonrpc_message(await websocket.recv())
             _ = parse_jsonrpc_message(await websocket.recv())
+            _ = parse_jsonrpc_message(await websocket.recv())
             load_response = parse_jsonrpc_message(await websocket.recv())
 
     assert "model" not in list_response["result"]["sessions"][0]["_meta"]
@@ -312,16 +313,18 @@ async def test_manager_load_replays_persisted_transcript(tmp_path: Path) -> None
 
             await websocket.send(jsonrpc_request(3, "session/load", _scope_params("scope-a", sessionId=session_id)))
             reset = parse_jsonrpc_message(await websocket.recv())
+            system_message = parse_jsonrpc_message(await websocket.recv())
             complete = parse_jsonrpc_message(await websocket.recv())
             response = parse_jsonrpc_message(await websocket.recv())
 
     assert _update(reset) == {"sessionUpdate": "history_reset"}
+    assert _message_payload(_update(system_message))["role"] == "system"
     assert _update(complete) == {"sessionUpdate": "history_complete", "version": 0}
     assert response["result"]["sessionId"] == session_id
 
 
 @pytest.mark.asyncio
-async def test_manager_upload_file_writes_attachment_and_replays_visible_message(tmp_path: Path) -> None:
+async def test_manager_upload_file_writes_attachment_and_replays_upload_message(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
         async with connect(endpoint) as websocket:
             await _initialize(websocket)
@@ -340,12 +343,15 @@ async def test_manager_upload_file_writes_attachment_and_replays_visible_message
                     ),
                 )
             )
+            upload_message = parse_jsonrpc_message(await websocket.recv())
             update = parse_jsonrpc_message(await websocket.recv())
             upload_response = parse_jsonrpc_message(await websocket.recv())
 
             await websocket.send(jsonrpc_request(4, "session/load", _scope_params("scope-a", sessionId=session_id)))
             reset = parse_jsonrpc_message(await websocket.recv())
-            replay = parse_jsonrpc_message(await websocket.recv())
+            system_replay = parse_jsonrpc_message(await websocket.recv())
+            message_replay = parse_jsonrpc_message(await websocket.recv())
+            attachment_replay = parse_jsonrpc_message(await websocket.recv())
             complete = parse_jsonrpc_message(await websocket.recv())
             load_response = parse_jsonrpc_message(await websocket.recv())
 
@@ -369,12 +375,14 @@ async def test_manager_upload_file_writes_attachment_and_replays_visible_message
     filename = attachment["path"].removeprefix("/attachments/")
     assert (tmp_path / "sessions" / session_id / "attachments" / filename).read_bytes() == b"\x89PNG\r\n\x1a\nimage"
 
-    update_payload = _update(update)
-    assert update_payload["sessionUpdate"] == "attachment_added"
-    assert _attachment_payload(update_payload) == attachment
+    upload_message_payload = _message_payload(_update(upload_message))
+    assert upload_message_payload["role"] == "user"
+    assert "Attached file `Meal-Photo.PNG`" in upload_message_payload["content"]
+    assert _attachment_payload(_update(update)) == attachment
     assert _update(reset) == {"sessionUpdate": "history_reset"}
-    assert _update(replay)["sessionUpdate"] == "attachment_added"
-    assert _attachment_payload(_update(replay)) == attachment
+    assert _message_payload(_update(system_replay))["role"] == "system"
+    assert _message_payload(_update(message_replay)) == upload_message_payload
+    assert _attachment_payload(_update(attachment_replay)) == attachment
     assert _update(complete) == {"sessionUpdate": "history_complete", "version": 1}
     assert upload_response["result"]["session"]["_meta"]["version"] == 1
     assert load_response["result"]["_meta"]["version"] == 1
@@ -404,6 +412,7 @@ async def test_manager_upload_file_accepts_websocket_messages_over_one_mebibyte(
                     ),
                 )
             )
+            _ = parse_jsonrpc_message(await websocket.recv())
             update = parse_jsonrpc_message(await websocket.recv())
             upload_response = parse_jsonrpc_message(await websocket.recv())
 
@@ -434,6 +443,7 @@ async def test_manager_download_attachment_checks_file_hash(tmp_path: Path) -> N
                     ),
                 )
             )
+            _ = parse_jsonrpc_message(await websocket.recv())
             _ = parse_jsonrpc_message(await websocket.recv())
             upload_response = parse_jsonrpc_message(await websocket.recv())
             attachment = upload_response["result"]["attachment"]
@@ -473,6 +483,7 @@ async def test_manager_upload_file_uses_mime_type_name_for_unnamed_attachment(tm
                     ),
                 )
             )
+            _ = parse_jsonrpc_message(await websocket.recv())
             update = parse_jsonrpc_message(await websocket.recv())
             upload_response = parse_jsonrpc_message(await websocket.recv())
 
@@ -641,15 +652,17 @@ async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None
             await websocket.send(
                 jsonrpc_request(2, "session/load", _scope_params("scope-a", sessionId=created.record.session_id))
             )
-            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(6)]
+            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(7)]
             response = parse_jsonrpc_message(await websocket.recv())
 
     replay_updates = [message["params"]["update"] for message in replay]
     assert replay_updates[0] == {"sessionUpdate": "history_reset"}
     assert replay_updates[1]["sessionUpdate"] == "message_added"
-    assert _message_payload(replay_updates[1]) == {"role": "user", "content": "Read smoke.txt"}
+    assert _message_payload(replay_updates[1])["role"] == "system"
     assert replay_updates[2]["sessionUpdate"] == "message_added"
-    assert _message_payload(replay_updates[2]) == {
+    assert _message_payload(replay_updates[2]) == {"role": "user", "content": "Read smoke.txt"}
+    assert replay_updates[3]["sessionUpdate"] == "message_added"
+    assert _message_payload(replay_updates[3]) == {
         "role": "assistant",
         "tool_calls": [
             {
@@ -659,16 +672,16 @@ async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None
             }
         ],
     }
-    assert replay_updates[3]["sessionUpdate"] == "message_added"
-    assert _message_payload(replay_updates[3]) == {
+    assert replay_updates[4]["sessionUpdate"] == "message_added"
+    assert _message_payload(replay_updates[4]) == {
         "role": "tool",
         "content": "smoke output",
         "name": "shell_execute",
         "tool_call_id": "call-1",
     }
-    assert replay_updates[4]["sessionUpdate"] == "message_added"
-    assert _message_payload(replay_updates[4]) == {"role": "assistant", "content": "Done"}
-    assert replay_updates[5] == {"sessionUpdate": "history_complete", "version": 1}
+    assert replay_updates[5]["sessionUpdate"] == "message_added"
+    assert _message_payload(replay_updates[5]) == {"role": "assistant", "content": "Done"}
+    assert replay_updates[6] == {"sessionUpdate": "history_complete", "version": 1}
     assert response["result"]["sessionId"] == created.record.session_id
 
 
@@ -712,13 +725,14 @@ async def test_manager_load_replays_load_image_tool_message_content(tmp_path: Pa
             await websocket.send(
                 jsonrpc_request(2, "session/load", _scope_params("scope-a", sessionId=created.record.session_id))
             )
-            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
+            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(6)]
             response = parse_jsonrpc_message(await websocket.recv())
 
     replay_updates = [message["params"]["update"] for message in replay]
     assert replay_updates[0] == {"sessionUpdate": "history_reset"}
-    assert _message_payload(replay_updates[1]) == {"role": "user", "content": "What is in this image?"}
-    assert _message_payload(replay_updates[2]) == {
+    assert _message_payload(replay_updates[1])["role"] == "system"
+    assert _message_payload(replay_updates[2]) == {"role": "user", "content": "What is in this image?"}
+    assert _message_payload(replay_updates[3]) == {
         "role": "assistant",
         "tool_calls": [
             {
@@ -728,7 +742,7 @@ async def test_manager_load_replays_load_image_tool_message_content(tmp_path: Pa
             }
         ],
     }
-    assert _message_payload(replay_updates[3]) == {
+    assert _message_payload(replay_updates[4]) == {
         "role": "tool",
         "name": "load_image",
         "tool_call_id": "call-1",
@@ -737,7 +751,7 @@ async def test_manager_load_replays_load_image_tool_message_content(tmp_path: Pa
             IMAGE_BLOCK,
         ],
     }
-    assert replay_updates[4] == {"sessionUpdate": "history_complete", "version": 1}
+    assert replay_updates[5] == {"sessionUpdate": "history_complete", "version": 1}
     assert response["result"]["sessionId"] == created.record.session_id
 
 
@@ -789,7 +803,7 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
             prompt_response = parse_jsonrpc_message(await websocket.recv())
 
             await websocket.send(jsonrpc_request(6, "session/load", _scope_params("scope-a", sessionId=session_id)))
-            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(4)]
+            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
             load_response = parse_jsonrpc_message(await websocket.recv())
 
     assert set_model_response["result"]["_meta"]["model"] == "alternate-model"
@@ -803,9 +817,10 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     replay_payloads = [_update(message) for message in replay]
     assert replay_payloads[0] == {"sessionUpdate": "history_reset"}
-    assert _message_payload(replay_payloads[1]) == {"role": "user", "content": "Do it"}
-    assert _message_payload(replay_payloads[2]) == {"role": "assistant", "content": "done"}
-    assert replay_payloads[3] == {"sessionUpdate": "history_complete", "version": 1}
+    assert _message_payload(replay_payloads[1])["role"] == "system"
+    assert _message_payload(replay_payloads[2]) == {"role": "user", "content": "Do it"}
+    assert _message_payload(replay_payloads[3]) == {"role": "assistant", "content": "done"}
+    assert replay_payloads[4] == {"sessionUpdate": "history_complete", "version": 1}
     assert load_response["result"]["_meta"]["model"] == "alternate-model"
     assert worker.prompts is not None
     assert worker.prompts[0].model == "alternate-model"
@@ -847,7 +862,7 @@ async def test_manager_stores_session_worker_env_privately_and_injects_session_s
             prompt_response = parse_jsonrpc_message(await websocket.recv())
 
             await websocket.send(jsonrpc_request(5, "session/load", _scope_params("scope-a", sessionId=session_id)))
-            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(4)]
+            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
             load_response = parse_jsonrpc_message(await websocket.recv())
 
     live_payloads = [_update(message) for message in live_updates]
@@ -860,9 +875,10 @@ async def test_manager_stores_session_worker_env_privately_and_injects_session_s
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     replay_payloads = [_update(message) for message in replay]
     assert replay_payloads[0] == {"sessionUpdate": "history_reset"}
-    assert _message_payload(replay_payloads[1]) == {"role": "user", "content": "Do it"}
-    assert _message_payload(replay_payloads[2]) == {"role": "assistant", "content": "done"}
-    assert replay_payloads[3] == {"sessionUpdate": "history_complete", "version": 1}
+    assert _message_payload(replay_payloads[1])["role"] == "system"
+    assert _message_payload(replay_payloads[2]) == {"role": "user", "content": "Do it"}
+    assert _message_payload(replay_payloads[3]) == {"role": "assistant", "content": "done"}
+    assert replay_payloads[4] == {"sessionUpdate": "history_complete", "version": 1}
     assert "capabilities" not in load_response["result"]["_meta"]
     assert "skills" not in load_response["result"]["_meta"]
     assert "workerEnv" not in load_response["result"]["_meta"]
@@ -1132,7 +1148,7 @@ async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path
             response = parse_jsonrpc_message(await websocket.recv())
 
             await websocket.send(jsonrpc_request(5, "session/load", _scope_params("scope-a", sessionId=session_id)))
-            replay_messages = [parse_jsonrpc_message(await websocket.recv()) for _ in range(4)]
+            replay_messages = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
             load_response = parse_jsonrpc_message(await websocket.recv())
 
     live_payloads = [_update(message) for message in live_updates]
@@ -1145,9 +1161,10 @@ async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path
     assert response["result"] == {"stopReason": "end_turn"}
     replay_payloads = [_update(message) for message in replay_messages]
     assert replay_payloads[0] == {"sessionUpdate": "history_reset"}
-    assert _message_payload(replay_payloads[1]) == {"role": "user", "content": "Do it"}
-    assert _message_payload(replay_payloads[2]) == {"role": "assistant", "content": "done"}
-    assert replay_payloads[3] == {"sessionUpdate": "history_complete", "version": 1}
+    assert _message_payload(replay_payloads[1])["role"] == "system"
+    assert _message_payload(replay_payloads[2]) == {"role": "user", "content": "Do it"}
+    assert _message_payload(replay_payloads[3]) == {"role": "assistant", "content": "done"}
+    assert replay_payloads[4] == {"sessionUpdate": "history_complete", "version": 1}
     assert load_response["result"]["_meta"]["version"] == 1
 
 
