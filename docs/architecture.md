@@ -45,7 +45,7 @@ RPC.
 - `ManagerService` validates opaque scope metadata, loads canonical history,
   calls a worker runner, and commits completed turns.
 - `manager.server` adapts `ManagerService` to JSON-RPC.
-- `workspace.py` derives a managed workspace path from the session id.
+- `workspace.py` derives managed session paths from the session id.
 
 `coding_assistant.worker` owns the worker-side remote runtime. A worker receives
 manager-provided session state, creates one `AgentSession`, streams

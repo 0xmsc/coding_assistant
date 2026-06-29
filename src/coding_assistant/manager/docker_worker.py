@@ -33,10 +33,11 @@ class DockerWorkerConfig:
     image: str
     network: str
     container_prefix: str = "coding-assistant-worker-"
-    manager_workspace_root: str | None = None
+    manager_session_root: str | None = None
     worker_port: int = 8765
-    workspace_source_root: str | None = None
+    session_source_root: str | None = None
     workspace_mount: str = "/workspace"
+    attachments_mount: str = "/workspace/attachments"
     docker_command: str = "docker"
     startup_timeout: float = 15.0
     environment: dict[str, str] = field(default_factory=dict)
@@ -67,6 +68,7 @@ class DockerWorkerRunner:
         await self._start_container(
             container_name=container_name,
             workspace=prompt.workspace,
+            attachments=prompt.attachments,
             model=prompt.model,
             worker_env=prompt.worker_env,
         )
@@ -108,6 +110,7 @@ class DockerWorkerRunner:
         *,
         container_name: str,
         workspace: str,
+        attachments: str,
         model: str,
         worker_env: dict[str, str],
     ) -> None:
@@ -115,6 +118,7 @@ class DockerWorkerRunner:
             config=self._config,
             container_name=container_name,
             workspace=workspace,
+            attachments=attachments,
             model=model,
             extra_environment=worker_env,
         )
@@ -156,14 +160,14 @@ def _container_name(*, prefix: str, session_id: str) -> str:
     return f"{prefix}{normalized or 'session'}"
 
 
-def _workspace_source(*, config: DockerWorkerConfig, workspace: str) -> str:
-    if config.manager_workspace_root is None or config.workspace_source_root is None:
-        return workspace
+def _host_source(*, config: DockerWorkerConfig, path: str) -> str:
+    if config.manager_session_root is None or config.session_source_root is None:
+        return path
     try:
-        relative_workspace = Path(workspace).relative_to(config.manager_workspace_root)
+        relative_path = Path(path).relative_to(config.manager_session_root)
     except ValueError:
-        return workspace
-    return str(Path(config.workspace_source_root) / relative_workspace)
+        return path
+    return str(Path(config.session_source_root) / relative_path)
 
 
 def _merged_environment(
@@ -188,6 +192,7 @@ def _docker_run_args(
     config: DockerWorkerConfig,
     container_name: str,
     workspace: str,
+    attachments: str,
     model: str,
     extra_environment: dict[str, str] | None = None,
 ) -> list[str]:
@@ -205,7 +210,9 @@ def _docker_run_args(
         "--security-opt",
         "no-new-privileges",
         "-v",
-        f"{_workspace_source(config=config, workspace=workspace)}:{config.workspace_mount}:rw",
+        f"{_host_source(config=config, path=workspace)}:{config.workspace_mount}:rw",
+        "-v",
+        f"{_host_source(config=config, path=attachments)}:{config.attachments_mount}:ro",
     ]
     environment = _merged_environment(config=config, extra_environment=extra_environment or {})
     for key, value in environment.items():

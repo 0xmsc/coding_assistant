@@ -36,15 +36,18 @@ class LoadedSession:
     record: SessionRecord
     messages: list[BaseMessage]
     workspace: Path
+    attachments: Path
     worker_env: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class SessionWorkspaceReservation:
-    """Session id and workspace allocated before the session row is inserted."""
+    """Session id and filesystem paths allocated before the session row is inserted."""
 
     session_id: str
+    root: Path
     workspace: Path
+    attachments: Path
 
 
 def _now_iso() -> str:
@@ -116,8 +119,13 @@ class SessionStore:
     def reserve_session_workspace(self) -> SessionWorkspaceReservation:
         """Allocate a session id and create its workspace before database insertion."""
         session_id = _new_session_id()
-        workspace = self.workspaces.create_for_session(session_id)
-        return SessionWorkspaceReservation(session_id=session_id, workspace=workspace)
+        paths = self.workspaces.create_for_session(session_id)
+        return SessionWorkspaceReservation(
+            session_id=session_id,
+            root=paths.root,
+            workspace=paths.workspace,
+            attachments=paths.attachments,
+        )
 
     def create_session(
         self,
@@ -160,7 +168,11 @@ class SessionStore:
             metadata=session_metadata,
         )
         return LoadedSession(
-            record=record, messages=list(messages), workspace=workspace, worker_env=dict(worker_env or {})
+            record=record,
+            messages=list(messages),
+            workspace=workspace,
+            attachments=reserved_workspace.attachments,
+            worker_env=dict(worker_env or {}),
         )
 
     def list_sessions(self, *, scope_id: str) -> list[SessionRecord]:
@@ -189,10 +201,16 @@ class SessionStore:
                 """,
                 (session_id,),
             ).fetchall()
-        workspace = self.workspaces.require_for_session(session_id)
+        paths = self.workspaces.require_for_session(session_id)
         messages = [_message_from_json(str(row["payload_json"])) for row in message_rows]
         worker_env = _worker_env_from_json(str(session_row["worker_env_json"]))
-        return LoadedSession(record=record, messages=messages, workspace=workspace, worker_env=worker_env)
+        return LoadedSession(
+            record=record,
+            messages=messages,
+            workspace=paths.workspace,
+            attachments=paths.attachments,
+            worker_env=worker_env,
+        )
 
     def rename_session(self, *, scope_id: str, session_id: str, title: str | None) -> SessionRecord:
         now = _now_iso()

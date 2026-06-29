@@ -74,7 +74,7 @@ async def _test_model_lister() -> list[str]:
 def _manager_service(*, tmp_path: Path, endpoint: str) -> tuple[ManagerService, SessionStore]:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     return ManagerService(
         store=store,

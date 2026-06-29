@@ -25,8 +25,8 @@ SUPPORTED_TEXT_TYPES = {
 class LoadFileInput(BaseModel):
     path: str = Field(
         description=(
-            "Path to a session attachment, such as attachments/att_123-meal.jpg. "
-            "Only files under the session attachments directory can be loaded."
+            "Path to a readable text or image file. Relative paths are resolved from the worker workspace; "
+            "absolute paths may be used for files visible to the worker."
         ),
     )
     mode: Literal["auto", "text", "image"] = Field(
@@ -36,7 +36,7 @@ class LoadFileInput(BaseModel):
 
 
 class LoadFileTool(Tool):
-    """Load a bounded workspace attachment into conversation context."""
+    """Load a bounded text or image file into conversation context."""
 
     def __init__(self, *, workspace: Path) -> None:
         self._workspace = workspace.resolve()
@@ -46,8 +46,8 @@ class LoadFileTool(Tool):
 
     def description(self) -> str:
         return (
-            "Load a text or image file from the session attachments directory into conversation context. "
-            "Use this before reasoning from an uploaded file."
+            "Load a readable text or image file into conversation context. "
+            "Use this before reasoning from an uploaded file or another worker-visible file."
         )
 
     def parameters(self) -> dict[str, Any]:
@@ -55,7 +55,7 @@ class LoadFileTool(Tool):
 
     async def execute(self, parameters: dict[str, Any]) -> ToolResult:
         validated = LoadFileInput.model_validate(parameters)
-        target = _attachment_path(workspace=self._workspace, raw_path=validated.path)
+        target = _file_path(workspace=self._workspace, raw_path=validated.path)
         data = target.read_bytes()
         mime_type = _detect_mime_type(target, data)
 
@@ -63,26 +63,30 @@ class LoadFileTool(Tool):
             return _load_image(path=target, workspace=self._workspace, data=data, mime_type=mime_type)
         if validated.mode == "text" or (validated.mode == "auto" and _is_text_mime(mime_type)):
             return _load_text(path=target, workspace=self._workspace, data=data, mime_type=mime_type)
-        raise ValueError(f"Unsupported attachment type for {target.relative_to(self._workspace)}: {mime_type}.")
+        raise ValueError(
+            f"Unsupported file type for {_display_path(path=target, workspace=self._workspace)}: {mime_type}."
+        )
 
 
-def _attachment_path(*, workspace: Path, raw_path: str) -> Path:
+def _file_path(*, workspace: Path, raw_path: str) -> Path:
     if not raw_path.strip():
         raise ValueError("load_file requires a non-empty path.")
 
-    attachments_root = (workspace / "attachments").resolve()
     candidate = Path(raw_path)
     if not candidate.is_absolute():
         candidate = workspace / candidate
     resolved = candidate.resolve(strict=True)
 
-    try:
-        resolved.relative_to(attachments_root)
-    except ValueError as exc:
-        raise ValueError("load_file can only read files under the session attachments directory.") from exc
     if not resolved.is_file():
-        raise ValueError(f"Attachment path is not a file: {resolved.relative_to(workspace)}.")
+        raise ValueError(f"Path is not a file: {_display_path(path=resolved, workspace=workspace)}.")
     return resolved
+
+
+def _display_path(*, path: Path, workspace: Path) -> str:
+    try:
+        return path.relative_to(workspace).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _detect_mime_type(path: Path, data: bytes) -> str:
@@ -103,26 +107,26 @@ def _is_text_mime(mime_type: str) -> bool:
 
 
 def _load_text(*, path: Path, workspace: Path, data: bytes, mime_type: str) -> TextToolResult:
+    display_path = _display_path(path=path, workspace=workspace)
     if len(data) > MAX_TEXT_BYTES:
-        raise ValueError(f"Text attachment is too large to load: {path.relative_to(workspace)}.")
+        raise ValueError(f"Text file is too large to load: {display_path}.")
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise ValueError(f"Text attachment is not valid UTF-8: {path.relative_to(workspace)}.") from exc
+        raise ValueError(f"Text file is not valid UTF-8: {display_path}.") from exc
 
-    relative_path = path.relative_to(workspace).as_posix()
-    content = f"Loaded text attachment {relative_path} ({mime_type}, {len(data)} bytes):\n\n{text}"
+    content = f"Loaded text file {display_path} ({mime_type}, {len(data)} bytes):\n\n{text}"
     return TextToolResult(content=content)
 
 
 def _load_image(*, path: Path, workspace: Path, data: bytes, mime_type: str) -> ToolMessageResult:
+    display_path = _display_path(path=path, workspace=workspace)
     if mime_type not in SUPPORTED_IMAGE_TYPES:
-        raise ValueError(f"Unsupported image attachment type for {path.relative_to(workspace)}: {mime_type}.")
+        raise ValueError(f"Unsupported image file type for {display_path}: {mime_type}.")
     if len(data) > MAX_IMAGE_BYTES:
-        raise ValueError(f"Image attachment is too large to load: {path.relative_to(workspace)}.")
+        raise ValueError(f"Image file is too large to load: {display_path}.")
 
-    relative_path = path.relative_to(workspace).as_posix()
-    text = f"Loaded image attachment {relative_path} ({mime_type}, {len(data)} bytes)."
+    text = f"Loaded image file {display_path} ({mime_type}, {len(data)} bytes)."
     return ToolMessageResult(
         content=[
             {"type": "text", "text": text},

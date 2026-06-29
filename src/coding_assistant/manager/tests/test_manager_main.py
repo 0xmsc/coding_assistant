@@ -54,9 +54,9 @@ def test_manager_config_is_read_from_environment(monkeypatch: pytest.MonkeyPatch
     assert config.auth_secret == "secret-token"
     assert config.data_dir == Path("/data")
     assert config.database_path == Path("/data/sessions.sqlite")
-    assert config.workspace_root == Path("/data/workspaces")
+    assert config.session_root == Path("/data/sessions")
     assert config.host_data_dir == tmp_path
-    assert config.workspace_source_root == tmp_path / "workspaces"
+    assert config.session_source_root == tmp_path / "sessions"
     assert config.worker_image == "coding-assistant:test"
     assert config.worker_network == "test-network"
     assert config.worker_extra_hosts == ("host.docker.internal:host-gateway",)

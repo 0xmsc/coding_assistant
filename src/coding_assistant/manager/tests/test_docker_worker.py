@@ -165,7 +165,8 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
     args = _docker_run_args(
         config=config,
         container_name="coding-assistant-worker-sess",
-        workspace="/data/ws/sess",
+        workspace="/data/sessions/sess/workspace",
+        attachments="/data/sessions/sess/attachments",
         model="test-model",
     )
 
@@ -174,7 +175,8 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
     assert "--security-opt" in args
     assert "no-new-privileges" in args
     assert "-v" in args
-    assert "/data/ws/sess:/workspace:rw" in args
+    assert "/data/sessions/sess/workspace:/workspace:rw" in args
+    assert "/data/sessions/sess/attachments:/workspace/attachments:ro" in args
     assert "coding-assistant:test" in args
     assert "coding-assistant-worker" in args
     assert args[args.index("--network") + 1] == "assistant-net"
@@ -201,7 +203,8 @@ def test_docker_run_args_merges_session_environment() -> None:
     args = _docker_run_args(
         config=config,
         container_name="coding-assistant-worker-sess",
-        workspace="/data/ws/sess",
+        workspace="/data/sessions/sess/workspace",
+        attachments="/data/sessions/sess/attachments",
         model="test-model",
         extra_environment={
             "APPS_API_BASE_URL": "http://apps-api",
@@ -231,7 +234,8 @@ def test_docker_run_args_rejects_session_environment_collision() -> None:
         _docker_run_args(
             config=config,
             container_name="coding-assistant-worker-sess",
-            workspace="/data/ws/sess",
+            workspace="/data/sessions/sess/workspace",
+            attachments="/data/sessions/sess/attachments",
             model="test-model",
             extra_environment={"OPENAI_API_KEY": "attacker-key"},
         )
@@ -260,28 +264,31 @@ def test_docker_run_args_rejects_reserved_tool_env_key(
         _docker_run_args(
             config=config,
             container_name="coding-assistant-worker-sess",
-            workspace="/data/ws/sess",
+            workspace="/data/sessions/sess/workspace",
+            attachments="/data/sessions/sess/attachments",
             model="test-model",
             extra_environment=extra_environment,
         )
 
 
-def test_docker_run_args_maps_manager_workspace_to_host_source() -> None:
+def test_docker_run_args_maps_manager_session_paths_to_host_source() -> None:
     config = DockerWorkerConfig(
         image="coding-assistant:test",
         network="assistant-net",
-        manager_workspace_root="/data/workspaces",
-        workspace_source_root="/host/coding-assistant/workspaces",
+        manager_session_root="/data/sessions",
+        session_source_root="/host/coding-assistant/sessions",
     )
 
     args = _docker_run_args(
         config=config,
         container_name="coding-assistant-worker-sess",
-        workspace="/data/workspaces/sess",
+        workspace="/data/sessions/sess/workspace",
+        attachments="/data/sessions/sess/attachments",
         model="test-model",
     )
 
-    assert "/host/coding-assistant/workspaces/sess:/workspace:rw" in args
+    assert "/host/coding-assistant/sessions/sess/workspace:/workspace:rw" in args
+    assert "/host/coding-assistant/sessions/sess/attachments:/workspace/attachments:ro" in args
 
 
 @pytest.mark.asyncio
@@ -411,11 +418,11 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
                     jsonrpc_request(5, "session/set_model", _scope_params(second_session_id, model="fake-model"))
                 )
                 second_set_model = parse_jsonrpc_message(await websocket.recv())
-                (tmp_path / "workspaces" / first_session_id / "smoke.txt").write_text(
+                (tmp_path / "sessions" / first_session_id / "workspace" / "smoke.txt").write_text(
                     "alpha from first workspace",
                     encoding="utf-8",
                 )
-                (tmp_path / "workspaces" / second_session_id / "smoke.txt").write_text(
+                (tmp_path / "sessions" / second_session_id / "workspace" / "smoke.txt").write_text(
                     "bravo from second workspace",
                     encoding="utf-8",
                 )
@@ -475,6 +482,7 @@ async def test_docker_worker_runner_reports_real_container_start_failure(tmp_pat
         history=[],
         model="test-model",
         workspace=str(tmp_path),
+        attachments=str(tmp_path / "attachments"),
         prompt=[],
     )
 

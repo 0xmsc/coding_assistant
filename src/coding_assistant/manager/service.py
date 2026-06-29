@@ -100,6 +100,7 @@ class WorkerPrompt:
     history: list[BaseMessage]
     model: str
     workspace: str
+    attachments: str
     prompt: list[JsonObject]
     worker_env: dict[str, str] = field(default_factory=dict)
 
@@ -303,7 +304,7 @@ def _upload_bytes(raw_data: object) -> bytes:
     return data
 
 
-def _write_attachment(*, workspace: Path, params: JsonObject) -> SessionAttachment:
+def _write_attachment(*, attachments: Path, params: JsonObject) -> SessionAttachment:
     name = _safe_attachment_name(params.get("name"))
     mime_type = _attachment_mime_type(raw_mime_type=params.get("mimeType"), name=name)
     if name is None:
@@ -311,8 +312,9 @@ def _write_attachment(*, workspace: Path, params: JsonObject) -> SessionAttachme
     data = _upload_bytes(params.get("data"))
     content_hash = hashlib.sha256(data).hexdigest()
     attachment_id = f"att_{content_hash[:16]}"
-    relative_path = f"attachments/{attachment_id}-{name}"
-    target = workspace / relative_path
+    filename = f"{attachment_id}-{name}"
+    relative_path = f"attachments/{filename}"
+    target = attachments / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
     return SessionAttachment(
@@ -428,7 +430,7 @@ class ManagerService:
                 reserved_workspace=reservation,
             )
         except Exception:
-            shutil.rmtree(reservation.workspace, ignore_errors=True)
+            shutil.rmtree(reservation.root, ignore_errors=True)
             raise
         return {"sessionId": session.record.session_id}
 
@@ -493,7 +495,7 @@ class ManagerService:
             if session_id in self._active_prompts:
                 raise SessionBusyError("Cannot upload a file while session has an active prompt.")
             session = self._store.load_session(scope_id=scope_id, session_id=session_id)
-            attachment = _write_attachment(workspace=session.workspace, params=params)
+            attachment = _write_attachment(attachments=session.attachments, params=params)
             message_text = _attachment_message(attachment)
             self._store.commit_messages(
                 scope_id=scope_id,
@@ -533,6 +535,7 @@ class ManagerService:
                     history=session.messages,
                     model=model,
                     workspace=str(session.workspace),
+                    attachments=str(session.attachments),
                     prompt=prompt_blocks,
                     worker_env=session.worker_env,
                 ),

@@ -38,15 +38,15 @@ class ManagerConfig:
     worker_image: str
     worker_network: str
     worker_extra_hosts: tuple[str, ...]
-    workspace_source_root: Path
+    session_source_root: Path
 
     @property
     def database_path(self) -> Path:
         return self.data_dir / "sessions.sqlite"
 
     @property
-    def workspace_root(self) -> Path:
-        return self.data_dir / "workspaces"
+    def session_root(self) -> Path:
+        return self.data_dir / "sessions"
 
 
 def _worker_environment_from_env() -> dict[str, str]:
@@ -86,7 +86,7 @@ def _manager_config_from_env() -> ManagerConfig:
         worker_image=_required_env(CODING_ASSISTANT_WORKER_IMAGE_ENV),
         worker_network=_required_env(CODING_ASSISTANT_WORKER_NETWORK_ENV),
         worker_extra_hosts=_worker_extra_hosts_from_env(),
-        workspace_source_root=host_data_dir / "workspaces",
+        session_source_root=host_data_dir / "sessions",
     )
 
 
@@ -96,17 +96,17 @@ def _reject_cli_args(argv: Sequence[str]) -> None:
 
 
 async def _main(config: ManagerConfig) -> None:
-    config.workspace_root.mkdir(parents=True, exist_ok=True)
+    config.session_root.mkdir(parents=True, exist_ok=True)
     store = SessionStore(
         database_path=config.database_path,
-        workspaces=WorkspacePaths(root=config.workspace_root),
+        workspaces=WorkspacePaths(root=config.session_root),
     )
     worker_config = DockerWorkerConfig(
         image=config.worker_image,
         network=config.worker_network,
-        manager_workspace_root=str(config.workspace_root),
+        manager_session_root=str(config.session_root),
         worker_port=WORKER_PORT,
-        workspace_source_root=str(config.workspace_source_root),
+        session_source_root=str(config.session_source_root),
         workspace_mount=WORKER_WORKSPACE,
         environment=_worker_environment_from_env(),
         extra_hosts=config.worker_extra_hosts,

@@ -29,8 +29,9 @@
 ## Attachments
 
 - Use `load_file(path)` before reasoning from an uploaded session attachment.
-- `load_file` only reads files under the session `attachments/` directory.
-- It can load bounded UTF-8 text and supported image attachments into conversation context.
+- It can also load other worker-visible text or image files.
+- Relative paths resolve from the worker workspace, and absolute paths are allowed.
+- It loads bounded UTF-8 text and supported images into conversation context.
 
 ## Tasks
 

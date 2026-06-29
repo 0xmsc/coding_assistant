@@ -20,7 +20,7 @@ from coding_assistant.manager.workspace import WorkspaceMissingError, WorkspaceP
 def test_create_list_and_load_session_by_scope(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
 
     created = store.create_session(
@@ -37,14 +37,16 @@ def test_create_list_and_load_session_by_scope(tmp_path: Path) -> None:
     assert [session.session_id for session in sessions] == [created.record.session_id]
     assert loaded.record == created.record
     assert loaded.messages == [SystemMessage(content="system")]
-    assert loaded.workspace == tmp_path / "workspaces" / created.record.session_id
+    assert loaded.workspace == tmp_path / "sessions" / created.record.session_id / "workspace"
+    assert loaded.attachments == tmp_path / "sessions" / created.record.session_id / "attachments"
     assert loaded.workspace.is_dir()
+    assert loaded.attachments.is_dir()
 
 
 def test_create_and_load_session_private_worker_env(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
 
     created = store.create_session(
@@ -62,7 +64,7 @@ def test_create_and_load_session_private_worker_env(tmp_path: Path) -> None:
 def test_create_session_uses_reserved_workspace(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     reservation = store.reserve_session_workspace()
     marker = reservation.workspace / ".agents" / "marker.txt"
@@ -101,7 +103,7 @@ def test_store_adds_private_worker_env_column_to_existing_database(tmp_path: Pat
 
     store = SessionStore(
         database_path=database_path,
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     created = store.create_session(
         scope_id="scope-a",
@@ -117,7 +119,7 @@ def test_store_adds_private_worker_env_column_to_existing_database(tmp_path: Pat
 def test_load_session_rejects_cross_scope_access(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     created = store.create_session(scope_id="scope-a", messages=[])
 
@@ -128,7 +130,7 @@ def test_load_session_rejects_cross_scope_access(tmp_path: Path) -> None:
 def test_commit_messages_appends_json_payloads_and_increments_version(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
     tool_call = ToolCall(id="call-1", function=FunctionCall(name="echo_tool", arguments='{"text": "hi"}'))
@@ -162,7 +164,7 @@ def test_commit_messages_appends_json_payloads_and_increments_version(tmp_path: 
 def test_commit_messages_rejects_stale_base_version(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     created = store.create_session(scope_id="scope-a", messages=[])
 
@@ -189,7 +191,7 @@ def test_commit_messages_rejects_stale_base_version(tmp_path: Path) -> None:
 def test_rename_session_updates_title_without_changing_version(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
 
@@ -208,7 +210,7 @@ def test_rename_session_updates_title_without_changing_version(tmp_path: Path) -
 def test_rename_session_rejects_cross_scope_access(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     created = store.create_session(scope_id="scope-a", messages=[])
 
@@ -219,7 +221,7 @@ def test_rename_session_rejects_cross_scope_access(tmp_path: Path) -> None:
 def test_update_session_metadata_merges_without_changing_version(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     created = store.create_session(
         scope_id="scope-a",
@@ -242,7 +244,7 @@ def test_update_session_metadata_merges_without_changing_version(tmp_path: Path)
 def test_update_session_metadata_rejects_cross_scope_access(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     created = store.create_session(scope_id="scope-a", messages=[])
 
@@ -257,7 +259,7 @@ def test_update_session_metadata_rejects_cross_scope_access(tmp_path: Path) -> N
 def test_load_session_fails_when_workspace_is_missing(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     created = store.create_session(scope_id="scope-a", messages=[])
     created.workspace.rmdir()
@@ -267,9 +269,11 @@ def test_load_session_fails_when_workspace_is_missing(tmp_path: Path) -> None:
 
 
 def test_workspace_paths_are_derived_from_session_id(tmp_path: Path) -> None:
-    workspaces = WorkspacePaths(root=tmp_path / "workspaces")
+    workspaces = WorkspacePaths(root=tmp_path / "sessions")
 
-    path = workspaces.create_for_session("sess_abc")
+    paths = workspaces.create_for_session("sess_abc")
 
-    assert path == tmp_path / "workspaces" / "sess_abc"
-    assert workspaces.require_for_session("sess_abc") == path
+    assert paths.root == tmp_path / "sessions" / "sess_abc"
+    assert paths.workspace == tmp_path / "sessions" / "sess_abc" / "workspace"
+    assert paths.attachments == tmp_path / "sessions" / "sess_abc" / "attachments"
+    assert workspaces.require_for_session("sess_abc") == paths

@@ -111,7 +111,7 @@ async def _manager_endpoint(
 ) -> AsyncIterator[str]:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     service = ManagerService(
         store=store,
@@ -200,7 +200,7 @@ async def test_manager_lists_models_from_provider(tmp_path: Path) -> None:
 async def test_manager_model_list_is_empty_when_provider_fails_without_cache(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     service = ManagerService(
         store=store,
@@ -238,7 +238,7 @@ async def test_manager_creates_and_lists_sessions_by_scope(tmp_path: Path) -> No
 async def test_manager_preserves_existing_sessions_without_model_metadata(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     service = ManagerService(
         store=store,
@@ -308,7 +308,7 @@ async def test_manager_upload_file_writes_attachment_and_replays_visible_message
     assert attachment["size"] == 13
     assert attachment["path"].startswith("attachments/att_")
     assert attachment["path"].endswith("-Meal-Photo.PNG")
-    assert (tmp_path / "workspaces" / session_id / attachment["path"]).read_bytes() == b"\x89PNG\r\n\x1a\nimage"
+    assert (tmp_path / "sessions" / session_id / attachment["path"]).read_bytes() == b"\x89PNG\r\n\x1a\nimage"
 
     expected_text = (
         f"Attached file `Meal-Photo.PNG` as `{attachment['path']}` (image/png, 13 bytes). "
@@ -351,7 +351,7 @@ async def test_manager_upload_file_uses_mime_type_name_for_unnamed_attachment(tm
     assert attachment["mimeType"] == "text/plain"
     assert attachment["path"].startswith("attachments/att_")
     assert attachment["path"].endswith("-attachment.txt")
-    assert (tmp_path / "workspaces" / session_id / attachment["path"]).read_text() == "clipboard text"
+    assert (tmp_path / "sessions" / session_id / attachment["path"]).read_text() == "clipboard text"
     assert f"Attached file `attachment.txt` as `{attachment['path']}`" in update["params"]["update"]["content"]["text"]
 
 
@@ -411,7 +411,7 @@ async def test_manager_upload_file_rejects_unsupported_mime_type(tmp_path: Path)
 async def test_manager_upload_file_rejects_too_large_attachment(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     service = ManagerService(
         store=store,
@@ -437,7 +437,7 @@ async def test_manager_upload_file_rejects_too_large_attachment(tmp_path: Path) 
 async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     service = ManagerService(
         store=store,
@@ -600,7 +600,7 @@ async def test_manager_stores_session_worker_env_privately_and_injects_session_s
     assert "capabilities" not in load_response["result"]["_meta"]
     assert "skills" not in load_response["result"]["_meta"]
     assert "workerEnv" not in load_response["result"]["_meta"]
-    skill_root = tmp_path / "workspaces" / session_id / ".agents" / "skills" / "apps-api"
+    skill_root = tmp_path / "sessions" / session_id / "workspace" / ".agents" / "skills" / "apps-api"
     assert (skill_root / "SKILL.md").read_text(encoding="utf-8") == (
         "---\nname: apps-api\ndescription: Use apps REST APIs.\n---\n"
     )

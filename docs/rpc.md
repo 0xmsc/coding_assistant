@@ -42,7 +42,8 @@ browser
 
 The application backend owns browser authentication. The manager owns canonical
 session state and worker lifecycle. Each active prompt runs in a temporary
-worker container with the session's managed workspace mounted at `/workspace`.
+worker container with the session's managed workspace mounted at `/workspace`
+and session attachments mounted read-only at `/workspace/attachments`.
 
 The CLI path remains direct:
 
@@ -70,7 +71,7 @@ This protocol is ACP-inspired:
 This protocol also has `coding-assistant` extensions:
 
 - Backend-injected `params._meta.scopeId` session scoping.
-- Manager-owned workspaces derived from `sessionId`.
+- Manager-owned session directories derived from `sessionId`.
 - Manager-owned SQLite persistence.
 - Session-scoped private worker environment and workspace-backed injected skills.
 - Private manager/worker `_session/*` methods.
@@ -197,12 +198,15 @@ for `session/list`, `session/new`, `session/load`, `session/rename`,
 
 The web manager does not accept arbitrary `cwd` values for v1 sessions.
 
-Each session gets a managed workspace derived from the session id:
+Each session gets a managed session directory derived from the session id:
 
 ```text
-manager workspace root: /data/workspaces
-host workspace path:    $CODING_ASSISTANT_HOST_DATA_DIR/workspaces/<sessionId>
-worker mount:           /workspace
+manager session root:     /data/sessions
+manager workspace path:   /data/sessions/<sessionId>/workspace
+manager attachments path: /data/sessions/<sessionId>/attachments
+host session path:        $CODING_ASSISTANT_HOST_DATA_DIR/sessions/<sessionId>
+worker workspace mount:   /workspace
+worker attachments mount: /workspace/attachments (read-only)
 ```
 
 The worker process starts with `/workspace` as its working directory. This is
@@ -471,9 +475,9 @@ for prompts in that session. Keys must be uppercase environment variable names
 and values must be strings.
 
 `_meta.skills` is an optional array of injected skill bundles. The manager
-writes each bundle to `.agents/skills/<name>` in the session workspace before
-building the initial system message. Workers then discover those skills through
-normal workspace skill loading. Each skill requires a valid `name`, a non-empty
+writes each bundle to `workspace/.agents/skills/<name>` in the session directory
+before building the initial system message. Workers then discover those skills
+through normal workspace skill loading. Each skill requires a valid `name`, a non-empty
 `description`, and a `files` object containing `SKILL.md`. File paths must be
 relative paths inside the skill directory.
 
@@ -492,9 +496,9 @@ Response:
 }
 ```
 
-The manager creates `/data/workspaces/<sessionId>` inside the manager
-container, writes any injected skills under `.agents/skills`, and initializes
-the session transcript with system instructions for the managed workspace.
+The manager creates `/data/sessions/<sessionId>` inside the manager container,
+writes any injected skills under `workspace/.agents/skills`, and initializes the
+session transcript with system instructions for the managed workspace.
 
 External `cwd` input is ignored or rejected until a future workspace import
 feature is designed.
@@ -739,7 +743,7 @@ Prompt blocks follow ACP-compatible content shapes where practical:
 
 ### session/upload_file
 
-Uploads one bounded file into a visible session workspace in
+Uploads one bounded file into the visible session attachments directory in
 `params._meta.scopeId`. The manager validates scope, file name, MIME type, and
 size, writes the bytes under `attachments/`, commits a visible user transcript
 message, and returns attachment metadata. If `name` is `null` or blank, the
@@ -792,7 +796,8 @@ Response:
 
 Workers do not receive attachment bytes automatically. Use the worker
 `load_file(path)` tool with the returned `attachment.path` before reasoning
-from an uploaded text or image file.
+from an uploaded text or image file. `load_file` can also load other
+worker-visible text and image files.
 
 ### session/cancel
 
@@ -985,7 +990,7 @@ Use honest module names:
 - `remote/jsonrpc.py` for generic JSON-RPC helpers.
 - `remote/protocol.py` for the custom `coding-assistant` remote protocol.
 
-Do not put manager workspaces, scope metadata, worker commits, or private
+Do not put manager session paths, scope metadata, worker commits, or private
 `_session/*` methods into a module named as if it were pure ACP.
 
 ## Current Limitations
