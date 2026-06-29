@@ -7,15 +7,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.infra.logging import setup_logging
-from coding_assistant.llm.types import BaseMessage
 from coding_assistant.manager.docker_worker import DockerWorkerConfig, DockerWorkerRunner
 from coding_assistant.manager.server import start_manager_server
 from coding_assistant.manager.service import ManagerService
 from coding_assistant.manager.store import SessionStore
 from coding_assistant.manager.workspace import WorkspacePaths
-from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
 
 CODING_ASSISTANT_HOST_DATA_DIR_ENV = "CODING_ASSISTANT_HOST_DATA_DIR"
@@ -117,17 +114,10 @@ async def _main(config: ManagerConfig) -> None:
     service = ManagerService(
         store=store,
         worker_runner=DockerWorkerRunner(config=worker_config),
+        worker_workspace=Path(WORKER_WORKSPACE),
     )
-    agent_config = WorkerAgentConfig(
-        working_directory=Path(WORKER_WORKSPACE),
-        user_instructions=(),
-        skills_directories=(),
-    )
-    instructions = build_worker_instructions(config=agent_config)
-    initial_messages: list[BaseMessage] = [build_initial_system_message(instructions=instructions)]
     async with start_manager_server(
         service=service,
-        initial_messages=initial_messages,
         host=MANAGER_HOST,
         port=MANAGER_PORT,
         auth_secret=config.auth_secret,

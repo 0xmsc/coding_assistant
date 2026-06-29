@@ -39,6 +39,14 @@ class LoadedSession:
     worker_env: dict[str, str] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class SessionWorkspaceReservation:
+    """Session id and workspace allocated before the session row is inserted."""
+
+    session_id: str
+    workspace: Path
+
+
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -105,6 +113,12 @@ class SessionStore:
         with self._connect() as connection:
             self._init_schema(connection)
 
+    def reserve_session_workspace(self) -> SessionWorkspaceReservation:
+        """Allocate a session id and create its workspace before database insertion."""
+        session_id = _new_session_id()
+        workspace = self.workspaces.create_for_session(session_id)
+        return SessionWorkspaceReservation(session_id=session_id, workspace=workspace)
+
     def create_session(
         self,
         *,
@@ -113,11 +127,16 @@ class SessionStore:
         title: str | None = None,
         metadata: dict[str, Any] | None = None,
         worker_env: dict[str, str] | None = None,
+        reserved_workspace: SessionWorkspaceReservation | None = None,
     ) -> LoadedSession:
-        session_id = _new_session_id()
+        """Insert a session, optionally using a workspace prepared before initial messages were built."""
+        if reserved_workspace is None:
+            reserved_workspace = self.reserve_session_workspace()
+        session_id = reserved_workspace.session_id
         now = _now_iso()
-        workspace = self.workspaces.create_for_session(session_id)
-        metadata_json = _metadata_to_json(metadata or {})
+        workspace = reserved_workspace.workspace
+        session_metadata = metadata or {}
+        metadata_json = _metadata_to_json(session_metadata)
         worker_env_json = _worker_env_to_json(worker_env or {})
         with self._connect() as connection:
             with connection:
@@ -138,7 +157,7 @@ class SessionStore:
             version=0,
             created_at=now,
             updated_at=now,
-            metadata=metadata or {},
+            metadata=session_metadata,
         )
         return LoadedSession(
             record=record, messages=list(messages), workspace=workspace, worker_env=dict(worker_env or {})

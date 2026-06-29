@@ -28,11 +28,19 @@ class WorkerAgentBundle:
     instructions: str
 
 
+def _skills_directories(config: WorkerAgentConfig) -> list[Path]:
+    directories = [Path(path).resolve() for path in config.skills_directories]
+    workspace_skills = config.working_directory / ".agents" / "skills"
+    if workspace_skills.is_dir():
+        directories.append(workspace_skills.resolve())
+    return list(dict.fromkeys(directories))
+
+
 def build_worker_instructions(*, config: WorkerAgentConfig) -> str:
     """Resolve the worker system instructions without starting an agent session."""
     tool_bundle = create_worker_tool_bundle(
         workspace=config.working_directory,
-        skills_directories=[Path(path).resolve() for path in config.skills_directories],
+        skills_directories=_skills_directories(config),
         process_env=config.process_env,
     )
     return get_instructions(
@@ -47,7 +55,7 @@ async def create_worker_agent(*, config: WorkerAgentConfig) -> AsyncIterator[Wor
     """Resolve instructions and tools for a worker run."""
     tool_bundle = create_worker_tool_bundle(
         workspace=config.working_directory,
-        skills_directories=[Path(path).resolve() for path in config.skills_directories],
+        skills_directories=_skills_directories(config),
         process_env=config.process_env,
     )
     instructions = get_instructions(

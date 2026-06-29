@@ -203,7 +203,7 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
 
     async with start_session_worker_server(runtime=runtime) as worker_server:
         service, _store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
-        async with start_manager_server(service=service, initial_messages=[SystemMessage(content="system")]) as manager:
+        async with start_manager_server(service=service) as manager:
             async with connect(manager.endpoint) as websocket:
                 await websocket.send(
                     jsonrpc_request(

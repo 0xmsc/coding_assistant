@@ -5,12 +5,14 @@ import base64
 import binascii
 import hashlib
 import re
-from collections.abc import Awaitable, Callable
+import shutil
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from time import monotonic
 from typing import Protocol
 
+from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.core.session_updates import (
     SessionUpdate,
     UserMessageChunkUpdate,
@@ -21,6 +23,7 @@ from coding_assistant.llm.openai import list_models as list_provider_models
 from coding_assistant.llm.types import BaseMessage, UserMessage
 from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
 from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp, session_id_from_params
+from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
 MODEL_METADATA_KEY = "model"
 MODEL_CACHE_TTL_SECONDS = 300.0
@@ -71,11 +74,6 @@ class SkillBundle:
 
 
 @dataclass(frozen=True)
-class PromptCapabilities:
-    skills: tuple[SkillBundle, ...] = ()
-
-
-@dataclass(frozen=True)
 class SessionAttachment:
     attachment_id: str
     name: str
@@ -104,7 +102,6 @@ class WorkerPrompt:
     workspace: str
     prompt: list[JsonObject]
     worker_env: dict[str, str] = field(default_factory=dict)
-    capabilities: PromptCapabilities = field(default_factory=PromptCapabilities)
 
 
 @dataclass(frozen=True)
@@ -126,30 +123,21 @@ class WorkerRunner(Protocol):
     async def cancel(self, *, session_id: str) -> None: ...
 
 
-def _scope_id_from_params(params: JsonObject, *, allow_capabilities: bool = False) -> str:
+def _scope_id_from_params(params: JsonObject) -> str:
     metadata = params.get("_meta")
     if not isinstance(metadata, dict):
         raise ManagerError("Request params must include _meta.scopeId.")
-    if not allow_capabilities and "capabilities" in metadata:
-        raise ManagerError("_meta.capabilities is only accepted on session/prompt.")
     scope_id = metadata.get("scopeId")
     if not isinstance(scope_id, str) or not scope_id:
         raise ManagerError("Request params must include _meta.scopeId.")
     return scope_id
 
 
-def _prompt_capabilities_from_params(params: JsonObject) -> PromptCapabilities:
+def _session_skill_bundles_from_params(params: JsonObject) -> tuple[SkillBundle, ...]:
     metadata = params.get("_meta")
     if not isinstance(metadata, dict):
-        return PromptCapabilities()
-    raw_capabilities = metadata.get("capabilities")
-    if raw_capabilities is None:
-        return PromptCapabilities()
-    if not isinstance(raw_capabilities, dict):
-        raise ManagerError("_meta.capabilities must be an object.")
-    return PromptCapabilities(
-        skills=tuple(_skill_bundles_from_capabilities(raw_capabilities)),
-    )
+        return ()
+    return tuple(_skill_bundles_from_value(metadata.get("skills", []), field_name="_meta.skills"))
 
 
 def _session_worker_env_from_params(params: JsonObject) -> dict[str, str]:
@@ -180,14 +168,13 @@ def _worker_env_from_value(raw_worker_env: object, *, field_name: str) -> dict[s
     return result
 
 
-def _skill_bundles_from_capabilities(raw_capabilities: JsonObject) -> list[SkillBundle]:
-    raw_skills = raw_capabilities.get("skills", [])
+def _skill_bundles_from_value(raw_skills: object, *, field_name: str) -> list[SkillBundle]:
     if raw_skills is None:
         return []
     if not isinstance(raw_skills, list):
-        raise ManagerError("_meta.capabilities.skills must be an array.")
+        raise ManagerError(f"{field_name} must be an array.")
     if len(raw_skills) > MAX_SKILL_BUNDLES:
-        raise ManagerError("_meta.capabilities.skills has too many bundles.")
+        raise ManagerError(f"{field_name} has too many bundles.")
 
     bundles: list[SkillBundle] = []
     seen_names: set[str] = set()
@@ -237,6 +224,20 @@ def _skill_files_from_payload(*, name: str, raw_files: dict[object, object]) -> 
 def _safe_skill_file_path(path: str) -> bool:
     parsed = PurePosixPath(path)
     return path == parsed.as_posix() and not parsed.is_absolute() and bool(parsed.parts) and ".." not in parsed.parts
+
+
+def _write_session_skill_bundles(*, workspace: Path, skills: tuple[SkillBundle, ...]) -> Path:
+    skills_root = workspace / ".agents" / "skills"
+    skills_root.mkdir(parents=True, exist_ok=True)
+    for skill in skills:
+        skill_root = skills_root / skill.name
+        shutil.rmtree(skill_root, ignore_errors=True)
+        skill_root.mkdir(parents=True, exist_ok=True)
+        for relative_path, content in skill.files.items():
+            target = skill_root / relative_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+    return skills_root
 
 
 def _safe_attachment_name(name: object) -> str:
@@ -366,11 +367,15 @@ class ManagerService:
         worker_runner: WorkerRunner,
         model_lister: ModelLister = list_provider_models,
         model_cache_ttl_seconds: float = MODEL_CACHE_TTL_SECONDS,
+        worker_workspace: Path = Path("/workspace"),
+        user_instructions: Sequence[str] = (),
     ) -> None:
         self._store = store
         self._worker_runner = worker_runner
         self._model_lister = model_lister
         self._model_cache_ttl_seconds = model_cache_ttl_seconds
+        self._worker_workspace = worker_workspace
+        self._user_instructions = tuple(user_instructions)
         self._model_cache: tuple[float, list[str]] | None = None
         self._active_prompts: set[str] = set()
         self._active_lock = asyncio.Lock()
@@ -388,14 +393,23 @@ class ManagerService:
             "nextCursor": None,
         }
 
-    def new_session(self, *, params: JsonObject, initial_messages: list[BaseMessage]) -> JsonObject:
+    def new_session(self, *, params: JsonObject) -> JsonObject:
         scope_id = _scope_id_from_params(params)
         worker_env = _session_worker_env_from_params(params)
-        session = self._store.create_session(
-            scope_id=scope_id,
-            messages=initial_messages,
-            worker_env=worker_env,
-        )
+        skills = _session_skill_bundles_from_params(params)
+        reservation = self._store.reserve_session_workspace()
+        try:
+            skills_root = _write_session_skill_bundles(workspace=reservation.workspace, skills=skills)
+            initial_messages = self._initial_messages(skills_root=skills_root)
+            session = self._store.create_session(
+                scope_id=scope_id,
+                messages=initial_messages,
+                worker_env=worker_env,
+                reserved_workspace=reservation,
+            )
+        except Exception:
+            shutil.rmtree(reservation.workspace, ignore_errors=True)
+            raise
         return {"sessionId": session.record.session_id}
 
     def rename_session(self, *, params: JsonObject) -> JsonObject:
@@ -478,9 +492,8 @@ class ManagerService:
         params: JsonObject,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
     ) -> PromptResult:
-        scope_id = _scope_id_from_params(params, allow_capabilities=True)
+        scope_id = _scope_id_from_params(params)
         session_id = session_id_from_params(params)
-        capabilities = _prompt_capabilities_from_params(params)
         prompt_blocks = params.get("prompt")
         if not isinstance(prompt_blocks, list) or not all(isinstance(block, dict) for block in prompt_blocks):
             raise ManagerError("session/prompt requires a prompt array.")
@@ -502,7 +515,6 @@ class ManagerService:
                     workspace=str(session.workspace),
                     prompt=prompt_blocks,
                     worker_env=session.worker_env,
-                    capabilities=capabilities,
                 ),
                 on_update=on_update,
             )
@@ -533,6 +545,16 @@ class ManagerService:
     async def _mark_prompt_idle(self, session_id: str) -> None:
         async with self._active_lock:
             self._active_prompts.discard(session_id)
+
+    def _initial_messages(self, *, skills_root: Path) -> list[BaseMessage]:
+        instructions = build_worker_instructions(
+            config=WorkerAgentConfig(
+                working_directory=self._worker_workspace,
+                skills_directories=(str(skills_root),),
+                user_instructions=self._user_instructions,
+            ),
+        )
+        return [build_initial_system_message(instructions=instructions)]
 
     async def _available_models(self) -> list[str]:
         now = monotonic()

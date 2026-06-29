@@ -12,7 +12,6 @@ from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
 from coding_assistant.core.session_updates import SessionUpdate
-from coding_assistant.llm.types import BaseMessage
 from coding_assistant.manager.service import ManagerError, ManagerService, SessionBusyError
 from coding_assistant.manager.store import SessionNotFoundError, StaleSessionCommitError
 from coding_assistant.manager.workspace import WorkspaceMissingError
@@ -127,7 +126,6 @@ async def _handle_session_method(
     method: str,
     response_id: int | str | None,
     params: JsonObject,
-    initial_messages: list[BaseMessage],
     state: _ConnectionState,
 ) -> None:
     if method == "session/list":
@@ -138,7 +136,7 @@ async def _handle_session_method(
         await websocket.send(
             jsonrpc_result_required(
                 response_id,
-                service.new_session(params=params, initial_messages=initial_messages),
+                service.new_session(params=params),
             ),
         )
         return
@@ -202,7 +200,6 @@ async def _handle_jsonrpc_message(
     service: ManagerService,
     state: _ConnectionState,
     payload: JsonObject,
-    initial_messages: list[BaseMessage],
 ) -> None:
     response_id = response_id_from_payload(payload)
     method = payload.get("method")
@@ -230,7 +227,6 @@ async def _handle_jsonrpc_message(
             method=method,
             response_id=response_id,
             params=params,
-            initial_messages=initial_messages,
             state=state,
         )
     except Exception as exc:
@@ -247,7 +243,6 @@ def _is_authorized_request(request: Request, auth_secret: str) -> bool:
 async def start_manager_server(
     *,
     service: ManagerService,
-    initial_messages: list[BaseMessage],
     host: str = "127.0.0.1",
     port: int = 0,
     auth_secret: str | None = None,
@@ -271,7 +266,6 @@ async def start_manager_server(
                     service=service,
                     state=state,
                     payload=payload,
-                    initial_messages=initial_messages,
                 )
         except ConnectionClosed:
             pass

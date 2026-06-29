@@ -45,8 +45,17 @@ async def _initialize(websocket: ClientConnection) -> dict[str, Any]:
     return parse_jsonrpc_message(await websocket.recv())
 
 
-async def _new_session(websocket: ClientConnection, *, scope_id: str, request_id: int = 2) -> str:
-    await websocket.send(jsonrpc_request(request_id, "session/new", _scope_params(scope_id)))
+async def _new_session(
+    websocket: ClientConnection,
+    *,
+    scope_id: str,
+    request_id: int = 2,
+    metadata: dict[str, Any] | None = None,
+) -> str:
+    params = _scope_params(scope_id)
+    if metadata:
+        params["_meta"].update(metadata)
+    await websocket.send(jsonrpc_request(request_id, "session/new", params))
     response = parse_jsonrpc_message(await websocket.recv())
     session_id = response["result"]["sessionId"]
     assert isinstance(session_id, str)
@@ -111,7 +120,6 @@ async def _manager_endpoint(
     )
     async with start_manager_server(
         service=service,
-        initial_messages=[SystemMessage(content="system")],
         auth_secret=auth_secret,
     ) as server:
         yield server.endpoint
@@ -200,7 +208,7 @@ async def test_manager_model_list_is_empty_when_provider_fails_without_cache(tmp
         model_lister=_failing_model_lister,
     )
 
-    async with start_manager_server(service=service, initial_messages=[SystemMessage(content="system")]) as server:
+    async with start_manager_server(service=service) as server:
         async with connect(server.endpoint) as websocket:
             await _initialize(websocket)
             await websocket.send(jsonrpc_request(2, "model/list", {}))
@@ -239,7 +247,7 @@ async def test_manager_preserves_existing_sessions_without_model_metadata(tmp_pa
     )
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
 
-    async with start_manager_server(service=service, initial_messages=[SystemMessage(content="system")]) as server:
+    async with start_manager_server(service=service) as server:
         async with connect(server.endpoint) as websocket:
             await _initialize(websocket)
             await websocket.send(jsonrpc_request(2, "session/list", _scope_params("scope-a")))
@@ -421,7 +429,7 @@ async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None
         ],
     )
 
-    async with start_manager_server(service=service, initial_messages=[SystemMessage(content="system")]) as server:
+    async with start_manager_server(service=service) as server:
         async with connect(server.endpoint) as websocket:
             await _initialize(websocket)
             await websocket.send(
@@ -516,7 +524,7 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
 
 
 @pytest.mark.asyncio
-async def test_manager_stores_session_worker_env_privately_and_passes_prompt_skills(tmp_path: Path) -> None:
+async def test_manager_stores_session_worker_env_privately_and_injects_session_skills(tmp_path: Path) -> None:
     worker = FakeWorkerRunner(response_text="done")
     async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
         async with connect(endpoint) as websocket:
@@ -526,6 +534,16 @@ async def test_manager_stores_session_worker_env_privately_and_passes_prompt_ski
                 "APPS_API_BASE_URL": "http://apps-api",
                 "APPS_API_TOKEN": "secret-token",
             }
+            new_session_params["_meta"]["skills"] = [
+                {
+                    "name": "apps-api",
+                    "description": "Use apps REST APIs.",
+                    "files": {
+                        "SKILL.md": "---\nname: apps-api\ndescription: Use apps REST APIs.\n---\n",
+                        "references/calories.md": "calories",
+                    },
+                },
+            ]
             await websocket.send(jsonrpc_request(2, "session/new", new_session_params))
             new_session_response = parse_jsonrpc_message(await websocket.recv())
             session_id = new_session_response["result"]["sessionId"]
@@ -535,18 +553,6 @@ async def test_manager_stores_session_worker_env_privately_and_passes_prompt_ski
                 sessionId=session_id,
                 prompt=[text_block("Do it")],
             )
-            params["_meta"]["capabilities"] = {
-                "skills": [
-                    {
-                        "name": "apps-api",
-                        "description": "Use apps REST APIs.",
-                        "files": {
-                            "SKILL.md": "---\nname: apps-api\ndescription: Use apps REST APIs.\n---\n",
-                            "references/calories.md": "calories",
-                        },
-                    },
-                ],
-            }
 
             await websocket.send(jsonrpc_request(4, "session/prompt", params))
             update = parse_jsonrpc_message(await websocket.recv())
@@ -560,20 +566,27 @@ async def test_manager_stores_session_worker_env_privately_and_passes_prompt_ski
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     assert [message["params"]["update"]["content"]["text"] for message in replay] == ["Do it", "done"]
     assert "capabilities" not in load_response["result"]["_meta"]
+    assert "skills" not in load_response["result"]["_meta"]
     assert "workerEnv" not in load_response["result"]["_meta"]
+    skill_root = tmp_path / "workspaces" / session_id / ".agents" / "skills" / "apps-api"
+    assert (skill_root / "SKILL.md").read_text(encoding="utf-8") == (
+        "---\nname: apps-api\ndescription: Use apps REST APIs.\n---\n"
+    )
+    assert (skill_root / "references" / "calories.md").read_text(encoding="utf-8") == "calories"
     assert worker.prompts is not None
     assert worker.prompts[0].worker_env == {
         "APPS_API_BASE_URL": "http://apps-api",
         "APPS_API_TOKEN": "secret-token",
     }
-    capabilities = worker.prompts[0].capabilities
-    assert len(capabilities.skills) == 1
-    assert capabilities.skills[0].name == "apps-api"
-    assert capabilities.skills[0].files["references/calories.md"] == "calories"
+    system_message = worker.prompts[0].history[0]
+    assert isinstance(system_message, SystemMessage)
+    assert isinstance(system_message.content, str)
+    assert "apps-api" in system_message.content
+    assert "Use apps REST APIs." in system_message.content
 
 
 @pytest.mark.asyncio
-async def test_manager_rejects_capabilities_on_non_prompt_methods(tmp_path: Path) -> None:
+async def test_manager_ignores_unknown_capabilities_metadata(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
         async with connect(endpoint) as websocket:
             await _initialize(websocket)
@@ -583,8 +596,7 @@ async def test_manager_rejects_capabilities_on_non_prompt_methods(tmp_path: Path
             await websocket.send(jsonrpc_request(2, "session/list", params))
             response = parse_jsonrpc_message(await websocket.recv())
 
-    assert response["error"]["code"] == -32602
-    assert response["error"]["message"] == "_meta.capabilities is only accepted on session/prompt."
+    assert response["result"]["sessions"] == []
 
 
 @pytest.mark.asyncio
@@ -634,27 +646,19 @@ async def test_manager_validates_injected_skill_paths(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
         async with connect(endpoint) as websocket:
             await _initialize(websocket)
-            session_id = await _new_session(websocket, scope_id="scope-a")
-            await _set_model(websocket, scope_id="scope-a", session_id=session_id, request_id=3)
-            params = _scope_params(
-                "scope-a",
-                sessionId=session_id,
-                prompt=[text_block("Do it")],
-            )
-            params["_meta"]["capabilities"] = {
-                "skills": [
-                    {
-                        "name": "apps-api",
-                        "description": "Use apps REST APIs.",
-                        "files": {
-                            "SKILL.md": "skill",
-                            "../escape.md": "bad",
-                        },
+            params = _scope_params("scope-a")
+            params["_meta"]["skills"] = [
+                {
+                    "name": "apps-api",
+                    "description": "Use apps REST APIs.",
+                    "files": {
+                        "SKILL.md": "skill",
+                        "../escape.md": "bad",
                     },
-                ],
-            }
+                },
+            ]
 
-            await websocket.send(jsonrpc_request(4, "session/prompt", params))
+            await websocket.send(jsonrpc_request(2, "session/new", params))
             response = parse_jsonrpc_message(await websocket.recv())
 
     assert response["error"]["code"] == -32602

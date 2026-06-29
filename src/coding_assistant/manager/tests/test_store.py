@@ -59,6 +59,29 @@ def test_create_and_load_session_private_worker_env(tmp_path: Path) -> None:
     assert store.list_sessions(scope_id="scope-a")[0].metadata == {}
 
 
+def test_create_session_uses_reserved_workspace(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+    )
+    reservation = store.reserve_session_workspace()
+    marker = reservation.workspace / ".agents" / "marker.txt"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("prepared", encoding="utf-8")
+
+    created = store.create_session(
+        scope_id="scope-a",
+        messages=[SystemMessage(content="system")],
+        reserved_workspace=reservation,
+    )
+    loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    assert created.record.session_id == reservation.session_id
+    assert created.workspace == reservation.workspace
+    assert loaded.workspace == reservation.workspace
+    assert marker.read_text(encoding="utf-8") == "prepared"
+
+
 def test_store_adds_private_worker_env_column_to_existing_database(tmp_path: Path) -> None:
     database_path = tmp_path / "sessions.sqlite"
     with sqlite3.connect(database_path) as connection:

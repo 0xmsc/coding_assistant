@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import os
 import re
-import shutil
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -11,7 +10,7 @@ from time import monotonic
 
 from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.manager.remote_worker import RemoteWorkerRunner
-from coding_assistant.manager.service import PromptCapabilities, WorkerCommit, WorkerPrompt
+from coding_assistant.manager.service import WorkerCommit, WorkerPrompt
 from coding_assistant.remote.client import RemoteClientEvent, RemoteSessionClient
 
 
@@ -64,18 +63,12 @@ class DockerWorkerRunner:
         container_name = _container_name(prefix=self._config.container_prefix, session_id=prompt.session_id)
         endpoint = f"ws://{container_name}:{self._config.worker_port}"
         runner = RemoteWorkerRunner(endpoint=endpoint)
-        prompt_skills_directories = _write_prompt_skill_bundles(
-            workspace=prompt.workspace,
-            workspace_mount=self._config.workspace_mount,
-            capabilities=prompt.capabilities,
-        )
         await self._remove_container(container_name, allow_failure=True)
         await self._start_container(
             container_name=container_name,
             workspace=prompt.workspace,
             model=prompt.model,
             worker_env=prompt.worker_env,
-            prompt_skills_directories=prompt_skills_directories,
         )
         await self._register_active(session_id=prompt.session_id, container_name=container_name, runner=runner)
         try:
@@ -117,7 +110,6 @@ class DockerWorkerRunner:
         workspace: str,
         model: str,
         worker_env: dict[str, str],
-        prompt_skills_directories: tuple[str, ...],
     ) -> None:
         args = _docker_run_args(
             config=self._config,
@@ -125,7 +117,6 @@ class DockerWorkerRunner:
             workspace=workspace,
             model=model,
             extra_environment=worker_env,
-            extra_skills_directories=prompt_skills_directories,
         )
         result = await _run_command(args)
         if result.returncode != 0:
@@ -175,27 +166,6 @@ def _workspace_source(*, config: DockerWorkerConfig, workspace: str) -> str:
     return str(Path(config.workspace_source_root) / relative_workspace)
 
 
-def _write_prompt_skill_bundles(
-    *,
-    workspace: str,
-    workspace_mount: str,
-    capabilities: PromptCapabilities,
-) -> tuple[str, ...]:
-    if not capabilities.skills:
-        return ()
-
-    skills_root = Path(workspace) / ".agents" / "skills"
-    for skill in capabilities.skills:
-        skill_root = skills_root / skill.name
-        shutil.rmtree(skill_root, ignore_errors=True)
-        skill_root.mkdir(parents=True, exist_ok=True)
-        for relative_path, content in skill.files.items():
-            target = skill_root / relative_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
-    return (str(Path(workspace_mount) / ".agents" / "skills"),)
-
-
 def _merged_environment(
     *,
     config: DockerWorkerConfig,
@@ -220,7 +190,6 @@ def _docker_run_args(
     workspace: str,
     model: str,
     extra_environment: dict[str, str] | None = None,
-    extra_skills_directories: tuple[str, ...] = (),
 ) -> list[str]:
     args = [
         config.docker_command,
@@ -259,9 +228,8 @@ def _docker_run_args(
     )
     if config.instructions:
         args.extend(["--instructions", *config.instructions])
-    skills_directories = (*config.skills_directories, *extra_skills_directories)
-    if skills_directories:
-        args.extend(["--skills-directories", *skills_directories])
+    if config.skills_directories:
+        args.extend(["--skills-directories", *config.skills_directories])
     return args
 
 
