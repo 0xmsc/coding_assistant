@@ -7,6 +7,8 @@ from typing import Any, Literal, Optional, Protocol
 
 from dacite import from_dict
 
+MessageContent = str | list[dict[str, Any]]
+
 
 class ToolDefinition(Protocol):
     """Interface for tool metadata exposed to the model."""
@@ -29,6 +31,13 @@ class TextToolResult:
     """Normal text output that should be appended as a tool message."""
 
     content: str
+
+
+@dataclass(frozen=True)
+class ToolMessageResult:
+    """Normal tool output that should be appended as one tool message."""
+
+    content: MessageContent
 
 
 @dataclass(frozen=True)
@@ -63,19 +72,19 @@ class ToolCall:
 @dataclass(frozen=True, kw_only=True)
 class BaseMessage:
     role: str
-    content: Optional[str | list[dict[str, Any]]] = None
+    content: Optional[MessageContent] = None
     name: Optional[str] = None
 
 
 @dataclass(frozen=True, kw_only=True)
 class SystemMessage(BaseMessage):
-    content: str | list[dict[str, Any]]
+    content: MessageContent
     role: Literal["system"] = "system"
 
 
 @dataclass(frozen=True, kw_only=True)
 class UserMessage(BaseMessage):
-    content: str | list[dict[str, Any]]
+    content: MessageContent
     role: Literal["user"] = "user"
 
 
@@ -90,20 +99,12 @@ class AssistantMessage(BaseMessage):
 
 @dataclass(frozen=True, kw_only=True)
 class ToolMessage(BaseMessage):
-    content: str
+    content: MessageContent
     tool_call_id: str
     role: Literal["tool"] = "tool"
 
 
-@dataclass(frozen=True)
-class ToolContextResult:
-    """Tool output plus extra model-visible context messages."""
-
-    content: str
-    extra_messages: list[BaseMessage] = field(default_factory=list)
-
-
-ToolResult = TextToolResult | CompactConversationResult | ToolContextResult
+ToolResult = TextToolResult | ToolMessageResult | CompactConversationResult
 
 
 class StatusLevel(Enum):

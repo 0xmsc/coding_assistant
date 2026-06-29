@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from coding_assistant.llm.types import ToolContextResult, UserMessage
+from coding_assistant.llm.types import TextToolResult, ToolMessageResult
 from coding_assistant.tools.load_file import LoadFileTool
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
@@ -16,10 +16,9 @@ async def test_load_file_loads_text_attachment(tmp_path: Path) -> None:
 
     result = await LoadFileTool(workspace=tmp_path).execute({"path": "attachments/att_123-menu.txt"})
 
-    assert isinstance(result, ToolContextResult)
+    assert isinstance(result, TextToolResult)
     assert "Loaded text attachment attachments/att_123-menu.txt" in result.content
     assert "eggs and toast" in result.content
-    assert result.extra_messages == [UserMessage(content=result.content)]
 
 
 @pytest.mark.asyncio
@@ -30,18 +29,13 @@ async def test_load_file_loads_image_attachment_as_model_context(tmp_path: Path)
 
     result = await LoadFileTool(workspace=tmp_path).execute({"path": "attachments/att_123-meal.png"})
 
-    assert result.content == (
-        "Loaded image attachment attachments/att_123-meal.png (image/png, 24 bytes). "
-        "The image is now available in conversation context."
-    )
-    [message] = result.extra_messages
-    assert isinstance(message, UserMessage)
-    assert isinstance(message.content, list)
-    assert message.content[0] == {
+    assert isinstance(result, ToolMessageResult)
+    assert isinstance(result.content, list)
+    assert result.content[0] == {
         "type": "text",
         "text": "Loaded image attachment attachments/att_123-meal.png (image/png, 24 bytes).",
     }
-    image_block = message.content[1]
+    image_block = result.content[1]
     assert image_block["type"] == "image_url"
     assert image_block["image_url"]["url"].startswith("data:image/png;base64,")
 

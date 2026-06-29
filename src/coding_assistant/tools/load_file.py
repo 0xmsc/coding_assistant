@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.llm.types import Tool, ToolContextResult, UserMessage
+from coding_assistant.llm.types import TextToolResult, Tool, ToolMessageResult, ToolResult
 
 MAX_TEXT_BYTES = 512 * 1024
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
@@ -53,7 +53,7 @@ class LoadFileTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return LoadFileInput.model_json_schema()
 
-    async def execute(self, parameters: dict[str, Any]) -> ToolContextResult:
+    async def execute(self, parameters: dict[str, Any]) -> ToolResult:
         validated = LoadFileInput.model_validate(parameters)
         target = _attachment_path(workspace=self._workspace, raw_path=validated.path)
         data = target.read_bytes()
@@ -102,7 +102,7 @@ def _is_text_mime(mime_type: str) -> bool:
     return mime_type.startswith("text/") or mime_type in SUPPORTED_TEXT_TYPES
 
 
-def _load_text(*, path: Path, workspace: Path, data: bytes, mime_type: str) -> ToolContextResult:
+def _load_text(*, path: Path, workspace: Path, data: bytes, mime_type: str) -> TextToolResult:
     if len(data) > MAX_TEXT_BYTES:
         raise ValueError(f"Text attachment is too large to load: {path.relative_to(workspace)}.")
     try:
@@ -112,13 +112,10 @@ def _load_text(*, path: Path, workspace: Path, data: bytes, mime_type: str) -> T
 
     relative_path = path.relative_to(workspace).as_posix()
     content = f"Loaded text attachment {relative_path} ({mime_type}, {len(data)} bytes):\n\n{text}"
-    return ToolContextResult(
-        content=content,
-        extra_messages=[UserMessage(content=content)],
-    )
+    return TextToolResult(content=content)
 
 
-def _load_image(*, path: Path, workspace: Path, data: bytes, mime_type: str) -> ToolContextResult:
+def _load_image(*, path: Path, workspace: Path, data: bytes, mime_type: str) -> ToolMessageResult:
     if mime_type not in SUPPORTED_IMAGE_TYPES:
         raise ValueError(f"Unsupported image attachment type for {path.relative_to(workspace)}: {mime_type}.")
     if len(data) > MAX_IMAGE_BYTES:
@@ -126,20 +123,15 @@ def _load_image(*, path: Path, workspace: Path, data: bytes, mime_type: str) -> 
 
     relative_path = path.relative_to(workspace).as_posix()
     text = f"Loaded image attachment {relative_path} ({mime_type}, {len(data)} bytes)."
-    return ToolContextResult(
-        content=f"{text} The image is now available in conversation context.",
-        extra_messages=[
-            UserMessage(
-                content=[
-                    {"type": "text", "text": text},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{mime_type};base64,{base64.b64encode(data).decode('ascii')}",
-                        },
-                    },
-                ],
-            ),
+    return ToolMessageResult(
+        content=[
+            {"type": "text", "text": text},
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{mime_type};base64,{base64.b64encode(data).decode('ascii')}",
+                },
+            },
         ],
     )
 

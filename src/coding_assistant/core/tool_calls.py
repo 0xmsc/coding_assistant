@@ -14,10 +14,11 @@ from coding_assistant.infra.trace import trace_enabled, trace_json
 from coding_assistant.llm.types import (
     BaseMessage,
     CompactConversationResult,
+    MessageContent,
     TextToolResult,
     Tool,
-    ToolContextResult,
     ToolCall,
+    ToolMessageResult,
     ToolMessage,
     ToolResult,
 )
@@ -146,7 +147,7 @@ def _append_tool_message(
     history: list[BaseMessage],
     *,
     tool_call: ToolCall,
-    content: str,
+    content: MessageContent,
 ) -> None:
     history.append(
         ToolMessage(
@@ -195,15 +196,31 @@ def _append_cancelled_tool_messages(
     return events
 
 
+def _message_content_text(content: MessageContent) -> str:
+    if isinstance(content, str):
+        return content
+
+    text_parts = [
+        block["text"] for block in content if block.get("type") == "text" and isinstance(block.get("text"), str)
+    ]
+    if text_parts:
+        return "\n".join(text_parts)
+    return "[non-text tool output]"
+
+
 def _tool_result_content(result: ToolResult) -> str:
-    if isinstance(result, (TextToolResult, ToolContextResult)):
+    if isinstance(result, TextToolResult):
         return result.content
+    if isinstance(result, ToolMessageResult):
+        return _message_content_text(result.content)
     return result.summary
 
 
 def _tool_result_raw_output(result: ToolResult) -> Any:
-    if isinstance(result, (TextToolResult, ToolContextResult)):
+    if isinstance(result, TextToolResult):
         return result.content
+    if isinstance(result, ToolMessageResult):
+        return _message_content_text(result.content)
     return {"summary": result.summary}
 
 
@@ -215,10 +232,6 @@ def _apply_tool_result(
 ) -> tuple[list[BaseMessage], bool]:
     if isinstance(result, CompactConversationResult):
         return compact_history(history, result.summary), True
-    if isinstance(result, ToolContextResult):
-        _append_tool_message(history, tool_call=tool_call, content=result.content)
-        history.extend(result.extra_messages)
-        return history, False
     _append_tool_message(history, tool_call=tool_call, content=result.content)
     return history, False
 
@@ -312,7 +325,7 @@ async def _execute_resolved_tool(
 ) -> ToolResult:
     """Run one resolved tool and require a typed tool result."""
     result = await tool.execute(arguments)
-    if isinstance(result, (TextToolResult, CompactConversationResult, ToolContextResult)):
+    if isinstance(result, (TextToolResult, ToolMessageResult, CompactConversationResult)):
         return result
     raise TypeError(f"Tool '{tool.name()}' returned unsupported result type: {type(result).__name__}.")
 

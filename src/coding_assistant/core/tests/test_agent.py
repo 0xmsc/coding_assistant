@@ -7,7 +7,11 @@ import pytest
 
 from coding_assistant.core.agent import run_agent_event_stream
 from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
-from coding_assistant.core.tool_calls import ToolCallExecutionCompleted, stream_tool_call_execution
+from coding_assistant.core.tool_calls import (
+    ToolCallExecutionCompleted,
+    ToolCallLifecycleEvent,
+    stream_tool_call_execution,
+)
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -20,7 +24,7 @@ from coding_assistant.llm.types import (
     TextToolResult,
     Tool,
     ToolCall,
-    ToolContextResult,
+    ToolMessageResult,
     ToolMessage,
     Usage,
     UserMessage,
@@ -98,19 +102,24 @@ class CompactingTool(Tool):
         return CompactConversationResult(summary=self._summary)
 
 
-class ContextTool(Tool):
+class MultimodalTool(Tool):
     def name(self) -> str:
-        return "context_tool"
+        return "multimodal_tool"
 
     def description(self) -> str:
-        return "Tool that returns extra context messages"
+        return "Tool that returns multimodal content"
 
     def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}, "additionalProperties": False}
 
-    async def execute(self, parameters: dict[str, Any]) -> ToolContextResult:
+    async def execute(self, parameters: dict[str, Any]) -> ToolMessageResult:
         del parameters
-        return ToolContextResult(content="loaded context", extra_messages=[UserMessage(content="extra context")])
+        return ToolMessageResult(
+            content=[
+                {"type": "text", "text": "loaded image"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}},
+            ],
+        )
 
 
 class NonTextTool(Tool):
@@ -309,28 +318,67 @@ async def test_execute_tool_calls_compacts_history_without_orphan_tool_message()
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_calls_appends_context_result_messages() -> None:
-    context_call = ToolCall(
+async def test_execute_tool_calls_appends_multimodal_tool_result_as_tool_message() -> None:
+    multimodal_call = ToolCall(
         id="call-1",
-        function=FunctionCall(name="context_tool", arguments="{}"),
+        function=FunctionCall(name="multimodal_tool", arguments="{}"),
+    )
+    later_call = ToolCall(
+        id="call-2",
+        function=FunctionCall(name="mock_tool", arguments="{}"),
     )
     boundary = AwaitingToolCalls(
         history=[
             *make_system_history(),
             UserMessage(content="Load it"),
-            AssistantMessage(tool_calls=[context_call]),
+            AssistantMessage(tool_calls=[multimodal_call, later_call]),
         ],
     )
 
     result = await _execute_tool_boundary(
         boundary=boundary,
-        tools=[ContextTool()],
+        tools=[MultimodalTool(), MockTool()],
     )
 
     assert result[-2:] == [
-        ToolMessage(tool_call_id="call-1", name="context_tool", content="loaded context"),
-        UserMessage(content="extra context"),
+        ToolMessage(
+            tool_call_id="call-1",
+            name="multimodal_tool",
+            content=[
+                {"type": "text", "text": "loaded image"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}},
+            ],
+        ),
+        ToolMessage(tool_call_id="call-2", name="mock_tool", content="tool result"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_calls_reports_multimodal_tool_result_as_text_update() -> None:
+    multimodal_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="multimodal_tool", arguments="{}"),
+    )
+    boundary = AwaitingToolCalls(
+        history=[
+            *make_system_history(),
+            UserMessage(content="Load it"),
+            AssistantMessage(tool_calls=[multimodal_call]),
+        ],
+    )
+
+    events = [
+        event
+        async for event in stream_tool_call_execution(
+            boundary=boundary,
+            tools=[MultimodalTool()],
+        )
+    ]
+
+    completed = events[1]
+    assert isinstance(completed, ToolCallLifecycleEvent)
+    assert completed.raw_output == "loaded image"
+    assert completed.content == "loaded image"
 
 
 @pytest.mark.asyncio
