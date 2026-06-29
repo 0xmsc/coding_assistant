@@ -801,10 +801,11 @@ Response:
 }
 ```
 
-Workers do not receive attachment bytes automatically. Use the worker
-`load_file(path)` tool with the returned `attachment.path` before reasoning
-from an uploaded text or image file. `load_file` can also load other
-worker-visible text and image files.
+Workers do not receive attachment bytes automatically. For images, use the
+worker `load_image(path)` tool with the returned `attachment.path` before
+reasoning from the image. For PDFs, extract text in the workspace with
+`pdftotext`, then inspect the extracted text. Text-like attachments can be read
+with shell or Python from their `/attachments/...` path.
 
 ### session/download_attachment
 

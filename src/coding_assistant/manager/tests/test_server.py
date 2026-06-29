@@ -434,6 +434,47 @@ async def test_manager_upload_file_uses_mime_type_name_for_unnamed_attachment(tm
 
 
 @pytest.mark.asyncio
+async def test_manager_upload_file_accepts_pdf_and_instructs_text_extraction(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
+    )
+    service = ManagerService(
+        store=store,
+        worker_runner=FakeWorkerRunner(),
+        model_lister=_test_model_lister,
+    )
+    session = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+
+    result = await service.upload_file(
+        params=_scope_params(
+            "scope-a",
+            sessionId=session.record.session_id,
+            name="report.pdf",
+            mimeType="",
+            data=base64.b64encode(b"%PDF-1.7 report").decode("ascii"),
+        ),
+        on_update=_ignore_session_update,
+    )
+
+    attachment = result["attachment"]
+    assert attachment["name"] == "report.pdf"
+    assert attachment["mimeType"] == "application/pdf"
+    assert attachment["path"].startswith("/attachments/att_")
+    assert attachment["path"].endswith("-report.pdf")
+
+    loaded = store.load_session(scope_id="scope-a", session_id=session.record.session_id)
+    message = loaded.messages[-1]
+    assert isinstance(message, UserMessage)
+    assert isinstance(message.content, str)
+    assert "pdf-text-extraction" in message.content
+    assert (
+        f'mkdir -p extracted && pdftotext -layout -enc UTF-8 "{attachment["path"]}" '
+        f'"extracted/{attachment["id"]}-report.txt"'
+    ) in message.content
+
+
+@pytest.mark.asyncio
 async def test_manager_upload_file_rejects_cross_scope_session(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
         async with connect(endpoint) as websocket:

@@ -28,10 +28,11 @@
 
 ## Attachments
 
-- Use `load_file(path)` before reasoning from an uploaded session attachment.
-- It can also load other worker-visible text or image files.
-- Relative paths resolve from the worker workspace, and absolute paths are allowed.
-- It loads bounded UTF-8 text and supported images into conversation context.
+- Use `load_image(path)` before reasoning from an uploaded image attachment.
+- For PDFs, use the `pdf-text-extraction` skill and extract text with `pdftotext` into the workspace.
+- For text, JSON, CSV, Markdown, and extracted PDF text files, inspect files with shell or Python.
+- Relative image paths resolve from the worker workspace, and absolute paths are allowed.
+- `load_image` loads bounded supported images into conversation context.
 
 ## Tasks
 

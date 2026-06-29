@@ -50,6 +50,7 @@ SUPPORTED_ATTACHMENT_TYPES = {
     "application/csv",
     "application/json",
     "application/markdown",
+    "application/pdf",
     "application/x-ndjson",
     "image/gif",
     "image/jpeg",
@@ -266,6 +267,8 @@ def _attachment_mime_type(*, raw_mime_type: object, name: str | None) -> str:
         mime_type = "text/markdown"
     elif name and name.lower().endswith(".csv"):
         mime_type = "text/csv"
+    elif name and name.lower().endswith(".pdf"):
+        mime_type = "application/pdf"
     elif name and name.lower().endswith(".txt"):
         mime_type = "text/plain"
     else:
@@ -287,6 +290,8 @@ def _default_attachment_name(mime_type: str) -> str:
         return "attachment.webp"
     if mime_type == "application/json":
         return "attachment.json"
+    if mime_type == "application/pdf":
+        return "attachment.pdf"
     if mime_type in {"application/markdown", "text/markdown"}:
         return "attachment.md"
     if mime_type in {"application/csv", "text/csv"}:
@@ -339,8 +344,26 @@ def _attachment_message(attachment: SessionAttachment) -> str:
     return (
         f"Attached file `{attachment.name}` as `{attachment.path}` "
         f"({attachment.mime_type}, {attachment.size} bytes). "
-        f'Use `load_file("{attachment.path}")` before reasoning from this file.'
+        f"{_attachment_instruction(attachment)}"
     )
+
+
+def _attachment_instruction(attachment: SessionAttachment) -> str:
+    if attachment.mime_type.startswith("image/"):
+        return f'Use `load_image("{attachment.path}")` before reasoning from this image.'
+    if attachment.mime_type == "application/pdf":
+        return (
+            "Use the `pdf-text-extraction` skill and extract text with "
+            f'`mkdir -p extracted && pdftotext -layout -enc UTF-8 "{attachment.path}" '
+            f'"{_pdf_text_output_path(attachment)}"` '
+            "before reasoning from this PDF."
+        )
+    return "Inspect this text-like file with shell or Python before reasoning from it."
+
+
+def _pdf_text_output_path(attachment: SessionAttachment) -> str:
+    stem = Path(attachment.name).stem or "attachment"
+    return f"extracted/{attachment.attachment_id}-{stem}.txt"
 
 
 def _attachment_item(attachment: SessionAttachment) -> SessionItem:

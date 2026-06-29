@@ -9,6 +9,7 @@ def test_create_worker_tool_bundle_excludes_cli_remote_tools() -> None:
 
     assert bundle.instructions.startswith(load_tool_instructions())
     assert "advanced-tool-usage" in bundle.instructions
+    assert "pdf-text-extraction" in bundle.instructions
     assert "## Remotes" not in bundle.instructions
     assert "## MCP" not in bundle.instructions
     assert {
@@ -18,7 +19,7 @@ def test_create_worker_tool_bundle_excludes_cli_remote_tools() -> None:
         "python_execute",
         "filesystem_write_file",
         "filesystem_edit_file",
-        "load_file",
+        "load_image",
     } <= tool_names
     assert {
         "remote_connect",
