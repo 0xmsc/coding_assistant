@@ -14,10 +14,18 @@ from typing import Protocol
 
 from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.core.session_updates import (
+    AgentMessageChunkUpdate,
+    HistoryCompleteUpdate,
+    HistoryResetUpdate,
     SessionUpdate,
-    UserMessageChunkUpdate,
-    committed_message_from_history_message,
-    replay_updates_from_committed_message,
+    SessionItem,
+    SessionItemAddedUpdate,
+    SessionItemDeltaUpdate,
+    SessionItemUpdatedUpdate,
+    ToolCallLifecycleUpdate,
+    ToolCallStartedUpdate,
+    content_text,
+    session_items_from_history_messages,
 )
 from coding_assistant.llm.openai import list_models as list_provider_models
 from coding_assistant.llm.types import BaseMessage, UserMessage
@@ -335,6 +343,130 @@ def _attachment_message(attachment: SessionAttachment) -> str:
     )
 
 
+def _attachment_item(attachment: SessionAttachment) -> SessionItem:
+    return SessionItem(kind="attachment", payload=attachment.to_json())
+
+
+def _prompt_item(prompt_content: str | list[JsonObject]) -> SessionItem | None:
+    text = content_text(prompt_content)
+    if text is None:
+        return None
+    return SessionItem(kind="message", payload={"role": "user", "content": text})
+
+
+def _attachment_from_item(item: SessionItem, *, attachment_id: str) -> SessionAttachment | None:
+    if item.kind != "attachment":
+        return None
+    payload = item.payload
+    if payload.get("id") != attachment_id:
+        return None
+    name = payload.get("name")
+    mime_type = payload.get("mimeType")
+    size = payload.get("size")
+    path = payload.get("path")
+    sha256 = payload.get("sha256")
+    if not (
+        isinstance(name, str)
+        and isinstance(mime_type, str)
+        and isinstance(size, int)
+        and isinstance(path, str)
+        and isinstance(sha256, str)
+    ):
+        raise ManagerError(f"Attachment {attachment_id} has invalid stored metadata.")
+    return SessionAttachment(
+        attachment_id=attachment_id,
+        name=name,
+        mime_type=mime_type,
+        size=size,
+        path=path,
+        sha256=sha256,
+    )
+
+
+def _attachment_file_path(*, attachments: Path, attachment: SessionAttachment) -> Path:
+    parsed = PurePosixPath(attachment.path)
+    if not parsed.is_absolute() or parsed.parts[:2] != ("/", "attachments") or len(parsed.parts) != 3:
+        raise ManagerError(f"Attachment {attachment.attachment_id} has invalid stored path.")
+    return attachments / parsed.name
+
+
+def _verified_attachment_bytes(*, attachments: Path, attachment: SessionAttachment) -> bytes:
+    target = _attachment_file_path(attachments=attachments, attachment=attachment)
+    data = target.read_bytes()
+    actual_hash = hashlib.sha256(data).hexdigest()
+    if actual_hash != attachment.sha256:
+        raise ManagerError(f"Attachment {attachment.attachment_id} failed hash verification.")
+    return data
+
+
+class _ItemUpdateTranslator:
+    def __init__(self, *, on_update: Callable[[SessionUpdate], Awaitable[None]]) -> None:
+        self._on_update = on_update
+        self._assistant_item_id: str | None = None
+        self._tool_item_ids: dict[str, str] = {}
+
+    async def handle(self, update: SessionUpdate) -> None:
+        if isinstance(update, AgentMessageChunkUpdate):
+            await self._append_assistant_text(update.content)
+            return
+
+        if isinstance(update, ToolCallStartedUpdate):
+            await self._start_tool_call(update)
+            return
+
+        if isinstance(update, ToolCallLifecycleUpdate):
+            await self._update_tool_call(update)
+
+    async def _append_assistant_text(self, content: str) -> None:
+        if self._assistant_item_id is None:
+            item = SessionItem(kind="message", payload={"role": "assistant", "content": ""})
+            self._assistant_item_id = item.item_id
+            await self._on_update(SessionItemAddedUpdate(item=item))
+        await self._on_update(SessionItemDeltaUpdate(item_id=self._assistant_item_id, append_text=content))
+
+    async def _start_tool_call(self, update: ToolCallStartedUpdate) -> None:
+        payload: JsonObject = {
+            "toolCallId": update.tool_call_id,
+            "title": update.title,
+            "kind": update.tool_kind,
+            "status": update.status,
+        }
+        if update.raw_input is not None:
+            payload["rawInput"] = update.raw_input
+        item = SessionItem(kind="tool_call", payload=payload)
+        self._tool_item_ids[update.tool_call_id] = item.item_id
+        await self._on_update(SessionItemAddedUpdate(item=item))
+
+    async def _update_tool_call(self, update: ToolCallLifecycleUpdate) -> None:
+        item_id = self._tool_item_ids.get(update.tool_call_id)
+        if item_id is None:
+            item = SessionItem(
+                kind="tool_call",
+                payload={
+                    "toolCallId": update.tool_call_id,
+                    "title": update.title or "Tool call",
+                    "kind": update.tool_kind or "other",
+                    "status": update.status,
+                },
+            )
+            item_id = item.item_id
+            self._tool_item_ids[update.tool_call_id] = item_id
+            await self._on_update(SessionItemAddedUpdate(item=item))
+
+        payload: JsonObject = {"status": update.status}
+        if update.title is not None:
+            payload["title"] = update.title
+        if update.tool_kind is not None:
+            payload["kind"] = update.tool_kind
+        if update.raw_input is not None:
+            payload["rawInput"] = update.raw_input
+        if update.raw_output is not None:
+            payload["rawOutput"] = update.raw_output
+        if update.content is not None:
+            payload["content"] = update.content
+        await self._on_update(SessionItemUpdatedUpdate(item_id=item_id, patch={"payload": payload}))
+
+
 def _model_from_record(record: SessionRecord) -> str:
     model = record.metadata.get(MODEL_METADATA_KEY)
     if isinstance(model, str) and model.strip():
@@ -474,12 +606,11 @@ class ManagerService:
         scope_id = _scope_id_from_params(params)
         session_id = session_id_from_params(params)
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
-        for message in session.messages:
-            committed = committed_message_from_history_message(message)
-            if committed is None:
-                continue
-            for update in replay_updates_from_committed_message(committed):
-                await on_update(update)
+        items = session.items or session_items_from_history_messages(session.messages)
+        await on_update(HistoryResetUpdate())
+        for item in items:
+            await on_update(SessionItemAddedUpdate(item=item))
+        await on_update(HistoryCompleteUpdate(version=session.record.version))
         return _session_metadata(session)
 
     async def upload_file(
@@ -497,16 +628,44 @@ class ManagerService:
             session = self._store.load_session(scope_id=scope_id, session_id=session_id)
             attachment = _write_attachment(attachments=session.attachments, params=params)
             message_text = _attachment_message(attachment)
+            item = _attachment_item(attachment)
             self._store.commit_messages(
                 scope_id=scope_id,
                 session_id=session_id,
                 base_version=session.record.version,
                 messages=[UserMessage(content=message_text)],
+                items=[item],
             )
 
-        await on_update(UserMessageChunkUpdate(content=message_text))
+        await on_update(SessionItemAddedUpdate(item=item))
         updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
         return {"attachment": attachment.to_json(), "session": _record_metadata(updated.record)}
+
+    async def download_attachment(self, *, params: JsonObject) -> JsonObject:
+        scope_id = _scope_id_from_params(params)
+        session_id = session_id_from_params(params)
+        attachment_id = params.get("attachmentId")
+        if not isinstance(attachment_id, str) or not attachment_id:
+            raise ManagerError("session/download_attachment requires an attachmentId.")
+
+        session = self._store.load_session(scope_id=scope_id, session_id=session_id)
+        attachment = next(
+            (
+                parsed
+                for item in session.items
+                if (parsed := _attachment_from_item(item, attachment_id=attachment_id)) is not None
+            ),
+            None,
+        )
+        if attachment is None:
+            raise ManagerError(f"Attachment {attachment_id} was not found.")
+
+        data = _verified_attachment_bytes(attachments=session.attachments, attachment=attachment)
+        return {
+            "attachment": attachment.to_json(),
+            "encoding": "base64",
+            "data": base64.b64encode(data).decode("ascii"),
+        }
 
     async def prompt(
         self,
@@ -520,7 +679,7 @@ class ManagerService:
         if not isinstance(prompt_blocks, list) or not all(isinstance(block, dict) for block in prompt_blocks):
             raise ManagerError("session/prompt requires a prompt array.")
         try:
-            prompt_content_from_acp(prompt_blocks)
+            prompt_content = prompt_content_from_acp(prompt_blocks)
         except ValueError as exc:
             raise ManagerError(str(exc)) from exc
 
@@ -528,6 +687,10 @@ class ManagerService:
         model = _model_from_record(session.record)
         await self._mark_prompt_active(session_id)
         try:
+            user_item = _prompt_item(prompt_content)
+            if user_item is not None:
+                await on_update(SessionItemAddedUpdate(item=user_item))
+            translator = _ItemUpdateTranslator(on_update=on_update)
             worker_commit = await self._worker_runner.run_prompt(
                 prompt=WorkerPrompt(
                     session_id=session_id,
@@ -539,13 +702,14 @@ class ManagerService:
                     prompt=prompt_blocks,
                     worker_env=session.worker_env,
                 ),
-                on_update=on_update,
+                on_update=translator.handle,
             )
             self._store.commit_messages(
                 scope_id=scope_id,
                 session_id=session_id,
                 base_version=session.record.version,
                 messages=worker_commit.messages,
+                items=session_items_from_history_messages(worker_commit.messages),
                 title=worker_commit.title,
                 metadata=worker_commit.metadata,
             )

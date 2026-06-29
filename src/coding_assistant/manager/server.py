@@ -161,6 +161,10 @@ async def _handle_session_method(
         await websocket.send(jsonrpc_result_required(response_id, result))
         return
 
+    if method == "session/download_attachment":
+        await websocket.send(jsonrpc_result_required(response_id, await service.download_attachment(params=params)))
+        return
+
     if method == "session/rename":
         await websocket.send(jsonrpc_result_required(response_id, service.rename_session(params=params)))
         return

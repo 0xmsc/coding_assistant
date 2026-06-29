@@ -13,6 +13,7 @@ from coding_assistant.llm.types import (
     ToolMessage,
     UserMessage,
 )
+from coding_assistant.core.session_updates import SessionItem
 from coding_assistant.manager.store import SessionNotFoundError, SessionStore, StaleSessionCommitError
 from coding_assistant.manager.workspace import WorkspaceMissingError, WorkspacePaths
 
@@ -59,6 +60,29 @@ def test_create_and_load_session_private_worker_env(tmp_path: Path) -> None:
     assert created.worker_env == {"APPS_API_TOKEN": "secret-token"}
     assert loaded.worker_env == {"APPS_API_TOKEN": "secret-token"}
     assert store.list_sessions(scope_id="scope-a")[0].metadata == {}
+
+
+def test_commit_messages_persists_session_items(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
+    )
+    created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+    item = SessionItem(kind="message", payload={"role": "user", "content": "hello"})
+
+    store.commit_messages(
+        scope_id="scope-a",
+        session_id=created.record.session_id,
+        base_version=0,
+        messages=[UserMessage(content="hello")],
+        items=[item],
+    )
+    loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    assert loaded.items[0].item_id == item.item_id
+    assert loaded.items[0].sequence == 1
+    assert loaded.items[0].kind == "message"
+    assert loaded.items[0].payload == {"role": "user", "content": "hello"}
 
 
 def test_create_session_uses_reserved_workspace(tmp_path: Path) -> None:

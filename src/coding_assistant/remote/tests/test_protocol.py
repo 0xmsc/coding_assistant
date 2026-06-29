@@ -3,6 +3,12 @@ from __future__ import annotations
 from coding_assistant.core.agent_session import RunFinishedEvent, ToolCallsEvent, ToolCallUpdateEvent
 from coding_assistant.core.session_updates import (
     AgentMessageChunkUpdate,
+    HistoryCompleteUpdate,
+    HistoryResetUpdate,
+    SessionItem,
+    SessionItemAddedUpdate,
+    SessionItemDeltaUpdate,
+    SessionItemUpdatedUpdate,
     ToolCallLifecycleUpdate,
     ToolCallStartedUpdate,
     UserMessageChunkUpdate,
@@ -48,6 +54,49 @@ def test_session_update_notification_wraps_serialized_update() -> None:
     assert notification is not None
     assert '"method": "session/update"' in notification
     assert '"sessionId": "sess_1"' in notification
+
+
+def test_item_updates_convert_to_jsonrpc_payloads_and_parse_back() -> None:
+    item = SessionItem(item_id="item_1", kind="message", payload={"role": "assistant", "content": ""})
+
+    assert session_update_to_jsonrpc_update(HistoryResetUpdate()) == {"sessionUpdate": "history_reset"}
+    assert session_update_to_jsonrpc_update(SessionItemAddedUpdate(item=item)) == {
+        "sessionUpdate": "item_added",
+        "item": {
+            "id": "item_1",
+            "kind": "message",
+            "payload": {"role": "assistant", "content": ""},
+        },
+    }
+    assert session_update_to_jsonrpc_update(SessionItemDeltaUpdate(item_id="item_1", append_text="hello")) == {
+        "sessionUpdate": "item_delta",
+        "itemId": "item_1",
+        "appendText": "hello",
+    }
+    assert session_update_to_jsonrpc_update(
+        SessionItemUpdatedUpdate(item_id="item_1", patch={"payload": {"content": "hello"}})
+    ) == {
+        "sessionUpdate": "item_updated",
+        "itemId": "item_1",
+        "patch": {"payload": {"content": "hello"}},
+    }
+    assert session_update_to_jsonrpc_update(HistoryCompleteUpdate(version=3)) == {
+        "sessionUpdate": "history_complete",
+        "version": 3,
+    }
+
+    parsed = session_update_from_jsonrpc_update(
+        {
+            "sessionUpdate": "item_added",
+            "item": {
+                "id": "item_1",
+                "kind": "message",
+                "payload": {"role": "assistant", "content": ""},
+            },
+        },
+    )
+
+    assert parsed == SessionItemAddedUpdate(item=item)
 
 
 def test_tool_calls_convert_to_normalized_updates_and_jsonrpc_payloads() -> None:

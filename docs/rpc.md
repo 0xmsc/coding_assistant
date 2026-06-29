@@ -524,7 +524,7 @@ Request:
 }
 ```
 
-During load, the server streams historical messages:
+During load, the server streams item replay updates:
 
 ```json
 {
@@ -533,10 +533,15 @@ During load, the server streams historical messages:
   "params": {
     "sessionId": "sess_abc123",
     "update": {
-      "sessionUpdate": "user_message_chunk",
-      "content": {
-        "type": "text",
-        "text": "Fix the failing tests."
+      "sessionUpdate": "item_added",
+      "item": {
+        "id": "item_abc123",
+        "kind": "message",
+        "sequence": 1,
+        "payload": {
+          "role": "user",
+          "content": "Fix the failing tests."
+        }
       }
     }
   }
@@ -745,9 +750,11 @@ Prompt blocks follow ACP-compatible content shapes where practical:
 
 Uploads one bounded file into the visible session attachments directory in
 `params._meta.scopeId`. The manager validates scope, file name, MIME type, and
-size, writes the bytes under the session attachments directory, commits a visible user transcript
-message, and returns attachment metadata. If `name` is `null` or blank, the
-manager derives a generic filename with an extension from the MIME type.
+size, writes the bytes under the session attachments directory, commits
+model-visible attachment context, emits a visible attachment item through
+`session/update`, and returns attachment metadata. If `name` is `null` or
+blank, the manager derives a generic filename with an extension from the MIME
+type.
 
 Request:
 
@@ -798,6 +805,51 @@ Workers do not receive attachment bytes automatically. Use the worker
 `load_file(path)` tool with the returned `attachment.path` before reasoning
 from an uploaded text or image file. `load_file` can also load other
 worker-visible text and image files.
+
+### session/download_attachment
+
+Downloads a stored session attachment. The manager authorizes the session by
+`params._meta.scopeId`, finds the persisted attachment item, reads the file
+from the manager-owned attachments directory, recomputes its SHA-256 hash, and
+returns bytes only if the hash still matches the stored attachment metadata.
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 9,
+  "method": "session/download_attachment",
+  "params": {
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
+    "sessionId": "sess_abc123",
+    "attachmentId": "att_abc123"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 9,
+  "result": {
+    "attachment": {
+      "id": "att_abc123",
+      "name": "meal.jpg",
+      "mimeType": "image/jpeg",
+      "size": 12345,
+      "path": "/attachments/att_abc123-meal.jpg",
+      "sha256": "..."
+    },
+    "encoding": "base64",
+    "data": "base64-encoded-file"
+  }
+}
+```
 
 ### session/cancel
 
@@ -852,10 +904,14 @@ The original `session/prompt` request should later resolve with
 
 ### session/update
 
-The server streams replay, run output, and tool status through JSON-RPC
-notifications.
+The server sends all visible transcript history through JSON-RPC
+notifications. `session/load`, `session/prompt`, and `session/upload_file`
+all use this same update path; RPC responses acknowledge commands and return
+metadata, but clients should not render transcript content from those
+responses.
 
-Assistant text delta:
+History replay starts with `history_reset`, sends one `item_added` per
+persisted visible item, and ends with `history_complete`:
 
 ```json
 {
@@ -864,17 +920,13 @@ Assistant text delta:
   "params": {
     "sessionId": "sess_abc123",
     "update": {
-      "sessionUpdate": "agent_message_chunk",
-      "content": {
-        "type": "text",
-        "text": "I'll inspect the repository."
-      }
+      "sessionUpdate": "history_reset"
     }
   }
 }
 ```
 
-Tool call announced:
+Visible item added:
 
 ```json
 {
@@ -883,45 +935,64 @@ Tool call announced:
   "params": {
     "sessionId": "sess_abc123",
     "update": {
-      "sessionUpdate": "tool_call",
-      "toolCallId": "call_1",
-      "title": "shell_execute",
-      "kind": "other",
-      "status": "pending",
-      "rawInput": {
-        "command": "ls"
-      }
-    }
-  }
-}
-```
-
-Tool call updated:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "session/update",
-  "params": {
-    "sessionId": "sess_abc123",
-    "update": {
-      "sessionUpdate": "tool_call_update",
-      "toolCallId": "call_1",
-      "status": "completed",
-      "title": "shell_execute",
-      "kind": "other",
-      "rawOutput": {
-        "exit_code": 0
-      },
-      "content": [
-        {
-          "type": "content",
-          "content": {
-            "type": "text",
-            "text": "Command completed."
-          }
+      "sessionUpdate": "item_added",
+      "item": {
+        "id": "item_abc123",
+        "kind": "attachment",
+        "sequence": 3,
+        "createdAt": "2026-06-23T19:30:00Z",
+        "updatedAt": "2026-06-23T19:30:00Z",
+        "payload": {
+          "id": "att_abc123",
+          "name": "meal.jpg",
+          "mimeType": "image/jpeg",
+          "size": 12345,
+          "path": "/attachments/att_abc123-meal.jpg",
+          "sha256": "..."
         }
-      ]
+      }
+    }
+  }
+}
+```
+
+Assistant text delta for an existing message item:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "sess_abc123",
+    "update": {
+      "sessionUpdate": "item_delta",
+      "itemId": "item_assistant_1",
+      "appendText": "I'll inspect the repository."
+    }
+  }
+}
+```
+
+Tool call status patch:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "sess_abc123",
+    "update": {
+      "sessionUpdate": "item_updated",
+      "itemId": "item_tool_1",
+      "patch": {
+        "payload": {
+          "status": "completed",
+          "rawOutput": {
+            "exit_code": 0
+          },
+          "content": "Command completed."
+        }
+      }
     }
   }
 }
@@ -931,11 +1002,11 @@ Supported `sessionUpdate` values:
 
 | Value | Description |
 | --- | --- |
-| `user_message_chunk` | A user message chunk, primarily used during `session/load` replay. |
-| `agent_message_chunk` | A streamed assistant text delta. |
-| `tool_call` | A tool call was requested. |
-| `tool_call_update` | A tool call lifecycle update. |
-| `session_info_update` | Session title, updated timestamp, or metadata changed. |
+| `history_reset` | Clear local visible transcript before replay. |
+| `item_added` | Add a visible `message`, `tool_call`, or `attachment` item. |
+| `item_delta` | Append text to an existing message item. |
+| `item_updated` | Patch an existing item payload, primarily tool status/output. |
+| `history_complete` | Replay is complete and includes the durable session version. |
 
 Live streamed updates are provisional until the worker commits the completed
 turn and the manager persists it.

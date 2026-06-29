@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+from coding_assistant.core.session_updates import SessionItem
 from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
 from coding_assistant.manager.workspace import WorkspacePaths
 
@@ -35,6 +36,7 @@ class SessionRecord:
 class LoadedSession:
     record: SessionRecord
     messages: list[BaseMessage]
+    items: list[SessionItem]
     workspace: Path
     attachments: Path
     worker_env: dict[str, str] = field(default_factory=dict)
@@ -67,6 +69,17 @@ def _message_from_json(payload: str) -> BaseMessage:
     if not isinstance(decoded, dict):
         raise ValueError("Stored message payload must be a JSON object.")
     return message_from_dict(decoded)
+
+
+def _item_payload_to_json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True)
+
+
+def _item_payload_from_json(payload: str) -> dict[str, Any]:
+    decoded = json.loads(payload)
+    if not isinstance(decoded, dict):
+        raise ValueError("Stored session item payload must be a JSON object.")
+    return decoded
 
 
 def _metadata_to_json(metadata: dict[str, Any]) -> str:
@@ -170,6 +183,7 @@ class SessionStore:
         return LoadedSession(
             record=record,
             messages=list(messages),
+            items=[],
             workspace=workspace,
             attachments=reserved_workspace.attachments,
             worker_env=dict(worker_env or {}),
@@ -201,12 +215,33 @@ class SessionStore:
                 """,
                 (session_id,),
             ).fetchall()
+            item_rows = connection.execute(
+                """
+                select item_id, sequence, kind, payload_json, created_at, updated_at
+                from session_items
+                where session_id = ?
+                order by sequence asc, item_id asc
+                """,
+                (session_id,),
+            ).fetchall()
         paths = self.workspaces.require_for_session(session_id)
         messages = [_message_from_json(str(row["payload_json"])) for row in message_rows]
+        items = [
+            SessionItem(
+                item_id=str(row["item_id"]),
+                kind=str(row["kind"]),
+                payload=_item_payload_from_json(str(row["payload_json"])),
+                sequence=int(row["sequence"]),
+                created_at=str(row["created_at"]),
+                updated_at=str(row["updated_at"]),
+            )
+            for row in item_rows
+        ]
         worker_env = _worker_env_from_json(str(session_row["worker_env_json"]))
         return LoadedSession(
             record=record,
             messages=messages,
+            items=items,
             workspace=paths.workspace,
             attachments=paths.attachments,
             worker_env=worker_env,
@@ -256,6 +291,7 @@ class SessionStore:
         session_id: str,
         base_version: int,
         messages: list[BaseMessage],
+        items: list[SessionItem] | None = None,
         title: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> int:
@@ -273,6 +309,12 @@ class SessionStore:
                     session_id=session_id,
                     version=new_version,
                     messages=messages,
+                    created_at=now,
+                )
+                self._insert_items(
+                    connection,
+                    session_id=session_id,
+                    items=items or [],
                     created_at=now,
                 )
                 next_title = title if title is not None else record.title
@@ -325,10 +367,27 @@ class SessionStore:
                 """,
             )
             connection.execute(
+                """
+                create table if not exists session_items (
+                  item_id text primary key,
+                  session_id text not null references sessions(session_id) on delete cascade,
+                  sequence integer not null,
+                  kind text not null,
+                  payload_json text not null,
+                  created_at text not null,
+                  updated_at text not null,
+                  unique(session_id, sequence)
+                )
+                """,
+            )
+            connection.execute(
                 "create index if not exists idx_sessions_scope_updated on sessions(scope_id, updated_at desc)",
             )
             connection.execute(
                 "create index if not exists idx_session_messages_session on session_messages(session_id, id)",
+            )
+            connection.execute(
+                "create index if not exists idx_session_items_session on session_items(session_id, sequence)",
             )
 
     def _get_session_row(self, connection: sqlite3.Connection, *, scope_id: str, session_id: str) -> sqlite3.Row:
@@ -363,4 +422,42 @@ class SessionStore:
             values (?, ?, ?, ?, ?)
             """,
             [(session_id, version, message.role, _message_to_json(message), created_at) for message in messages],
+        )
+
+    def _insert_items(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        session_id: str,
+        items: list[SessionItem],
+        created_at: str,
+    ) -> None:
+        if not items:
+            return
+        row = connection.execute(
+            "select coalesce(max(sequence), 0) as sequence from session_items where session_id = ?",
+            (session_id,),
+        ).fetchone()
+        next_sequence = int(row["sequence"]) + 1 if row is not None else 1
+        stored_items = [
+            replace(item, sequence=next_sequence + index, created_at=created_at, updated_at=created_at)
+            for index, item in enumerate(items)
+        ]
+        connection.executemany(
+            """
+            insert into session_items (item_id, session_id, sequence, kind, payload_json, created_at, updated_at)
+            values (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    item.item_id,
+                    session_id,
+                    item.sequence,
+                    item.kind,
+                    _item_payload_to_json(item.payload),
+                    item.created_at,
+                    item.updated_at,
+                )
+                for item in stored_items
+            ],
         )

@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from websockets.asyncio.client import connect
 
-from coding_assistant.core.session_updates import SessionUpdate
+from coding_assistant.core.session_updates import SessionItemAddedUpdate, SessionItemDeltaUpdate, SessionUpdate
 from coding_assistant.llm.types import (
     AssistantMessage,
     Completion,
@@ -67,6 +67,20 @@ def _scope_params(session_id: str, prompt: str) -> dict[str, Any]:
     }
 
 
+def _update(message: dict[str, Any]) -> dict[str, Any]:
+    update = message["params"]["update"]
+    assert isinstance(update, dict)
+    return update
+
+
+def _item_payload(update: dict[str, Any]) -> dict[str, Any]:
+    item = update["item"]
+    assert isinstance(item, dict)
+    payload = item["payload"]
+    assert isinstance(payload, dict)
+    return payload
+
+
 async def _test_model_lister() -> list[str]:
     return ["test-model"]
 
@@ -114,7 +128,13 @@ async def test_remote_worker_prompt_streams_update_and_commits_to_sqlite(tmp_pat
         loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert result.stop_reason == "end_turn"
-    assert len(updates) == 1
+    assert len(updates) == 3
+    assert isinstance(updates[0], SessionItemAddedUpdate)
+    assert updates[0].item.payload == {"role": "user", "content": "Do it"}
+    assert isinstance(updates[1], SessionItemAddedUpdate)
+    assert updates[1].item.payload == {"role": "assistant", "content": ""}
+    assert isinstance(updates[2], SessionItemDeltaUpdate)
+    assert updates[2].append_text == "hello"
     assert loaded.record.version == 1
     assert [message.role for message in loaded.messages] == ["system", "user", "assistant"]
     assert [getattr(message, "content", None) for message in loaded.messages] == ["system", "Do it", "hello"]
@@ -241,20 +261,27 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
                         _scope_params(session_id, "server prompt"),
                     ),
                 )
-                update = parse_jsonrpc_message(await websocket.recv())
+                live_updates = [parse_jsonrpc_message(await websocket.recv()) for _ in range(3)]
                 prompt_response = parse_jsonrpc_message(await websocket.recv())
 
                 await websocket.send(
                     jsonrpc_request(5, "session/load", {"_meta": {"scopeId": "scope-a"}, "sessionId": session_id}),
                 )
-                replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(2)]
+                replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(4)]
                 load_response = parse_jsonrpc_message(await websocket.recv())
 
     assert initialize_response["result"]["protocolVersion"] == ACP_PROTOCOL_VERSION
     assert set_model_response["result"]["_meta"]["model"] == "test-model"
-    assert update["params"]["update"]["content"]["text"] == "server answer"
+    live_payloads = [_update(message) for message in live_updates]
+    assert _item_payload(live_payloads[0]) == {"role": "user", "content": "server prompt"}
+    assert _item_payload(live_payloads[1]) == {"role": "assistant", "content": ""}
+    assert live_payloads[2]["appendText"] == "server answer"
     assert prompt_response["result"] == {"stopReason": "end_turn"}
-    assert [message["params"]["update"]["content"]["text"] for message in replay] == ["server prompt", "server answer"]
+    replay_payloads = [_update(message) for message in replay]
+    assert replay_payloads[0] == {"sessionUpdate": "history_reset"}
+    assert _item_payload(replay_payloads[1]) == {"role": "user", "content": "server prompt"}
+    assert _item_payload(replay_payloads[2]) == {"role": "assistant", "content": "server answer"}
+    assert replay_payloads[3] == {"sessionUpdate": "history_complete", "version": 1}
     assert load_response["result"]["_meta"]["version"] == 1
 
 
