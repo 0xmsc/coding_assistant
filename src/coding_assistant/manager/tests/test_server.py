@@ -13,11 +13,11 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import InvalidStatus
 
 from coding_assistant.core.session_updates import (
-    AgentMessageChunkUpdate,
     SessionItem,
+    SessionItemAddedUpdate,
+    SessionItemDeltaUpdate,
+    SessionItemUpdatedUpdate,
     SessionUpdate,
-    ToolCallLifecycleUpdate,
-    ToolCallStartedUpdate,
 )
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, ToolMessage, UserMessage
 from coding_assistant.manager.server import start_manager_server
@@ -722,78 +722,6 @@ async def test_manager_load_replays_load_image_tool_display_content(tmp_path: Pa
 
 
 @pytest.mark.asyncio
-async def test_manager_load_enriches_legacy_load_image_tool_items(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
-    service = ManagerService(
-        store=store,
-        worker_runner=FakeWorkerRunner(),
-        model_lister=_test_model_lister,
-    )
-    created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
-    tool_call = ToolCall(
-        id="call-1",
-        function=FunctionCall(name="load_image", arguments='{"path": "/attachments/att_1-meal.png"}'),
-    )
-    store.commit_messages(
-        scope_id="scope-a",
-        session_id=created.record.session_id,
-        base_version=0,
-        messages=[
-            AssistantMessage(tool_calls=[tool_call]),
-            ToolMessage(
-                tool_call_id="call-1",
-                name="load_image",
-                content=[
-                    {"type": "text", "text": "loaded image"},
-                    IMAGE_BLOCK,
-                ],
-            ),
-        ],
-        items=[
-            SessionItem(
-                kind="tool_call",
-                payload={
-                    "toolCallId": "call-1",
-                    "title": "load_image",
-                    "kind": "other",
-                    "status": "completed",
-                },
-            ),
-        ],
-    )
-
-    async with start_manager_server(service=service) as server:
-        async with connect(server.endpoint) as websocket:
-            await _initialize(websocket)
-            await websocket.send(
-                jsonrpc_request(2, "session/load", _scope_params("scope-a", sessionId=created.record.session_id))
-            )
-            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(3)]
-            response = parse_jsonrpc_message(await websocket.recv())
-
-    replay_updates = [message["params"]["update"] for message in replay]
-    assert replay_updates[0] == {"sessionUpdate": "history_reset"}
-    assert _item_payload(replay_updates[1]) == {
-        "toolCallId": "call-1",
-        "title": "load_image",
-        "kind": "other",
-        "status": "completed",
-        "rawInput": {"path": "/attachments/att_1-meal.png"},
-        "rawOutput": [
-            {"type": "text", "text": "loaded image"},
-            IMAGE_BLOCK,
-        ],
-        "content": "loaded image",
-        "displayContent": [IMAGE_BLOCK],
-    }
-    assert replay_updates[2] == {"sessionUpdate": "history_complete", "version": 1}
-    assert response["result"]["sessionId"] == created.record.session_id
-
-
-@pytest.mark.asyncio
 async def test_manager_renames_session(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
         async with connect(endpoint) as websocket:
@@ -1198,7 +1126,7 @@ async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path
 
 
 @pytest.mark.asyncio
-async def test_manager_translates_live_tool_updates_to_session_items(tmp_path: Path) -> None:
+async def test_manager_forwards_live_tool_session_items(tmp_path: Path) -> None:
     class ToolStreamingWorker:
         async def run_prompt(
             self,
@@ -1207,31 +1135,36 @@ async def test_manager_translates_live_tool_updates_to_session_items(tmp_path: P
             on_update: Callable[[SessionUpdate], Awaitable[None]],
         ) -> WorkerCommit:
             del prompt
-            await on_update(
-                ToolCallStartedUpdate(
-                    source="worker",
-                    tool_call_id="call-1",
-                    title="load_image",
-                    tool_kind="read",
-                    status="pending",
-                    raw_input={"path": "/attachments/att_1-meal.png"},
-                    message=None,
-                )
+            tool_item = SessionItem(
+                kind="tool_call",
+                payload={
+                    "toolCallId": "call-1",
+                    "title": "load_image",
+                    "kind": "read",
+                    "status": "pending",
+                    "rawInput": {"path": "/attachments/att_1-meal.png"},
+                },
             )
+            await on_update(SessionItemAddedUpdate(item=tool_item))
             await on_update(
-                ToolCallLifecycleUpdate(
-                    source="worker",
-                    tool_call_id="call-1",
-                    title="load_image",
-                    tool_kind="read",
-                    status="completed",
-                    raw_input={"path": "/attachments/att_1-meal.png"},
-                    raw_output="loaded image",
-                    content="loaded image",
-                    display_content=[IMAGE_BLOCK],
-                )
+                SessionItemUpdatedUpdate(
+                    item_id=tool_item.item_id,
+                    patch={
+                        "payload": {
+                            "status": "completed",
+                            "title": "load_image",
+                            "kind": "read",
+                            "rawInput": {"path": "/attachments/att_1-meal.png"},
+                            "rawOutput": "loaded image",
+                            "content": "loaded image",
+                            "displayContent": [IMAGE_BLOCK],
+                        },
+                    },
+                ),
             )
-            await on_update(AgentMessageChunkUpdate(content="done"))
+            message_item = SessionItem(kind="message", payload={"role": "assistant", "content": ""})
+            await on_update(SessionItemAddedUpdate(item=message_item))
+            await on_update(SessionItemDeltaUpdate(item_id=message_item.item_id, append_text="done"))
             return WorkerCommit(
                 messages=[
                     UserMessage(content="Use tool"),

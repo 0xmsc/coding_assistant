@@ -10,10 +10,10 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
 from coding_assistant.core.session_updates import (
-    AgentMessageChunkUpdate,
+    SessionItemAddedUpdate,
+    SessionItemDeltaUpdate,
+    SessionItemUpdatedUpdate,
     SessionUpdate,
-    ToolCallLifecycleUpdate,
-    ToolCallStartedUpdate,
 )
 from coding_assistant.llm.types import BaseMessage
 from coding_assistant.remote.acp import (
@@ -322,20 +322,33 @@ class RemoteSessionClient:
         )
 
     async def _publish_session_update(self, update: SessionUpdate) -> None:
-        if isinstance(update, AgentMessageChunkUpdate):
-            await self._on_event(RemoteContentDeltaEvent(content=update.content))
+        if isinstance(update, SessionItemDeltaUpdate):
+            await self._on_event(RemoteContentDeltaEvent(content=update.append_text))
             return
 
-        if isinstance(update, ToolCallStartedUpdate):
-            await self._on_event(RemoteToolCallEvent(title=update.title))
+        if isinstance(update, SessionItemAddedUpdate):
+            if update.item.kind == "message":
+                role = update.item.payload.get("role")
+                content = update.item.payload.get("content")
+                if role == "assistant" and isinstance(content, str) and content:
+                    await self._on_event(RemoteContentDeltaEvent(content=content))
+            if update.item.kind == "tool_call":
+                title = update.item.payload.get("title")
+                await self._on_event(RemoteToolCallEvent(title=title if isinstance(title, str) else "Tool call"))
             return
 
-        if isinstance(update, ToolCallLifecycleUpdate):
+        if isinstance(update, SessionItemUpdatedUpdate):
+            payload = update.patch.get("payload")
+            if not isinstance(payload, dict):
+                return
+            status = payload.get("status")
+            title = payload.get("title")
+            content = payload.get("content")
             await self._on_event(
                 RemoteToolCallUpdateEvent(
-                    status=update.status,
-                    title=update.title,
-                    content=update.content,
+                    status=status if isinstance(status, str) else "",
+                    title=title if isinstance(title, str) else None,
+                    content=content if isinstance(content, str) else None,
                 ),
             )
 

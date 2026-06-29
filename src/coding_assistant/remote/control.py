@@ -6,14 +6,18 @@ from uuid import uuid4
 
 from websockets.asyncio.server import ServerConnection
 
-from coding_assistant.core.agent_session import AgentSession
+from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, ToolCallsEvent, ToolCallUpdateEvent
 from coding_assistant.core.session_updates import (
-    AgentMessageChunkUpdate,
+    SessionItem,
+    SessionItemAddedUpdate,
+    SessionItemDeltaUpdate,
+    SessionItemUpdatedUpdate,
     SessionUpdate,
     prompt_result_from_update,
     session_updates_from_agent_event,
+    tool_call_raw_input,
 )
-from coding_assistant.llm.types import BaseMessage
+from coding_assistant.llm.types import BaseMessage, ContentDeltaEvent
 from coding_assistant.remote.acp import (
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
@@ -55,12 +59,8 @@ class _RemoteControlState:
     session_opened: bool = False
     active_prompt_request_id: int | str | None = None
     active_prompt_source: str | None = None
-
-
-def _update_matches_active_prompt(update: SessionUpdate, source: str | None) -> bool:
-    if source is None:
-        return False
-    return getattr(update, "source", None) == source
+    assistant_item_id: str | None = None
+    tool_item_ids: dict[str, str] | None = None
 
 
 def _commit_notification(
@@ -147,7 +147,11 @@ class RemoteAgentController:
         async with controlled_session.session.subscribe() as queue:
             while True:
                 event = await queue.get()
-                for update in session_updates_from_agent_event(event):
+                source = getattr(event, "source", None)
+                active_source = self._state.active_prompt_source
+                if source is not None and active_source is not None and source != active_source:
+                    continue
+                for update in self._session_updates_from_agent_event(event):
                     current_session = self._controlled_session
                     if current_session is None:
                         return
@@ -155,6 +159,7 @@ class RemoteAgentController:
                         websocket=websocket,
                         controlled_session=current_session,
                         update=update,
+                        source=source,
                     )
 
     async def handle_jsonrpc_message(
@@ -201,12 +206,14 @@ class RemoteAgentController:
         websocket: ServerConnection,
         controlled_session: RemoteControlledSession,
         update: SessionUpdate,
+        source: str | None,
     ) -> None:
-        if isinstance(update, AgentMessageChunkUpdate) and self._state.active_prompt_source is not None:
-            await _send_session_update(websocket=websocket, session_id=controlled_session.session_id, update=update)
+        active_source = self._state.active_prompt_source
+        if active_source is None:
             return
 
-        if not _update_matches_active_prompt(update, self._state.active_prompt_source):
+        update_source = source if source is not None else getattr(update, "source", None)
+        if update_source is not None and update_source != active_source:
             return
 
         await _send_session_update(websocket=websocket, session_id=controlled_session.session_id, update=update)
@@ -240,6 +247,86 @@ class RemoteAgentController:
 
         self._state.active_prompt_request_id = None
         self._state.active_prompt_source = None
+        self._state.assistant_item_id = None
+        self._state.tool_item_ids = None
+
+    def _session_updates_from_agent_event(self, event: AgentSessionEvent) -> list[SessionUpdate]:
+        if isinstance(event, ContentDeltaEvent):
+            return self._append_assistant_text(event.content)
+        if isinstance(event, ToolCallsEvent):
+            return self._start_tool_call_items(event)
+        if isinstance(event, ToolCallUpdateEvent):
+            return self._update_tool_call_item(event)
+        return session_updates_from_agent_event(event)
+
+    def _append_assistant_text(self, content: str) -> list[SessionUpdate]:
+        updates: list[SessionUpdate] = []
+        if self._state.assistant_item_id is None:
+            item = SessionItem(kind="message", payload={"role": "assistant", "content": ""})
+            self._state.assistant_item_id = item.item_id
+            updates.append(SessionItemAddedUpdate(item=item))
+        updates.append(SessionItemDeltaUpdate(item_id=self._state.assistant_item_id, append_text=content))
+        return updates
+
+    def _start_tool_call_items(self, event: ToolCallsEvent) -> list[SessionUpdate]:
+        tool_item_ids = self._state.tool_item_ids
+        if tool_item_ids is None:
+            tool_item_ids = {}
+            self._state.tool_item_ids = tool_item_ids
+
+        updates: list[SessionUpdate] = []
+        for tool_call in event.message.tool_calls:
+            payload: JsonObject = {
+                "toolCallId": tool_call.id,
+                "title": tool_call.function.name or "tool_call",
+                "kind": "other",
+                "status": "pending",
+            }
+            raw_input = tool_call_raw_input(tool_call.function.arguments)
+            if raw_input is not None:
+                payload["rawInput"] = raw_input
+            item = SessionItem(kind="tool_call", payload=payload)
+            tool_item_ids[tool_call.id] = item.item_id
+            updates.append(SessionItemAddedUpdate(item=item))
+        return updates
+
+    def _update_tool_call_item(self, event: ToolCallUpdateEvent) -> list[SessionUpdate]:
+        tool_item_ids = self._state.tool_item_ids
+        if tool_item_ids is None:
+            tool_item_ids = {}
+            self._state.tool_item_ids = tool_item_ids
+
+        updates: list[SessionUpdate] = []
+        item_id = tool_item_ids.get(event.event.tool_call_id)
+        if item_id is None:
+            item = SessionItem(
+                kind="tool_call",
+                payload={
+                    "toolCallId": event.event.tool_call_id,
+                    "title": event.event.title or "Tool call",
+                    "kind": event.event.kind or "other",
+                    "status": event.event.status,
+                },
+            )
+            item_id = item.item_id
+            tool_item_ids[event.event.tool_call_id] = item_id
+            updates.append(SessionItemAddedUpdate(item=item))
+
+        payload: JsonObject = {"status": event.event.status}
+        if event.event.title is not None:
+            payload["title"] = event.event.title
+        if event.event.kind is not None:
+            payload["kind"] = event.event.kind
+        if event.event.raw_input is not None:
+            payload["rawInput"] = event.event.raw_input
+        if event.event.raw_output is not None:
+            payload["rawOutput"] = event.event.raw_output
+        if event.event.content is not None:
+            payload["content"] = event.event.content
+        if event.event.display_content is not None:
+            payload["displayContent"] = event.event.display_content
+        updates.append(SessionItemUpdatedUpdate(item_id=item_id, patch={"payload": payload}))
+        return updates
 
     async def _handle_initialize(
         self,
@@ -320,6 +407,8 @@ class RemoteAgentController:
         prompt_source = f"remote:{controlled_session.session_id}:{response_id}:{uuid4().hex}"
         self._state.active_prompt_request_id = response_id
         self._state.active_prompt_source = prompt_source
+        self._state.assistant_item_id = None
+        self._state.tool_item_ids = {}
         accepted = await controlled_session.session.enqueue_prompt_if_idle(prompt_content, source=prompt_source)
         if not accepted:
             self._state.active_prompt_request_id = None

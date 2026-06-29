@@ -4,7 +4,12 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from coding_assistant.core.session_updates import AgentMessageChunkUpdate, SessionUpdate
+from coding_assistant.core.session_updates import (
+    SessionItem,
+    SessionItemAddedUpdate,
+    SessionItemDeltaUpdate,
+    SessionUpdate,
+)
 from coding_assistant.llm.types import AssistantMessage, UserMessage
 from coding_assistant.manager.service import WorkerCommit, WorkerPrompt
 from coding_assistant.remote.acp import prompt_content_from_acp
@@ -29,7 +34,9 @@ class FakeWorkerRunner:
         self.prompts.append(prompt)
         if self.started is not None:
             self.started.set()
-        await on_update(AgentMessageChunkUpdate(content=self.response_text))
+        item = SessionItem(kind="message", payload={"role": "assistant", "content": ""})
+        await on_update(SessionItemAddedUpdate(item=item))
+        await on_update(SessionItemDeltaUpdate(item_id=item.item_id, append_text=self.response_text))
         if self.release is not None:
             await self.release.wait()
         return WorkerCommit(

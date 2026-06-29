@@ -317,14 +317,10 @@ class SessionStore:
         session_id: str,
         base_version: int,
         messages: list[BaseMessage],
-        items: list[SessionItem] | None = None,
         item_builder: Callable[[list[StoredMessage]], list[SessionItem]] | None = None,
         title: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> int:
-        if items is not None and item_builder is not None:
-            raise ValueError("commit_messages accepts either items or item_builder, not both.")
-
         now = _now_iso()
         with self._connect() as connection:
             with connection:
@@ -344,7 +340,7 @@ class SessionStore:
                 self._insert_items(
                     connection,
                     session_id=session_id,
-                    items=item_builder(inserted_messages) if item_builder is not None else items or [],
+                    items=item_builder(inserted_messages) if item_builder is not None else [],
                     created_at=now,
                 )
                 next_title = title if title is not None else record.title
@@ -381,9 +377,6 @@ class SessionStore:
                 )
                 """,
             )
-            session_columns = {str(row["name"]) for row in connection.execute("pragma table_info(sessions)")}
-            if "worker_env_json" not in session_columns:
-                connection.execute("alter table sessions add column worker_env_json text not null default '{}'")
             connection.execute(
                 """
                 create table if not exists session_messages (
@@ -411,9 +404,6 @@ class SessionStore:
                 )
                 """,
             )
-            item_columns = {str(row["name"]) for row in connection.execute("pragma table_info(session_items)")}
-            if "message_id" not in item_columns:
-                connection.execute("alter table session_items add column message_id integer null")
             connection.execute(
                 "create index if not exists idx_sessions_scope_updated on sessions(scope_id, updated_at desc)",
             )

@@ -339,8 +339,8 @@ async def test_worker_server_completes_acp_prompt_turn() -> None:
         assert commit["params"]["baseVersion"] == 0
         assert [message["role"] for message in commit["params"]["messages"]] == ["user", "assistant"]
         assert any(
-            update["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
-            and update["params"]["update"]["content"]["text"] == "Hello from the worker"
+            update["params"]["update"]["sessionUpdate"] == "item_delta"
+            and update["params"]["update"]["appendText"] == "Hello from the worker"
             for update in updates
         )
     finally:
@@ -431,9 +431,10 @@ async def test_worker_server_reports_tool_call_lifecycle_over_acp() -> None:
             "result": {"stopReason": "end_turn"},
         }
         assert any(
-            update["params"]["update"]
+            update["params"]["update"]["sessionUpdate"] == "item_added"
+            and update["params"]["update"]["item"]["kind"] == "tool_call"
+            and update["params"]["update"]["item"]["payload"]
             == {
-                "sessionUpdate": "tool_call",
                 "toolCallId": "call-1",
                 "title": "echo_tool",
                 "kind": "other",
@@ -443,17 +444,15 @@ async def test_worker_server_reports_tool_call_lifecycle_over_acp() -> None:
             for update in updates
         )
         assert any(
-            update["params"]["update"]["sessionUpdate"] == "tool_call_update"
-            and update["params"]["update"]["toolCallId"] == "call-1"
-            and update["params"]["update"]["status"] == "in_progress"
+            update["params"]["update"]["sessionUpdate"] == "item_updated"
+            and update["params"]["update"]["patch"]["payload"]["status"] == "in_progress"
             for update in updates
         )
         assert any(
-            update["params"]["update"]["sessionUpdate"] == "tool_call_update"
-            and update["params"]["update"]["toolCallId"] == "call-1"
-            and update["params"]["update"]["status"] == "completed"
-            and update["params"]["update"]["rawOutput"] == "echo:hello"
-            and update["params"]["update"]["content"][0]["content"]["text"] == "echo:hello"
+            update["params"]["update"]["sessionUpdate"] == "item_updated"
+            and update["params"]["update"]["patch"]["payload"]["status"] == "completed"
+            and update["params"]["update"]["patch"]["payload"]["rawOutput"] == "echo:hello"
+            and update["params"]["update"]["patch"]["payload"]["content"] == "echo:hello"
             for update in updates
         )
     finally:

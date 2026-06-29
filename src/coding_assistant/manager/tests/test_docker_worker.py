@@ -150,8 +150,6 @@ async def _load_session(websocket: ClientConnection, *, request_id: int, session
         if message.get("method") != "session/update":
             continue
         update = message["params"]["update"]
-        if update.get("sessionUpdate") == "agent_message_chunk":
-            texts.append(update["content"]["text"])
         if update.get("sessionUpdate") == "item_added":
             item = update.get("item")
             if not isinstance(item, dict):

@@ -14,16 +14,11 @@ from typing import Protocol
 
 from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.core.session_updates import (
-    AgentMessageChunkUpdate,
     HistoryCompleteUpdate,
     HistoryResetUpdate,
     SessionUpdate,
     SessionItem,
     SessionItemAddedUpdate,
-    SessionItemDeltaUpdate,
-    SessionItemUpdatedUpdate,
-    ToolCallLifecycleUpdate,
-    ToolCallStartedUpdate,
     content_text,
     display_content_from_tool_content,
     session_items_from_history_messages,
@@ -406,17 +401,14 @@ def _linked_items_from_message_records(message_records: list[StoredMessage]) -> 
 
 
 def _visible_session_items(session: LoadedSession) -> list[SessionItem]:
-    if any(item.message_id is not None for item in session.items):
-        return _visible_linked_session_items(session)
     if session.items:
-        return _legacy_visible_session_items(session)
+        return _visible_linked_session_items(session)
     return session_items_from_history_messages(session.messages)
 
 
 def _visible_linked_session_items(session: LoadedSession) -> list[SessionItem]:
     messages_by_id = {record.message_id: record.message for record in session.message_records}
     tool_messages_by_call_id = _tool_messages_by_call_id(session.message_records)
-    derived_tool_payloads = _derived_tool_payloads(session.messages)
     visible_items: list[SessionItem] = []
 
     for item in session.items:
@@ -424,7 +416,6 @@ def _visible_linked_session_items(session: LoadedSession) -> list[SessionItem]:
             item=item,
             messages_by_id=messages_by_id,
             tool_messages_by_call_id=tool_messages_by_call_id,
-            derived_tool_payloads=derived_tool_payloads,
         )
         if visible is not None:
             visible_items.append(visible)
@@ -436,10 +427,9 @@ def _visible_linked_session_item(
     item: SessionItem,
     messages_by_id: dict[int, BaseMessage],
     tool_messages_by_call_id: dict[str, ToolMessage],
-    derived_tool_payloads: dict[str, JsonObject],
 ) -> SessionItem | None:
     if item.message_id is None:
-        return _visible_legacy_session_item(item=item, derived_tool_payloads=derived_tool_payloads)
+        return None
 
     message = messages_by_id.get(item.message_id)
     if item.kind == "attachment":
@@ -515,33 +505,6 @@ def _tool_message_payload(*, tool_message: ToolMessage, fallback_title: str) -> 
     return payload
 
 
-def _legacy_visible_session_items(session: LoadedSession) -> list[SessionItem]:
-    derived_tool_payloads = _derived_tool_payloads(session.messages)
-    return [
-        _visible_legacy_session_item(item=item, derived_tool_payloads=derived_tool_payloads) for item in session.items
-    ]
-
-
-def _derived_tool_payloads(messages: list[BaseMessage]) -> dict[str, JsonObject]:
-    derived_tool_payloads: dict[str, JsonObject] = {}
-    for item in session_items_from_history_messages(messages):
-        if item.kind != "tool_call":
-            continue
-        tool_call_id = item.payload.get("toolCallId")
-        if isinstance(tool_call_id, str):
-            derived_tool_payloads[tool_call_id] = item.payload
-    return derived_tool_payloads
-
-
-def _visible_legacy_session_item(*, item: SessionItem, derived_tool_payloads: dict[str, JsonObject]) -> SessionItem:
-    if item.kind != "tool_call":
-        return item
-    tool_call_id = item.payload.get("toolCallId")
-    if not isinstance(tool_call_id, str) or tool_call_id not in derived_tool_payloads:
-        return item
-    return replace(item, payload={**item.payload, **derived_tool_payloads[tool_call_id]})
-
-
 def _attachment_from_item(item: SessionItem, *, attachment_id: str) -> SessionAttachment | None:
     if item.kind != "attachment":
         return None
@@ -585,76 +548,6 @@ def _verified_attachment_bytes(*, attachments: Path, attachment: SessionAttachme
     if actual_hash != attachment.sha256:
         raise ManagerError(f"Attachment {attachment.attachment_id} failed hash verification.")
     return data
-
-
-class _ItemUpdateTranslator:
-    def __init__(self, *, on_update: Callable[[SessionUpdate], Awaitable[None]]) -> None:
-        self._on_update = on_update
-        self._assistant_item_id: str | None = None
-        self._tool_item_ids: dict[str, str] = {}
-
-    async def handle(self, update: SessionUpdate) -> None:
-        if isinstance(update, AgentMessageChunkUpdate):
-            await self._append_assistant_text(update.content)
-            return
-
-        if isinstance(update, ToolCallStartedUpdate):
-            await self._start_tool_call(update)
-            return
-
-        if isinstance(update, ToolCallLifecycleUpdate):
-            await self._update_tool_call(update)
-
-    async def _append_assistant_text(self, content: str) -> None:
-        if self._assistant_item_id is None:
-            item = SessionItem(kind="message", payload={"role": "assistant", "content": ""})
-            self._assistant_item_id = item.item_id
-            await self._on_update(SessionItemAddedUpdate(item=item))
-        await self._on_update(SessionItemDeltaUpdate(item_id=self._assistant_item_id, append_text=content))
-
-    async def _start_tool_call(self, update: ToolCallStartedUpdate) -> None:
-        payload: JsonObject = {
-            "toolCallId": update.tool_call_id,
-            "title": update.title,
-            "kind": update.tool_kind,
-            "status": update.status,
-        }
-        if update.raw_input is not None:
-            payload["rawInput"] = update.raw_input
-        item = SessionItem(kind="tool_call", payload=payload)
-        self._tool_item_ids[update.tool_call_id] = item.item_id
-        await self._on_update(SessionItemAddedUpdate(item=item))
-
-    async def _update_tool_call(self, update: ToolCallLifecycleUpdate) -> None:
-        item_id = self._tool_item_ids.get(update.tool_call_id)
-        if item_id is None:
-            item = SessionItem(
-                kind="tool_call",
-                payload={
-                    "toolCallId": update.tool_call_id,
-                    "title": update.title or "Tool call",
-                    "kind": update.tool_kind or "other",
-                    "status": update.status,
-                },
-            )
-            item_id = item.item_id
-            self._tool_item_ids[update.tool_call_id] = item_id
-            await self._on_update(SessionItemAddedUpdate(item=item))
-
-        payload: JsonObject = {"status": update.status}
-        if update.title is not None:
-            payload["title"] = update.title
-        if update.tool_kind is not None:
-            payload["kind"] = update.tool_kind
-        if update.raw_input is not None:
-            payload["rawInput"] = update.raw_input
-        if update.raw_output is not None:
-            payload["rawOutput"] = update.raw_output
-        if update.content is not None:
-            payload["content"] = update.content
-        if update.display_content is not None:
-            payload["displayContent"] = update.display_content
-        await self._on_update(SessionItemUpdatedUpdate(item_id=item_id, patch={"payload": payload}))
 
 
 def _model_from_record(record: SessionRecord) -> str:
@@ -882,7 +775,6 @@ class ManagerService:
             user_item = _prompt_item(prompt_content)
             if user_item is not None:
                 await on_update(SessionItemAddedUpdate(item=user_item))
-            translator = _ItemUpdateTranslator(on_update=on_update)
             worker_commit = await self._worker_runner.run_prompt(
                 prompt=WorkerPrompt(
                     session_id=session_id,
@@ -894,7 +786,7 @@ class ManagerService:
                     prompt=prompt_blocks,
                     worker_env=session.worker_env,
                 ),
-                on_update=translator.handle,
+                on_update=on_update,
             )
             self._store.commit_messages(
                 scope_id=scope_id,

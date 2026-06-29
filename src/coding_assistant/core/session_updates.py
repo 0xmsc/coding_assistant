@@ -22,7 +22,6 @@ from coding_assistant.llm.types import (
     ContentDeltaEvent,
     ReasoningDeltaEvent,
     StatusEvent,
-    ToolCall,
     ToolMessage,
     UserMessage,
 )
@@ -66,11 +65,6 @@ class SessionItemDeltaUpdate:
 class SessionItemUpdatedUpdate:
     item_id: str
     patch: JsonObject
-
-
-@dataclass(frozen=True)
-class UserMessageChunkUpdate:
-    content: str
 
 
 @dataclass(frozen=True)
@@ -141,7 +135,6 @@ SessionUpdate = (
     | SessionItemAddedUpdate
     | SessionItemDeltaUpdate
     | SessionItemUpdatedUpdate
-    | UserMessageChunkUpdate
     | AgentMessageChunkUpdate
     | ReasoningMessageChunkUpdate
     | StatusUpdate
@@ -152,17 +145,6 @@ SessionUpdate = (
     | RunCancelledUpdate
     | RunFailedUpdate
 )
-
-
-@dataclass(frozen=True)
-class CommittedMessage:
-    """One model-visible message committed to durable history."""
-
-    role: str
-    content: str | list[JsonObject] | None
-    tool_calls: list[ToolCall] | None = None
-    tool_call_id: str | None = None
-    name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -339,62 +321,3 @@ def prompt_result_from_update(update: SessionUpdate) -> PromptResult | None:
     if isinstance(update, RunFailedUpdate):
         return PromptResult(source=update.source, error=update.error)
     return None
-
-
-def committed_message_from_history_message(message: BaseMessage) -> CommittedMessage | None:
-    if isinstance(message, UserMessage):
-        return CommittedMessage(role="user", content=message.content)
-    if isinstance(message, AssistantMessage):
-        return CommittedMessage(role="assistant", content=message.content, tool_calls=message.tool_calls)
-    if isinstance(message, ToolMessage):
-        return CommittedMessage(
-            role="tool",
-            content=message.content,
-            tool_call_id=message.tool_call_id,
-            name=message.name,
-        )
-    return None
-
-
-def replay_updates_from_committed_message(message: CommittedMessage) -> list[SessionUpdate]:
-    if message.role == "user":
-        text = _committed_content_text(message.content)
-        if text is None:
-            return []
-        return [UserMessageChunkUpdate(content=text)]
-    if message.role == "assistant":
-        updates: list[SessionUpdate] = []
-        text = _committed_content_text(message.content)
-        if text is not None:
-            updates.append(AgentMessageChunkUpdate(content=text))
-        for tool_call in message.tool_calls or []:
-            updates.append(
-                ToolCallStartedUpdate(
-                    source="history",
-                    tool_call_id=tool_call.id,
-                    title=tool_call.function.name or "tool_call",
-                    tool_kind="other",
-                    status="pending",
-                    raw_input=tool_call_raw_input(tool_call.function.arguments),
-                    message=None,
-                )
-            )
-        return updates
-    if message.role == "tool" and message.tool_call_id:
-        text = _committed_content_text(message.content)
-        return [
-            ToolCallLifecycleUpdate(
-                source="history",
-                tool_call_id=message.tool_call_id,
-                status="completed",
-                title=message.name,
-                tool_kind="other",
-                raw_output=message.content,
-                content=text,
-                display_content=display_content_from_tool_content(
-                    tool_name=message.name,
-                    content=message.content,
-                ),
-            )
-        ]
-    return []
