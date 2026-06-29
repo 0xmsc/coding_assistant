@@ -8,16 +8,13 @@ from websockets.asyncio.server import ServerConnection
 
 from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, ToolCallsEvent, ToolCallUpdateEvent
 from coding_assistant.core.session_updates import (
-    SessionItem,
-    SessionItemAddedUpdate,
-    SessionItemDeltaUpdate,
-    SessionItemUpdatedUpdate,
+    MessageAddedUpdate,
+    MessageDeltaUpdate,
     SessionUpdate,
     prompt_result_from_update,
     session_updates_from_agent_event,
-    tool_call_raw_input,
 )
-from coding_assistant.llm.types import BaseMessage, ContentDeltaEvent
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, ContentDeltaEvent
 from coding_assistant.remote.acp import (
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
@@ -59,8 +56,7 @@ class _RemoteControlState:
     session_opened: bool = False
     active_prompt_request_id: int | str | None = None
     active_prompt_source: str | None = None
-    assistant_item_id: str | None = None
-    tool_item_ids: dict[str, str] | None = None
+    assistant_message_id: str | None = None
 
 
 def _commit_notification(
@@ -247,85 +243,28 @@ class RemoteAgentController:
 
         self._state.active_prompt_request_id = None
         self._state.active_prompt_source = None
-        self._state.assistant_item_id = None
-        self._state.tool_item_ids = None
+        self._state.assistant_message_id = None
 
     def _session_updates_from_agent_event(self, event: AgentSessionEvent) -> list[SessionUpdate]:
         if isinstance(event, ContentDeltaEvent):
             return self._append_assistant_text(event.content)
         if isinstance(event, ToolCallsEvent):
-            return self._start_tool_call_items(event)
+            return []
         if isinstance(event, ToolCallUpdateEvent):
-            return self._update_tool_call_item(event)
+            return []
         return session_updates_from_agent_event(event)
 
     def _append_assistant_text(self, content: str) -> list[SessionUpdate]:
         updates: list[SessionUpdate] = []
-        if self._state.assistant_item_id is None:
-            item = SessionItem(kind="message", payload={"role": "assistant", "content": ""})
-            self._state.assistant_item_id = item.item_id
-            updates.append(SessionItemAddedUpdate(item=item))
-        updates.append(SessionItemDeltaUpdate(item_id=self._state.assistant_item_id, append_text=content))
-        return updates
-
-    def _start_tool_call_items(self, event: ToolCallsEvent) -> list[SessionUpdate]:
-        tool_item_ids = self._state.tool_item_ids
-        if tool_item_ids is None:
-            tool_item_ids = {}
-            self._state.tool_item_ids = tool_item_ids
-
-        updates: list[SessionUpdate] = []
-        for tool_call in event.message.tool_calls:
-            payload: JsonObject = {
-                "toolCallId": tool_call.id,
-                "title": tool_call.function.name or "tool_call",
-                "kind": "other",
-                "status": "pending",
-            }
-            raw_input = tool_call_raw_input(tool_call.function.arguments)
-            if raw_input is not None:
-                payload["rawInput"] = raw_input
-            item = SessionItem(kind="tool_call", payload=payload)
-            tool_item_ids[tool_call.id] = item.item_id
-            updates.append(SessionItemAddedUpdate(item=item))
-        return updates
-
-    def _update_tool_call_item(self, event: ToolCallUpdateEvent) -> list[SessionUpdate]:
-        tool_item_ids = self._state.tool_item_ids
-        if tool_item_ids is None:
-            tool_item_ids = {}
-            self._state.tool_item_ids = tool_item_ids
-
-        updates: list[SessionUpdate] = []
-        item_id = tool_item_ids.get(event.event.tool_call_id)
-        if item_id is None:
-            item = SessionItem(
-                kind="tool_call",
-                payload={
-                    "toolCallId": event.event.tool_call_id,
-                    "title": event.event.title or "Tool call",
-                    "kind": event.event.kind or "other",
-                    "status": event.event.status,
-                },
+        if self._state.assistant_message_id is None:
+            self._state.assistant_message_id = f"msg_{uuid4().hex}"
+            updates.append(
+                MessageAddedUpdate(
+                    message_id=self._state.assistant_message_id,
+                    message=AssistantMessage(content=""),
+                )
             )
-            item_id = item.item_id
-            tool_item_ids[event.event.tool_call_id] = item_id
-            updates.append(SessionItemAddedUpdate(item=item))
-
-        payload: JsonObject = {"status": event.event.status}
-        if event.event.title is not None:
-            payload["title"] = event.event.title
-        if event.event.kind is not None:
-            payload["kind"] = event.event.kind
-        if event.event.raw_input is not None:
-            payload["rawInput"] = event.event.raw_input
-        if event.event.raw_output is not None:
-            payload["rawOutput"] = event.event.raw_output
-        if event.event.content is not None:
-            payload["content"] = event.event.content
-        if event.event.display_content is not None:
-            payload["displayContent"] = event.event.display_content
-        updates.append(SessionItemUpdatedUpdate(item_id=item_id, patch={"payload": payload}))
+        updates.append(MessageDeltaUpdate(message_id=self._state.assistant_message_id, append_text=content))
         return updates
 
     async def _handle_initialize(
@@ -407,8 +346,7 @@ class RemoteAgentController:
         prompt_source = f"remote:{controlled_session.session_id}:{response_id}:{uuid4().hex}"
         self._state.active_prompt_request_id = response_id
         self._state.active_prompt_source = prompt_source
-        self._state.assistant_item_id = None
-        self._state.tool_item_ids = {}
+        self._state.assistant_message_id = None
         accepted = await controlled_session.session.enqueue_prompt_if_idle(prompt_content, source=prompt_source)
         if not accepted:
             self._state.active_prompt_request_id = None

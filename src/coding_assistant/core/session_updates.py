@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass
 from typing import Any, Literal
-from uuid import uuid4
 
 from coding_assistant.core.agent_session import (
     AgentSessionEvent,
@@ -22,22 +20,55 @@ from coding_assistant.llm.types import (
     ContentDeltaEvent,
     ReasoningDeltaEvent,
     StatusEvent,
-    ToolMessage,
-    UserMessage,
 )
 
 JsonObject = dict[str, Any]
 
 
 @dataclass(frozen=True)
-class SessionItem:
-    kind: str
-    payload: JsonObject
-    item_id: str = field(default_factory=lambda: f"item_{uuid4().hex}")
-    message_id: int | None = None
-    sequence: int | None = None
-    created_at: str | None = None
-    updated_at: str | None = None
+class SessionAttachment:
+    attachment_id: str
+    name: str
+    mime_type: str
+    size: int
+    path: str
+    sha256: str
+
+    def to_json(self) -> JsonObject:
+        return {
+            "id": self.attachment_id,
+            "name": self.name,
+            "mimeType": self.mime_type,
+            "size": self.size,
+            "path": self.path,
+            "sha256": self.sha256,
+        }
+
+    @classmethod
+    def from_json(cls, value: JsonObject) -> SessionAttachment | None:
+        attachment_id = value.get("id")
+        name = value.get("name")
+        mime_type = value.get("mimeType")
+        size = value.get("size")
+        path = value.get("path")
+        sha256 = value.get("sha256")
+        if not (
+            isinstance(attachment_id, str)
+            and isinstance(name, str)
+            and isinstance(mime_type, str)
+            and isinstance(size, int)
+            and isinstance(path, str)
+            and isinstance(sha256, str)
+        ):
+            return None
+        return cls(
+            attachment_id=attachment_id,
+            name=name,
+            mime_type=mime_type,
+            size=size,
+            path=path,
+            sha256=sha256,
+        )
 
 
 @dataclass(frozen=True)
@@ -51,20 +82,22 @@ class HistoryCompleteUpdate:
 
 
 @dataclass(frozen=True)
-class SessionItemAddedUpdate:
-    item: SessionItem
+class MessageAddedUpdate:
+    message_id: str
+    message: BaseMessage
+    created_at: str | None = None
 
 
 @dataclass(frozen=True)
-class SessionItemDeltaUpdate:
-    item_id: str
+class MessageDeltaUpdate:
+    message_id: str
     append_text: str
 
 
 @dataclass(frozen=True)
-class SessionItemUpdatedUpdate:
-    item_id: str
-    patch: JsonObject
+class AttachmentAddedUpdate:
+    attachment: SessionAttachment
+    created_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -132,9 +165,9 @@ class RunFailedUpdate:
 SessionUpdate = (
     HistoryResetUpdate
     | HistoryCompleteUpdate
-    | SessionItemAddedUpdate
-    | SessionItemDeltaUpdate
-    | SessionItemUpdatedUpdate
+    | MessageAddedUpdate
+    | MessageDeltaUpdate
+    | AttachmentAddedUpdate
     | AgentMessageChunkUpdate
     | ReasoningMessageChunkUpdate
     | StatusUpdate
@@ -180,82 +213,8 @@ def _committed_content_text(content: str | list[JsonObject] | None) -> str | Non
     return "\n".join(text_parts)
 
 
-def display_content_from_tool_content(
-    *,
-    tool_name: str | None,
-    content: str | list[JsonObject] | None,
-) -> list[JsonObject] | None:
-    if tool_name != "load_image" or not isinstance(content, list):
-        return None
-    blocks = [
-        block
-        for block in content
-        if block.get("type") == "image_url"
-        and isinstance(block.get("image_url"), dict)
-        and isinstance(block["image_url"].get("url"), str)
-    ]
-    return blocks or None
-
-
 def content_text(content: str | list[JsonObject] | None) -> str | None:
     return _committed_content_text(content)
-
-
-def session_items_from_history_messages(messages: Sequence[BaseMessage]) -> list[SessionItem]:
-    items: list[SessionItem] = []
-    tool_item_indexes: dict[str, int] = {}
-
-    def append_item(kind: str, payload: JsonObject) -> None:
-        items.append(SessionItem(kind=kind, payload=payload))
-
-    for message in messages:
-        if isinstance(message, UserMessage):
-            text = _committed_content_text(message.content)
-            if text is not None:
-                append_item("message", {"role": "user", "content": text})
-            continue
-
-        if isinstance(message, AssistantMessage):
-            text = _committed_content_text(message.content)
-            if text is not None:
-                append_item("message", {"role": "assistant", "content": text})
-            for tool_call in message.tool_calls:
-                payload: JsonObject = {
-                    "toolCallId": tool_call.id,
-                    "title": tool_call.function.name or "tool_call",
-                    "kind": "other",
-                    "status": "pending",
-                }
-                raw_input = tool_call_raw_input(tool_call.function.arguments)
-                if raw_input is not None:
-                    payload["rawInput"] = raw_input
-                tool_item_indexes[tool_call.id] = len(items)
-                append_item("tool_call", payload)
-            continue
-
-        if isinstance(message, ToolMessage):
-            text = _committed_content_text(message.content)
-            payload = {
-                "toolCallId": message.tool_call_id,
-                "status": "completed",
-                "kind": "other",
-                "rawOutput": message.content,
-            }
-            if message.name is not None:
-                payload["title"] = message.name
-            if text is not None:
-                payload["content"] = text
-            display_content = display_content_from_tool_content(tool_name=message.name, content=message.content)
-            if display_content is not None:
-                payload["displayContent"] = display_content
-            item_index = tool_item_indexes.get(message.tool_call_id)
-            if item_index is None:
-                append_item("tool_call", payload)
-                continue
-            existing = items[item_index]
-            items[item_index] = replace(existing, payload={**existing.payload, **payload})
-
-    return items
 
 
 def session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUpdate]:

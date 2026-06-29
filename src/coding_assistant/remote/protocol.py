@@ -1,49 +1,36 @@
 from __future__ import annotations
 
 from coding_assistant.core.session_updates import (
+    AttachmentAddedUpdate,
     HistoryCompleteUpdate,
     HistoryResetUpdate,
+    MessageAddedUpdate,
+    MessageDeltaUpdate,
+    SessionAttachment,
     SessionUpdate,
-    SessionItem,
-    SessionItemAddedUpdate,
-    SessionItemDeltaUpdate,
-    SessionItemUpdatedUpdate,
 )
 from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
 from coding_assistant.remote.acp import JsonObject, jsonrpc_notification
 
 
-def _session_item_to_json(item: SessionItem) -> JsonObject:
-    payload: JsonObject = {
-        "id": item.item_id,
-        "kind": item.kind,
-        "payload": item.payload,
-    }
-    if item.sequence is not None:
-        payload["sequence"] = item.sequence
-    if item.created_at is not None:
-        payload["createdAt"] = item.created_at
-    if item.updated_at is not None:
-        payload["updatedAt"] = item.updated_at
-    return payload
+def _message_added_payload(update: MessageAddedUpdate) -> JsonObject:
+    message = message_to_dict(update.message)
+    message["id"] = update.message_id
+    if update.created_at is not None:
+        message["createdAt"] = update.created_at
+    return message
 
 
-def _session_item_from_json(value: JsonObject) -> SessionItem | None:
-    item_id = value.get("id")
-    kind = value.get("kind")
-    payload = value.get("payload")
-    if not isinstance(item_id, str) or not isinstance(kind, str) or not isinstance(payload, dict):
-        return None
-    sequence = value.get("sequence")
+def _message_added_from_payload(value: JsonObject) -> MessageAddedUpdate | None:
+    message_id = value.get("id")
     created_at = value.get("createdAt")
-    updated_at = value.get("updatedAt")
-    return SessionItem(
-        item_id=item_id,
-        kind=kind,
-        payload=payload,
-        sequence=sequence if isinstance(sequence, int) else None,
+    if not isinstance(message_id, str):
+        return None
+    message_payload = {key: item for key, item in value.items() if key not in {"id", "createdAt"}}
+    return MessageAddedUpdate(
+        message_id=message_id,
+        message=message_from_dict(message_payload),
         created_at=created_at if isinstance(created_at, str) else None,
-        updated_at=updated_at if isinstance(updated_at, str) else None,
     )
 
 
@@ -58,24 +45,26 @@ def session_update_to_jsonrpc_update(update: SessionUpdate) -> JsonObject | None
             "version": update.version,
         }
 
-    if isinstance(update, SessionItemAddedUpdate):
+    if isinstance(update, MessageAddedUpdate):
         return {
-            "sessionUpdate": "item_added",
-            "item": _session_item_to_json(update.item),
+            "sessionUpdate": "message_added",
+            "message": _message_added_payload(update),
         }
 
-    if isinstance(update, SessionItemDeltaUpdate):
+    if isinstance(update, MessageDeltaUpdate):
         return {
-            "sessionUpdate": "item_delta",
-            "itemId": update.item_id,
+            "sessionUpdate": "message_delta",
+            "messageId": update.message_id,
             "appendText": update.append_text,
         }
 
-    if isinstance(update, SessionItemUpdatedUpdate):
+    if isinstance(update, AttachmentAddedUpdate):
+        attachment = update.attachment.to_json()
+        if update.created_at is not None:
+            attachment["createdAt"] = update.created_at
         return {
-            "sessionUpdate": "item_updated",
-            "itemId": update.item_id,
-            "patch": update.patch,
+            "sessionUpdate": "attachment_added",
+            "attachment": attachment,
         }
 
     return None
@@ -112,25 +101,30 @@ def session_update_from_jsonrpc_update(update: JsonObject) -> SessionUpdate | No
         version = update.get("version")
         return HistoryCompleteUpdate(version=version if isinstance(version, int) else 0)
 
-    if update_type == "item_added":
-        item = update.get("item")
-        if not isinstance(item, dict):
+    if update_type == "message_added":
+        message = update.get("message")
+        if not isinstance(message, dict):
             return None
-        parsed_item = _session_item_from_json(item)
-        return SessionItemAddedUpdate(item=parsed_item) if parsed_item is not None else None
+        return _message_added_from_payload(message)
 
-    if update_type == "item_delta":
-        item_id = update.get("itemId")
+    if update_type == "message_delta":
+        message_id = update.get("messageId")
         append_text = update.get("appendText")
-        if isinstance(item_id, str) and isinstance(append_text, str):
-            return SessionItemDeltaUpdate(item_id=item_id, append_text=append_text)
+        if isinstance(message_id, str) and isinstance(append_text, str):
+            return MessageDeltaUpdate(message_id=message_id, append_text=append_text)
         return None
 
-    if update_type == "item_updated":
-        item_id = update.get("itemId")
-        patch = update.get("patch")
-        if isinstance(item_id, str) and isinstance(patch, dict):
-            return SessionItemUpdatedUpdate(item_id=item_id, patch=patch)
-        return None
+    if update_type == "attachment_added":
+        attachment = update.get("attachment")
+        if not isinstance(attachment, dict):
+            return None
+        parsed_attachment = SessionAttachment.from_json(attachment)
+        if parsed_attachment is None:
+            return None
+        created_at = attachment.get("createdAt")
+        return AttachmentAddedUpdate(
+            attachment=parsed_attachment,
+            created_at=created_at if isinstance(created_at, str) else None,
+        )
 
     return None

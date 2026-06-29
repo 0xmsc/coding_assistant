@@ -150,15 +150,12 @@ async def _load_session(websocket: ClientConnection, *, request_id: int, session
         if message.get("method") != "session/update":
             continue
         update = message["params"]["update"]
-        if update.get("sessionUpdate") == "item_added":
-            item = update.get("item")
-            if not isinstance(item, dict):
+        if update.get("sessionUpdate") == "message_added":
+            message_payload = update.get("message")
+            if not isinstance(message_payload, dict):
                 continue
-            payload = item.get("payload")
-            if not isinstance(payload, dict):
-                continue
-            if item.get("kind") == "message" and payload.get("role") == "assistant":
-                content = payload.get("content")
+            if message_payload.get("role") == "assistant":
+                content = message_payload.get("content")
                 if isinstance(content, str):
                     texts.append(content)
 

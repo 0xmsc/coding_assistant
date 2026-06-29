@@ -11,8 +11,8 @@ share the same core types instead of inventing separate event or history models.
 - `AgentSession` owns the in-memory transcript, prompt queue, steering prompts,
   cancellation, and the active agent run loop.
 - `run_agent_event_stream` drives model streaming and tool-call boundaries.
-- `session_updates` converts internal agent events into UI/remote updates and
-  committed-message records.
+- `session_updates` defines runtime update dataclasses and manager/remote
+  history events without owning any client presentation model.
 - `history` and `llm.types` define the message and completion data structures
   shared by local and remote callers.
 

@@ -182,7 +182,7 @@ async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> 
             second_commit = parse_jsonrpc_message(await websocket.recv())
 
     assert any(
-        update["params"]["update"]["sessionUpdate"] == "item_delta"
+        update["params"]["update"]["sessionUpdate"] == "message_delta"
         and update["params"]["update"]["appendText"] == "hello"
         for update in updates
     )
@@ -193,7 +193,7 @@ async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> 
     assert commit["params"]["stopReason"] == "end_turn"
     assert [message["role"] for message in commit["params"]["messages"]] == ["user", "assistant"]
     assert any(
-        update["params"]["update"]["sessionUpdate"] == "item_delta"
+        update["params"]["update"]["sessionUpdate"] == "message_delta"
         and update["params"]["update"]["appendText"] == "again"
         for update in second_updates
     )
@@ -265,16 +265,7 @@ async def test_worker_streams_tool_lifecycle_and_commits_tool_messages(tmp_path:
                     commit = payload
 
     updates = [message for message in messages if message.get("method") == "session/update"]
-    assert any(
-        update["params"]["update"]["sessionUpdate"] == "item_added"
-        and update["params"]["update"]["item"]["kind"] == "tool_call"
-        for update in updates
-    )
-    assert any(
-        update["params"]["update"]["sessionUpdate"] == "item_updated"
-        and update["params"]["update"]["patch"]["payload"]["status"] == "completed"
-        for update in updates
-    )
+    assert all(update["params"]["update"]["sessionUpdate"] in {"message_added", "message_delta"} for update in updates)
     assert commit is not None
     assert [message["role"] for message in commit["params"]["messages"]] == [
         "user",

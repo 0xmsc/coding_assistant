@@ -243,28 +243,31 @@ session_messages
   session_id text not null
   version integer not null
   role text not null
+  public integer not null default 1
   payload_json text not null
   created_at text not null
 
-session_items
-  item_id text primary key
+session_attachments
+  id integer primary key autoincrement
+  attachment_id text not null
   session_id text not null
   sequence integer not null
-  kind text not null
-  payload_json text not null
-  message_id integer null references session_messages(id)
+  name text not null
+  mime_type text not null
+  size integer not null
+  path text not null
+  sha256 text not null
   created_at text not null
-  updated_at text not null
 ```
 
 `metadata_json` is public session metadata returned in `_meta`.
 `worker_env_json` is private manager state and must not be returned by
 `session/list`, `session/load`, or other public session metadata responses.
-`session_messages` is the source of truth for LLM history. `session_items`
-stores the ordered visible transcript and references `session_messages` rows
-where an item is derived from a message or tool call. Attachment items keep
-their public attachment metadata in `payload_json` and link to the hidden
-attachment message row that keeps the LLM history complete.
+`session_messages` is the source of truth for LLM history. The `public` flag
+controls which message rows are replayed to clients; system messages and hidden
+model-context messages such as attachment instructions are private. Session
+attachments are stored separately in `session_attachments`, while their hidden
+model-visible context remains in `session_messages`.
 
 Do not add a durable `session_runs` table for v1. Active runs live in manager
 memory while a worker is running.
@@ -279,8 +282,8 @@ turn.
 3. The worker streams live `session/update` notifications.
 4. The worker sends `_session/commit` with `baseVersion: N`.
 5. The manager atomically verifies `sessions.version == N`.
-6. The manager inserts committed messages, stores linked visible session items,
-   and updates the session to version `N + 1`.
+6. The manager inserts committed messages and updates the session to version
+   `N + 1`.
 
 Stale commits are rejected. If a worker crashes before commit, SQLite history
 is not advanced.
@@ -539,7 +542,8 @@ Request:
 }
 ```
 
-During load, the server streams item replay updates:
+During load, the server streams canonical message and attachment replay
+updates:
 
 ```json
 {
@@ -548,15 +552,12 @@ During load, the server streams item replay updates:
   "params": {
     "sessionId": "sess_abc123",
     "update": {
-      "sessionUpdate": "item_added",
-      "item": {
-        "id": "item_abc123",
-        "kind": "message",
-        "sequence": 1,
-        "payload": {
-          "role": "user",
-          "content": "Fix the failing tests."
-        }
+      "sessionUpdate": "message_added",
+      "message": {
+        "id": "msg_123",
+        "role": "user",
+        "content": "Fix the failing tests.",
+        "createdAt": "2026-06-23T19:30:00Z"
       }
     }
   }
@@ -763,10 +764,10 @@ Prompt blocks follow ACP-compatible content shapes where practical:
 
 ### session/upload_file
 
-Uploads one bounded file into the visible session attachments directory in
+Uploads one bounded file into the session attachments directory in
 `params._meta.scopeId`. The manager validates scope, file name, MIME type, and
 size, writes the bytes under the session attachments directory, commits
-model-visible attachment context, emits a visible attachment item through
+model-visible attachment context, emits an attachment event through
 `session/update`, and returns attachment metadata. If `name` is `null` or
 blank, the manager derives a generic filename with an extension from the MIME
 type.
@@ -825,7 +826,7 @@ with shell or Python from their `/attachments/...` path.
 ### session/download_attachment
 
 Downloads a stored session attachment. The manager authorizes the session by
-`params._meta.scopeId`, finds the persisted attachment item, reads the file
+`params._meta.scopeId`, finds the persisted attachment row, reads the file
 from the manager-owned attachments directory, recomputes its SHA-256 hash, and
 returns bytes only if the hash still matches the stored attachment metadata.
 
@@ -926,8 +927,8 @@ all use this same update path; RPC responses acknowledge commands and return
 metadata, but clients should not render transcript content from those
 responses.
 
-History replay starts with `history_reset`, sends one `item_added` per
-persisted visible item, and ends with `history_complete`:
+History replay starts with `history_reset`, sends persisted public messages
+and attachments as update events, and ends with `history_complete`:
 
 ```json
 {
@@ -942,7 +943,7 @@ persisted visible item, and ends with `history_complete`:
 }
 ```
 
-Visible item added:
+Public message added:
 
 ```json
 {
@@ -951,28 +952,19 @@ Visible item added:
   "params": {
     "sessionId": "sess_abc123",
     "update": {
-      "sessionUpdate": "item_added",
-      "item": {
-        "id": "item_abc123",
-        "kind": "attachment",
-        "sequence": 3,
-        "createdAt": "2026-06-23T19:30:00Z",
-        "updatedAt": "2026-06-23T19:30:00Z",
-        "payload": {
-          "id": "att_abc123",
-          "name": "meal.jpg",
-          "mimeType": "image/jpeg",
-          "size": 12345,
-          "path": "/attachments/att_abc123-meal.jpg",
-          "sha256": "..."
-        }
+      "sessionUpdate": "message_added",
+      "message": {
+        "id": "msg_123",
+        "role": "assistant",
+        "content": "I'll inspect the repository.",
+        "createdAt": "2026-06-23T19:30:00Z"
       }
     }
   }
 }
 ```
 
-Assistant text delta for an existing message item:
+Attachment added:
 
 ```json
 {
@@ -981,34 +973,33 @@ Assistant text delta for an existing message item:
   "params": {
     "sessionId": "sess_abc123",
     "update": {
-      "sessionUpdate": "item_delta",
-      "itemId": "item_assistant_1",
+      "sessionUpdate": "attachment_added",
+      "attachment": {
+        "id": "att_abc123",
+        "name": "meal.jpg",
+        "mimeType": "image/jpeg",
+        "size": 12345,
+        "path": "/attachments/att_abc123-meal.jpg",
+        "sha256": "...",
+        "createdAt": "2026-06-23T19:30:00Z"
+      }
+    }
+  }
+}
+```
+
+Assistant text delta for an existing message:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "sess_abc123",
+    "update": {
+      "sessionUpdate": "message_delta",
+      "messageId": "msg_assistant_1",
       "appendText": "I'll inspect the repository."
-    }
-  }
-}
-```
-
-Tool call status patch:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "session/update",
-  "params": {
-    "sessionId": "sess_abc123",
-    "update": {
-      "sessionUpdate": "item_updated",
-      "itemId": "item_tool_1",
-      "patch": {
-        "payload": {
-          "status": "completed",
-          "rawOutput": {
-            "exit_code": 0
-          },
-          "content": "Command completed."
-        }
-      }
     }
   }
 }
@@ -1019,13 +1010,15 @@ Supported `sessionUpdate` values:
 | Value | Description |
 | --- | --- |
 | `history_reset` | Clear local visible transcript before replay. |
-| `item_added` | Add a visible `message`, `tool_call`, or `attachment` item. |
-| `item_delta` | Append text to an existing message item. |
-| `item_updated` | Patch an existing item payload, primarily tool status/output. |
+| `message_added` | Add a public canonical message. |
+| `message_delta` | Append streamed text to an existing assistant message. |
+| `attachment_added` | Add a public attachment metadata record. |
 | `history_complete` | Replay is complete and includes the durable session version. |
 
-Live streamed updates are provisional until the worker commits the completed
-turn and the manager persists it.
+Live streamed assistant message updates are provisional until the worker
+commits the completed turn and the manager persists it. Tool calls and tool
+results are represented as canonical assistant/tool messages; clients that want
+tool cards or image previews derive those UI elements from message content.
 
 ## Internal Worker Methods
 

@@ -339,7 +339,7 @@ async def test_worker_server_completes_acp_prompt_turn() -> None:
         assert commit["params"]["baseVersion"] == 0
         assert [message["role"] for message in commit["params"]["messages"]] == ["user", "assistant"]
         assert any(
-            update["params"]["update"]["sessionUpdate"] == "item_delta"
+            update["params"]["update"]["sessionUpdate"] == "message_delta"
             and update["params"]["update"]["appendText"] == "Hello from the worker"
             for update in updates
         )
@@ -379,7 +379,7 @@ async def test_worker_server_rejects_busy_acp_prompt_turn() -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_server_reports_tool_call_lifecycle_over_acp() -> None:
+async def test_worker_server_commits_tool_calls_without_live_tool_lifecycle() -> None:
     session = make_agent_session(
         completion_streamer=ScriptedStreamer(
             [
@@ -430,29 +430,12 @@ async def test_worker_server_reports_tool_call_lifecycle_over_acp() -> None:
             "id": 3,
             "result": {"stopReason": "end_turn"},
         }
-        assert any(
-            update["params"]["update"]["sessionUpdate"] == "item_added"
-            and update["params"]["update"]["item"]["kind"] == "tool_call"
-            and update["params"]["update"]["item"]["payload"]
-            == {
-                "toolCallId": "call-1",
-                "title": "echo_tool",
-                "kind": "other",
-                "status": "pending",
-                "rawInput": {"text": "hello"},
-            }
-            for update in updates
+        assert all(
+            update["params"]["update"]["sessionUpdate"] in {"message_added", "message_delta"} for update in updates
         )
         assert any(
-            update["params"]["update"]["sessionUpdate"] == "item_updated"
-            and update["params"]["update"]["patch"]["payload"]["status"] == "in_progress"
-            for update in updates
-        )
-        assert any(
-            update["params"]["update"]["sessionUpdate"] == "item_updated"
-            and update["params"]["update"]["patch"]["payload"]["status"] == "completed"
-            and update["params"]["update"]["patch"]["payload"]["rawOutput"] == "echo:hello"
-            and update["params"]["update"]["patch"]["payload"]["content"] == "echo:hello"
+            update["params"]["update"]["sessionUpdate"] == "message_delta"
+            and update["params"]["update"]["appendText"] == "Done"
             for update in updates
         )
     finally:

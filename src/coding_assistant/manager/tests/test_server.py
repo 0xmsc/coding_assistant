@@ -13,10 +13,8 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import InvalidStatus
 
 from coding_assistant.core.session_updates import (
-    SessionItem,
-    SessionItemAddedUpdate,
-    SessionItemDeltaUpdate,
-    SessionItemUpdatedUpdate,
+    MessageAddedUpdate,
+    MessageDeltaUpdate,
     SessionUpdate,
 )
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, ToolMessage, UserMessage
@@ -54,11 +52,20 @@ def _update(message: dict[str, Any]) -> dict[str, Any]:
     return update
 
 
-def _item_payload(update: dict[str, Any]) -> dict[str, Any]:
-    item = update["item"]
-    assert isinstance(item, dict)
-    payload = item["payload"]
-    assert isinstance(payload, dict)
+def _message_payload(update: dict[str, Any]) -> dict[str, Any]:
+    message = update["message"]
+    assert isinstance(message, dict)
+    payload = dict(message)
+    payload.pop("id", None)
+    payload.pop("createdAt", None)
+    return payload
+
+
+def _attachment_payload(update: dict[str, Any]) -> dict[str, Any]:
+    attachment = update["attachment"]
+    assert isinstance(attachment, dict)
+    payload = dict(attachment)
+    payload.pop("createdAt", None)
     return payload
 
 
@@ -363,12 +370,11 @@ async def test_manager_upload_file_writes_attachment_and_replays_visible_message
     assert (tmp_path / "sessions" / session_id / "attachments" / filename).read_bytes() == b"\x89PNG\r\n\x1a\nimage"
 
     update_payload = _update(update)
-    assert update_payload["sessionUpdate"] == "item_added"
-    assert update_payload["item"]["kind"] == "attachment"
-    assert _item_payload(update_payload) == attachment
+    assert update_payload["sessionUpdate"] == "attachment_added"
+    assert _attachment_payload(update_payload) == attachment
     assert _update(reset) == {"sessionUpdate": "history_reset"}
-    assert _update(replay)["sessionUpdate"] == "item_added"
-    assert _item_payload(_update(replay)) == attachment
+    assert _update(replay)["sessionUpdate"] == "attachment_added"
+    assert _attachment_payload(_update(replay)) == attachment
     assert _update(complete) == {"sessionUpdate": "history_complete", "version": 1}
     assert upload_response["result"]["session"]["_meta"]["version"] == 1
     assert load_response["result"]["_meta"]["version"] == 1
@@ -405,7 +411,7 @@ async def test_manager_upload_file_accepts_websocket_messages_over_one_mebibyte(
     assert attachment["name"] == "large.txt"
     assert attachment["mimeType"] == "text/plain"
     assert attachment["size"] == len(data)
-    assert _item_payload(_update(update)) == attachment
+    assert _attachment_payload(_update(update)) == attachment
 
 
 @pytest.mark.asyncio
@@ -478,8 +484,8 @@ async def test_manager_upload_file_uses_mime_type_name_for_unnamed_attachment(tm
     filename = attachment["path"].removeprefix("/attachments/")
     assert (tmp_path / "sessions" / session_id / "attachments" / filename).read_text() == "clipboard text"
     update_payload = _update(update)
-    assert update_payload["sessionUpdate"] == "item_added"
-    assert _item_payload(update_payload) == attachment
+    assert update_payload["sessionUpdate"] == "attachment_added"
+    assert _attachment_payload(update_payload) == attachment
 
 
 @pytest.mark.asyncio
@@ -635,31 +641,39 @@ async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None
             await websocket.send(
                 jsonrpc_request(2, "session/load", _scope_params("scope-a", sessionId=created.record.session_id))
             )
-            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
+            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(6)]
             response = parse_jsonrpc_message(await websocket.recv())
 
     replay_updates = [message["params"]["update"] for message in replay]
     assert replay_updates[0] == {"sessionUpdate": "history_reset"}
-    assert replay_updates[1]["sessionUpdate"] == "item_added"
-    assert _item_payload(replay_updates[1]) == {"role": "user", "content": "Read smoke.txt"}
-    assert replay_updates[2]["sessionUpdate"] == "item_added"
-    assert _item_payload(replay_updates[2]) == {
-        "toolCallId": "call-1",
-        "title": "shell_execute",
-        "kind": "other",
-        "status": "completed",
-        "rawInput": {"command": "cat smoke.txt"},
-        "rawOutput": "smoke output",
-        "content": "smoke output",
+    assert replay_updates[1]["sessionUpdate"] == "message_added"
+    assert _message_payload(replay_updates[1]) == {"role": "user", "content": "Read smoke.txt"}
+    assert replay_updates[2]["sessionUpdate"] == "message_added"
+    assert _message_payload(replay_updates[2]) == {
+        "role": "assistant",
+        "tool_calls": [
+            {
+                "id": "call-1",
+                "function": {"name": "shell_execute", "arguments": '{"command": "cat smoke.txt"}'},
+                "type": "function",
+            }
+        ],
     }
-    assert replay_updates[3]["sessionUpdate"] == "item_added"
-    assert _item_payload(replay_updates[3]) == {"role": "assistant", "content": "Done"}
-    assert replay_updates[4] == {"sessionUpdate": "history_complete", "version": 1}
+    assert replay_updates[3]["sessionUpdate"] == "message_added"
+    assert _message_payload(replay_updates[3]) == {
+        "role": "tool",
+        "content": "smoke output",
+        "name": "shell_execute",
+        "tool_call_id": "call-1",
+    }
+    assert replay_updates[4]["sessionUpdate"] == "message_added"
+    assert _message_payload(replay_updates[4]) == {"role": "assistant", "content": "Done"}
+    assert replay_updates[5] == {"sessionUpdate": "history_complete", "version": 1}
     assert response["result"]["sessionId"] == created.record.session_id
 
 
 @pytest.mark.asyncio
-async def test_manager_load_replays_load_image_tool_display_content(tmp_path: Path) -> None:
+async def test_manager_load_replays_load_image_tool_message_content(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
         workspaces=WorkspacePaths(root=tmp_path / "sessions"),
@@ -698,26 +712,32 @@ async def test_manager_load_replays_load_image_tool_display_content(tmp_path: Pa
             await websocket.send(
                 jsonrpc_request(2, "session/load", _scope_params("scope-a", sessionId=created.record.session_id))
             )
-            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(4)]
+            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
             response = parse_jsonrpc_message(await websocket.recv())
 
     replay_updates = [message["params"]["update"] for message in replay]
     assert replay_updates[0] == {"sessionUpdate": "history_reset"}
-    assert _item_payload(replay_updates[1]) == {"role": "user", "content": "What is in this image?"}
-    assert _item_payload(replay_updates[2]) == {
-        "toolCallId": "call-1",
-        "title": "load_image",
-        "kind": "other",
-        "status": "completed",
-        "rawInput": {"path": "/attachments/att_1-meal.png"},
-        "rawOutput": [
+    assert _message_payload(replay_updates[1]) == {"role": "user", "content": "What is in this image?"}
+    assert _message_payload(replay_updates[2]) == {
+        "role": "assistant",
+        "tool_calls": [
+            {
+                "id": "call-1",
+                "function": {"name": "load_image", "arguments": '{"path": "/attachments/att_1-meal.png"}'},
+                "type": "function",
+            }
+        ],
+    }
+    assert _message_payload(replay_updates[3]) == {
+        "role": "tool",
+        "name": "load_image",
+        "tool_call_id": "call-1",
+        "content": [
             {"type": "text", "text": "loaded image"},
             IMAGE_BLOCK,
         ],
-        "content": "loaded image",
-        "displayContent": [IMAGE_BLOCK],
     }
-    assert replay_updates[3] == {"sessionUpdate": "history_complete", "version": 1}
+    assert replay_updates[4] == {"sessionUpdate": "history_complete", "version": 1}
     assert response["result"]["sessionId"] == created.record.session_id
 
 
@@ -774,15 +794,17 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
 
     assert set_model_response["result"]["_meta"]["model"] == "alternate-model"
     live_payloads = [_update(message) for message in live_updates]
-    assert _item_payload(live_payloads[0]) == {"role": "user", "content": "Do it"}
-    assert _item_payload(live_payloads[1]) == {"role": "assistant", "content": ""}
-    assert live_payloads[2]["sessionUpdate"] == "item_delta"
+    assert live_payloads[0]["sessionUpdate"] == "message_added"
+    assert _message_payload(live_payloads[0]) == {"role": "user", "content": "Do it"}
+    assert live_payloads[1]["sessionUpdate"] == "message_added"
+    assert _message_payload(live_payloads[1]) == {"role": "assistant", "content": ""}
+    assert live_payloads[2]["sessionUpdate"] == "message_delta"
     assert live_payloads[2]["appendText"] == "done"
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     replay_payloads = [_update(message) for message in replay]
     assert replay_payloads[0] == {"sessionUpdate": "history_reset"}
-    assert _item_payload(replay_payloads[1]) == {"role": "user", "content": "Do it"}
-    assert _item_payload(replay_payloads[2]) == {"role": "assistant", "content": "done"}
+    assert _message_payload(replay_payloads[1]) == {"role": "user", "content": "Do it"}
+    assert _message_payload(replay_payloads[2]) == {"role": "assistant", "content": "done"}
     assert replay_payloads[3] == {"sessionUpdate": "history_complete", "version": 1}
     assert load_response["result"]["_meta"]["model"] == "alternate-model"
     assert worker.prompts is not None
@@ -829,15 +851,17 @@ async def test_manager_stores_session_worker_env_privately_and_injects_session_s
             load_response = parse_jsonrpc_message(await websocket.recv())
 
     live_payloads = [_update(message) for message in live_updates]
-    assert _item_payload(live_payloads[0]) == {"role": "user", "content": "Do it"}
-    assert _item_payload(live_payloads[1]) == {"role": "assistant", "content": ""}
-    assert live_payloads[2]["sessionUpdate"] == "item_delta"
+    assert live_payloads[0]["sessionUpdate"] == "message_added"
+    assert _message_payload(live_payloads[0]) == {"role": "user", "content": "Do it"}
+    assert live_payloads[1]["sessionUpdate"] == "message_added"
+    assert _message_payload(live_payloads[1]) == {"role": "assistant", "content": ""}
+    assert live_payloads[2]["sessionUpdate"] == "message_delta"
     assert live_payloads[2]["appendText"] == "done"
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     replay_payloads = [_update(message) for message in replay]
     assert replay_payloads[0] == {"sessionUpdate": "history_reset"}
-    assert _item_payload(replay_payloads[1]) == {"role": "user", "content": "Do it"}
-    assert _item_payload(replay_payloads[2]) == {"role": "assistant", "content": "done"}
+    assert _message_payload(replay_payloads[1]) == {"role": "user", "content": "Do it"}
+    assert _message_payload(replay_payloads[2]) == {"role": "assistant", "content": "done"}
     assert replay_payloads[3] == {"sessionUpdate": "history_complete", "version": 1}
     assert "capabilities" not in load_response["result"]["_meta"]
     assert "skills" not in load_response["result"]["_meta"]
@@ -910,7 +934,7 @@ async def test_manager_ignores_prompt_worker_env(tmp_path: Path) -> None:
             response = parse_jsonrpc_message(await websocket.recv())
 
     live_payloads = [_update(message) for message in live_updates]
-    assert _item_payload(live_payloads[0]) == {"role": "user", "content": "Do it"}
+    assert _message_payload(live_payloads[0]) == {"role": "user", "content": "Do it"}
     assert live_payloads[2]["appendText"] == "done"
     assert response["result"] == {"stopReason": "end_turn"}
     assert worker.prompts is not None
@@ -1014,7 +1038,7 @@ async def test_manager_rejects_model_change_during_active_prompt(tmp_path: Path)
             release.set()
             first_response = parse_jsonrpc_message(await websocket.recv())
 
-    assert _item_payload(_update(first_updates[0])) == {"role": "user", "content": "first"}
+    assert _message_payload(_update(first_updates[0])) == {"role": "user", "content": "first"}
     assert _update(first_updates[2])["appendText"] == "fake response"
     assert busy_response["error"]["message"] == "Cannot change model while session has an active prompt."
     assert first_response["result"] == {"stopReason": "end_turn"}
@@ -1053,7 +1077,7 @@ async def test_manager_logs_prompt_request_errors(tmp_path: Path, caplog: pytest
             user_update = parse_jsonrpc_message(await websocket.recv())
             response = parse_jsonrpc_message(await websocket.recv())
 
-    assert _item_payload(_update(user_update)) == {"role": "user", "content": "Do it"}
+    assert _message_payload(_update(user_update)) == {"role": "user", "content": "Do it"}
     assert response["error"]["message"] == "provider returned JSON instead of event-stream"
     assert f"Manager prompt request failed for session {session_id}." in caplog.text
     assert "provider returned JSON instead of event-stream" in caplog.text
@@ -1112,21 +1136,23 @@ async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path
             load_response = parse_jsonrpc_message(await websocket.recv())
 
     live_payloads = [_update(message) for message in live_updates]
-    assert _item_payload(live_payloads[0]) == {"role": "user", "content": "Do it"}
-    assert _item_payload(live_payloads[1]) == {"role": "assistant", "content": ""}
-    assert live_payloads[2]["sessionUpdate"] == "item_delta"
+    assert live_payloads[0]["sessionUpdate"] == "message_added"
+    assert _message_payload(live_payloads[0]) == {"role": "user", "content": "Do it"}
+    assert live_payloads[1]["sessionUpdate"] == "message_added"
+    assert _message_payload(live_payloads[1]) == {"role": "assistant", "content": ""}
+    assert live_payloads[2]["sessionUpdate"] == "message_delta"
     assert live_payloads[2]["appendText"] == "done"
     assert response["result"] == {"stopReason": "end_turn"}
     replay_payloads = [_update(message) for message in replay_messages]
     assert replay_payloads[0] == {"sessionUpdate": "history_reset"}
-    assert _item_payload(replay_payloads[1]) == {"role": "user", "content": "Do it"}
-    assert _item_payload(replay_payloads[2]) == {"role": "assistant", "content": "done"}
+    assert _message_payload(replay_payloads[1]) == {"role": "user", "content": "Do it"}
+    assert _message_payload(replay_payloads[2]) == {"role": "assistant", "content": "done"}
     assert replay_payloads[3] == {"sessionUpdate": "history_complete", "version": 1}
     assert load_response["result"]["_meta"]["version"] == 1
 
 
 @pytest.mark.asyncio
-async def test_manager_forwards_live_tool_session_items(tmp_path: Path) -> None:
+async def test_manager_emits_committed_tool_messages_without_live_tool_progress(tmp_path: Path) -> None:
     class ToolStreamingWorker:
         async def run_prompt(
             self,
@@ -1135,39 +1161,25 @@ async def test_manager_forwards_live_tool_session_items(tmp_path: Path) -> None:
             on_update: Callable[[SessionUpdate], Awaitable[None]],
         ) -> WorkerCommit:
             del prompt
-            tool_item = SessionItem(
-                kind="tool_call",
-                payload={
-                    "toolCallId": "call-1",
-                    "title": "load_image",
-                    "kind": "read",
-                    "status": "pending",
-                    "rawInput": {"path": "/attachments/att_1-meal.png"},
-                },
+            message_id = "msg_worker"
+            await on_update(MessageAddedUpdate(message_id=message_id, message=AssistantMessage(content="")))
+            await on_update(MessageDeltaUpdate(message_id=message_id, append_text="done"))
+            tool_call = ToolCall(
+                id="call-1",
+                function=FunctionCall(name="load_image", arguments='{"path": "/attachments/att_1-meal.png"}'),
             )
-            await on_update(SessionItemAddedUpdate(item=tool_item))
-            await on_update(
-                SessionItemUpdatedUpdate(
-                    item_id=tool_item.item_id,
-                    patch={
-                        "payload": {
-                            "status": "completed",
-                            "title": "load_image",
-                            "kind": "read",
-                            "rawInput": {"path": "/attachments/att_1-meal.png"},
-                            "rawOutput": "loaded image",
-                            "content": "loaded image",
-                            "displayContent": [IMAGE_BLOCK],
-                        },
-                    },
-                ),
-            )
-            message_item = SessionItem(kind="message", payload={"role": "assistant", "content": ""})
-            await on_update(SessionItemAddedUpdate(item=message_item))
-            await on_update(SessionItemDeltaUpdate(item_id=message_item.item_id, append_text="done"))
             return WorkerCommit(
                 messages=[
                     UserMessage(content="Use tool"),
+                    AssistantMessage(tool_calls=[tool_call]),
+                    ToolMessage(
+                        tool_call_id="call-1",
+                        name="load_image",
+                        content=[
+                            {"type": "text", "text": "loaded image"},
+                            IMAGE_BLOCK,
+                        ],
+                    ),
                     AssistantMessage(content="done"),
                 ],
                 stop_reason="end_turn",
@@ -1193,36 +1205,32 @@ async def test_manager_forwards_live_tool_session_items(tmp_path: Path) -> None:
             response = parse_jsonrpc_message(await websocket.recv())
 
     live_payloads = [_update(message) for message in live_messages]
-    assert _item_payload(live_payloads[0]) == {"role": "user", "content": "Use tool"}
-    assert live_payloads[1]["sessionUpdate"] == "item_added"
-    assert live_payloads[1]["item"]["kind"] == "tool_call"
-    tool_item_id = live_payloads[1]["item"]["id"]
-    assert _item_payload(live_payloads[1]) == {
-        "toolCallId": "call-1",
-        "title": "load_image",
-        "kind": "read",
-        "status": "pending",
-        "rawInput": {"path": "/attachments/att_1-meal.png"},
-    }
+    assert _message_payload(live_payloads[0]) == {"role": "user", "content": "Use tool"}
+    assert _message_payload(live_payloads[1]) == {"role": "assistant", "content": ""}
     assert live_payloads[2] == {
-        "sessionUpdate": "item_updated",
-        "itemId": tool_item_id,
-        "patch": {
-            "payload": {
-                "status": "completed",
-                "title": "load_image",
-                "kind": "read",
-                "rawInput": {"path": "/attachments/att_1-meal.png"},
-                "rawOutput": "loaded image",
-                "content": "loaded image",
-                "displayContent": [IMAGE_BLOCK],
-            }
-        },
+        "sessionUpdate": "message_delta",
+        "messageId": "msg_worker",
+        "appendText": "done",
     }
-    assert _item_payload(live_payloads[3]) == {"role": "assistant", "content": ""}
-    assert live_payloads[4]["sessionUpdate"] == "item_delta"
-    assert live_payloads[4]["itemId"] == live_payloads[3]["item"]["id"]
-    assert live_payloads[4]["appendText"] == "done"
+    assert _message_payload(live_payloads[3]) == {
+        "role": "assistant",
+        "tool_calls": [
+            {
+                "id": "call-1",
+                "function": {"name": "load_image", "arguments": '{"path": "/attachments/att_1-meal.png"}'},
+                "type": "function",
+            }
+        ],
+    }
+    assert _message_payload(live_payloads[4]) == {
+        "role": "tool",
+        "name": "load_image",
+        "tool_call_id": "call-1",
+        "content": [
+            {"type": "text", "text": "loaded image"},
+            IMAGE_BLOCK,
+        ],
+    }
     assert response["result"] == {"stopReason": "end_turn"}
 
 
@@ -1316,7 +1324,7 @@ async def test_manager_rejects_second_active_prompt_for_same_session(tmp_path: P
             release.set()
             first_response = parse_jsonrpc_message(await websocket.recv())
 
-    assert _item_payload(_update(first_updates[0])) == {"role": "user", "content": "first"}
+    assert _message_payload(_update(first_updates[0])) == {"role": "user", "content": "first"}
     assert _update(first_updates[2])["appendText"] == "fake response"
     assert busy_response["error"]["message"] == "Session already has an active prompt."
     assert first_response["result"] == {"stopReason": "end_turn"}

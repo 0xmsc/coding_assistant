@@ -7,26 +7,25 @@ import hashlib
 import re
 import shutil
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from time import monotonic
 from typing import Protocol
+from uuid import uuid4
 
 from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.core.session_updates import (
+    AttachmentAddedUpdate,
     HistoryCompleteUpdate,
     HistoryResetUpdate,
+    MessageAddedUpdate,
     SessionUpdate,
-    SessionItem,
-    SessionItemAddedUpdate,
+    SessionAttachment,
     content_text,
-    display_content_from_tool_content,
-    session_items_from_history_messages,
-    tool_call_raw_input,
 )
 from coding_assistant.llm.openai import list_models as list_provider_models
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolMessage, UserMessage
-from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore, StoredMessage
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, SystemMessage, ToolMessage, UserMessage
+from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
 from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp, session_id_from_params
 from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
@@ -77,26 +76,6 @@ class SkillBundle:
     name: str
     description: str
     files: dict[str, str]
-
-
-@dataclass(frozen=True)
-class SessionAttachment:
-    attachment_id: str
-    name: str
-    mime_type: str
-    size: int
-    path: str
-    sha256: str
-
-    def to_json(self) -> JsonObject:
-        return {
-            "id": self.attachment_id,
-            "name": self.name,
-            "mimeType": self.mime_type,
-            "size": self.size,
-            "path": self.path,
-            "sha256": self.sha256,
-        }
 
 
 @dataclass(frozen=True)
@@ -363,175 +342,51 @@ def _pdf_text_output_path(attachment: SessionAttachment) -> str:
     return f"extracted/{attachment.attachment_id}-{stem}.txt"
 
 
-def _attachment_item(attachment: SessionAttachment) -> SessionItem:
-    return SessionItem(kind="attachment", payload=attachment.to_json())
+def _new_message_update_id() -> str:
+    return f"msg_{uuid4().hex}"
 
 
-def _attachment_item_for_message(attachment: SessionAttachment, *, message_id: int) -> SessionItem:
-    return SessionItem(kind="attachment", payload=attachment.to_json(), message_id=message_id)
+def _stored_message_update_id(message_id: int) -> str:
+    return f"msg_{message_id}"
 
 
-def _prompt_item(prompt_content: str | list[JsonObject]) -> SessionItem | None:
-    text = content_text(prompt_content)
-    if text is None:
-        return None
-    return SessionItem(kind="message", payload={"role": "user", "content": text})
-
-
-def _linked_items_from_message_records(message_records: list[StoredMessage]) -> list[SessionItem]:
-    items: list[SessionItem] = []
-    for record in message_records:
-        message = record.message
-        if isinstance(message, UserMessage) and content_text(message.content) is not None:
-            items.append(SessionItem(kind="message", payload={}, message_id=record.message_id))
-            continue
-
-        if isinstance(message, AssistantMessage):
-            if content_text(message.content) is not None:
-                items.append(SessionItem(kind="message", payload={}, message_id=record.message_id))
-            for index, _ in enumerate(message.tool_calls):
-                items.append(
-                    SessionItem(
-                        kind="tool_call",
-                        payload={"toolCallIndex": index},
-                        message_id=record.message_id,
-                    )
+def _history_updates(session: LoadedSession) -> list[SessionUpdate]:
+    updates: list[tuple[str, int, SessionUpdate]] = []
+    for record in session.message_records:
+        if record.public and not isinstance(record.message, SystemMessage):
+            updates.append(
+                (
+                    record.created_at,
+                    record.message_id,
+                    MessageAddedUpdate(
+                        message_id=_stored_message_update_id(record.message_id),
+                        message=record.message,
+                        created_at=record.created_at,
+                    ),
                 )
-    return items
-
-
-def _visible_session_items(session: LoadedSession) -> list[SessionItem]:
-    if session.items:
-        return _visible_linked_session_items(session)
-    return session_items_from_history_messages(session.messages)
-
-
-def _visible_linked_session_items(session: LoadedSession) -> list[SessionItem]:
-    messages_by_id = {record.message_id: record.message for record in session.message_records}
-    tool_messages_by_call_id = _tool_messages_by_call_id(session.message_records)
-    visible_items: list[SessionItem] = []
-
-    for item in session.items:
-        visible = _visible_linked_session_item(
-            item=item,
-            messages_by_id=messages_by_id,
-            tool_messages_by_call_id=tool_messages_by_call_id,
+            )
+    for attachment_record in session.attachment_records:
+        updates.append(
+            (
+                attachment_record.created_at,
+                attachment_record.sequence,
+                AttachmentAddedUpdate(
+                    attachment=attachment_record.attachment,
+                    created_at=attachment_record.created_at,
+                ),
+            )
         )
-        if visible is not None:
-            visible_items.append(visible)
-    return visible_items
+    return [update for _, _, update in sorted(updates, key=lambda item: (item[0], item[1]))]
 
 
-def _visible_linked_session_item(
-    *,
-    item: SessionItem,
-    messages_by_id: dict[int, BaseMessage],
-    tool_messages_by_call_id: dict[str, ToolMessage],
-) -> SessionItem | None:
-    if item.message_id is None:
-        return None
-
-    message = messages_by_id.get(item.message_id)
-    if item.kind == "attachment":
-        return item
-    if item.kind == "message" and isinstance(message, (UserMessage, AssistantMessage)):
-        return _visible_message_item(item=item, message=message)
-    if item.kind == "tool_call" and isinstance(message, AssistantMessage):
-        return _visible_tool_call_item(
-            item=item,
-            message=message,
-            tool_messages_by_call_id=tool_messages_by_call_id,
-        )
-    return None
-
-
-def _visible_message_item(*, item: SessionItem, message: UserMessage | AssistantMessage) -> SessionItem | None:
-    text = content_text(message.content)
-    if text is None:
-        return None
-    return replace(item, payload={"role": message.role, "content": text})
-
-
-def _visible_tool_call_item(
-    *,
-    item: SessionItem,
-    message: AssistantMessage,
-    tool_messages_by_call_id: dict[str, ToolMessage],
-) -> SessionItem | None:
-    tool_call_index = item.payload.get("toolCallIndex")
-    if not isinstance(tool_call_index, int) or tool_call_index < 0 or tool_call_index >= len(message.tool_calls):
-        return None
-
-    tool_call = message.tool_calls[tool_call_index]
-    payload: JsonObject = {
-        "toolCallId": tool_call.id,
-        "title": tool_call.function.name or "tool_call",
-        "kind": "other",
-        "status": "pending",
-    }
-    raw_input = tool_call_raw_input(tool_call.function.arguments)
-    if raw_input is not None:
-        payload["rawInput"] = raw_input
-
-    tool_message = tool_messages_by_call_id.get(tool_call.id)
-    if tool_message is not None:
-        payload.update(_tool_message_payload(tool_message=tool_message, fallback_title=tool_call.function.name))
-    return replace(item, payload=payload)
-
-
-def _tool_messages_by_call_id(message_records: list[StoredMessage]) -> dict[str, ToolMessage]:
-    result: dict[str, ToolMessage] = {}
-    for record in message_records:
-        message = record.message
-        if isinstance(message, ToolMessage):
-            result[message.tool_call_id] = message
-    return result
-
-
-def _tool_message_payload(*, tool_message: ToolMessage, fallback_title: str) -> JsonObject:
-    text = content_text(tool_message.content)
-    payload: JsonObject = {
-        "toolCallId": tool_message.tool_call_id,
-        "status": "completed",
-        "title": tool_message.name or fallback_title or "tool_call",
-        "kind": "other",
-        "rawOutput": tool_message.content,
-    }
-    if text is not None:
-        payload["content"] = text
-    display_content = display_content_from_tool_content(tool_name=tool_message.name, content=tool_message.content)
-    if display_content is not None:
-        payload["displayContent"] = display_content
-    return payload
-
-
-def _attachment_from_item(item: SessionItem, *, attachment_id: str) -> SessionAttachment | None:
-    if item.kind != "attachment":
-        return None
-    payload = item.payload
-    if payload.get("id") != attachment_id:
-        return None
-    name = payload.get("name")
-    mime_type = payload.get("mimeType")
-    size = payload.get("size")
-    path = payload.get("path")
-    sha256 = payload.get("sha256")
-    if not (
-        isinstance(name, str)
-        and isinstance(mime_type, str)
-        and isinstance(size, int)
-        and isinstance(path, str)
-        and isinstance(sha256, str)
-    ):
-        raise ManagerError(f"Attachment {attachment_id} has invalid stored metadata.")
-    return SessionAttachment(
-        attachment_id=attachment_id,
-        name=name,
-        mime_type=mime_type,
-        size=size,
-        path=path,
-        sha256=sha256,
-    )
+def _post_commit_updates(messages: list[BaseMessage]) -> list[MessageAddedUpdate]:
+    updates: list[MessageAddedUpdate] = []
+    for message in messages:
+        if isinstance(message, AssistantMessage) and message.tool_calls:
+            updates.append(MessageAddedUpdate(message_id=_new_message_update_id(), message=message))
+        elif isinstance(message, ToolMessage):
+            updates.append(MessageAddedUpdate(message_id=_new_message_update_id(), message=message))
+    return updates
 
 
 def _attachment_file_path(*, attachments: Path, attachment: SessionAttachment) -> Path:
@@ -689,10 +544,9 @@ class ManagerService:
         scope_id = _scope_id_from_params(params)
         session_id = session_id_from_params(params)
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
-        items = _visible_session_items(session)
         await on_update(HistoryResetUpdate())
-        for item in items:
-            await on_update(SessionItemAddedUpdate(item=item))
+        for update in _history_updates(session):
+            await on_update(update)
         await on_update(HistoryCompleteUpdate(version=session.record.version))
         return _session_metadata(session)
 
@@ -711,18 +565,16 @@ class ManagerService:
             session = self._store.load_session(scope_id=scope_id, session_id=session_id)
             attachment = _write_attachment(attachments=session.attachments, params=params)
             message_text = _attachment_message(attachment)
-            item = _attachment_item(attachment)
             self._store.commit_messages(
                 scope_id=scope_id,
                 session_id=session_id,
                 base_version=session.record.version,
                 messages=[UserMessage(content=message_text)],
-                item_builder=lambda messages: [
-                    _attachment_item_for_message(attachment, message_id=messages[0].message_id)
-                ],
+                attachments=[attachment],
+                public=False,
             )
 
-        await on_update(SessionItemAddedUpdate(item=item))
+        await on_update(AttachmentAddedUpdate(attachment=attachment))
         updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
         return {"attachment": attachment.to_json(), "session": _record_metadata(updated.record)}
 
@@ -736,9 +588,9 @@ class ManagerService:
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         attachment = next(
             (
-                parsed
-                for item in session.items
-                if (parsed := _attachment_from_item(item, attachment_id=attachment_id)) is not None
+                record.attachment
+                for record in session.attachment_records
+                if record.attachment.attachment_id == attachment_id
             ),
             None,
         )
@@ -772,9 +624,13 @@ class ManagerService:
         model = _model_from_record(session.record)
         await self._mark_prompt_active(session_id)
         try:
-            user_item = _prompt_item(prompt_content)
-            if user_item is not None:
-                await on_update(SessionItemAddedUpdate(item=user_item))
+            if content_text(prompt_content) is not None:
+                await on_update(
+                    MessageAddedUpdate(
+                        message_id=_new_message_update_id(),
+                        message=UserMessage(content=prompt_content),
+                    )
+                )
             worker_commit = await self._worker_runner.run_prompt(
                 prompt=WorkerPrompt(
                     session_id=session_id,
@@ -793,10 +649,11 @@ class ManagerService:
                 session_id=session_id,
                 base_version=session.record.version,
                 messages=worker_commit.messages,
-                item_builder=_linked_items_from_message_records,
                 title=worker_commit.title,
                 metadata=worker_commit.metadata,
             )
+            for update in _post_commit_updates(worker_commit.messages):
+                await on_update(update)
             return PromptResult(stop_reason=worker_commit.stop_reason)
         finally:
             await self._mark_prompt_idle(session_id)

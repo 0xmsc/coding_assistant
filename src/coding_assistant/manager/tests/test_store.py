@@ -12,7 +12,7 @@ from coding_assistant.llm.types import (
     ToolMessage,
     UserMessage,
 )
-from coding_assistant.core.session_updates import SessionItem
+from coding_assistant.core.session_updates import SessionAttachment
 from coding_assistant.manager.store import SessionNotFoundError, SessionStore, StaleSessionCommitError
 from coding_assistant.manager.workspace import WorkspaceMissingError, WorkspacePaths
 
@@ -61,7 +61,7 @@ def test_create_and_load_session_private_worker_env(tmp_path: Path) -> None:
     assert store.list_sessions(scope_id="scope-a")[0].metadata == {}
 
 
-def test_commit_messages_persists_session_item_references(tmp_path: Path) -> None:
+def test_commit_messages_persists_attachments_separately(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
         workspaces=WorkspacePaths(root=tmp_path / "sessions"),
@@ -73,17 +73,65 @@ def test_commit_messages_persists_session_item_references(tmp_path: Path) -> Non
         session_id=created.record.session_id,
         base_version=0,
         messages=[UserMessage(content="hello")],
-        item_builder=lambda messages: [
-            SessionItem(kind="message", payload={}, message_id=messages[0].message_id),
+        attachments=[
+            SessionAttachment(
+                attachment_id="att_1",
+                name="photo.png",
+                mime_type="image/png",
+                size=4,
+                path="/attachments/att_1-photo.png",
+                sha256="abc",
+            )
         ],
     )
     loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert loaded.message_records[1].message == UserMessage(content="hello")
-    assert loaded.items[0].sequence == 1
-    assert loaded.items[0].kind == "message"
-    assert loaded.items[0].message_id == loaded.message_records[1].message_id
-    assert loaded.items[0].payload == {}
+    assert loaded.message_records[1].public is True
+    assert loaded.attachment_records[0].sequence == 1
+    assert loaded.attachment_records[0].attachment.name == "photo.png"
+    assert loaded.attachment_records[0].attachment.path == "/attachments/att_1-photo.png"
+
+
+def test_attachment_ids_can_repeat_across_sessions(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
+    )
+    first = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+    second = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+    attachment = SessionAttachment(
+        attachment_id="att_same",
+        name="photo.png",
+        mime_type="image/png",
+        size=4,
+        path="/attachments/att_same-photo.png",
+        sha256="abc",
+    )
+
+    store.commit_messages(
+        scope_id="scope-a",
+        session_id=first.record.session_id,
+        base_version=0,
+        messages=[],
+        attachments=[attachment],
+    )
+    store.commit_messages(
+        scope_id="scope-a",
+        session_id=second.record.session_id,
+        base_version=0,
+        messages=[],
+        attachments=[attachment],
+    )
+
+    assert (
+        store.load_session(scope_id="scope-a", session_id=first.record.session_id).attachment_records[0].attachment
+        == attachment
+    )
+    assert (
+        store.load_session(scope_id="scope-a", session_id=second.record.session_id).attachment_records[0].attachment
+        == attachment
+    )
 
 
 def test_create_session_uses_reserved_workspace(tmp_path: Path) -> None:
