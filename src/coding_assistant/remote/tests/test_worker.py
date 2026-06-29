@@ -379,7 +379,7 @@ async def test_worker_server_rejects_busy_acp_prompt_turn() -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_server_commits_tool_calls_without_live_tool_lifecycle() -> None:
+async def test_worker_server_streams_tool_messages_before_final_answer() -> None:
     session = make_agent_session(
         completion_streamer=ScriptedStreamer(
             [
@@ -424,19 +424,42 @@ async def test_worker_server_commits_tool_calls_without_live_tool_lifecycle() ->
                         updates.append(payload)
                     else:
                         response = payload
+                commit = parse_jsonrpc_message(await websocket.recv())
 
         assert response == {
             "jsonrpc": "2.0",
             "id": 3,
             "result": {"stopReason": "end_turn"},
         }
-        assert all(
-            update["params"]["update"]["sessionUpdate"] in {"message_added", "message_delta"} for update in updates
-        )
-        assert any(
-            update["params"]["update"]["sessionUpdate"] == "message_delta"
-            and update["params"]["update"]["appendText"] == "Done"
-            for update in updates
-        )
+        update_payloads = [update["params"]["update"] for update in updates]
+        assert [update["sessionUpdate"] for update in update_payloads] == [
+            "message_added",
+            "message_added",
+            "message_added",
+            "message_delta",
+        ]
+        assert update_payloads[0]["message"]["role"] == "assistant"
+        assert update_payloads[0]["message"]["tool_calls"][0]["function"]["name"] == "echo_tool"
+        assert update_payloads[1]["message"] == {
+            "id": update_payloads[1]["message"]["id"],
+            "role": "tool",
+            "content": "echo:hello",
+            "name": "echo_tool",
+            "tool_call_id": "call-1",
+        }
+        assert update_payloads[2]["message"] == {
+            "id": update_payloads[2]["message"]["id"],
+            "role": "assistant",
+            "content": "",
+        }
+        assert update_payloads[3]["messageId"] == update_payloads[2]["message"]["id"]
+        assert update_payloads[3]["appendText"] == "Done"
+        assert commit["method"] == "_session/commit"
+        assert [message["role"] for message in commit["params"]["messages"]] == [
+            "user",
+            "assistant",
+            "tool",
+            "assistant",
+        ]
     finally:
         await session.close()

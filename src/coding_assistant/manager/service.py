@@ -374,9 +374,21 @@ def _history_updates(session: LoadedSession) -> list[SessionUpdate]:
     return updates
 
 
-def _post_commit_updates(messages: list[BaseMessage]) -> list[MessageAddedUpdate]:
+def _post_commit_updates(
+    messages: list[BaseMessage],
+    *,
+    streamed_messages: Sequence[BaseMessage] = (),
+) -> list[MessageAddedUpdate]:
     updates: list[MessageAddedUpdate] = []
+    remaining_streamed_messages = list(streamed_messages)
     for message in messages:
+        try:
+            streamed_index = remaining_streamed_messages.index(message)
+        except ValueError:
+            streamed_index = None
+        if streamed_index is not None:
+            del remaining_streamed_messages[streamed_index]
+            continue
         if isinstance(message, AssistantMessage) and message.tool_calls:
             updates.append(MessageAddedUpdate(message_id=_new_message_update_id(), message=message))
         elif isinstance(message, ToolMessage):
@@ -639,6 +651,13 @@ class ManagerService:
 
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         model = _model_from_record(session.record)
+        streamed_messages: list[BaseMessage] = []
+
+        async def forward_worker_update(update: SessionUpdate) -> None:
+            if isinstance(update, MessageAddedUpdate):
+                streamed_messages.append(update.message)
+            await on_update(update)
+
         await self._mark_prompt_active(session_id)
         try:
             if content_text(prompt_content) is not None:
@@ -659,7 +678,7 @@ class ManagerService:
                     prompt=prompt_blocks,
                     worker_env=session.worker_env,
                 ),
-                on_update=on_update,
+                on_update=forward_worker_update,
             )
             self._store.commit_messages(
                 scope_id=scope_id,
@@ -669,7 +688,7 @@ class ManagerService:
                 title=worker_commit.title,
                 metadata=worker_commit.metadata,
             )
-            for update in _post_commit_updates(worker_commit.messages):
+            for update in _post_commit_updates(worker_commit.messages, streamed_messages=streamed_messages):
                 await on_update(update)
             updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
             await on_update(_session_updated(updated.record))

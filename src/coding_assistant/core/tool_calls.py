@@ -44,6 +44,11 @@ class ToolCallExecutionCompleted:
     history: list[BaseMessage]
 
 
+@dataclass(frozen=True)
+class ToolMessageProduced:
+    message: ToolMessage
+
+
 TOOL_CANCELLED_MESSAGE = "Tool execution cancelled by user before completion."
 TOOL_NOT_STARTED_MESSAGE = "Tool execution was not started because the run was cancelled by user."
 
@@ -151,14 +156,14 @@ def _append_tool_message(
     *,
     tool_call: ToolCall,
     content: MessageContent,
-) -> None:
-    history.append(
-        ToolMessage(
-            tool_call_id=tool_call.id,
-            name=tool_call.function.name,
-            content=content,
-        ),
+) -> ToolMessage:
+    message = ToolMessage(
+        tool_call_id=tool_call.id,
+        name=tool_call.function.name,
+        content=content,
     )
+    history.append(message)
+    return message
 
 
 def _append_failed_tool_call(
@@ -167,15 +172,15 @@ def _append_failed_tool_call(
     tool_call: ToolCall,
     content: str,
     raw_input: dict[str, Any] | None = None,
-) -> ToolCallLifecycleEvent:
+) -> tuple[ToolCallLifecycleEvent, ToolMessage]:
     event = _record_tool_call_event(
         tool_call=tool_call,
         status="failed",
         raw_input=raw_input,
         content=content,
     )
-    _append_tool_message(history, tool_call=tool_call, content=content)
-    return event
+    message = _append_tool_message(history, tool_call=tool_call, content=content)
+    return event, message
 
 
 def _append_cancelled_tool_messages(
@@ -194,7 +199,7 @@ def _append_cancelled_tool_messages(
                 tool_call=tool_call,
                 content=content,
                 raw_input=arguments,
-            ),
+            )[0],
         )
     return events
 
@@ -245,18 +250,18 @@ def _apply_tool_result(
     *,
     tool_call: ToolCall,
     result: ToolResult,
-) -> tuple[list[BaseMessage], bool]:
+) -> tuple[list[BaseMessage], ToolMessage | None, bool]:
     if isinstance(result, CompactConversationResult):
-        return compact_history(history, result.summary), True
-    _append_tool_message(history, tool_call=tool_call, content=result.content)
-    return history, False
+        return compact_history(history, result.summary), None, True
+    message = _append_tool_message(history, tool_call=tool_call, content=result.content)
+    return history, message, False
 
 
 async def stream_tool_call_execution(
     *,
     boundary: AwaitingToolCalls,
     tools: Sequence[Tool],
-) -> AsyncIterator[ToolCallLifecycleEvent | ToolCallExecutionCompleted]:
+) -> AsyncIterator[ToolCallLifecycleEvent | ToolMessageProduced | ToolCallExecutionCompleted]:
     """Yield lifecycle updates while executing one tool-call boundary."""
     current_history = list(boundary.history)
     all_tools = build_tools(tools=tools)
@@ -267,23 +272,27 @@ async def stream_tool_call_execution(
         arguments, parse_error = _parse_tool_call_arguments(tool_call)
 
         if parse_error is not None:
-            yield _append_failed_tool_call(
+            event, failed_message = _append_failed_tool_call(
                 current_history,
                 tool_call=tool_call,
                 content=parse_error,
             )
+            yield event
+            yield ToolMessageProduced(message=failed_message)
             continue
 
         assert arguments is not None
         tool = tools_by_name.get(tool_name)
         if tool is None:
             error = f"Tool '{tool_name}' not found."
-            yield _append_failed_tool_call(
+            event, failed_message = _append_failed_tool_call(
                 current_history,
                 tool_call=tool_call,
                 content=error,
                 raw_input=arguments,
             )
+            yield event
+            yield ToolMessageProduced(message=failed_message)
             continue
 
         yield _record_tool_call_event(
@@ -307,12 +316,14 @@ async def stream_tool_call_execution(
             raise ToolExecutionCancelled(history=current_history) from exc
         except Exception as exc:
             error = f"Error executing tool: {exc}"
-            yield _append_failed_tool_call(
+            event, failed_message = _append_failed_tool_call(
                 current_history,
                 tool_call=tool_call,
                 content=error,
                 raw_input=arguments,
             )
+            yield event
+            yield ToolMessageProduced(message=failed_message)
             continue
 
         yield _record_tool_call_event(
@@ -324,11 +335,13 @@ async def stream_tool_call_execution(
             display_content=_tool_result_display_content(tool_name=tool_name, result=result),
         )
 
-        current_history, should_stop = _apply_tool_result(
+        current_history, tool_message, should_stop = _apply_tool_result(
             current_history,
             tool_call=tool_call,
             result=result,
         )
+        if tool_message is not None:
+            yield ToolMessageProduced(message=tool_message)
         if should_stop:
             break
 

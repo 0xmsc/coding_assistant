@@ -231,7 +231,7 @@ async def test_worker_cancel_produces_cancelled_commit(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_streams_tool_lifecycle_and_commits_tool_messages(tmp_path: Path) -> None:
+async def test_worker_streams_tool_messages_before_final_answer(tmp_path: Path) -> None:
     runtime = WorkerRuntimeConfig(
         model="test-model",
         tools=[EchoTool()],
@@ -267,8 +267,29 @@ async def test_worker_streams_tool_lifecycle_and_commits_tool_messages(tmp_path:
                 if payload.get("method") == "_session/commit":
                     commit = payload
 
-    updates = [message for message in messages if message.get("method") == "session/update"]
-    assert all(update["params"]["update"]["sessionUpdate"] in {"message_added", "message_delta"} for update in updates)
+    updates = [message["params"]["update"] for message in messages if message.get("method") == "session/update"]
+    assert [update["sessionUpdate"] for update in updates] == [
+        "message_added",
+        "message_added",
+        "message_added",
+        "message_delta",
+    ]
+    assert updates[0]["message"]["role"] == "assistant"
+    assert updates[0]["message"]["tool_calls"][0]["function"]["name"] == "echo_tool"
+    assert updates[1]["message"] == {
+        "id": updates[1]["message"]["id"],
+        "role": "tool",
+        "content": "echo:hello",
+        "name": "echo_tool",
+        "tool_call_id": "call-1",
+    }
+    assert updates[2]["message"] == {
+        "id": updates[2]["message"]["id"],
+        "role": "assistant",
+        "content": "",
+    }
+    assert updates[3]["messageId"] == updates[2]["message"]["id"]
+    assert updates[3]["appendText"] == "done"
     assert commit is not None
     assert [message["role"] for message in commit["params"]["messages"]] == [
         "user",

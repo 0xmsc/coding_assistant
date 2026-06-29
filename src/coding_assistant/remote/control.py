@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from websockets.asyncio.server import ServerConnection
 
-from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, ToolCallsEvent, ToolCallUpdateEvent
+from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, ToolCallsEvent, ToolMessageEvent
 from coding_assistant.core.session_updates import (
     MessageAddedUpdate,
     MessageDeltaUpdate,
@@ -257,9 +257,9 @@ class RemoteAgentController:
         if isinstance(event, ContentDeltaEvent):
             return self._append_assistant_text(event.content)
         if isinstance(event, ToolCallsEvent):
-            return []
-        if isinstance(event, ToolCallUpdateEvent):
-            return []
+            return [MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=event.message)]
+        if isinstance(event, ToolMessageEvent):
+            return [MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=event.message)]
         return session_updates_from_agent_event(event)
 
     def _append_assistant_text(self, content: str) -> list[SessionUpdate]:

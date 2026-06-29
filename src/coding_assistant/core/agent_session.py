@@ -14,6 +14,7 @@ from coding_assistant.core.tool_calls import (
     ToolCallExecutionCompleted,
     ToolCallLifecycleEvent,
     ToolExecutionCancelled,
+    ToolMessageProduced,
     stream_tool_call_execution,
 )
 from coding_assistant.llm.openai import stream_completion as openai_stream_completion
@@ -26,6 +27,7 @@ from coding_assistant.llm.types import (
     StatusEvent,
     Tool,
     Usage,
+    ToolMessage,
     UserMessage,
 )
 
@@ -79,6 +81,14 @@ class ToolCallUpdateEvent:
 
 
 @dataclass(frozen=True)
+class ToolMessageEvent:
+    """Event emitted when a tool result message is appended to the run history."""
+
+    message: ToolMessage
+    source: str = "local"
+
+
+@dataclass(frozen=True)
 class RunFinishedEvent:
     """Event emitted after a completed run is committed to history."""
 
@@ -110,6 +120,7 @@ AgentSessionEvent = (
     | PromptStartedEvent
     | ToolCallsEvent
     | ToolCallUpdateEvent
+    | ToolMessageEvent
     | RunFinishedEvent
     | RunCancelledEvent
     | RunFailedEvent
@@ -449,6 +460,9 @@ class AgentSession:
                     ):
                         if isinstance(item, ToolCallLifecycleEvent):
                             self._publish_event(ToolCallUpdateEvent(event=item, source=source))
+                            continue
+                        if isinstance(item, ToolMessageProduced):
+                            self._publish_event(ToolMessageEvent(message=item.message, source=source))
                             continue
                         if isinstance(item, ToolCallExecutionCompleted):
                             completed_history = item.history

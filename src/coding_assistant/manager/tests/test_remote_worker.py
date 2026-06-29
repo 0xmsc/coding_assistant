@@ -19,7 +19,12 @@ from coding_assistant.llm.types import (
     Completion,
     CompletionEvent,
     ContentDeltaEvent,
+    FunctionCall,
     SystemMessage,
+    TextToolResult,
+    Tool,
+    ToolCall,
+    ToolMessage,
     UserMessage,
     Usage,
 )
@@ -63,6 +68,24 @@ class BlockingStreamer:
         yield CompletionEvent(
             completion=Completion(message=AssistantMessage(content="unused"), usage=Usage(tokens=1, cost=0.0)),
         )
+
+
+class EchoTool(Tool):
+    def name(self) -> str:
+        return "echo_tool"
+
+    def description(self) -> str:
+        return "Echo the provided text."
+
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        }
+
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
+        return TextToolResult(content=f"echo:{parameters['text']}")
 
 
 def _scope_params(session_id: str, prompt: str) -> dict[str, Any]:
@@ -209,6 +232,71 @@ async def test_remote_worker_two_sequential_prompts_advance_history_once(tmp_pat
         "first answer",
         "second",
         "second answer",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_remote_worker_streams_tool_messages_before_final_answer_without_commit_duplicates(
+    tmp_path: Path,
+) -> None:
+    runtime = WorkerRuntimeConfig(
+        model="test-model",
+        tools=[EchoTool()],
+        completion_streamer=ScriptedStreamer(
+            [
+                AssistantMessage(
+                    tool_calls=[
+                        ToolCall(
+                            id="call-1",
+                            function=FunctionCall(name="echo_tool", arguments='{"text": "hello"}'),
+                        ),
+                    ],
+                ),
+                AssistantMessage(content="done"),
+            ],
+        ),
+    )
+
+    async with start_session_worker_server(runtime=runtime) as worker_server:
+        service, store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
+        created = store.create_session(
+            scope_id="scope-a",
+            messages=[SystemMessage(content="system")],
+            metadata={"model": "test-model"},
+        )
+        updates: list[SessionUpdate] = []
+
+        async def collect_update(update: SessionUpdate) -> None:
+            updates.append(update)
+
+        result = await service.prompt(
+            params=_scope_params(created.record.session_id, "Use tool"),
+            on_update=collect_update,
+        )
+        loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    assert result.stop_reason == "end_turn"
+    assert len(updates) == 6
+    assert isinstance(updates[0], MessageAddedUpdate)
+    assert updates[0].message == UserMessage(content="Use tool")
+    assert isinstance(updates[1], MessageAddedUpdate)
+    assert isinstance(updates[1].message, AssistantMessage)
+    assert updates[1].message.tool_calls[0].function.name == "echo_tool"
+    assert isinstance(updates[2], MessageAddedUpdate)
+    assert updates[2].message == ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello")
+    assert isinstance(updates[3], MessageAddedUpdate)
+    assert updates[3].message == AssistantMessage(content="")
+    assert isinstance(updates[4], MessageDeltaUpdate)
+    assert updates[4].message_id == updates[3].message_id
+    assert updates[4].append_text == "done"
+    assert isinstance(updates[5], SessionUpdatedUpdate)
+    assert [message.role for message in loaded.messages] == ["system", "user", "assistant", "tool", "assistant"]
+    assert [getattr(message, "content", None) for message in loaded.messages] == [
+        "system",
+        "Use tool",
+        None,
+        "echo:hello",
+        "done",
     ]
 
 
