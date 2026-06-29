@@ -324,6 +324,38 @@ async def test_manager_upload_file_writes_attachment_and_replays_visible_message
 
 
 @pytest.mark.asyncio
+async def test_manager_upload_file_uses_mime_type_name_for_unnamed_attachment(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(
+                jsonrpc_request(
+                    3,
+                    "session/upload_file",
+                    _scope_params(
+                        "scope-a",
+                        sessionId=session_id,
+                        name=None,
+                        mimeType="text/plain",
+                        data=base64.b64encode(b"clipboard text").decode("ascii"),
+                    ),
+                )
+            )
+            update = parse_jsonrpc_message(await websocket.recv())
+            upload_response = parse_jsonrpc_message(await websocket.recv())
+
+    attachment = upload_response["result"]["attachment"]
+    assert attachment["name"] == "attachment.txt"
+    assert attachment["mimeType"] == "text/plain"
+    assert attachment["path"].startswith("attachments/att_")
+    assert attachment["path"].endswith("-attachment.txt")
+    assert (tmp_path / "workspaces" / session_id / attachment["path"]).read_text() == "clipboard text"
+    assert f"Attached file `attachment.txt` as `{attachment['path']}`" in update["params"]["update"]["content"]["text"]
+
+
+@pytest.mark.asyncio
 async def test_manager_upload_file_rejects_cross_scope_session(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
         async with connect(endpoint) as websocket:

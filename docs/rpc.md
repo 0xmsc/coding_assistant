@@ -742,7 +742,8 @@ Prompt blocks follow ACP-compatible content shapes where practical:
 Uploads one bounded file into a visible session workspace in
 `params._meta.scopeId`. The manager validates scope, file name, MIME type, and
 size, writes the bytes under `attachments/`, commits a visible user transcript
-message, and returns attachment metadata.
+message, and returns attachment metadata. If `name` is `null` or blank, the
+manager derives a generic filename with an extension from the MIME type.
 
 Request:
 

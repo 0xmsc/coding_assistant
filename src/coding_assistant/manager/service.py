@@ -240,26 +240,24 @@ def _write_session_skill_bundles(*, workspace: Path, skills: tuple[SkillBundle, 
     return skills_root
 
 
-def _safe_attachment_name(name: object) -> str:
+def _safe_attachment_name(name: object) -> str | None:
     if not isinstance(name, str) or not name.strip():
-        raise ManagerError("session/upload_file requires a non-empty file name.")
+        return None
     candidate = PurePosixPath(name).name.strip()
     candidate = SAFE_ATTACHMENT_NAME_RE.sub("-", candidate).strip(".-")
-    if not candidate:
-        candidate = "attachment"
-    return candidate[:120]
+    return candidate[:120] if candidate else None
 
 
-def _attachment_mime_type(*, raw_mime_type: object, name: str) -> str:
+def _attachment_mime_type(*, raw_mime_type: object, name: str | None) -> str:
     if isinstance(raw_mime_type, str) and raw_mime_type.strip():
         mime_type = raw_mime_type.strip().lower()
-    elif name.lower().endswith(".json"):
+    elif name and name.lower().endswith(".json"):
         mime_type = "application/json"
-    elif name.lower().endswith(".md"):
+    elif name and name.lower().endswith(".md"):
         mime_type = "text/markdown"
-    elif name.lower().endswith(".csv"):
+    elif name and name.lower().endswith(".csv"):
         mime_type = "text/csv"
-    elif name.lower().endswith(".txt"):
+    elif name and name.lower().endswith(".txt"):
         mime_type = "text/plain"
     else:
         raise ManagerError("session/upload_file requires a supported MIME type.")
@@ -267,6 +265,26 @@ def _attachment_mime_type(*, raw_mime_type: object, name: str) -> str:
     if mime_type.startswith("text/") or mime_type in SUPPORTED_ATTACHMENT_TYPES:
         return mime_type
     raise ManagerError(f"Unsupported attachment MIME type: {mime_type}.")
+
+
+def _default_attachment_name(mime_type: str) -> str:
+    if mime_type == "image/gif":
+        return "attachment.gif"
+    if mime_type == "image/jpeg":
+        return "attachment.jpg"
+    if mime_type == "image/png":
+        return "attachment.png"
+    if mime_type == "image/webp":
+        return "attachment.webp"
+    if mime_type == "application/json":
+        return "attachment.json"
+    if mime_type in {"application/markdown", "text/markdown"}:
+        return "attachment.md"
+    if mime_type in {"application/csv", "text/csv"}:
+        return "attachment.csv"
+    if mime_type == "application/x-ndjson":
+        return "attachment.ndjson"
+    return "attachment.txt"
 
 
 def _upload_bytes(raw_data: object) -> bytes:
@@ -288,6 +306,8 @@ def _upload_bytes(raw_data: object) -> bytes:
 def _write_attachment(*, workspace: Path, params: JsonObject) -> SessionAttachment:
     name = _safe_attachment_name(params.get("name"))
     mime_type = _attachment_mime_type(raw_mime_type=params.get("mimeType"), name=name)
+    if name is None:
+        name = _default_attachment_name(mime_type)
     data = _upload_bytes(params.get("data"))
     content_hash = hashlib.sha256(data).hexdigest()
     attachment_id = f"att_{content_hash[:16]}"
