@@ -176,7 +176,7 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
     assert "no-new-privileges" in args
     assert "-v" in args
     assert "/data/sessions/sess/workspace:/workspace:rw" in args
-    assert "/data/sessions/sess/attachments:/workspace/attachments:ro" in args
+    assert "/data/sessions/sess/attachments:/attachments:ro" in args
     assert "coding-assistant:test" in args
     assert "coding-assistant-worker" in args
     assert args[args.index("--network") + 1] == "assistant-net"
@@ -288,7 +288,7 @@ def test_docker_run_args_maps_manager_session_paths_to_host_source() -> None:
     )
 
     assert "/host/coding-assistant/sessions/sess/workspace:/workspace:rw" in args
-    assert "/host/coding-assistant/sessions/sess/attachments:/workspace/attachments:ro" in args
+    assert "/host/coding-assistant/sessions/sess/attachments:/attachments:ro" in args
 
 
 @pytest.mark.asyncio

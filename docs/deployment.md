@@ -77,7 +77,7 @@ bind mounts must use host paths. The manager maps
 `$CODING_ASSISTANT_HOST_DATA_DIR/sessions/<session>/workspace` as `/workspace`
 and maps `/data/sessions/<session>/attachments` to
 `$CODING_ASSISTANT_HOST_DATA_DIR/sessions/<session>/attachments` as read-only
-`/workspace/attachments` when starting a worker.
+`/attachments` when starting a worker.
 
 In the reference Compose configuration, `CODING_ASSISTANT_DOCKER_SOCKET_GID`
 is only a Compose interpolation value for the Docker socket group. It is not a
@@ -101,7 +101,7 @@ The manager starts one temporary worker container for each active prompt.
 Workers run from `CODING_ASSISTANT_WORKER_IMAGE` and join
 `CODING_ASSISTANT_WORKER_NETWORK`. Workers listen on port `8765`, and their
 session workspace is mounted at `/workspace`. Session attachments are mounted
-read-only at `/workspace/attachments`.
+read-only at `/attachments`.
 
 Worker containers do not inherit the full manager environment. The manager
 forwards only the provider variables the built-in worker needs:

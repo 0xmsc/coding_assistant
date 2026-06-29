@@ -37,7 +37,7 @@ class DockerWorkerConfig:
     worker_port: int = 8765
     session_source_root: str | None = None
     workspace_mount: str = "/workspace"
-    attachments_mount: str = "/workspace/attachments"
+    attachments_mount: str = "/attachments"
     docker_command: str = "docker"
     startup_timeout: float = 15.0
     environment: dict[str, str] = field(default_factory=dict)

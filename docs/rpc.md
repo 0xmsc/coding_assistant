@@ -43,7 +43,7 @@ browser
 The application backend owns browser authentication. The manager owns canonical
 session state and worker lifecycle. Each active prompt runs in a temporary
 worker container with the session's managed workspace mounted at `/workspace`
-and session attachments mounted read-only at `/workspace/attachments`.
+and session attachments mounted read-only at `/attachments`.
 
 The CLI path remains direct:
 
@@ -206,7 +206,7 @@ manager workspace path:   /data/sessions/<sessionId>/workspace
 manager attachments path: /data/sessions/<sessionId>/attachments
 host session path:        $CODING_ASSISTANT_HOST_DATA_DIR/sessions/<sessionId>
 worker workspace mount:   /workspace
-worker attachments mount: /workspace/attachments (read-only)
+worker attachments mount: /attachments (read-only)
 ```
 
 The worker process starts with `/workspace` as its working directory. This is
@@ -745,7 +745,7 @@ Prompt blocks follow ACP-compatible content shapes where practical:
 
 Uploads one bounded file into the visible session attachments directory in
 `params._meta.scopeId`. The manager validates scope, file name, MIME type, and
-size, writes the bytes under `attachments/`, commits a visible user transcript
+size, writes the bytes under the session attachments directory, commits a visible user transcript
 message, and returns attachment metadata. If `name` is `null` or blank, the
 manager derives a generic filename with an extension from the MIME type.
 
@@ -780,7 +780,7 @@ Response:
       "name": "meal.jpg",
       "mimeType": "image/jpeg",
       "size": 12345,
-      "path": "attachments/att_abc123-meal.jpg",
+      "path": "/attachments/att_abc123-meal.jpg",
       "sha256": "..."
     },
     "session": {

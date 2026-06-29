@@ -313,7 +313,7 @@ def _write_attachment(*, attachments: Path, params: JsonObject) -> SessionAttach
     content_hash = hashlib.sha256(data).hexdigest()
     attachment_id = f"att_{content_hash[:16]}"
     filename = f"{attachment_id}-{name}"
-    relative_path = f"attachments/{filename}"
+    worker_path = f"/attachments/{filename}"
     target = attachments / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(data)
@@ -322,7 +322,7 @@ def _write_attachment(*, attachments: Path, params: JsonObject) -> SessionAttach
         name=name,
         mime_type=mime_type,
         size=len(data),
-        path=relative_path,
+        path=worker_path,
         sha256=content_hash,
     )
 

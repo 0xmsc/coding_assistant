@@ -41,13 +41,15 @@ async def test_load_file_loads_image_file_as_model_context(tmp_path: Path) -> No
     image_file.parent.mkdir()
     image_file.write_bytes(PNG_BYTES)
 
-    result = await LoadFileTool(workspace=tmp_path).execute({"path": "attachments/att_123-meal.png"})
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    result = await LoadFileTool(workspace=workspace).execute({"path": str(image_file)})
 
     assert isinstance(result, ToolMessageResult)
     assert isinstance(result.content, list)
     assert result.content[0] == {
         "type": "text",
-        "text": "Loaded image file attachments/att_123-meal.png (image/png, 24 bytes).",
+        "text": f"Loaded image file {image_file.as_posix()} (image/png, 24 bytes).",
     }
     image_block = result.content[1]
     assert image_block["type"] == "image_url"

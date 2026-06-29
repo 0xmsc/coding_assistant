@@ -306,9 +306,10 @@ async def test_manager_upload_file_writes_attachment_and_replays_visible_message
     assert attachment["name"] == "Meal-Photo.PNG"
     assert attachment["mimeType"] == "image/png"
     assert attachment["size"] == 13
-    assert attachment["path"].startswith("attachments/att_")
+    assert attachment["path"].startswith("/attachments/att_")
     assert attachment["path"].endswith("-Meal-Photo.PNG")
-    assert (tmp_path / "sessions" / session_id / attachment["path"]).read_bytes() == b"\x89PNG\r\n\x1a\nimage"
+    filename = attachment["path"].removeprefix("/attachments/")
+    assert (tmp_path / "sessions" / session_id / "attachments" / filename).read_bytes() == b"\x89PNG\r\n\x1a\nimage"
 
     expected_text = (
         f"Attached file `Meal-Photo.PNG` as `{attachment['path']}` (image/png, 13 bytes). "
@@ -349,9 +350,10 @@ async def test_manager_upload_file_uses_mime_type_name_for_unnamed_attachment(tm
     attachment = upload_response["result"]["attachment"]
     assert attachment["name"] == "attachment.txt"
     assert attachment["mimeType"] == "text/plain"
-    assert attachment["path"].startswith("attachments/att_")
+    assert attachment["path"].startswith("/attachments/att_")
     assert attachment["path"].endswith("-attachment.txt")
-    assert (tmp_path / "sessions" / session_id / attachment["path"]).read_text() == "clipboard text"
+    filename = attachment["path"].removeprefix("/attachments/")
+    assert (tmp_path / "sessions" / session_id / "attachments" / filename).read_text() == "clipboard text"
     assert f"Attached file `attachment.txt` as `{attachment['path']}`" in update["params"]["update"]["content"]["text"]
 
 
