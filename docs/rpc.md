@@ -72,6 +72,7 @@ This protocol also has `coding-assistant` extensions:
 - Backend-injected `params._meta.scopeId` session scoping.
 - Manager-owned workspaces derived from `sessionId`.
 - Manager-owned SQLite persistence.
+- Session-scoped private worker environment and workspace-backed injected skills.
 - Private manager/worker `_session/*` methods.
 - Per-active-prompt worker containers.
 
@@ -231,6 +232,7 @@ sessions
   created_at text not null
   updated_at text not null
   metadata_json text not null default '{}'
+  worker_env_json text not null default '{}'
 
 session_messages
   id integer primary key autoincrement
@@ -240,6 +242,10 @@ session_messages
   payload_json text not null
   created_at text not null
 ```
+
+`metadata_json` is public session metadata returned in `_meta`.
+`worker_env_json` is private manager state and must not be returned by
+`session/list`, `session/load`, or other public session metadata responses.
 
 Do not add a durable `session_runs` table for v1. Active runs live in manager
 memory while a worker is running.
@@ -427,7 +433,8 @@ Session metadata must not expose arbitrary host workspace paths.
 
 ### session/new
 
-Creates a new session in `params._meta.scopeId`.
+Creates a new session in `params._meta.scopeId`. The manager may also accept
+private session-scoped worker setup under `_meta`.
 
 Request:
 
@@ -438,11 +445,40 @@ Request:
   "method": "session/new",
   "params": {
     "_meta": {
-      "scopeId": "tenant:abc123"
+      "scopeId": "tenant:abc123",
+      "workerEnv": {
+        "APPS_API_BASE_URL": "http://apps-api",
+        "APPS_API_TOKEN": "secret-token"
+      },
+      "skills": [
+        {
+          "name": "apps-api",
+          "description": "Use apps REST APIs.",
+          "files": {
+            "SKILL.md": "---\nname: apps-api\ndescription: Use apps REST APIs.\n---\n",
+            "references/calories.md": "calories reference"
+          }
+        }
+      ]
     }
   }
 }
 ```
+
+`_meta.workerEnv` is optional private session state. The manager stores it in
+SQLite outside public session metadata and passes it to worker tool processes
+for prompts in that session. Keys must be uppercase environment variable names
+and values must be strings.
+
+`_meta.skills` is an optional array of injected skill bundles. The manager
+writes each bundle to `.agents/skills/<name>` in the session workspace before
+building the initial system message. Workers then discover those skills through
+normal workspace skill loading. Each skill requires a valid `name`, a non-empty
+`description`, and a `files` object containing `SKILL.md`. File paths must be
+relative paths inside the skill directory.
+
+These `_meta` fields are setup inputs only. They are not copied into public
+session metadata and are not returned by `session/list` or `session/load`.
 
 Response:
 
@@ -457,8 +493,8 @@ Response:
 ```
 
 The manager creates `/data/workspaces/<sessionId>` inside the manager
-container and initializes the session transcript with system instructions for
-the managed workspace.
+container, writes any injected skills under `.agents/skills`, and initializes
+the session transcript with system instructions for the managed workspace.
 
 External `cwd` input is ignored or rejected until a future workspace import
 feature is designed.
@@ -618,6 +654,9 @@ the server sends `session/update` notifications.
 
 The session must already have a model in metadata. Use `session/set_model`
 before prompting new sessions or older sessions without a stored model.
+Session-scoped worker setup such as `_meta.workerEnv` and `_meta.skills` is
+accepted only by `session/new`; prompt metadata is not used to change worker
+environment variables or available skills.
 
 Request:
 
@@ -919,7 +958,6 @@ Request params:
 | `baseVersion` | integer | yes | History version used to start the worker session. |
 | `messages` | array | yes | Model-visible committed history from SQLite. |
 | `workspace` | string | yes | Worker workspace path, normally `/workspace`. |
-| `config` | object | yes | Model, MCP, skills, and runtime configuration. |
 
 ### _session/commit
 
