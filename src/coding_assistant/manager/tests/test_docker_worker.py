@@ -152,6 +152,17 @@ async def _load_session(websocket: ClientConnection, *, request_id: int, session
         update = message["params"]["update"]
         if update.get("sessionUpdate") == "agent_message_chunk":
             texts.append(update["content"]["text"])
+        if update.get("sessionUpdate") == "item_added":
+            item = update.get("item")
+            if not isinstance(item, dict):
+                continue
+            payload = item.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            if item.get("kind") == "message" and payload.get("role") == "assistant":
+                content = payload.get("content")
+                if isinstance(content, str):
+                    texts.append(content)
 
 
 def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:

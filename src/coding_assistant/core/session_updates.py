@@ -35,6 +35,7 @@ class SessionItem:
     kind: str
     payload: JsonObject
     item_id: str = field(default_factory=lambda: f"item_{uuid4().hex}")
+    message_id: int | None = None
     sequence: int | None = None
     created_at: str | None = None
     updated_at: str | None = None
@@ -173,7 +174,7 @@ class PromptResult:
     error: str | None = None
 
 
-def _tool_call_raw_input(arguments: str) -> JsonObject | None:
+def tool_call_raw_input(arguments: str) -> JsonObject | None:
     try:
         parsed = json.loads(arguments)
     except json.JSONDecodeError:
@@ -197,7 +198,7 @@ def _committed_content_text(content: str | list[JsonObject] | None) -> str | Non
     return "\n".join(text_parts)
 
 
-def _display_content_from_tool_content(
+def display_content_from_tool_content(
     *,
     tool_name: str | None,
     content: str | list[JsonObject] | None,
@@ -243,7 +244,7 @@ def session_items_from_history_messages(messages: Sequence[BaseMessage]) -> list
                     "kind": "other",
                     "status": "pending",
                 }
-                raw_input = _tool_call_raw_input(tool_call.function.arguments)
+                raw_input = tool_call_raw_input(tool_call.function.arguments)
                 if raw_input is not None:
                     payload["rawInput"] = raw_input
                 tool_item_indexes[tool_call.id] = len(items)
@@ -262,7 +263,7 @@ def session_items_from_history_messages(messages: Sequence[BaseMessage]) -> list
                 payload["title"] = message.name
             if text is not None:
                 payload["content"] = text
-            display_content = _display_content_from_tool_content(tool_name=message.name, content=message.content)
+            display_content = display_content_from_tool_content(tool_name=message.name, content=message.content)
             if display_content is not None:
                 payload["displayContent"] = display_content
             item_index = tool_item_indexes.get(message.tool_call_id)
@@ -297,7 +298,7 @@ def session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUp
                 title=tool_call.function.name or "tool_call",
                 tool_kind="other",
                 status="pending",
-                raw_input=_tool_call_raw_input(tool_call.function.arguments),
+                raw_input=tool_call_raw_input(tool_call.function.arguments),
                 message=event.message,
             )
             for tool_call in event.message.tool_calls
@@ -374,7 +375,7 @@ def replay_updates_from_committed_message(message: CommittedMessage) -> list[Ses
                     title=tool_call.function.name or "tool_call",
                     tool_kind="other",
                     status="pending",
-                    raw_input=_tool_call_raw_input(tool_call.function.arguments),
+                    raw_input=tool_call_raw_input(tool_call.function.arguments),
                     message=None,
                 )
             )
@@ -390,7 +391,7 @@ def replay_updates_from_committed_message(message: CommittedMessage) -> list[Ses
                 tool_kind="other",
                 raw_output=message.content,
                 content=text,
-                display_content=_display_content_from_tool_content(
+                display_content=display_content_from_tool_content(
                     tool_name=message.name,
                     content=message.content,
                 ),

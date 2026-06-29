@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, cast
 from uuid import uuid4
 
@@ -33,9 +34,17 @@ class SessionRecord:
 
 
 @dataclass(frozen=True)
+class StoredMessage:
+    message_id: int
+    message: BaseMessage
+    created_at: str
+
+
+@dataclass(frozen=True)
 class LoadedSession:
     record: SessionRecord
     messages: list[BaseMessage]
+    message_records: list[StoredMessage]
     items: list[SessionItem]
     workspace: Path
     attachments: Path
@@ -169,7 +178,13 @@ class SessionStore:
                     """,
                     (session_id, scope_id, title, 0, now, now, metadata_json, worker_env_json),
                 )
-                self._insert_messages(connection, session_id=session_id, version=0, messages=messages, created_at=now)
+                message_records = self._insert_messages(
+                    connection,
+                    session_id=session_id,
+                    version=0,
+                    messages=messages,
+                    created_at=now,
+                )
 
         record = SessionRecord(
             session_id=session_id,
@@ -183,6 +198,7 @@ class SessionStore:
         return LoadedSession(
             record=record,
             messages=list(messages),
+            message_records=message_records,
             items=[],
             workspace=workspace,
             attachments=reserved_workspace.attachments,
@@ -208,7 +224,7 @@ class SessionStore:
             record = _record_from_row(session_row)
             message_rows = connection.execute(
                 """
-                select payload_json
+                select id, payload_json, created_at
                 from session_messages
                 where session_id = ?
                 order by id asc
@@ -217,7 +233,7 @@ class SessionStore:
             ).fetchall()
             item_rows = connection.execute(
                 """
-                select item_id, sequence, kind, payload_json, created_at, updated_at
+                select item_id, sequence, kind, message_id, payload_json, created_at, updated_at
                 from session_items
                 where session_id = ?
                 order by sequence asc, item_id asc
@@ -225,12 +241,21 @@ class SessionStore:
                 (session_id,),
             ).fetchall()
         paths = self.workspaces.require_for_session(session_id)
-        messages = [_message_from_json(str(row["payload_json"])) for row in message_rows]
+        message_records = [
+            StoredMessage(
+                message_id=int(row["id"]),
+                message=_message_from_json(str(row["payload_json"])),
+                created_at=str(row["created_at"]),
+            )
+            for row in message_rows
+        ]
+        messages = [record.message for record in message_records]
         items = [
             SessionItem(
                 item_id=str(row["item_id"]),
                 kind=str(row["kind"]),
                 payload=_item_payload_from_json(str(row["payload_json"])),
+                message_id=int(row["message_id"]) if row["message_id"] is not None else None,
                 sequence=int(row["sequence"]),
                 created_at=str(row["created_at"]),
                 updated_at=str(row["updated_at"]),
@@ -241,6 +266,7 @@ class SessionStore:
         return LoadedSession(
             record=record,
             messages=messages,
+            message_records=message_records,
             items=items,
             workspace=paths.workspace,
             attachments=paths.attachments,
@@ -292,9 +318,13 @@ class SessionStore:
         base_version: int,
         messages: list[BaseMessage],
         items: list[SessionItem] | None = None,
+        item_builder: Callable[[list[StoredMessage]], list[SessionItem]] | None = None,
         title: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> int:
+        if items is not None and item_builder is not None:
+            raise ValueError("commit_messages accepts either items or item_builder, not both.")
+
         now = _now_iso()
         with self._connect() as connection:
             with connection:
@@ -304,7 +334,7 @@ class SessionStore:
                         f"Session {session_id} is at version {record.version}, not {base_version}.",
                     )
                 new_version = base_version + 1
-                self._insert_messages(
+                inserted_messages = self._insert_messages(
                     connection,
                     session_id=session_id,
                     version=new_version,
@@ -314,7 +344,7 @@ class SessionStore:
                 self._insert_items(
                     connection,
                     session_id=session_id,
-                    items=items or [],
+                    items=item_builder(inserted_messages) if item_builder is not None else items or [],
                     created_at=now,
                 )
                 next_title = title if title is not None else record.title
@@ -373,6 +403,7 @@ class SessionStore:
                   session_id text not null references sessions(session_id) on delete cascade,
                   sequence integer not null,
                   kind text not null,
+                  message_id integer null references session_messages(id) on delete cascade,
                   payload_json text not null,
                   created_at text not null,
                   updated_at text not null,
@@ -380,6 +411,9 @@ class SessionStore:
                 )
                 """,
             )
+            item_columns = {str(row["name"]) for row in connection.execute("pragma table_info(session_items)")}
+            if "message_id" not in item_columns:
+                connection.execute("alter table session_items add column message_id integer null")
             connection.execute(
                 "create index if not exists idx_sessions_scope_updated on sessions(scope_id, updated_at desc)",
             )
@@ -388,6 +422,9 @@ class SessionStore:
             )
             connection.execute(
                 "create index if not exists idx_session_items_session on session_items(session_id, sequence)",
+            )
+            connection.execute(
+                "create index if not exists idx_session_items_message on session_items(session_id, message_id)",
             )
 
     def _get_session_row(self, connection: sqlite3.Connection, *, scope_id: str, session_id: str) -> sqlite3.Row:
@@ -415,14 +452,26 @@ class SessionStore:
         version: int,
         messages: list[BaseMessage],
         created_at: str,
-    ) -> None:
-        connection.executemany(
-            """
-            insert into session_messages (session_id, version, role, payload_json, created_at)
-            values (?, ?, ?, ?, ?)
-            """,
-            [(session_id, version, message.role, _message_to_json(message), created_at) for message in messages],
-        )
+    ) -> list[StoredMessage]:
+        stored_messages: list[StoredMessage] = []
+        for message in messages:
+            cursor = connection.execute(
+                """
+                insert into session_messages (session_id, version, role, payload_json, created_at)
+                values (?, ?, ?, ?, ?)
+                """,
+                (session_id, version, message.role, _message_to_json(message), created_at),
+            )
+            if cursor.lastrowid is None:
+                raise RuntimeError("Inserted session message did not return a row id.")
+            stored_messages.append(
+                StoredMessage(
+                    message_id=cursor.lastrowid,
+                    message=message,
+                    created_at=created_at,
+                )
+            )
+        return stored_messages
 
     def _insert_items(
         self,
@@ -445,8 +494,9 @@ class SessionStore:
         ]
         connection.executemany(
             """
-            insert into session_items (item_id, session_id, sequence, kind, payload_json, created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?, ?)
+            insert into session_items
+              (item_id, session_id, sequence, kind, message_id, payload_json, created_at, updated_at)
+            values (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -454,6 +504,7 @@ class SessionStore:
                     session_id,
                     item.sequence,
                     item.kind,
+                    item.message_id,
                     _item_payload_to_json(item.payload),
                     item.created_at,
                     item.updated_at,

@@ -225,7 +225,7 @@ Workspace seeding/import is out of scope for v1.
 The manager owns canonical session state in SQLite. Worker containers hold an
 in-memory `AgentSession` only while active.
 
-V1 uses two tables:
+V1 uses these tables:
 
 ```text
 sessions
@@ -245,11 +245,26 @@ session_messages
   role text not null
   payload_json text not null
   created_at text not null
+
+session_items
+  item_id text primary key
+  session_id text not null
+  sequence integer not null
+  kind text not null
+  payload_json text not null
+  message_id integer null references session_messages(id)
+  created_at text not null
+  updated_at text not null
 ```
 
 `metadata_json` is public session metadata returned in `_meta`.
 `worker_env_json` is private manager state and must not be returned by
 `session/list`, `session/load`, or other public session metadata responses.
+`session_messages` is the source of truth for LLM history. `session_items`
+stores the ordered visible transcript and references `session_messages` rows
+where an item is derived from a message or tool call. Attachment items keep
+their public attachment metadata in `payload_json` and link to the hidden
+attachment message row that keeps the LLM history complete.
 
 Do not add a durable `session_runs` table for v1. Active runs live in manager
 memory while a worker is running.
@@ -264,8 +279,8 @@ turn.
 3. The worker streams live `session/update` notifications.
 4. The worker sends `_session/commit` with `baseVersion: N`.
 5. The manager atomically verifies `sessions.version == N`.
-6. The manager inserts committed messages and updates the session to version
-   `N + 1`.
+6. The manager inserts committed messages, stores linked visible session items,
+   and updates the session to version `N + 1`.
 
 Stale commits are rejected. If a worker crashes before commit, SQLite history
 is not advanced.
