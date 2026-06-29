@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -38,6 +39,56 @@ def test_create_list_and_load_session_by_scope(tmp_path: Path) -> None:
     assert loaded.messages == [SystemMessage(content="system")]
     assert loaded.workspace == tmp_path / "workspaces" / created.record.session_id
     assert loaded.workspace.is_dir()
+
+
+def test_create_and_load_session_private_worker_env(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+    )
+
+    created = store.create_session(
+        scope_id="scope-a",
+        messages=[],
+        worker_env={"APPS_API_TOKEN": "secret-token"},
+    )
+    loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    assert created.worker_env == {"APPS_API_TOKEN": "secret-token"}
+    assert loaded.worker_env == {"APPS_API_TOKEN": "secret-token"}
+    assert store.list_sessions(scope_id="scope-a")[0].metadata == {}
+
+
+def test_store_adds_private_worker_env_column_to_existing_database(tmp_path: Path) -> None:
+    database_path = tmp_path / "sessions.sqlite"
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """
+            create table sessions (
+              session_id text primary key,
+              scope_id text not null,
+              title text null,
+              version integer not null default 0,
+              created_at text not null,
+              updated_at text not null,
+              metadata_json text not null default '{}'
+            )
+            """,
+        )
+
+    store = SessionStore(
+        database_path=database_path,
+        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+    )
+    created = store.create_session(
+        scope_id="scope-a",
+        messages=[],
+        worker_env={"APPS_API_TOKEN": "secret-token"},
+    )
+
+    loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    assert loaded.worker_env == {"APPS_API_TOKEN": "secret-token"}
 
 
 def test_load_session_rejects_cross_scope_access(tmp_path: Path) -> None:

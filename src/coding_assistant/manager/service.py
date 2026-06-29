@@ -72,7 +72,6 @@ class SkillBundle:
 
 @dataclass(frozen=True)
 class PromptCapabilities:
-    worker_env: dict[str, str] = field(default_factory=dict)
     skills: tuple[SkillBundle, ...] = ()
 
 
@@ -104,6 +103,7 @@ class WorkerPrompt:
     model: str
     workspace: str
     prompt: list[JsonObject]
+    worker_env: dict[str, str] = field(default_factory=dict)
     capabilities: PromptCapabilities = field(default_factory=PromptCapabilities)
 
 
@@ -148,19 +148,25 @@ def _prompt_capabilities_from_params(params: JsonObject) -> PromptCapabilities:
     if not isinstance(raw_capabilities, dict):
         raise ManagerError("_meta.capabilities must be an object.")
     return PromptCapabilities(
-        worker_env=_worker_env_from_capabilities(raw_capabilities),
         skills=tuple(_skill_bundles_from_capabilities(raw_capabilities)),
     )
 
 
-def _worker_env_from_capabilities(raw_capabilities: JsonObject) -> dict[str, str]:
-    worker_env = raw_capabilities.get("workerEnv", {})
+def _session_worker_env_from_params(params: JsonObject) -> dict[str, str]:
+    metadata = params.get("_meta")
+    if not isinstance(metadata, dict):
+        return {}
+    return _worker_env_from_value(metadata.get("workerEnv", {}), field_name="_meta.workerEnv")
+
+
+def _worker_env_from_value(raw_worker_env: object, *, field_name: str) -> dict[str, str]:
+    worker_env = raw_worker_env
     if worker_env is None:
         return {}
     if not isinstance(worker_env, dict):
-        raise ManagerError("_meta.capabilities.workerEnv must be an object.")
+        raise ManagerError(f"{field_name} must be an object.")
     if len(worker_env) > MAX_WORKER_ENV_VARS:
-        raise ManagerError("_meta.capabilities.workerEnv has too many entries.")
+        raise ManagerError(f"{field_name} has too many entries.")
 
     result: dict[str, str] = {}
     for key, value in worker_env.items():
@@ -384,9 +390,11 @@ class ManagerService:
 
     def new_session(self, *, params: JsonObject, initial_messages: list[BaseMessage]) -> JsonObject:
         scope_id = _scope_id_from_params(params)
+        worker_env = _session_worker_env_from_params(params)
         session = self._store.create_session(
             scope_id=scope_id,
             messages=initial_messages,
+            worker_env=worker_env,
         )
         return {"sessionId": session.record.session_id}
 
@@ -493,6 +501,7 @@ class ManagerService:
                     model=model,
                     workspace=str(session.workspace),
                     prompt=prompt_blocks,
+                    worker_env=session.worker_env,
                     capabilities=capabilities,
                 ),
                 on_update=on_update,

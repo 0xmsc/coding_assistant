@@ -516,12 +516,19 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
 
 
 @pytest.mark.asyncio
-async def test_manager_passes_prompt_capabilities_to_worker_without_persisting(tmp_path: Path) -> None:
+async def test_manager_stores_session_worker_env_privately_and_passes_prompt_skills(tmp_path: Path) -> None:
     worker = FakeWorkerRunner(response_text="done")
     async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
         async with connect(endpoint) as websocket:
             await _initialize(websocket)
-            session_id = await _new_session(websocket, scope_id="scope-a")
+            new_session_params = _scope_params("scope-a")
+            new_session_params["_meta"]["workerEnv"] = {
+                "APPS_API_BASE_URL": "http://apps-api",
+                "APPS_API_TOKEN": "secret-token",
+            }
+            await websocket.send(jsonrpc_request(2, "session/new", new_session_params))
+            new_session_response = parse_jsonrpc_message(await websocket.recv())
+            session_id = new_session_response["result"]["sessionId"]
             await _set_model(websocket, scope_id="scope-a", session_id=session_id, request_id=3)
             params = _scope_params(
                 "scope-a",
@@ -529,10 +536,6 @@ async def test_manager_passes_prompt_capabilities_to_worker_without_persisting(t
                 prompt=[text_block("Do it")],
             )
             params["_meta"]["capabilities"] = {
-                "workerEnv": {
-                    "APPS_API_BASE_URL": "http://apps-api",
-                    "APPS_API_TOKEN": "secret-token",
-                },
                 "skills": [
                     {
                         "name": "apps-api",
@@ -557,12 +560,13 @@ async def test_manager_passes_prompt_capabilities_to_worker_without_persisting(t
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     assert [message["params"]["update"]["content"]["text"] for message in replay] == ["Do it", "done"]
     assert "capabilities" not in load_response["result"]["_meta"]
+    assert "workerEnv" not in load_response["result"]["_meta"]
     assert worker.prompts is not None
-    capabilities = worker.prompts[0].capabilities
-    assert capabilities.worker_env == {
+    assert worker.prompts[0].worker_env == {
         "APPS_API_BASE_URL": "http://apps-api",
         "APPS_API_TOKEN": "secret-token",
     }
+    capabilities = worker.prompts[0].capabilities
     assert len(capabilities.skills) == 1
     assert capabilities.skills[0].name == "apps-api"
     assert capabilities.skills[0].files["references/calories.md"] == "calories"
@@ -584,8 +588,24 @@ async def test_manager_rejects_capabilities_on_non_prompt_methods(tmp_path: Path
 
 
 @pytest.mark.asyncio
-async def test_manager_validates_prompt_capabilities(tmp_path: Path) -> None:
+async def test_manager_validates_session_worker_env(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            params = _scope_params("scope-a")
+            params["_meta"]["workerEnv"] = {"not-valid": "value"}
+
+            await websocket.send(jsonrpc_request(2, "session/new", params))
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == "Invalid worker environment variable name: 'not-valid'."
+
+
+@pytest.mark.asyncio
+async def test_manager_ignores_prompt_worker_env(tmp_path: Path) -> None:
+    worker = FakeWorkerRunner(response_text="done")
+    async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
         async with connect(endpoint) as websocket:
             await _initialize(websocket)
             session_id = await _new_session(websocket, scope_id="scope-a")
@@ -596,14 +616,17 @@ async def test_manager_validates_prompt_capabilities(tmp_path: Path) -> None:
                 prompt=[text_block("Do it")],
             )
             params["_meta"]["capabilities"] = {
-                "workerEnv": {"not-valid": "value"},
+                "workerEnv": {"APPS_API_TOKEN": "secret-token"},
             }
 
             await websocket.send(jsonrpc_request(4, "session/prompt", params))
+            update = parse_jsonrpc_message(await websocket.recv())
             response = parse_jsonrpc_message(await websocket.recv())
 
-    assert response["error"]["code"] == -32602
-    assert response["error"]["message"] == "Invalid worker environment variable name: 'not-valid'."
+    assert update["params"]["update"]["content"]["text"] == "done"
+    assert response["result"] == {"stopReason": "end_turn"}
+    assert worker.prompts is not None
+    assert worker.prompts[0].worker_env == {}
 
 
 @pytest.mark.asyncio

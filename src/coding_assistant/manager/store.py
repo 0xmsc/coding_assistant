@@ -5,7 +5,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
@@ -36,6 +36,7 @@ class LoadedSession:
     record: SessionRecord
     messages: list[BaseMessage]
     workspace: Path
+    worker_env: dict[str, str] = field(default_factory=dict)
 
 
 def _now_iso() -> str:
@@ -68,6 +69,22 @@ def _metadata_from_json(payload: str) -> dict[str, Any]:
     return decoded
 
 
+def _worker_env_to_json(worker_env: dict[str, str]) -> str:
+    return json.dumps(worker_env, sort_keys=True)
+
+
+def _worker_env_from_json(payload: str) -> dict[str, str]:
+    decoded = json.loads(payload)
+    if not isinstance(decoded, dict):
+        raise ValueError("Stored worker environment payload must be a JSON object.")
+    result: dict[str, str] = {}
+    for key, value in decoded.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise ValueError("Stored worker environment payload must contain only string keys and values.")
+        result[key] = value
+    return result
+
+
 def _record_from_row(row: sqlite3.Row) -> SessionRecord:
     return SessionRecord(
         session_id=str(row["session_id"]),
@@ -95,20 +112,22 @@ class SessionStore:
         messages: list[BaseMessage],
         title: str | None = None,
         metadata: dict[str, Any] | None = None,
+        worker_env: dict[str, str] | None = None,
     ) -> LoadedSession:
         session_id = _new_session_id()
         now = _now_iso()
         workspace = self.workspaces.create_for_session(session_id)
         metadata_json = _metadata_to_json(metadata or {})
+        worker_env_json = _worker_env_to_json(worker_env or {})
         with self._connect() as connection:
             with connection:
                 connection.execute(
                     """
                     insert into sessions
-                      (session_id, scope_id, title, version, created_at, updated_at, metadata_json)
-                    values (?, ?, ?, ?, ?, ?, ?)
+                      (session_id, scope_id, title, version, created_at, updated_at, metadata_json, worker_env_json)
+                    values (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (session_id, scope_id, title, 0, now, now, metadata_json),
+                    (session_id, scope_id, title, 0, now, now, metadata_json, worker_env_json),
                 )
                 self._insert_messages(connection, session_id=session_id, version=0, messages=messages, created_at=now)
 
@@ -121,7 +140,9 @@ class SessionStore:
             updated_at=now,
             metadata=metadata or {},
         )
-        return LoadedSession(record=record, messages=list(messages), workspace=workspace)
+        return LoadedSession(
+            record=record, messages=list(messages), workspace=workspace, worker_env=dict(worker_env or {})
+        )
 
     def list_sessions(self, *, scope_id: str) -> list[SessionRecord]:
         with self._connect() as connection:
@@ -138,7 +159,8 @@ class SessionStore:
 
     def load_session(self, *, scope_id: str, session_id: str) -> LoadedSession:
         with self._connect() as connection:
-            record = self._get_session_record(connection, scope_id=scope_id, session_id=session_id)
+            session_row = self._get_session_row(connection, scope_id=scope_id, session_id=session_id)
+            record = _record_from_row(session_row)
             message_rows = connection.execute(
                 """
                 select payload_json
@@ -150,7 +172,8 @@ class SessionStore:
             ).fetchall()
         workspace = self.workspaces.require_for_session(session_id)
         messages = [_message_from_json(str(row["payload_json"])) for row in message_rows]
-        return LoadedSession(record=record, messages=messages, workspace=workspace)
+        worker_env = _worker_env_from_json(str(session_row["worker_env_json"]))
+        return LoadedSession(record=record, messages=messages, workspace=workspace, worker_env=worker_env)
 
     def rename_session(self, *, scope_id: str, session_id: str, title: str | None) -> SessionRecord:
         now = _now_iso()
@@ -244,10 +267,14 @@ class SessionStore:
                   version integer not null default 0,
                   created_at text not null,
                   updated_at text not null,
-                  metadata_json text not null default '{}'
+                  metadata_json text not null default '{}',
+                  worker_env_json text not null default '{}'
                 )
                 """,
             )
+            session_columns = {str(row["name"]) for row in connection.execute("pragma table_info(sessions)")}
+            if "worker_env_json" not in session_columns:
+                connection.execute("alter table sessions add column worker_env_json text not null default '{}'")
             connection.execute(
                 """
                 create table if not exists session_messages (
@@ -267,10 +294,10 @@ class SessionStore:
                 "create index if not exists idx_session_messages_session on session_messages(session_id, id)",
             )
 
-    def _get_session_record(self, connection: sqlite3.Connection, *, scope_id: str, session_id: str) -> SessionRecord:
+    def _get_session_row(self, connection: sqlite3.Connection, *, scope_id: str, session_id: str) -> sqlite3.Row:
         row = connection.execute(
             """
-            select session_id, scope_id, title, version, created_at, updated_at, metadata_json
+            select session_id, scope_id, title, version, created_at, updated_at, metadata_json, worker_env_json
             from sessions
             where scope_id = ? and session_id = ?
             """,
@@ -278,6 +305,10 @@ class SessionStore:
         ).fetchone()
         if row is None:
             raise SessionNotFoundError(f"Session {session_id} was not found.")
+        return cast(sqlite3.Row, row)
+
+    def _get_session_record(self, connection: sqlite3.Connection, *, scope_id: str, session_id: str) -> SessionRecord:
+        row = self._get_session_row(connection, scope_id=scope_id, session_id=session_id)
         return _record_from_row(row)
 
     def _insert_messages(

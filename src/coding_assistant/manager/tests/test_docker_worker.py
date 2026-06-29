@@ -191,7 +191,7 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
     assert "/skills" in args
 
 
-def test_docker_run_args_merges_prompt_environment_and_skills_directory() -> None:
+def test_docker_run_args_merges_session_environment_and_skills_directory() -> None:
     config = DockerWorkerConfig(
         image="coding-assistant:test",
         network="assistant-net",
@@ -222,7 +222,7 @@ def test_docker_run_args_merges_prompt_environment_and_skills_directory() -> Non
     ]
 
 
-def test_docker_run_args_rejects_prompt_environment_collision() -> None:
+def test_docker_run_args_rejects_session_environment_collision() -> None:
     config = DockerWorkerConfig(
         image="coding-assistant:test",
         network="assistant-net",
@@ -231,7 +231,7 @@ def test_docker_run_args_rejects_prompt_environment_collision() -> None:
 
     with pytest.raises(
         DockerWorkerError,
-        match="Prompt worker environment collides with manager environment: OPENAI_API_KEY",
+        match="Session worker environment collides with manager environment: OPENAI_API_KEY",
     ):
         _docker_run_args(
             config=config,

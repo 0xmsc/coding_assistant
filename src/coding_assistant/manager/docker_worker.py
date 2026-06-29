@@ -74,7 +74,7 @@ class DockerWorkerRunner:
             container_name=container_name,
             workspace=prompt.workspace,
             model=prompt.model,
-            capabilities=prompt.capabilities,
+            worker_env=prompt.worker_env,
             prompt_skills_directories=prompt_skills_directories,
         )
         await self._register_active(session_id=prompt.session_id, container_name=container_name, runner=runner)
@@ -116,7 +116,7 @@ class DockerWorkerRunner:
         container_name: str,
         workspace: str,
         model: str,
-        capabilities: PromptCapabilities,
+        worker_env: dict[str, str],
         prompt_skills_directories: tuple[str, ...],
     ) -> None:
         args = _docker_run_args(
@@ -124,7 +124,7 @@ class DockerWorkerRunner:
             container_name=container_name,
             workspace=workspace,
             model=model,
-            extra_environment=capabilities.worker_env,
+            extra_environment=worker_env,
             extra_skills_directories=prompt_skills_directories,
         )
         result = await _run_command(args)
@@ -204,7 +204,7 @@ def _merged_environment(
     collisions = sorted(set(config.environment) & set(extra_environment))
     if collisions:
         joined = ", ".join(collisions)
-        raise DockerWorkerError(f"Prompt worker environment collides with manager environment: {joined}")
+        raise DockerWorkerError(f"Session worker environment collides with manager environment: {joined}")
     if TOOL_ENV_KEYS_ENV in config.environment or TOOL_ENV_KEYS_ENV in extra_environment:
         raise DockerWorkerError(f"{TOOL_ENV_KEYS_ENV} is reserved for manager-provided worker tool env.")
     environment = {**config.environment, **extra_environment}
