@@ -33,6 +33,9 @@ from coding_assistant.remote.protocol import (
 )
 
 
+IMAGE_BLOCK = {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}
+
+
 def test_content_delta_converts_to_normalized_update_and_jsonrpc_payload() -> None:
     updates = session_updates_from_agent_event(ContentDeltaEvent(content="hello"))
 
@@ -164,6 +167,7 @@ def test_jsonrpc_tool_call_update_parses_to_normalized_update() -> None:
             "rawInput": {"command": "pwd"},
             "rawOutput": "/workspace",
             "content": [{"type": "content", "content": {"type": "text", "text": "done"}}],
+            "displayContent": [IMAGE_BLOCK],
         },
     )
 
@@ -175,6 +179,33 @@ def test_jsonrpc_tool_call_update_parses_to_normalized_update() -> None:
     assert update.raw_input == {"command": "pwd"}
     assert update.raw_output == "/workspace"
     assert update.content == "done"
+    assert update.display_content == [IMAGE_BLOCK]
+
+
+def test_load_image_lifecycle_update_serializes_display_content() -> None:
+    update = ToolCallLifecycleUpdate(
+        source="remote:test",
+        tool_call_id="call-1",
+        title="load_image",
+        tool_kind="read",
+        status="completed",
+        raw_input={"path": "/attachments/att_1-meal.png"},
+        raw_output="loaded image",
+        content="loaded image",
+        display_content=[IMAGE_BLOCK],
+    )
+
+    assert session_update_to_jsonrpc_update(update) == {
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": "call-1",
+        "status": "completed",
+        "title": "load_image",
+        "kind": "read",
+        "rawInput": {"path": "/attachments/att_1-meal.png"},
+        "rawOutput": "loaded image",
+        "content": [{"type": "content", "content": {"type": "text", "text": "loaded image"}}],
+        "displayContent": [IMAGE_BLOCK],
+    }
 
 
 def test_run_finished_update_converts_to_prompt_result() -> None:
@@ -254,5 +285,55 @@ def test_committed_tool_call_history_converts_to_replay_updates_and_jsonrpc_payl
             "kind": "other",
             "rawOutput": "smoke output",
             "content": [{"type": "content", "content": {"type": "text", "text": "smoke output"}}],
+        },
+    ]
+
+
+def test_committed_load_image_tool_call_replays_display_content() -> None:
+    tool_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="load_image", arguments='{"path": "/attachments/att_1-meal.png"}'),
+    )
+
+    assistant = committed_message_from_history_message(AssistantMessage(tool_calls=[tool_call]))
+    tool_result = committed_message_from_history_message(
+        ToolMessage(
+            tool_call_id="call-1",
+            name="load_image",
+            content=[
+                {"type": "text", "text": "loaded image"},
+                IMAGE_BLOCK,
+            ],
+        )
+    )
+
+    assert assistant is not None
+    assert tool_result is not None
+    updates = [
+        *replay_updates_from_committed_message(assistant),
+        *replay_updates_from_committed_message(tool_result),
+    ]
+
+    assert [session_update_to_jsonrpc_update(update) for update in updates] == [
+        {
+            "sessionUpdate": "tool_call",
+            "toolCallId": "call-1",
+            "title": "load_image",
+            "kind": "other",
+            "status": "pending",
+            "rawInput": {"path": "/attachments/att_1-meal.png"},
+        },
+        {
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call-1",
+            "status": "completed",
+            "title": "load_image",
+            "kind": "other",
+            "rawOutput": [
+                {"type": "text", "text": "loaded image"},
+                IMAGE_BLOCK,
+            ],
+            "content": [{"type": "content", "content": {"type": "text", "text": "loaded image"}}],
+            "displayContent": [IMAGE_BLOCK],
         },
     ]

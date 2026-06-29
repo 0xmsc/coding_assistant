@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import logging
 from http import HTTPStatus
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
@@ -30,7 +31,11 @@ from coding_assistant.remote.acp import (
     response_id_from_payload,
     session_id_from_params,
 )
+from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
 from coding_assistant.remote.protocol import session_update_notification
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -71,15 +76,17 @@ async def _run_prompt_request(
     response_id: int | str,
     params: JsonObject,
 ) -> None:
-    session_id = session_id_from_params(params)
-
-    async def send_update(update: SessionUpdate) -> None:
-        await _send_session_update(websocket=websocket, session_id=session_id, update=update)
-
+    session_id = "<unknown>"
     try:
+        session_id = session_id_from_params(params)
+
+        async def send_update(update: SessionUpdate) -> None:
+            await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+
         result = await service.prompt(params=params, on_update=send_update)
         await websocket.send(jsonrpc_result(response_id, {"stopReason": result.stop_reason}))
     except Exception as exc:
+        logger.exception("Manager prompt request failed for session %s.", session_id)
         await websocket.send(jsonrpc_error(response_id, _error_code_for_exception(exc), str(exc)))
 
 
@@ -234,6 +241,7 @@ async def _handle_jsonrpc_message(
             state=state,
         )
     except Exception as exc:
+        logger.exception("Manager method %s failed.", method)
         await websocket.send(jsonrpc_error(response_id, _error_code_for_exception(exc), str(exc)))
 
 
@@ -280,7 +288,9 @@ async def start_manager_server(
                 with suppress(asyncio.CancelledError):
                     await task
 
-    async with serve(handle_connection, host, port, process_request=process_request) as server:
+    async with serve(
+        handle_connection, host, port, process_request=process_request, max_size=WEBSOCKET_MAX_SIZE
+    ) as server:
         socket = server.sockets[0]
         bound_port = socket.getsockname()[1]
         endpoint = f"ws://{host}:{bound_port}"

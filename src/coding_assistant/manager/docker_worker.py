@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 from collections.abc import Awaitable, Callable, Sequence
@@ -13,6 +14,8 @@ from coding_assistant.manager.remote_worker import RemoteWorkerRunner
 from coding_assistant.manager.service import WorkerCommit, WorkerPrompt
 from coding_assistant.remote.client import RemoteClientEvent, RemoteSessionClient
 
+
+logger = logging.getLogger(__name__)
 
 TOOL_ENV_KEYS_ENV = "CODING_ASSISTANT_TOOL_ENV_KEYS"
 
@@ -77,6 +80,9 @@ class DockerWorkerRunner:
             await self._wait_until_ready(endpoint)
             worker_prompt = replace(prompt, workspace=self._config.workspace_mount)
             return await runner.run_prompt(prompt=worker_prompt, on_update=on_update)
+        except Exception:
+            await self._log_container_output(container_name)
+            raise
         finally:
             await self._unregister_active(session_id=prompt.session_id, runner=runner)
             await self._remove_container(container_name, allow_failure=True)
@@ -133,6 +139,22 @@ class DockerWorkerRunner:
             return
         detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
         raise DockerWorkerError(f"Failed to remove worker container {container_name}: {detail}")
+
+    async def _log_container_output(self, container_name: str) -> None:
+        result = await _run_command([self._config.docker_command, "logs", "--tail", "200", container_name])
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+            logger.error("Failed to read worker container logs for %s: %s", container_name, detail)
+            return
+
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
+        if stdout:
+            logger.error("Worker container %s stdout before removal:\n%s", container_name, stdout)
+        if stderr:
+            logger.error("Worker container %s stderr before removal:\n%s", container_name, stderr)
+        if not stdout and not stderr:
+            logger.error("Worker container %s produced no logs before removal.", container_name)
 
     async def _wait_until_ready(self, endpoint: str) -> None:
         deadline = monotonic() + self._config.startup_timeout

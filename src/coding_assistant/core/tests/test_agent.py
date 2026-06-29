@@ -103,8 +103,11 @@ class CompactingTool(Tool):
 
 
 class MultimodalTool(Tool):
+    def __init__(self, name: str = "multimodal_tool") -> None:
+        self._name = name
+
     def name(self) -> str:
-        return "multimodal_tool"
+        return self._name
 
     def description(self) -> str:
         return "Tool that returns multimodal content"
@@ -379,6 +382,38 @@ async def test_execute_tool_calls_reports_multimodal_tool_result_as_text_update(
     assert isinstance(completed, ToolCallLifecycleEvent)
     assert completed.raw_output == "loaded image"
     assert completed.content == "loaded image"
+    assert completed.display_content is None
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_calls_reports_load_image_result_display_content() -> None:
+    load_image_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="load_image", arguments="{}"),
+    )
+    boundary = AwaitingToolCalls(
+        history=[
+            *make_system_history(),
+            UserMessage(content="Load it"),
+            AssistantMessage(tool_calls=[load_image_call]),
+        ],
+    )
+
+    events = [
+        event
+        async for event in stream_tool_call_execution(
+            boundary=boundary,
+            tools=[MultimodalTool(name="load_image")],
+        )
+    ]
+
+    completed = events[1]
+    assert isinstance(completed, ToolCallLifecycleEvent)
+    assert completed.raw_output == "loaded image"
+    assert completed.content == "loaded image"
+    assert completed.display_content == [
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}},
+    ]
 
 
 @pytest.mark.asyncio

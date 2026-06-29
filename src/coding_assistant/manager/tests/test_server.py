@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -32,6 +33,9 @@ from coding_assistant.manager.tests.fakes import FakeWorkerRunner
 from coding_assistant.manager.workspace import WorkspacePaths
 from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
 from coding_assistant.remote.client import RemoteClientEvent, RemoteSessionClient
+
+
+IMAGE_BLOCK: dict[str, Any] = {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}
 
 
 def _scope_params(scope_id: str, **params: Any) -> dict[str, Any]:
@@ -373,6 +377,37 @@ async def test_manager_upload_file_writes_attachment_and_replays_visible_message
 
 
 @pytest.mark.asyncio
+async def test_manager_upload_file_accepts_websocket_messages_over_one_mebibyte(tmp_path: Path) -> None:
+    data = b"x" * (1024 * 1024 + 1)
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(
+                jsonrpc_request(
+                    3,
+                    "session/upload_file",
+                    _scope_params(
+                        "scope-a",
+                        sessionId=session_id,
+                        name="large.txt",
+                        mimeType="text/plain",
+                        data=base64.b64encode(data).decode("ascii"),
+                    ),
+                )
+            )
+            update = parse_jsonrpc_message(await websocket.recv())
+            upload_response = parse_jsonrpc_message(await websocket.recv())
+
+    attachment = upload_response["result"]["attachment"]
+    assert attachment["name"] == "large.txt"
+    assert attachment["mimeType"] == "text/plain"
+    assert attachment["size"] == len(data)
+    assert _item_payload(_update(update)) == attachment
+
+
+@pytest.mark.asyncio
 async def test_manager_download_attachment_checks_file_hash(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
         async with connect(endpoint) as websocket:
@@ -619,6 +654,69 @@ async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None
     assert replay_updates[3]["sessionUpdate"] == "item_added"
     assert _item_payload(replay_updates[3]) == {"role": "assistant", "content": "Done"}
     assert replay_updates[4] == {"sessionUpdate": "history_complete", "version": 1}
+    assert response["result"]["sessionId"] == created.record.session_id
+
+
+@pytest.mark.asyncio
+async def test_manager_load_replays_load_image_tool_display_content(tmp_path: Path) -> None:
+    store = SessionStore(
+        database_path=tmp_path / "sessions.sqlite",
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
+    )
+    service = ManagerService(
+        store=store,
+        worker_runner=FakeWorkerRunner(),
+        model_lister=_test_model_lister,
+    )
+    created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+    tool_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="load_image", arguments='{"path": "/attachments/att_1-meal.png"}'),
+    )
+    store.commit_messages(
+        scope_id="scope-a",
+        session_id=created.record.session_id,
+        base_version=0,
+        messages=[
+            UserMessage(content="What is in this image?"),
+            AssistantMessage(tool_calls=[tool_call]),
+            ToolMessage(
+                tool_call_id="call-1",
+                name="load_image",
+                content=[
+                    {"type": "text", "text": "loaded image"},
+                    IMAGE_BLOCK,
+                ],
+            ),
+        ],
+    )
+
+    async with start_manager_server(service=service) as server:
+        async with connect(server.endpoint) as websocket:
+            await _initialize(websocket)
+            await websocket.send(
+                jsonrpc_request(2, "session/load", _scope_params("scope-a", sessionId=created.record.session_id))
+            )
+            replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(4)]
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    replay_updates = [message["params"]["update"] for message in replay]
+    assert replay_updates[0] == {"sessionUpdate": "history_reset"}
+    assert _item_payload(replay_updates[1]) == {"role": "user", "content": "What is in this image?"}
+    assert _item_payload(replay_updates[2]) == {
+        "toolCallId": "call-1",
+        "title": "load_image",
+        "kind": "other",
+        "status": "completed",
+        "rawInput": {"path": "/attachments/att_1-meal.png"},
+        "rawOutput": [
+            {"type": "text", "text": "loaded image"},
+            IMAGE_BLOCK,
+        ],
+        "content": "loaded image",
+        "displayContent": [IMAGE_BLOCK],
+    }
+    assert replay_updates[3] == {"sessionUpdate": "history_complete", "version": 1}
     assert response["result"]["sessionId"] == created.record.session_id
 
 
@@ -922,6 +1020,75 @@ async def test_manager_rejects_model_change_during_active_prompt(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_manager_logs_prompt_request_errors(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    class FailingWorker:
+        async def run_prompt(
+            self,
+            *,
+            prompt: WorkerPrompt,
+            on_update: Callable[[SessionUpdate], Awaitable[None]],
+        ) -> WorkerCommit:
+            del prompt, on_update
+            raise RuntimeError("provider returned JSON instead of event-stream")
+
+        async def cancel(self, *, session_id: str) -> None:
+            del session_id
+
+    caplog.set_level(logging.ERROR, logger="coding_assistant.manager.server")
+
+    async with _manager_endpoint(tmp_path=tmp_path, worker=FailingWorker()) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+            await _set_model(websocket, scope_id="scope-a", session_id=session_id, request_id=3)
+
+            await websocket.send(
+                jsonrpc_request(
+                    4,
+                    "session/prompt",
+                    _scope_params("scope-a", sessionId=session_id, prompt=[text_block("Do it")]),
+                ),
+            )
+            user_update = parse_jsonrpc_message(await websocket.recv())
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert _item_payload(_update(user_update)) == {"role": "user", "content": "Do it"}
+    assert response["error"]["message"] == "provider returned JSON instead of event-stream"
+    assert f"Manager prompt request failed for session {session_id}." in caplog.text
+    assert "provider returned JSON instead of event-stream" in caplog.text
+    assert "Traceback" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_manager_logs_method_errors(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.ERROR, logger="coding_assistant.manager.server")
+
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(
+                jsonrpc_request(
+                    3,
+                    "session/upload_file",
+                    _scope_params(
+                        "scope-a",
+                        sessionId=session_id,
+                        name="archive.zip",
+                        mimeType="application/zip",
+                        data=base64.b64encode(b"zip").decode("ascii"),
+                    ),
+                )
+            )
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["error"]["message"] == "Unsupported attachment MIME type: application/zip."
+    assert "Manager method session/upload_file failed." in caplog.text
+    assert "Unsupported attachment MIME type: application/zip." in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path, worker=FakeWorkerRunner(response_text="done")) as endpoint:
         async with connect(endpoint) as websocket:
@@ -971,10 +1138,10 @@ async def test_manager_translates_live_tool_updates_to_session_items(tmp_path: P
                 ToolCallStartedUpdate(
                     source="worker",
                     tool_call_id="call-1",
-                    title="shell_execute",
-                    tool_kind="other",
+                    title="load_image",
+                    tool_kind="read",
                     status="pending",
-                    raw_input={"command": "cat smoke.txt"},
+                    raw_input={"path": "/attachments/att_1-meal.png"},
                     message=None,
                 )
             )
@@ -982,12 +1149,13 @@ async def test_manager_translates_live_tool_updates_to_session_items(tmp_path: P
                 ToolCallLifecycleUpdate(
                     source="worker",
                     tool_call_id="call-1",
-                    title="shell_execute",
-                    tool_kind="other",
+                    title="load_image",
+                    tool_kind="read",
                     status="completed",
-                    raw_input={"command": "cat smoke.txt"},
-                    raw_output="smoke output",
-                    content="smoke output",
+                    raw_input={"path": "/attachments/att_1-meal.png"},
+                    raw_output="loaded image",
+                    content="loaded image",
+                    display_content=[IMAGE_BLOCK],
                 )
             )
             await on_update(AgentMessageChunkUpdate(content="done"))
@@ -1025,10 +1193,10 @@ async def test_manager_translates_live_tool_updates_to_session_items(tmp_path: P
     tool_item_id = live_payloads[1]["item"]["id"]
     assert _item_payload(live_payloads[1]) == {
         "toolCallId": "call-1",
-        "title": "shell_execute",
-        "kind": "other",
+        "title": "load_image",
+        "kind": "read",
         "status": "pending",
-        "rawInput": {"command": "cat smoke.txt"},
+        "rawInput": {"path": "/attachments/att_1-meal.png"},
     }
     assert live_payloads[2] == {
         "sessionUpdate": "item_updated",
@@ -1036,11 +1204,12 @@ async def test_manager_translates_live_tool_updates_to_session_items(tmp_path: P
         "patch": {
             "payload": {
                 "status": "completed",
-                "title": "shell_execute",
-                "kind": "other",
-                "rawInput": {"command": "cat smoke.txt"},
-                "rawOutput": "smoke output",
-                "content": "smoke output",
+                "title": "load_image",
+                "kind": "read",
+                "rawInput": {"path": "/attachments/att_1-meal.png"},
+                "rawOutput": "loaded image",
+                "content": "loaded image",
+                "displayContent": [IMAGE_BLOCK],
             }
         },
     }

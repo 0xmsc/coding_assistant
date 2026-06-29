@@ -21,6 +21,7 @@ from coding_assistant.remote.acp import (
     session_id_from_params,
 )
 from coding_assistant.remote.control import RemoteAgentController, RemoteAgentInfo, RemoteControlledSession
+from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
 from coding_assistant.remote.protocol import messages_from_jsonrpc
 
 
@@ -156,7 +157,7 @@ async def start_session_worker_server(
             if session is not None:
                 await session.close()
 
-    async with serve(handle_connection, host, port) as server:
+    async with serve(handle_connection, host, port, max_size=WEBSOCKET_MAX_SIZE) as server:
         socket = server.sockets[0]
         bound_port = socket.getsockname()[1]
         endpoint = f"ws://{host}:{bound_port}"

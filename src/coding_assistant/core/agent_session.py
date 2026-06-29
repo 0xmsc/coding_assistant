@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
@@ -27,6 +28,10 @@ from coding_assistant.llm.types import (
     Usage,
     UserMessage,
 )
+
+
+logger = logging.getLogger(__name__)
+
 
 CompletionStreamer = Callable[[Sequence[BaseMessage], Sequence[Tool], str], AsyncIterator[object]]
 PromptContent = str | list[dict[str, Any]]
@@ -480,6 +485,7 @@ class AgentSession:
         except asyncio.CancelledError:
             return _RunResult(history=current_history, source=source, cancelled=True)
         except Exception as exc:
+            logger.exception("Agent session run failed for source %s.", source)
             return _RunResult(history=None, source=source, error=str(exc))
 
     async def _pop_next_steering_prompt(self) -> _QueuedPrompt | None:

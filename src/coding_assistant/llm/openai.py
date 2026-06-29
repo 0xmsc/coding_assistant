@@ -31,6 +31,7 @@ from coding_assistant.llm.types import (
 )
 
 logger = logging.getLogger(__name__)
+MAX_PROVIDER_ERROR_BODY_LENGTH = 4000
 
 
 async def _get_tools_payload(tools: Sequence[ToolDefinition]) -> list[dict[str, Any]]:
@@ -192,6 +193,37 @@ def _prepare_messages(messages: Sequence[BaseMessage]) -> list[dict[str, Any]]:
     return result
 
 
+def _provider_error_detail(response_text: str) -> str:
+    trimmed = response_text.strip()
+    if not trimmed:
+        return ""
+
+    try:
+        decoded = json.loads(trimmed)
+    except json.JSONDecodeError:
+        return _truncate_provider_error(trimmed)
+
+    if isinstance(decoded, dict):
+        error = decoded.get("error")
+        if isinstance(error, dict):
+            message = error.get("message")
+            if isinstance(message, str) and message.strip():
+                return _truncate_provider_error(message.strip())
+        if isinstance(error, str) and error.strip():
+            return _truncate_provider_error(error.strip())
+        message = decoded.get("message")
+        if isinstance(message, str) and message.strip():
+            return _truncate_provider_error(message.strip())
+
+    return _truncate_provider_error(trimmed)
+
+
+def _truncate_provider_error(text: str) -> str:
+    if len(text) <= MAX_PROVIDER_ERROR_BODY_LENGTH:
+        return text
+    return f"{text[:MAX_PROVIDER_ERROR_BODY_LENGTH]}..."
+
+
 async def _try_completion(
     messages: Sequence[BaseMessage],
     tools: Sequence[ToolDefinition],
@@ -241,8 +273,16 @@ async def _try_completion(
                 response = source.response
                 await response.aread()
                 content = response.text
-                logger.error(f"SSE error during completion: {e}, response {response}, {content}")
-                raise
+                detail = _provider_error_detail(content)
+                logger.error("SSE error during completion: %s, response %s, %s", e, response, content)
+                if detail:
+                    raise RuntimeError(
+                        f"LLM provider streaming request failed ({response.status_code} "
+                        f"{response.reason_phrase}): {detail}"
+                    ) from e
+                raise RuntimeError(
+                    f"LLM provider streaming request failed ({response.status_code} {response.reason_phrase}): {e}"
+                ) from e
 
             # Merge all chunks into final message
             message = _merge_chunks(chunks)

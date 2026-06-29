@@ -8,12 +8,13 @@ logger = logging.getLogger("coding_assistant")
 logger.setLevel(logging.INFO)
 
 
-def setup_logging() -> None:
-    """Setup logging to file only."""
+def setup_logging(*, console: bool = False) -> None:
+    """Setup logging to the session file, optionally also to process stderr."""
     log_file = get_log_file()
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     file_handler.setFormatter(formatter)
 
     root_logger = logging.getLogger()
@@ -21,5 +22,10 @@ def setup_logging() -> None:
         root_logger.removeHandler(handler)
 
     root_logger.addHandler(file_handler)
+    if console:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
     root_logger.setLevel(logging.INFO)
     logger.setLevel(logging.INFO)

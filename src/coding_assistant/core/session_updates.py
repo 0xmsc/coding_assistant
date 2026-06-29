@@ -114,6 +114,7 @@ class ToolCallLifecycleUpdate:
     raw_input: JsonObject | None = None
     raw_output: Any | None = None
     content: str | None = None
+    display_content: list[JsonObject] | None = None
 
 
 @dataclass(frozen=True)
@@ -196,6 +197,23 @@ def _committed_content_text(content: str | list[JsonObject] | None) -> str | Non
     return "\n".join(text_parts)
 
 
+def _display_content_from_tool_content(
+    *,
+    tool_name: str | None,
+    content: str | list[JsonObject] | None,
+) -> list[JsonObject] | None:
+    if tool_name != "load_image" or not isinstance(content, list):
+        return None
+    blocks = [
+        block
+        for block in content
+        if block.get("type") == "image_url"
+        and isinstance(block.get("image_url"), dict)
+        and isinstance(block["image_url"].get("url"), str)
+    ]
+    return blocks or None
+
+
 def content_text(content: str | list[JsonObject] | None) -> str | None:
     return _committed_content_text(content)
 
@@ -244,6 +262,9 @@ def session_items_from_history_messages(messages: Sequence[BaseMessage]) -> list
                 payload["title"] = message.name
             if text is not None:
                 payload["content"] = text
+            display_content = _display_content_from_tool_content(tool_name=message.name, content=message.content)
+            if display_content is not None:
+                payload["displayContent"] = display_content
             item_index = tool_item_indexes.get(message.tool_call_id)
             if item_index is None:
                 append_item("tool_call", payload)
@@ -293,6 +314,7 @@ def session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUp
                 raw_input=event.event.raw_input,
                 raw_output=event.event.raw_output,
                 content=event.event.content,
+                display_content=event.event.display_content,
             ),
         ]
 
@@ -368,6 +390,10 @@ def replay_updates_from_committed_message(message: CommittedMessage) -> list[Ses
                 tool_kind="other",
                 raw_output=message.content,
                 content=text,
+                display_content=_display_content_from_tool_content(
+                    tool_name=message.name,
+                    content=message.content,
+                ),
             )
         ]
     return []

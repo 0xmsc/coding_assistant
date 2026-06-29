@@ -49,7 +49,7 @@ async def _main(args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
-    setup_logging()
+    setup_logging(console=True)
     asyncio.run(_main(args))
 
 

@@ -128,7 +128,7 @@ async def _main(config: ManagerConfig) -> None:
 
 def main() -> None:
     _reject_cli_args(sys.argv)
-    setup_logging()
+    setup_logging(console=True)
     asyncio.run(_main(_manager_config_from_env()))
 
 

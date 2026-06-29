@@ -145,6 +145,8 @@ def session_update_to_jsonrpc_update(update: SessionUpdate) -> JsonObject | None
             payload["rawOutput"] = update.raw_output
         if update.content:
             payload["content"] = tool_content_text(update.content)
+        if update.display_content:
+            payload["displayContent"] = update.display_content
         return payload
 
     return None
@@ -231,6 +233,7 @@ def session_update_from_jsonrpc_update(update: JsonObject) -> SessionUpdate | No
     if update_type == "tool_call_update":
         content = update.get("content")
         raw_input = update.get("rawInput")
+        display_content = update.get("displayContent")
         return ToolCallLifecycleUpdate(
             source="remote",
             tool_call_id=str(update.get("toolCallId", "")),
@@ -240,6 +243,7 @@ def session_update_from_jsonrpc_update(update: JsonObject) -> SessionUpdate | No
             raw_input=raw_input if isinstance(raw_input, dict) else None,
             raw_output=update.get("rawOutput"),
             content=_content_text_from_tool_content(content if _is_json_object_list(content) else None),
+            display_content=display_content if _is_json_object_list(display_content) else None,
         )
 
     return None

@@ -487,6 +487,8 @@ class _ItemUpdateTranslator:
             payload["rawOutput"] = update.raw_output
         if update.content is not None:
             payload["content"] = update.content
+        if update.display_content is not None:
+            payload["displayContent"] = update.display_content
         await self._on_update(SessionItemUpdatedUpdate(item_id=item_id, patch={"payload": payload}))
 
 

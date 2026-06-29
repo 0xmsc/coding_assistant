@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import subprocess
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from websockets.asyncio.client import ClientConnection, connect
 
 from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.manager.docker_worker import (
+    DockerCommandResult,
     DockerWorkerConfig,
     DockerWorkerError,
     DockerWorkerRunner,
@@ -289,6 +291,28 @@ def test_docker_run_args_maps_manager_session_paths_to_host_source() -> None:
 
     assert "/host/coding-assistant/sessions/sess/workspace:/workspace:rw" in args
     assert "/host/coding-assistant/sessions/sess/attachments:/attachments:ro" in args
+
+
+@pytest.mark.asyncio
+async def test_docker_worker_runner_logs_container_output_before_removal(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    commands: list[list[str]] = []
+
+    async def fake_run_command(args: Sequence[str]) -> DockerCommandResult:
+        commands.append(list(args))
+        return DockerCommandResult(stdout="worker stdout\n", stderr="worker stderr\n", returncode=0)
+
+    monkeypatch.setattr("coding_assistant.manager.docker_worker._run_command", fake_run_command)
+    caplog.set_level(logging.ERROR, logger="coding_assistant.manager.docker_worker")
+
+    runner = DockerWorkerRunner(config=DockerWorkerConfig(image="image", network="network"))
+    await runner._log_container_output("coding-assistant-worker-sess")
+
+    assert commands == [["docker", "logs", "--tail", "200", "coding-assistant-worker-sess"]]
+    assert "Worker container coding-assistant-worker-sess stdout before removal:\nworker stdout" in caplog.text
+    assert "Worker container coding-assistant-worker-sess stderr before removal:\nworker stderr" in caplog.text
 
 
 @pytest.mark.asyncio

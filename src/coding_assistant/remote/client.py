@@ -24,6 +24,7 @@ from coding_assistant.remote.acp import (
     parse_jsonrpc_message,
     text_block,
 )
+from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
 from coding_assistant.remote.protocol import messages_from_jsonrpc, session_update_from_jsonrpc_update
 
 
@@ -123,7 +124,7 @@ class RemoteSessionClient:
         auth_token: str | None = None,
     ) -> RemoteSessionClient:
         headers = {"Authorization": f"Bearer {auth_token}"} if auth_token is not None else None
-        websocket = await connect(endpoint, additional_headers=headers)
+        websocket = await connect(endpoint, additional_headers=headers, max_size=WEBSOCKET_MAX_SIZE)
         return cls(
             endpoint=endpoint,
             websocket=websocket,
@@ -177,7 +178,6 @@ class RemoteSessionClient:
             return "This remote connection already has an active prompt turn."
 
         request_id = self._next_id()
-        response_future = self._create_request_future(request_id)
         submission_future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._active_prompt = _ActivePrompt(request_id=request_id, submission_future=submission_future)
 
@@ -198,10 +198,7 @@ class RemoteSessionClient:
         except TimeoutError:
             return None
         except Exception as exc:
-            self._pending_requests.pop(request_id, None)
             self._active_prompt = None
-            if not response_future.done():
-                response_future.cancel()
             return str(exc)
         return None
 
