@@ -8,6 +8,7 @@ from coding_assistant.core.session_updates import (
     MessageDeltaUpdate,
     SessionAttachment,
     SessionUpdate,
+    SessionUpdatedUpdate,
 )
 from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
 from coding_assistant.remote.acp import JsonObject, jsonrpc_notification
@@ -65,6 +66,12 @@ def session_update_to_jsonrpc_update(update: SessionUpdate) -> JsonObject | None
         return {
             "sessionUpdate": "attachment_added",
             "attachment": attachment,
+        }
+
+    if isinstance(update, SessionUpdatedUpdate):
+        return {
+            "sessionUpdate": "session_updated",
+            "session": update.session,
         }
 
     return None
@@ -126,5 +133,11 @@ def session_update_from_jsonrpc_update(update: JsonObject) -> SessionUpdate | No
             attachment=parsed_attachment,
             created_at=created_at if isinstance(created_at, str) else None,
         )
+
+    if update_type == "session_updated":
+        session = update.get("session")
+        if not isinstance(session, dict):
+            return None
+        return SessionUpdatedUpdate(session=dict(session))
 
     return None

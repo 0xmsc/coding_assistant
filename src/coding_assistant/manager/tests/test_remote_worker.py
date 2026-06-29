@@ -8,7 +8,12 @@ from typing import Any
 import pytest
 from websockets.asyncio.client import connect
 
-from coding_assistant.core.session_updates import MessageAddedUpdate, MessageDeltaUpdate, SessionUpdate
+from coding_assistant.core.session_updates import (
+    MessageAddedUpdate,
+    MessageDeltaUpdate,
+    SessionUpdate,
+    SessionUpdatedUpdate,
+)
 from coding_assistant.llm.types import (
     AssistantMessage,
     Completion,
@@ -83,6 +88,23 @@ def _message_payload(update: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+async def _recv_response(websocket: Any) -> dict[str, Any]:
+    while True:
+        message = parse_jsonrpc_message(await websocket.recv())
+        if message.get("method") != "session/update":
+            return message
+
+
+async def _recv_response_with_updates(websocket: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    updates: list[dict[str, Any]] = []
+    while True:
+        message = parse_jsonrpc_message(await websocket.recv())
+        if message.get("method") == "session/update":
+            updates.append(message)
+            continue
+        return message, updates
+
+
 async def _test_model_lister() -> list[str]:
     return ["test-model"]
 
@@ -109,6 +131,7 @@ async def test_remote_worker_prompt_streams_update_and_commits_to_sqlite(tmp_pat
         model="test-model",
         tools=[],
         completion_streamer=ScriptedStreamer([AssistantMessage(content="hello")]),
+        commit_metadata_provider=lambda: {"title": "Remote worker title"},
     )
 
     async with start_session_worker_server(runtime=runtime) as worker_server:
@@ -130,14 +153,17 @@ async def test_remote_worker_prompt_streams_update_and_commits_to_sqlite(tmp_pat
         loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert result.stop_reason == "end_turn"
-    assert len(updates) == 3
+    assert len(updates) == 4
     assert isinstance(updates[0], MessageAddedUpdate)
     assert updates[0].message == UserMessage(content="Do it")
     assert isinstance(updates[1], MessageAddedUpdate)
     assert updates[1].message == AssistantMessage(content="")
     assert isinstance(updates[2], MessageDeltaUpdate)
     assert updates[2].append_text == "hello"
+    assert isinstance(updates[3], SessionUpdatedUpdate)
+    assert updates[3].session["title"] == "Remote worker title"
     assert loaded.record.version == 1
+    assert loaded.record.title == "Remote worker title"
     assert [message.role for message in loaded.messages] == ["system", "user", "assistant"]
     assert [getattr(message, "content", None) for message in loaded.messages] == ["system", "Do it", "hello"]
 
@@ -254,7 +280,7 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
                         },
                     ),
                 )
-                set_model_response = parse_jsonrpc_message(await websocket.recv())
+                set_model_response = await _recv_response(websocket)
 
                 await websocket.send(
                     jsonrpc_request(
@@ -263,8 +289,7 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
                         _scope_params(session_id, "server prompt"),
                     ),
                 )
-                live_updates = [parse_jsonrpc_message(await websocket.recv()) for _ in range(3)]
-                prompt_response = parse_jsonrpc_message(await websocket.recv())
+                prompt_response, live_updates = await _recv_response_with_updates(websocket)
 
                 await websocket.send(
                     jsonrpc_request(5, "session/load", {"_meta": {"scopeId": "scope-a"}, "sessionId": session_id}),

@@ -101,6 +101,11 @@ class AttachmentAddedUpdate:
 
 
 @dataclass(frozen=True)
+class SessionUpdatedUpdate:
+    session: JsonObject
+
+
+@dataclass(frozen=True)
 class AgentMessageChunkUpdate:
     content: str
 
@@ -168,6 +173,7 @@ SessionUpdate = (
     | MessageAddedUpdate
     | MessageDeltaUpdate
     | AttachmentAddedUpdate
+    | SessionUpdatedUpdate
     | AgentMessageChunkUpdate
     | ReasoningMessageChunkUpdate
     | StatusUpdate

@@ -173,11 +173,23 @@ async def _handle_session_method(
         return
 
     if method == "session/rename":
-        await websocket.send(jsonrpc_result_required(response_id, service.rename_session(params=params)))
+        session_id = session_id_from_params(params)
+
+        async def send_update(update: SessionUpdate) -> None:
+            await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+
+        result = await service.rename_session(params=params, on_update=send_update)
+        await websocket.send(jsonrpc_result_required(response_id, result))
         return
 
     if method == "session/set_model":
-        await websocket.send(jsonrpc_result_required(response_id, await service.set_session_model(params=params)))
+        session_id = session_id_from_params(params)
+
+        async def send_update(update: SessionUpdate) -> None:
+            await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+
+        result = await service.set_session_model(params=params, on_update=send_update)
+        await websocket.send(jsonrpc_result_required(response_id, result))
         return
 
     if method == "session/prompt":

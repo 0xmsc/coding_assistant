@@ -35,6 +35,16 @@ def _client_version() -> str:
         return "0.0.0"
 
 
+def _commit_title(metadata: object) -> str | None:
+    if not isinstance(metadata, dict):
+        return None
+    title = metadata.get("title")
+    if not isinstance(title, str):
+        return None
+    stripped = title.strip()
+    return stripped or None
+
+
 @dataclass(frozen=True)
 class RemoteContentDeltaEvent:
     content: str
@@ -68,6 +78,7 @@ class RemoteCommit:
     base_version: int
     messages: list[BaseMessage]
     stop_reason: str
+    title: str | None = None
 
 
 RemoteClientEvent = (
@@ -304,6 +315,7 @@ class RemoteSessionClient:
         base_version = params.get("baseVersion")
         messages = params.get("messages")
         stop_reason = params.get("stopReason")
+        metadata = params.get("_meta")
         if (
             not isinstance(session_id, str)
             or not isinstance(base_version, int)
@@ -318,6 +330,7 @@ class RemoteSessionClient:
                 base_version=base_version,
                 messages=messages_from_jsonrpc(messages),
                 stop_reason=stop_reason,
+                title=_commit_title(metadata),
             ),
         )
 

@@ -21,6 +21,7 @@ from coding_assistant.core.session_updates import (
     MessageAddedUpdate,
     SessionUpdate,
     SessionAttachment,
+    SessionUpdatedUpdate,
     content_text,
 )
 from coding_assistant.llm.openai import list_models as list_provider_models
@@ -445,6 +446,10 @@ def _record_metadata(record: SessionRecord) -> JsonObject:
     return payload
 
 
+def _session_updated(record: SessionRecord) -> SessionUpdatedUpdate:
+    return SessionUpdatedUpdate(session=_record_metadata(record))
+
+
 class ManagerService:
     def __init__(
         self,
@@ -498,7 +503,12 @@ class ManagerService:
             raise
         return {"sessionId": session.record.session_id}
 
-    def rename_session(self, *, params: JsonObject) -> JsonObject:
+    async def rename_session(
+        self,
+        *,
+        params: JsonObject,
+        on_update: Callable[[SessionUpdate], Awaitable[None]],
+    ) -> JsonObject:
         scope_id = _scope_id_from_params(params)
         session_id = session_id_from_params(params)
         title = params.get("title")
@@ -510,9 +520,15 @@ class ManagerService:
         else:
             raise ManagerError("session/rename requires a string or null title.")
         record = self._store.rename_session(scope_id=scope_id, session_id=session_id, title=next_title)
+        await on_update(_session_updated(record))
         return _record_metadata(record)
 
-    async def set_session_model(self, *, params: JsonObject) -> JsonObject:
+    async def set_session_model(
+        self,
+        *,
+        params: JsonObject,
+        on_update: Callable[[SessionUpdate], Awaitable[None]],
+    ) -> JsonObject:
         scope_id = _scope_id_from_params(params)
         session_id = session_id_from_params(params)
         model = _model_param(params)
@@ -530,6 +546,7 @@ class ManagerService:
             session_id=session_id,
             metadata={MODEL_METADATA_KEY: model},
         )
+        await on_update(_session_updated(record))
         return _record_metadata(record)
 
     async def load_session(
@@ -575,6 +592,7 @@ class ManagerService:
         )
         await on_update(AttachmentAddedUpdate(attachment=attachment))
         updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
+        await on_update(_session_updated(updated.record))
         return {"attachment": attachment.to_json(), "session": _record_metadata(updated.record)}
 
     async def download_attachment(self, *, params: JsonObject) -> JsonObject:
@@ -653,6 +671,8 @@ class ManagerService:
             )
             for update in _post_commit_updates(worker_commit.messages):
                 await on_update(update)
+            updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
+            await on_update(_session_updated(updated.record))
             return PromptResult(stop_reason=worker_commit.stop_reason)
         finally:
             await self._mark_prompt_idle(session_id)

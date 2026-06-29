@@ -34,6 +34,11 @@
 - Relative image paths resolve from the worker workspace, and absolute paths are allowed.
 - `load_image` loads bounded supported images into conversation context.
 
+## Session title
+
+- Keep the session title up to date with `set_session_title` as the conversation focus changes.
+- Use a short descriptive title that names the current task.
+
 ## Tasks
 
 - Use tasks tools to monitor and manage background tasks.

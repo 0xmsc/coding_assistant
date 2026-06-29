@@ -34,6 +34,7 @@ from coding_assistant.remote.protocol import messages_to_jsonrpc, session_update
 
 
 UnhandledMethod = Callable[[str, int | str | None, JsonObject], Awaitable[bool]]
+CommitMetadataProvider = Callable[[], JsonObject | None]
 
 
 @dataclass(frozen=True)
@@ -65,15 +66,19 @@ def _commit_notification(
     base_version: int,
     messages: list[BaseMessage],
     stop_reason: str,
+    metadata: JsonObject | None = None,
 ) -> str:
+    params: JsonObject = {
+        "sessionId": session_id,
+        "baseVersion": base_version,
+        "messages": messages_to_jsonrpc(messages),
+        "stopReason": stop_reason,
+    }
+    if metadata:
+        params["_meta"] = metadata
     return jsonrpc_notification(
         "_session/commit",
-        {
-            "sessionId": session_id,
-            "baseVersion": base_version,
-            "messages": messages_to_jsonrpc(messages),
-            "stopReason": stop_reason,
-        },
+        params,
     )
 
 
@@ -100,12 +105,14 @@ class RemoteAgentController:
         supports_session_new: bool = False,
         busy_message: str = "Session is busy.",
         unopened_message: str = "Session must be opened first.",
+        commit_metadata_provider: CommitMetadataProvider | None = None,
     ) -> None:
         self._agent_info = agent_info
         self._controlled_session = controlled_session
         self._supports_session_new = supports_session_new
         self._busy_message = busy_message
         self._unopened_message = unopened_message
+        self._commit_metadata_provider = commit_metadata_provider
         self._state = _RemoteControlState()
 
     @property
@@ -230,6 +237,7 @@ class RemoteAgentController:
                     base_version=controlled_session.base_version,
                     messages=controlled_session.session.history[controlled_session.base_message_count :],
                     stop_reason=result.stop_reason,
+                    metadata=self._commit_metadata_provider() if self._commit_metadata_provider else None,
                 ),
             )
             self._controlled_session = RemoteControlledSession(

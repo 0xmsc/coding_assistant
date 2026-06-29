@@ -149,6 +149,7 @@ async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> 
         model="test-model",
         tools=[],
         completion_streamer=ScriptedStreamer([AssistantMessage(content="hello"), AssistantMessage(content="again")]),
+        commit_metadata_provider=lambda: {"title": "Worker title"},
     )
 
     async with start_session_worker_server(runtime=runtime) as server:
@@ -191,6 +192,7 @@ async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> 
     assert commit["params"]["sessionId"] == session_id
     assert commit["params"]["baseVersion"] == 7
     assert commit["params"]["stopReason"] == "end_turn"
+    assert commit["params"]["_meta"] == {"title": "Worker title"}
     assert [message["role"] for message in commit["params"]["messages"]] == ["user", "assistant"]
     assert any(
         update["params"]["update"]["sessionUpdate"] == "message_delta"
@@ -200,6 +202,7 @@ async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> 
     assert second_response["result"] == {"stopReason": "end_turn"}
     assert second_commit["method"] == "_session/commit"
     assert second_commit["params"]["baseVersion"] == 8
+    assert second_commit["params"]["_meta"] == {"title": "Worker title"}
     assert [message["role"] for message in second_commit["params"]["messages"]] == ["user", "assistant"]
 
 

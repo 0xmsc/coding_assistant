@@ -69,6 +69,23 @@ def _attachment_payload(update: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+async def _recv_response(websocket: ClientConnection) -> dict[str, Any]:
+    while True:
+        message = parse_jsonrpc_message(await websocket.recv())
+        if message.get("method") != "session/update":
+            return message
+
+
+async def _recv_response_with_updates(websocket: ClientConnection) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    updates: list[dict[str, Any]] = []
+    while True:
+        message = parse_jsonrpc_message(await websocket.recv())
+        if message.get("method") == "session/update":
+            updates.append(message)
+            continue
+        return message, updates
+
+
 async def _initialize(websocket: ClientConnection) -> dict[str, Any]:
     await websocket.send(
         jsonrpc_request(
@@ -116,7 +133,7 @@ async def _set_model(
             _scope_params(scope_id, sessionId=session_id, model=model),
         ),
     )
-    response = parse_jsonrpc_message(await websocket.recv())
+    response = await _recv_response(websocket)
     assert "result" in response, response
     return response
 
@@ -343,9 +360,10 @@ async def test_manager_upload_file_writes_attachment_and_replays_upload_message(
                     ),
                 )
             )
-            upload_message = parse_jsonrpc_message(await websocket.recv())
-            update = parse_jsonrpc_message(await websocket.recv())
-            upload_response = parse_jsonrpc_message(await websocket.recv())
+            upload_response, upload_updates = await _recv_response_with_updates(websocket)
+            upload_message = upload_updates[0]
+            update = upload_updates[1]
+            session_update = upload_updates[2]
 
             await websocket.send(jsonrpc_request(4, "session/load", _scope_params("scope-a", sessionId=session_id)))
             reset = parse_jsonrpc_message(await websocket.recv())
@@ -379,6 +397,8 @@ async def test_manager_upload_file_writes_attachment_and_replays_upload_message(
     assert upload_message_payload["role"] == "user"
     assert "Attached file `Meal-Photo.PNG`" in upload_message_payload["content"]
     assert _attachment_payload(_update(update)) == attachment
+    assert _update(session_update)["sessionUpdate"] == "session_updated"
+    assert _update(session_update)["session"]["_meta"]["version"] == 1
     assert _update(reset) == {"sessionUpdate": "history_reset"}
     assert _message_payload(_update(system_replay))["role"] == "system"
     assert _message_payload(_update(message_replay)) == upload_message_payload
@@ -412,9 +432,8 @@ async def test_manager_upload_file_accepts_websocket_messages_over_one_mebibyte(
                     ),
                 )
             )
-            _ = parse_jsonrpc_message(await websocket.recv())
-            update = parse_jsonrpc_message(await websocket.recv())
-            upload_response = parse_jsonrpc_message(await websocket.recv())
+            upload_response, upload_updates = await _recv_response_with_updates(websocket)
+            update = upload_updates[1]
 
     attachment = upload_response["result"]["attachment"]
     assert attachment["name"] == "large.txt"
@@ -443,9 +462,7 @@ async def test_manager_download_attachment_checks_file_hash(tmp_path: Path) -> N
                     ),
                 )
             )
-            _ = parse_jsonrpc_message(await websocket.recv())
-            _ = parse_jsonrpc_message(await websocket.recv())
-            upload_response = parse_jsonrpc_message(await websocket.recv())
+            upload_response, _upload_updates = await _recv_response_with_updates(websocket)
             attachment = upload_response["result"]["attachment"]
             filename = attachment["path"].removeprefix("/attachments/")
             (tmp_path / "sessions" / session_id / "attachments" / filename).write_text("tampered", encoding="utf-8")
@@ -483,9 +500,8 @@ async def test_manager_upload_file_uses_mime_type_name_for_unnamed_attachment(tm
                     ),
                 )
             )
-            _ = parse_jsonrpc_message(await websocket.recv())
-            update = parse_jsonrpc_message(await websocket.recv())
-            upload_response = parse_jsonrpc_message(await websocket.recv())
+            upload_response, upload_updates = await _recv_response_with_updates(websocket)
+            update = upload_updates[1]
 
     attachment = upload_response["result"]["attachment"]
     assert attachment["name"] == "attachment.txt"
@@ -765,12 +781,14 @@ async def test_manager_renames_session(tmp_path: Path) -> None:
             await websocket.send(
                 jsonrpc_request(3, "session/rename", _scope_params("scope-a", sessionId=session_id, title="Renamed"))
             )
-            rename_response = parse_jsonrpc_message(await websocket.recv())
+            rename_response, rename_updates = await _recv_response_with_updates(websocket)
             await websocket.send(jsonrpc_request(4, "session/list", _scope_params("scope-a")))
             list_response = parse_jsonrpc_message(await websocket.recv())
 
     assert rename_response["result"]["sessionId"] == session_id
     assert rename_response["result"]["title"] == "Renamed"
+    assert _update(rename_updates[0])["sessionUpdate"] == "session_updated"
+    assert _update(rename_updates[0])["session"]["title"] == "Renamed"
     assert list_response["result"]["sessions"][0]["title"] == "Renamed"
 
 
@@ -790,7 +808,7 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
                     _scope_params("scope-a", sessionId=session_id, model="alternate-model"),
                 ),
             )
-            set_model_response = parse_jsonrpc_message(await websocket.recv())
+            set_model_response = await _recv_response(websocket)
 
             await websocket.send(
                 jsonrpc_request(
@@ -799,8 +817,7 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
                     _scope_params("scope-a", sessionId=session_id, prompt=[text_block("Do it")]),
                 ),
             )
-            live_updates = [parse_jsonrpc_message(await websocket.recv()) for _ in range(3)]
-            prompt_response = parse_jsonrpc_message(await websocket.recv())
+            prompt_response, live_updates = await _recv_response_with_updates(websocket)
 
             await websocket.send(jsonrpc_request(6, "session/load", _scope_params("scope-a", sessionId=session_id)))
             replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
@@ -858,8 +875,7 @@ async def test_manager_stores_session_worker_env_privately_and_injects_session_s
             )
 
             await websocket.send(jsonrpc_request(4, "session/prompt", params))
-            live_updates = [parse_jsonrpc_message(await websocket.recv()) for _ in range(3)]
-            prompt_response = parse_jsonrpc_message(await websocket.recv())
+            prompt_response, live_updates = await _recv_response_with_updates(websocket)
 
             await websocket.send(jsonrpc_request(5, "session/load", _scope_params("scope-a", sessionId=session_id)))
             replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
@@ -946,8 +962,7 @@ async def test_manager_ignores_prompt_worker_env(tmp_path: Path) -> None:
             }
 
             await websocket.send(jsonrpc_request(4, "session/prompt", params))
-            live_updates = [parse_jsonrpc_message(await websocket.recv()) for _ in range(3)]
-            response = parse_jsonrpc_message(await websocket.recv())
+            response, live_updates = await _recv_response_with_updates(websocket)
 
     live_payloads = [_update(message) for message in live_updates]
     assert _message_payload(live_payloads[0]) == {"role": "user", "content": "Do it"}
@@ -1052,7 +1067,7 @@ async def test_manager_rejects_model_change_during_active_prompt(tmp_path: Path)
             )
             busy_response = parse_jsonrpc_message(await websocket.recv())
             release.set()
-            first_response = parse_jsonrpc_message(await websocket.recv())
+            first_response = await _recv_response(websocket)
 
     assert _message_payload(_update(first_updates[0])) == {"role": "user", "content": "first"}
     assert _update(first_updates[2])["appendText"] == "fake response"
@@ -1144,8 +1159,7 @@ async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path
                     _scope_params("scope-a", sessionId=session_id, prompt=[text_block("Do it")]),
                 ),
             )
-            live_updates = [parse_jsonrpc_message(await websocket.recv()) for _ in range(3)]
-            response = parse_jsonrpc_message(await websocket.recv())
+            response, live_updates = await _recv_response_with_updates(websocket)
 
             await websocket.send(jsonrpc_request(5, "session/load", _scope_params("scope-a", sessionId=session_id)))
             replay_messages = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
@@ -1218,8 +1232,7 @@ async def test_manager_emits_committed_tool_messages_without_live_tool_progress(
                     _scope_params("scope-a", sessionId=session_id, prompt=[text_block("Use tool")]),
                 ),
             )
-            live_messages = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
-            response = parse_jsonrpc_message(await websocket.recv())
+            response, live_messages = await _recv_response_with_updates(websocket)
 
     live_payloads = [_update(message) for message in live_messages]
     assert _message_payload(live_payloads[0]) == {"role": "user", "content": "Use tool"}
@@ -1339,7 +1352,7 @@ async def test_manager_rejects_second_active_prompt_for_same_session(tmp_path: P
             )
             busy_response = parse_jsonrpc_message(await websocket.recv())
             release.set()
-            first_response = parse_jsonrpc_message(await websocket.recv())
+            first_response = await _recv_response(websocket)
 
     assert _message_payload(_update(first_updates[0])) == {"role": "user", "content": "first"}
     assert _update(first_updates[2])["appendText"] == "fake response"
@@ -1378,8 +1391,8 @@ async def test_manager_allows_concurrent_prompts_for_different_sessions(tmp_path
             first_updates = [parse_jsonrpc_message(await first.recv()) for _ in range(3)]
             second_updates = [parse_jsonrpc_message(await second.recv()) for _ in range(3)]
             release.set()
-            first_response = parse_jsonrpc_message(await first.recv())
-            second_response = parse_jsonrpc_message(await second.recv())
+            first_response = await _recv_response(first)
+            second_response = await _recv_response(second)
 
     assert first_updates[0]["params"]["sessionId"] == first_session_id
     assert second_updates[0]["params"]["sessionId"] == second_session_id

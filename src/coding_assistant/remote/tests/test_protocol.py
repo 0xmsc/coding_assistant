@@ -8,6 +8,7 @@ from coding_assistant.core.session_updates import (
     MessageAddedUpdate,
     MessageDeltaUpdate,
     SessionAttachment,
+    SessionUpdatedUpdate,
     prompt_result_from_update,
     session_updates_from_agent_event,
 )
@@ -74,6 +75,12 @@ def test_session_updates_convert_to_jsonrpc_payloads_and_parse_back() -> None:
         "sessionUpdate": "history_complete",
         "version": 3,
     }
+    assert session_update_to_jsonrpc_update(
+        SessionUpdatedUpdate(session={"sessionId": "sess_1", "title": "Updated"})
+    ) == {
+        "sessionUpdate": "session_updated",
+        "session": {"sessionId": "sess_1", "title": "Updated"},
+    }
 
     parsed = session_update_from_jsonrpc_update(
         {
@@ -87,6 +94,9 @@ def test_session_updates_convert_to_jsonrpc_payloads_and_parse_back() -> None:
     )
 
     assert parsed == MessageAddedUpdate(message_id="msg_2", message=UserMessage(content="hello"))
+    assert session_update_from_jsonrpc_update(
+        {"sessionUpdate": "session_updated", "session": {"sessionId": "sess_1"}}
+    ) == SessionUpdatedUpdate(session={"sessionId": "sess_1"})
 
 
 def test_unknown_session_update_shape_is_ignored() -> None:

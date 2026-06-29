@@ -7,6 +7,7 @@ from pathlib import Path
 
 from coding_assistant.core.instructions import get_instructions
 from coding_assistant.llm.types import Tool
+from coding_assistant.tools.session_title import SessionTitleState
 from coding_assistant.worker.tool_bundle import create_worker_tool_bundle
 
 
@@ -26,6 +27,7 @@ class WorkerAgentBundle:
 
     tools: list[Tool]
     instructions: str
+    session_title_state: SessionTitleState
 
 
 def _skills_directories(config: WorkerAgentConfig) -> list[Path]:
@@ -66,4 +68,5 @@ async def create_worker_agent(*, config: WorkerAgentConfig) -> AsyncIterator[Wor
     yield WorkerAgentBundle(
         tools=tool_bundle.tools,
         instructions=instructions,
+        session_title_state=tool_bundle.session_title_state,
     )

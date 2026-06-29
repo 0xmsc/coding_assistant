@@ -9,6 +9,7 @@ from coding_assistant.llm.types import Tool
 from coding_assistant.tools.filesystem import create_filesystem_tools
 from coding_assistant.tools.load_image import create_load_image_tools
 from coding_assistant.tools.python import create_python_tools
+from coding_assistant.tools.session_title import SessionTitleState, create_session_title_tools
 from coding_assistant.tools.shell import create_shell_tools
 from coding_assistant.tools.skills import create_skill_tools, format_skills_instructions
 from coding_assistant.tools.tasks import TaskManager, create_task_tools
@@ -21,6 +22,7 @@ class WorkerToolBundle:
 
     tools: list[Tool]
     instructions: str
+    session_title_state: SessionTitleState
 
 
 def load_tool_instructions() -> str:
@@ -37,6 +39,7 @@ def create_worker_tool_bundle(
     """Build the local execution tool bundle used by worker agents."""
     task_manager = TaskManager()
     todo_manager = TodoManager()
+    session_title_state = SessionTitleState()
     tool_process_env = process_env or {}
 
     skill_tools, skills = create_skill_tools(skills_directories=[get_builtin_skills_dir(), *skills_directories])
@@ -51,8 +54,13 @@ def create_worker_tool_bundle(
         *create_python_tools(manager=task_manager, process_env=tool_process_env),
         *create_filesystem_tools(),
         *create_load_image_tools(workspace=workspace),
+        *create_session_title_tools(state=session_title_state),
         *create_task_tools(manager=task_manager),
         *skill_tools,
     ]
 
-    return WorkerToolBundle(tools=tools, instructions=instructions)
+    return WorkerToolBundle(
+        tools=tools,
+        instructions=instructions,
+        session_title_state=session_title_state,
+    )

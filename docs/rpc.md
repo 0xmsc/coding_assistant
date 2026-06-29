@@ -1004,6 +1004,30 @@ Assistant text delta for an existing message:
 }
 ```
 
+Session metadata update:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "sess_abc123",
+    "update": {
+      "sessionUpdate": "session_updated",
+      "session": {
+        "sessionId": "sess_abc123",
+        "title": "Fix failing tests",
+        "updatedAt": "2026-06-23T19:35:00Z",
+        "_meta": {
+          "version": 2,
+          "model": "openai/gpt-5.1"
+        }
+      }
+    }
+  }
+}
+```
+
 Supported `sessionUpdate` values:
 
 | Value | Description |
@@ -1012,12 +1036,15 @@ Supported `sessionUpdate` values:
 | `message_added` | Add a canonical message. |
 | `message_delta` | Append streamed text to an existing assistant message. |
 | `attachment_added` | Add an attachment metadata record linked to a message. |
+| `session_updated` | Replace or merge session metadata such as title, model, updated time, and version. |
 | `history_complete` | Replay is complete and includes the durable session version. |
 
 Live streamed assistant message updates are provisional until the worker
 commits the completed turn and the manager persists it. Tool calls and tool
 results are represented as canonical assistant/tool messages; clients that want
 tool cards or image previews derive those UI elements from message content.
+The manager sends `session_updated` after persisted session metadata changes,
+including rename, model changes, uploads, and prompt commits.
 
 ## Internal Worker Methods
 
@@ -1058,6 +1085,10 @@ Notification params:
 | `stopReason` | string | yes | `end_turn` or `cancelled`. |
 | `usage` | object | no | Usage metadata. |
 | `_meta` | object | no | Implementation metadata such as title updates. |
+
+Workers may include `_meta.title` to request a persisted session title update.
+The manager stores the title with the commit and emits `session_updated` to
+clients.
 
 The manager rejects commits when `baseVersion` does not match the current
 SQLite session version.

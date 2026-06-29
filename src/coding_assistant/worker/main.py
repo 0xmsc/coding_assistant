@@ -41,7 +41,11 @@ async def _main(args: argparse.Namespace) -> None:
         process_env=_tool_process_env_from_env(),
     )
     async with create_worker_agent(config=config) as bundle:
-        runtime = WorkerRuntimeConfig(model=args.model, tools=bundle.tools)
+        runtime = WorkerRuntimeConfig(
+            model=args.model,
+            tools=bundle.tools,
+            commit_metadata_provider=bundle.session_title_state.commit_metadata,
+        )
         async with start_session_worker_server(runtime=runtime, host=args.host, port=args.port) as server:
             print(f"Worker endpoint: {server.endpoint}", flush=True)
             await asyncio.Event().wait()
