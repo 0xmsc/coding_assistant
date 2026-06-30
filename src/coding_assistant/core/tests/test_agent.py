@@ -10,6 +10,7 @@ from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
 from coding_assistant.core.tool_calls import (
     ToolCallExecutionCompleted,
     ToolCallLifecycleEvent,
+    ToolMessageProduced,
     stream_tool_call_execution,
 )
 from coding_assistant.llm.types import (
@@ -357,7 +358,7 @@ async def test_execute_tool_calls_appends_multimodal_tool_result_as_tool_message
 
 
 @pytest.mark.asyncio
-async def test_execute_tool_calls_reports_multimodal_tool_result_as_text_update() -> None:
+async def test_execute_tool_calls_streams_multimodal_tool_message() -> None:
     multimodal_call = ToolCall(
         id="call-1",
         function=FunctionCall(name="multimodal_tool", arguments="{}"),
@@ -379,9 +380,14 @@ async def test_execute_tool_calls_reports_multimodal_tool_result_as_text_update(
     ]
 
     completed = events[1]
+    produced = events[2]
     assert isinstance(completed, ToolCallLifecycleEvent)
-    assert completed.raw_output == "loaded image"
-    assert completed.content == "loaded image"
+    assert completed.status == "completed"
+    assert isinstance(produced, ToolMessageProduced)
+    assert produced.message.content == [
+        {"type": "text", "text": "loaded image"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}},
+    ]
 
 
 @pytest.mark.asyncio

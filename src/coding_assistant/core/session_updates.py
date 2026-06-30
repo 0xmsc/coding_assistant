@@ -130,10 +130,9 @@ class PromptStartedUpdate:
 class ToolCallStartedUpdate:
     source: str
     tool_call_id: str
-    title: str
-    tool_kind: str
+    tool_name: str
     status: str
-    raw_input: JsonObject | None
+    arguments: JsonObject | None
     message: AssistantMessage | None
 
 
@@ -141,12 +140,10 @@ class ToolCallStartedUpdate:
 class ToolCallLifecycleUpdate:
     source: str | None
     tool_call_id: str
+    tool_name: str
     status: str
-    title: str | None = None
-    tool_kind: str | None = None
-    raw_input: JsonObject | None = None
-    raw_output: Any | None = None
-    content: str | None = None
+    arguments: JsonObject | None = None
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -194,7 +191,7 @@ class PromptResult:
     error: str | None = None
 
 
-def tool_call_raw_input(arguments: str) -> JsonObject | None:
+def tool_call_arguments(arguments: str) -> JsonObject | None:
     try:
         parsed = json.loads(arguments)
     except json.JSONDecodeError:
@@ -241,10 +238,9 @@ def session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUp
             ToolCallStartedUpdate(
                 source=event.source,
                 tool_call_id=tool_call.id,
-                title=tool_call.function.name or "tool_call",
-                tool_kind="other",
+                tool_name=tool_call.function.name,
                 status="pending",
-                raw_input=tool_call_raw_input(tool_call.function.arguments),
+                arguments=tool_call_arguments(tool_call.function.arguments),
                 message=event.message,
             )
             for tool_call in event.message.tool_calls
@@ -255,12 +251,10 @@ def session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUp
             ToolCallLifecycleUpdate(
                 source=event.source,
                 tool_call_id=event.event.tool_call_id,
-                title=event.event.title,
-                tool_kind=event.event.kind,
+                tool_name=event.event.tool_name,
                 status=event.event.status,
-                raw_input=event.event.raw_input,
-                raw_output=event.event.raw_output,
-                content=event.event.content,
+                arguments=event.event.arguments,
+                error=event.event.error,
             ),
         ]
 

@@ -576,9 +576,9 @@ async def test_agent_session_emits_tool_call_and_finish_events() -> None:
     assert tool_event.message.tool_calls[0].function.name == "echo_tool"
     assert isinstance(tool_started_event, ToolCallUpdateEvent)
     assert tool_started_event.event.tool_call_id == "call-1"
-    assert tool_started_event.event.raw_input == {"text": "hello"}
+    assert tool_started_event.event.arguments == {"text": "hello"}
     assert isinstance(tool_completed_event, ToolCallUpdateEvent)
-    assert tool_completed_event.event.raw_output == "echo:hello"
+    assert tool_completed_event.event.arguments == {"text": "hello"}
     assert isinstance(finished_event, RunFinishedEvent)
     assert finished_event.summary == "Done"
 

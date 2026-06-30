@@ -516,6 +516,71 @@ async def test_manager_upload_file_uses_mime_type_name_for_unnamed_attachment(tm
 
 
 @pytest.mark.asyncio
+async def test_manager_upload_file_uses_unique_ids_for_duplicate_bytes(tmp_path: Path) -> None:
+    data = base64.b64encode(b"same bytes").decode("ascii")
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(
+                jsonrpc_request(
+                    3,
+                    "session/upload_file",
+                    _scope_params(
+                        "scope-a",
+                        sessionId=session_id,
+                        name="first.txt",
+                        mimeType="text/plain",
+                        data=data,
+                    ),
+                )
+            )
+            first_response, _first_updates = await _recv_response_with_updates(websocket)
+            first_attachment = first_response["result"]["attachment"]
+
+            await websocket.send(
+                jsonrpc_request(
+                    4,
+                    "session/upload_file",
+                    _scope_params(
+                        "scope-a",
+                        sessionId=session_id,
+                        name="second.txt",
+                        mimeType="text/plain",
+                        data=data,
+                    ),
+                )
+            )
+            second_response, _second_updates = await _recv_response_with_updates(websocket)
+            second_attachment = second_response["result"]["attachment"]
+
+            await websocket.send(
+                jsonrpc_request(
+                    5,
+                    "session/download_attachment",
+                    _scope_params("scope-a", sessionId=session_id, attachmentId=first_attachment["id"]),
+                )
+            )
+            first_download = parse_jsonrpc_message(await websocket.recv())
+            await websocket.send(
+                jsonrpc_request(
+                    6,
+                    "session/download_attachment",
+                    _scope_params("scope-a", sessionId=session_id, attachmentId=second_attachment["id"]),
+                )
+            )
+            second_download = parse_jsonrpc_message(await websocket.recv())
+
+    assert first_attachment["id"] != second_attachment["id"]
+    assert first_attachment["sha256"] == second_attachment["sha256"]
+    assert first_attachment["name"] == "first.txt"
+    assert second_attachment["name"] == "second.txt"
+    assert first_download["result"]["attachment"] == first_attachment
+    assert second_download["result"]["attachment"] == second_attachment
+
+
+@pytest.mark.asyncio
 async def test_manager_upload_file_accepts_pdf_and_instructs_text_extraction(tmp_path: Path) -> None:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
@@ -945,7 +1010,7 @@ async def test_manager_validates_session_worker_env(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_manager_uses_prompt_worker_setup_for_one_run(tmp_path: Path) -> None:
+async def test_manager_uses_prompt_worker_env_for_one_run(tmp_path: Path) -> None:
     worker = FakeWorkerRunner(response_text="done")
     async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
         async with connect(endpoint) as websocket:
@@ -970,15 +1035,6 @@ async def test_manager_uses_prompt_worker_setup_for_one_run(tmp_path: Path) -> N
                 "APPS_API_TOKEN": "fresh-prompt-token",
                 "PROMPT_ONLY": "prompt-value",
             }
-            params["_meta"]["skills"] = [
-                {
-                    "name": "prompt-skill",
-                    "description": "Use prompt-provided tools.",
-                    "files": {
-                        "SKILL.md": "---\nname: prompt-skill\ndescription: Use prompt-provided tools.\n---\n",
-                    },
-                },
-            ]
 
             await websocket.send(jsonrpc_request(4, "session/prompt", params))
             response, live_updates = await _recv_response_with_updates(websocket)
@@ -1010,10 +1066,35 @@ async def test_manager_uses_prompt_worker_setup_for_one_run(tmp_path: Path) -> N
         "APPS_API_BASE_URL": "http://session-api",
         "APPS_API_TOKEN": "stale-session-token",
     }
-    skill_root = tmp_path / "sessions" / session_id / "workspace" / ".agents" / "skills" / "prompt-skill"
-    assert (skill_root / "SKILL.md").read_text(encoding="utf-8") == (
-        "---\nname: prompt-skill\ndescription: Use prompt-provided tools.\n---\n"
-    )
+
+
+@pytest.mark.asyncio
+async def test_manager_rejects_prompt_scoped_skills(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+            await _set_model(websocket, scope_id="scope-a", session_id=session_id, request_id=3)
+            params = _scope_params(
+                "scope-a",
+                sessionId=session_id,
+                prompt=[text_block("Do it")],
+            )
+            params["_meta"]["skills"] = [
+                {
+                    "name": "prompt-skill",
+                    "description": "Use prompt-provided tools.",
+                    "files": {
+                        "SKILL.md": "---\nname: prompt-skill\ndescription: Use prompt-provided tools.\n---\n",
+                    },
+                },
+            ]
+
+            await websocket.send(jsonrpc_request(4, "session/prompt", params))
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == "session/prompt does not accept _meta.skills; pass skills to session/new."
 
 
 @pytest.mark.asyncio

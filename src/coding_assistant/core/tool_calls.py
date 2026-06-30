@@ -23,19 +23,14 @@ from coding_assistant.llm.types import (
     ToolResult,
 )
 
-ToolCallKind = Literal["read", "edit", "delete", "move", "search", "execute", "think", "fetch", "other"]
-
 
 @dataclass(frozen=True)
 class ToolCallLifecycleEvent:
     tool_call_id: str
     tool_name: str
-    title: str
-    kind: ToolCallKind
     status: Literal["in_progress", "completed", "failed"]
-    raw_input: dict[str, Any] | None = None
-    raw_output: Any | None = None
-    content: str | None = None
+    arguments: dict[str, Any] | None = None
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,31 +79,6 @@ def _validate_tools(tools: Sequence[Tool]) -> list[Tool]:
     return validated_tools
 
 
-def _tool_call_kind(tool_name: str) -> ToolCallKind:
-    normalized = tool_name.lower()
-    if any(part in normalized for part in ("read", "cat", "get_output", "skills_read")):
-        return "read"
-    if any(part in normalized for part in ("write", "edit", "todo_add", "todo_complete")):
-        return "edit"
-    if any(part in normalized for part in ("delete", "remove")):
-        return "delete"
-    if any(part in normalized for part in ("move", "rename")):
-        return "move"
-    if any(part in normalized for part in ("search", "list")):
-        return "search"
-    if any(part in normalized for part in ("shell", "python", "task", "execute", "kill")):
-        return "execute"
-    if "fetch" in normalized:
-        return "fetch"
-    if "think" in normalized or "compact" in normalized:
-        return "think"
-    return "other"
-
-
-def _tool_call_title(tool_name: str) -> str:
-    return tool_name or "tool_call"
-
-
 def _trace_tool_call_event(event: ToolCallLifecycleEvent) -> None:
     """Write a tool call lifecycle event to the trace log when tracing is enabled."""
     if not trace_enabled():
@@ -118,10 +88,9 @@ def _trace_tool_call_event(event: ToolCallLifecycleEvent) -> None:
         {
             "tool_call_id": event.tool_call_id,
             "tool_name": event.tool_name,
-            "kind": event.kind,
             "status": event.status,
-            "raw_input": event.raw_input,
-            "raw_output": event.raw_output,
+            "arguments": event.arguments,
+            "error": event.error,
         },
     )
 
@@ -130,19 +99,15 @@ def _record_tool_call_event(
     *,
     tool_call: ToolCall,
     status: Literal["in_progress", "completed", "failed"],
-    raw_input: dict[str, Any] | None = None,
-    raw_output: Any | None = None,
-    content: str | None = None,
+    arguments: dict[str, Any] | None = None,
+    error: str | None = None,
 ) -> ToolCallLifecycleEvent:
     event = ToolCallLifecycleEvent(
         tool_call_id=tool_call.id,
         tool_name=tool_call.function.name,
-        title=_tool_call_title(tool_call.function.name),
-        kind=_tool_call_kind(tool_call.function.name),
         status=status,
-        raw_input=raw_input,
-        raw_output=raw_output,
-        content=content,
+        arguments=arguments,
+        error=error,
     )
     _trace_tool_call_event(event)
     return event
@@ -168,13 +133,13 @@ def _append_failed_tool_call(
     *,
     tool_call: ToolCall,
     content: str,
-    raw_input: dict[str, Any] | None = None,
+    arguments: dict[str, Any] | None = None,
 ) -> tuple[ToolCallLifecycleEvent, ToolMessage]:
     event = _record_tool_call_event(
         tool_call=tool_call,
         status="failed",
-        raw_input=raw_input,
-        content=content,
+        arguments=arguments,
+        error=content,
     )
     message = _append_tool_message(history, tool_call=tool_call, content=content)
     return event, message
@@ -195,38 +160,10 @@ def _append_cancelled_tool_messages(
                 history,
                 tool_call=tool_call,
                 content=content,
-                raw_input=arguments,
+                arguments=arguments,
             )[0],
         )
     return events
-
-
-def _message_content_text(content: MessageContent) -> str:
-    if isinstance(content, str):
-        return content
-
-    text_parts = [
-        block["text"] for block in content if block.get("type") == "text" and isinstance(block.get("text"), str)
-    ]
-    if text_parts:
-        return "\n".join(text_parts)
-    return "[non-text tool output]"
-
-
-def _tool_result_content(result: ToolResult) -> str:
-    if isinstance(result, TextToolResult):
-        return result.content
-    if isinstance(result, ToolMessageResult):
-        return _message_content_text(result.content)
-    return result.summary
-
-
-def _tool_result_raw_output(result: ToolResult) -> Any:
-    if isinstance(result, TextToolResult):
-        return result.content
-    if isinstance(result, ToolMessageResult):
-        return _message_content_text(result.content)
-    return {"summary": result.summary}
 
 
 def _apply_tool_result(
@@ -273,7 +210,7 @@ async def stream_tool_call_execution(
                 current_history,
                 tool_call=tool_call,
                 content=error,
-                raw_input=arguments,
+                arguments=arguments,
             )
             yield event
             yield ToolMessageProduced(message=failed_message)
@@ -282,7 +219,7 @@ async def stream_tool_call_execution(
         yield _record_tool_call_event(
             tool_call=tool_call,
             status="in_progress",
-            raw_input=arguments,
+            arguments=arguments,
         )
 
         try:
@@ -304,7 +241,7 @@ async def stream_tool_call_execution(
                 current_history,
                 tool_call=tool_call,
                 content=error,
-                raw_input=arguments,
+                arguments=arguments,
             )
             yield event
             yield ToolMessageProduced(message=failed_message)
@@ -313,9 +250,7 @@ async def stream_tool_call_execution(
         yield _record_tool_call_event(
             tool_call=tool_call,
             status="completed",
-            raw_input=arguments,
-            raw_output=_tool_result_raw_output(result),
-            content=_tool_result_content(result),
+            arguments=arguments,
         )
 
         current_history, tool_message, should_stop = _apply_tool_result(

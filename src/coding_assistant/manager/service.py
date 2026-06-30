@@ -134,6 +134,12 @@ def _worker_env_from_params(params: JsonObject) -> dict[str, str]:
     return _worker_env_from_value(metadata.get("workerEnv", {}), field_name="_meta.workerEnv")
 
 
+def _reject_prompt_skills(params: JsonObject) -> None:
+    metadata = params.get("_meta")
+    if isinstance(metadata, dict) and "skills" in metadata:
+        raise ManagerError("session/prompt does not accept _meta.skills; pass skills to session/new.")
+
+
 def _worker_env_from_value(raw_worker_env: object, *, field_name: str) -> dict[str, str]:
     worker_env = raw_worker_env
     if worker_env is None:
@@ -301,7 +307,7 @@ def _write_attachment(*, attachments: Path, params: JsonObject) -> SessionAttach
         name = _default_attachment_name(mime_type)
     data = _upload_bytes(params.get("data"))
     content_hash = hashlib.sha256(data).hexdigest()
-    attachment_id = f"att_{content_hash[:16]}"
+    attachment_id = f"att_{uuid4().hex}"
     filename = f"{attachment_id}-{name}"
     worker_path = f"/attachments/{filename}"
     target = attachments / filename
@@ -649,7 +655,7 @@ class ManagerService:
         except ValueError as exc:
             raise ManagerError(str(exc)) from exc
         prompt_worker_env = _worker_env_from_params(params)
-        prompt_skills = _skill_bundles_from_params(params)
+        _reject_prompt_skills(params)
 
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         model = _model_from_record(session.record)
@@ -662,8 +668,6 @@ class ManagerService:
 
         await self._mark_prompt_active(session_id)
         try:
-            if prompt_skills:
-                _write_session_skill_bundles(workspace=session.workspace, skills=prompt_skills)
             if content_text(prompt_content) is not None:
                 await on_update(
                     MessageAddedUpdate(

@@ -406,7 +406,8 @@ class SessionStore:
                   path text not null,
                   sha256 text not null,
                   created_at text not null,
-                  unique(session_id, sequence)
+                  unique(session_id, sequence),
+                  unique(session_id, attachment_id)
                 )
                 """,
             )
@@ -424,6 +425,10 @@ class SessionStore:
             )
             connection.execute(
                 "create index if not exists idx_session_attachments_message on session_attachments(session_id, message_id)",
+            )
+            connection.execute(
+                "create unique index if not exists idx_session_attachments_unique_id "
+                "on session_attachments(session_id, attachment_id)",
             )
 
     def _get_session_row(self, connection: sqlite3.Connection, *, scope_id: str, session_id: str) -> sqlite3.Row:

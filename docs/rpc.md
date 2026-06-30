@@ -73,8 +73,8 @@ This protocol also has `coding-assistant` extensions:
 - Backend-injected `params._meta.scopeId` session scoping.
 - Manager-owned session directories derived from `sessionId`.
 - Manager-owned SQLite persistence.
-- Session-scoped and prompt-scoped private worker environment plus workspace-backed
-  injected skills.
+- Session-scoped injected skills plus session-scoped and prompt-scoped private
+  worker environment.
 - Private manager/worker `_session/*` methods.
 - Per-active-prompt worker containers.
 
@@ -682,9 +682,8 @@ manager passes them to the worker for this prompt only, without persisting or
 returning them. Prompt-scoped values override session-scoped values with the
 same key for the run.
 
-`_meta.skills` may provide injected skill bundles for the prompt. The manager
-writes them to `workspace/.agents/skills/<name>` before starting the worker.
-Skill files are persisted in the workspace; prompt-scoped worker env is not.
+`_meta.skills` is not accepted on `session/prompt`; injected skills are session
+setup and must be provided on `session/new`.
 
 Request:
 

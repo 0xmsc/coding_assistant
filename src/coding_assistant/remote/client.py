@@ -51,18 +51,6 @@ class RemoteContentDeltaEvent:
 
 
 @dataclass(frozen=True)
-class RemoteToolCallEvent:
-    title: str
-
-
-@dataclass(frozen=True)
-class RemoteToolCallUpdateEvent:
-    status: str
-    title: str | None = None
-    content: str | None = None
-
-
-@dataclass(frozen=True)
 class RemotePromptFinishedEvent:
     stop_reason: str
 
@@ -81,13 +69,7 @@ class RemoteCommit:
     title: str | None = None
 
 
-RemoteClientEvent = (
-    RemoteContentDeltaEvent
-    | RemoteToolCallEvent
-    | RemoteToolCallUpdateEvent
-    | RemotePromptFinishedEvent
-    | RemotePromptFailedEvent
-)
+RemoteClientEvent = RemoteContentDeltaEvent | RemotePromptFinishedEvent | RemotePromptFailedEvent
 
 
 @dataclass
