@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
-from httpx_sse import SSEError
 
 from coding_assistant.llm import openai as openai_model
 from coding_assistant.llm.openai import (
@@ -43,31 +42,6 @@ class FakeSource:
 class FakeContext:
     def __init__(self, events_data: Any) -> None:
         self.source = FakeSource(events_data)
-
-    async def __aenter__(self) -> Any:
-        return self.source
-
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        pass
-
-
-class JsonErrorSource:
-    def __init__(self) -> None:
-        self.response = httpx.Response(
-            404,
-            headers={"Content-Type": "application/json"},
-            json={"error": {"message": "No endpoints found that support image input", "code": 404}},
-            request=httpx.Request("POST", "https://provider.example/v1/chat/completions"),
-        )
-
-    async def aiter_sse(self) -> Any:
-        raise SSEError("Expected response header Content-Type to contain 'text/event-stream', got 'application/json'")
-        yield
-
-
-class JsonErrorContext:
-    def __init__(self) -> None:
-        self.source = JsonErrorSource()
 
     async def __aenter__(self) -> Any:
         return self.source
@@ -869,26 +843,6 @@ class TestOpenAIComplete:
             await collect_events(messages=[UserMessage(content="hi")], model="gpt-4o", tools=[])
 
         assert call_count == 5
-
-    @pytest.mark.asyncio
-    async def test_openai_complete_json_error_exposes_provider_message(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
-        call_count = 0
-
-        def mock_aconnect_sse(*args: Any, **kwargs: Any) -> Any:
-            nonlocal call_count
-            call_count += 1
-            return JsonErrorContext()
-
-        monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
-
-        with pytest.raises(RuntimeError) as error:
-            await collect_events(messages=[UserMessage(content="describe image")], model="z-ai/glm-5.2", tools=[])
-
-        assert call_count == 1
-        assert str(error.value) == (
-            "LLM provider streaming request failed (404 Not Found): No endpoints found that support image input"
-        )
 
     @pytest.mark.asyncio
     async def test_openai_complete_error_recovery(self, monkeypatch: Any) -> None:

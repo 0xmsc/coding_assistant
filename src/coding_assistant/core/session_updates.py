@@ -147,7 +147,6 @@ class ToolCallLifecycleUpdate:
     raw_input: JsonObject | None = None
     raw_output: Any | None = None
     content: str | None = None
-    display_content: list[JsonObject] | None = None
 
 
 @dataclass(frozen=True)
@@ -262,7 +261,6 @@ def session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUp
                 raw_input=event.event.raw_input,
                 raw_output=event.event.raw_output,
                 content=event.event.content,
-                display_content=event.event.display_content,
             ),
         ]
 

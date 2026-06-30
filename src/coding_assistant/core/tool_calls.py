@@ -36,7 +36,6 @@ class ToolCallLifecycleEvent:
     raw_input: dict[str, Any] | None = None
     raw_output: Any | None = None
     content: str | None = None
-    display_content: list[dict[str, Any]] | None = None
 
 
 @dataclass(frozen=True)
@@ -134,7 +133,6 @@ def _record_tool_call_event(
     raw_input: dict[str, Any] | None = None,
     raw_output: Any | None = None,
     content: str | None = None,
-    display_content: list[dict[str, Any]] | None = None,
 ) -> ToolCallLifecycleEvent:
     event = ToolCallLifecycleEvent(
         tool_call_id=tool_call.id,
@@ -145,7 +143,6 @@ def _record_tool_call_event(
         raw_input=raw_input,
         raw_output=raw_output,
         content=content,
-        display_content=display_content,
     )
     _trace_tool_call_event(event)
     return event
@@ -230,19 +227,6 @@ def _tool_result_raw_output(result: ToolResult) -> Any:
     if isinstance(result, ToolMessageResult):
         return _message_content_text(result.content)
     return {"summary": result.summary}
-
-
-def _tool_result_display_content(*, tool_name: str, result: ToolResult) -> list[dict[str, Any]] | None:
-    if tool_name != "load_image" or not isinstance(result, ToolMessageResult) or not isinstance(result.content, list):
-        return None
-    blocks = [
-        block
-        for block in result.content
-        if block.get("type") == "image_url"
-        and isinstance(block.get("image_url"), dict)
-        and isinstance(block["image_url"].get("url"), str)
-    ]
-    return blocks or None
 
 
 def _apply_tool_result(
@@ -332,7 +316,6 @@ async def stream_tool_call_execution(
             raw_input=arguments,
             raw_output=_tool_result_raw_output(result),
             content=_tool_result_content(result),
-            display_content=_tool_result_display_content(tool_name=tool_name, result=result),
         )
 
         current_history, tool_message, should_stop = _apply_tool_result(
