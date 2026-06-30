@@ -468,10 +468,6 @@ Request:
   "params": {
     "_meta": {
       "scopeId": "tenant:abc123",
-      "workerEnv": {
-        "APPS_API_BASE_URL": "http://apps-api",
-        "APPS_API_TOKEN": "secret-token"
-      },
       "skills": [
         {
           "name": "apps-api",
@@ -487,11 +483,12 @@ Request:
 }
 ```
 
-`_meta.workerEnv` is optional private session state. The manager stores it in
-SQLite outside public session metadata and passes it to worker tool processes
-for prompts in that session. Keys must be uppercase environment variable names
-and values must be strings. Prompt-scoped worker env on `session/prompt`
-overrides session-scoped values for that run only.
+`_meta.workerEnv` is optional private session state for durable values. The
+manager stores it in SQLite outside public session metadata and passes it to
+worker tool processes for prompts in that session. Keys must be uppercase
+environment variable names and values must be strings. Send short-lived
+credentials as prompt-scoped worker env on `session/prompt`; prompt-scoped
+values override session-scoped values for that run only.
 
 `_meta.skills` is an optional array of injected skill bundles. The manager
 writes each bundle to `workspace/.agents/skills/<name>` in the session directory
@@ -700,6 +697,7 @@ Request:
     "_meta": {
       "scopeId": "tenant:abc123",
       "workerEnv": {
+        "APPS_API_BASE_URL": "http://apps-api",
         "APPS_API_TOKEN": "fresh-secret-token"
       }
     },
