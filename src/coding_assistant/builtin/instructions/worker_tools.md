@@ -36,6 +36,7 @@
 
 ## Session title
 
+- If the conversation history has no previous `set_session_title` call, set a title as soon as the current task is clear, usually during the first response and after at most the first clarifying exchange.
 - Keep the session title up to date with `set_session_title` as the conversation focus changes.
 - Use a short descriptive title that names the current task.
 

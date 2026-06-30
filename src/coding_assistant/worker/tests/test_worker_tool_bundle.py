@@ -11,6 +11,7 @@ def test_create_worker_tool_bundle_excludes_cli_remote_tools() -> None:
     assert "advanced-tool-usage" in bundle.instructions
     assert "pdf-text-extraction" in bundle.instructions
     assert "## Session title" in bundle.instructions
+    assert "no previous `set_session_title` call" in bundle.instructions
     assert "## Remotes" not in bundle.instructions
     assert "## MCP" not in bundle.instructions
     assert {
