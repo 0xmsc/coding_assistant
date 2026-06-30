@@ -120,14 +120,14 @@ def _scope_id_from_params(params: JsonObject) -> str:
     return scope_id
 
 
-def _session_skill_bundles_from_params(params: JsonObject) -> tuple[SkillBundle, ...]:
+def _skill_bundles_from_params(params: JsonObject) -> tuple[SkillBundle, ...]:
     metadata = params.get("_meta")
     if not isinstance(metadata, dict):
         return ()
     return tuple(_skill_bundles_from_value(metadata.get("skills", []), field_name="_meta.skills"))
 
 
-def _session_worker_env_from_params(params: JsonObject) -> dict[str, str]:
+def _worker_env_from_params(params: JsonObject) -> dict[str, str]:
     metadata = params.get("_meta")
     if not isinstance(metadata, dict):
         return {}
@@ -498,8 +498,8 @@ class ManagerService:
 
     def new_session(self, *, params: JsonObject) -> JsonObject:
         scope_id = _scope_id_from_params(params)
-        worker_env = _session_worker_env_from_params(params)
-        skills = _session_skill_bundles_from_params(params)
+        worker_env = _worker_env_from_params(params)
+        skills = _skill_bundles_from_params(params)
         reservation = self._store.reserve_session_workspace()
         try:
             skills_root = _write_session_skill_bundles(workspace=reservation.workspace, skills=skills)
@@ -648,6 +648,8 @@ class ManagerService:
             prompt_content = prompt_content_from_acp(prompt_blocks)
         except ValueError as exc:
             raise ManagerError(str(exc)) from exc
+        prompt_worker_env = _worker_env_from_params(params)
+        prompt_skills = _skill_bundles_from_params(params)
 
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         model = _model_from_record(session.record)
@@ -660,6 +662,8 @@ class ManagerService:
 
         await self._mark_prompt_active(session_id)
         try:
+            if prompt_skills:
+                _write_session_skill_bundles(workspace=session.workspace, skills=prompt_skills)
             if content_text(prompt_content) is not None:
                 await on_update(
                     MessageAddedUpdate(
@@ -676,7 +680,7 @@ class ManagerService:
                     workspace=str(session.workspace),
                     attachments=str(session.attachments),
                     prompt=prompt_blocks,
-                    worker_env=session.worker_env,
+                    worker_env={**session.worker_env, **prompt_worker_env},
                 ),
                 on_update=forward_worker_update,
             )

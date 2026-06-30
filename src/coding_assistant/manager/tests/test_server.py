@@ -945,31 +945,75 @@ async def test_manager_validates_session_worker_env(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_manager_ignores_prompt_worker_env(tmp_path: Path) -> None:
+async def test_manager_uses_prompt_worker_setup_for_one_run(tmp_path: Path) -> None:
     worker = FakeWorkerRunner(response_text="done")
     async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
         async with connect(endpoint) as websocket:
             await _initialize(websocket)
-            session_id = await _new_session(websocket, scope_id="scope-a")
+            session_id = await _new_session(
+                websocket,
+                scope_id="scope-a",
+                metadata={
+                    "workerEnv": {
+                        "APPS_API_BASE_URL": "http://session-api",
+                        "APPS_API_TOKEN": "stale-session-token",
+                    },
+                },
+            )
             await _set_model(websocket, scope_id="scope-a", session_id=session_id, request_id=3)
             params = _scope_params(
                 "scope-a",
                 sessionId=session_id,
                 prompt=[text_block("Do it")],
             )
-            params["_meta"]["capabilities"] = {
-                "workerEnv": {"APPS_API_TOKEN": "secret-token"},
+            params["_meta"]["workerEnv"] = {
+                "APPS_API_TOKEN": "fresh-prompt-token",
+                "PROMPT_ONLY": "prompt-value",
             }
+            params["_meta"]["skills"] = [
+                {
+                    "name": "prompt-skill",
+                    "description": "Use prompt-provided tools.",
+                    "files": {
+                        "SKILL.md": "---\nname: prompt-skill\ndescription: Use prompt-provided tools.\n---\n",
+                    },
+                },
+            ]
 
             await websocket.send(jsonrpc_request(4, "session/prompt", params))
             response, live_updates = await _recv_response_with_updates(websocket)
+            await websocket.send(
+                jsonrpc_request(
+                    5,
+                    "session/prompt",
+                    _scope_params(
+                        "scope-a",
+                        sessionId=session_id,
+                        prompt=[text_block("Do it again")],
+                    ),
+                )
+            )
+            second_response, _second_live_updates = await _recv_response_with_updates(websocket)
 
     live_payloads = [_update(message) for message in live_updates]
     assert _message_payload(live_payloads[0]) == {"role": "user", "content": "Do it"}
     assert live_payloads[2]["appendText"] == "done"
     assert response["result"] == {"stopReason": "end_turn"}
+    assert second_response["result"] == {"stopReason": "end_turn"}
     assert worker.prompts is not None
-    assert worker.prompts[0].worker_env == {}
+    assert worker.prompts[0].worker_env == {
+        "APPS_API_BASE_URL": "http://session-api",
+        "APPS_API_TOKEN": "fresh-prompt-token",
+        "PROMPT_ONLY": "prompt-value",
+    }
+    assert worker.prompts[1].worker_env == {
+        "APPS_API_BASE_URL": "http://session-api",
+        "APPS_API_TOKEN": "stale-session-token",
+    }
+    skill_root = tmp_path / "sessions" / session_id / "workspace" / ".agents" / "skills" / "prompt-skill"
+    assert (skill_root / "SKILL.md").read_text(encoding="utf-8") == (
+        "---\nname: prompt-skill\ndescription: Use prompt-provided tools.\n---\n"
+    )
 
 
 @pytest.mark.asyncio

@@ -73,7 +73,8 @@ This protocol also has `coding-assistant` extensions:
 - Backend-injected `params._meta.scopeId` session scoping.
 - Manager-owned session directories derived from `sessionId`.
 - Manager-owned SQLite persistence.
-- Session-scoped private worker environment and workspace-backed injected skills.
+- Session-scoped and prompt-scoped private worker environment plus workspace-backed
+  injected skills.
 - Private manager/worker `_session/*` methods.
 - Per-active-prompt worker containers.
 
@@ -489,7 +490,8 @@ Request:
 `_meta.workerEnv` is optional private session state. The manager stores it in
 SQLite outside public session metadata and passes it to worker tool processes
 for prompts in that session. Keys must be uppercase environment variable names
-and values must be strings.
+and values must be strings. Prompt-scoped worker env on `session/prompt`
+overrides session-scoped values for that run only.
 
 `_meta.skills` is an optional array of injected skill bundles. The manager
 writes each bundle to `workspace/.agents/skills/<name>` in the session directory
@@ -678,9 +680,14 @@ the server sends `session/update` notifications.
 
 The session must already have a model in metadata. Use `session/set_model`
 before prompting new sessions or older sessions without a stored model.
-Session-scoped worker setup such as `_meta.workerEnv` and `_meta.skills` is
-accepted only by `session/new`; prompt metadata is not used to change worker
-environment variables or available skills.
+`_meta.workerEnv` may provide private prompt-scoped environment variables. The
+manager passes them to the worker for this prompt only, without persisting or
+returning them. Prompt-scoped values override session-scoped values with the
+same key for the run.
+
+`_meta.skills` may provide injected skill bundles for the prompt. The manager
+writes them to `workspace/.agents/skills/<name>` before starting the worker.
+Skill files are persisted in the workspace; prompt-scoped worker env is not.
 
 Request:
 
@@ -691,7 +698,10 @@ Request:
   "method": "session/prompt",
   "params": {
     "_meta": {
-      "scopeId": "tenant:abc123"
+      "scopeId": "tenant:abc123",
+      "workerEnv": {
+        "APPS_API_TOKEN": "fresh-secret-token"
+      }
     },
     "sessionId": "sess_abc123",
     "prompt": [
