@@ -74,6 +74,49 @@ class EchoTool(Tool):
         return TextToolResult(content=f"echo:{parameters['text']}")
 
 
+def _message_payload(update: dict[str, Any]) -> dict[str, Any]:
+    message = update["message"]
+    assert isinstance(message, dict)
+    payload = dict(message)
+    payload.pop("id", None)
+    payload.pop("createdAt", None)
+    return payload
+
+
+def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    message_ids: dict[str, str] = {}
+    result: list[dict[str, Any]] = []
+    for update in updates:
+        update_type = update.get("sessionUpdate")
+        if update_type == "message_added":
+            message = update["message"]
+            assert isinstance(message, dict)
+            message_id = message.get("id")
+            assert isinstance(message_id, str)
+            message_ids[message_id] = f"message-{len(message_ids)}"
+            result.append(
+                {
+                    "sessionUpdate": "message_added",
+                    "messageId": message_ids[message_id],
+                    "message": _message_payload(update),
+                }
+            )
+            continue
+        if update_type == "message_delta":
+            message_id = update["messageId"]
+            assert isinstance(message_id, str)
+            result.append(
+                {
+                    "sessionUpdate": "message_delta",
+                    "messageId": message_ids.get(message_id, message_id),
+                    "appendText": update["appendText"],
+                }
+            )
+            continue
+        result.append(dict(update))
+    return result
+
+
 async def _initialize(websocket: ClientConnection) -> None:
     await websocket.send(
         jsonrpc_request(
@@ -268,28 +311,38 @@ async def test_worker_streams_tool_messages_before_final_answer(tmp_path: Path) 
                     commit = payload
 
     updates = [message["params"]["update"] for message in messages if message.get("method") == "session/update"]
-    assert [update["sessionUpdate"] for update in updates] == [
-        "message_added",
-        "message_added",
-        "message_added",
-        "message_delta",
+    assert _normalized_updates(updates) == [
+        {
+            "sessionUpdate": "message_added",
+            "messageId": "message-0",
+            "message": {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "function": {"name": "echo_tool", "arguments": '{"text": "hello"}'},
+                        "type": "function",
+                    }
+                ],
+            },
+        },
+        {
+            "sessionUpdate": "message_added",
+            "messageId": "message-1",
+            "message": {
+                "role": "tool",
+                "content": "echo:hello",
+                "name": "echo_tool",
+                "tool_call_id": "call-1",
+            },
+        },
+        {
+            "sessionUpdate": "message_added",
+            "messageId": "message-2",
+            "message": {"role": "assistant", "content": ""},
+        },
+        {"sessionUpdate": "message_delta", "messageId": "message-2", "appendText": "done"},
     ]
-    assert updates[0]["message"]["role"] == "assistant"
-    assert updates[0]["message"]["tool_calls"][0]["function"]["name"] == "echo_tool"
-    assert updates[1]["message"] == {
-        "id": updates[1]["message"]["id"],
-        "role": "tool",
-        "content": "echo:hello",
-        "name": "echo_tool",
-        "tool_call_id": "call-1",
-    }
-    assert updates[2]["message"] == {
-        "id": updates[2]["message"]["id"],
-        "role": "assistant",
-        "content": "",
-    }
-    assert updates[3]["messageId"] == updates[2]["message"]["id"]
-    assert updates[3]["appendText"] == "done"
     assert commit is not None
     assert [message["role"] for message in commit["params"]["messages"]] == [
         "user",

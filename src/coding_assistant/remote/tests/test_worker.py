@@ -85,6 +85,49 @@ class EchoTool(Tool):
         return TextToolResult(content=f"echo:{parameters['text']}")
 
 
+def _message_payload(update: dict[str, Any]) -> dict[str, Any]:
+    message = update["message"]
+    assert isinstance(message, dict)
+    payload = dict(message)
+    payload.pop("id", None)
+    payload.pop("createdAt", None)
+    return payload
+
+
+def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    message_ids: dict[str, str] = {}
+    result: list[dict[str, Any]] = []
+    for update in updates:
+        update_type = update.get("sessionUpdate")
+        if update_type == "message_added":
+            message = update["message"]
+            assert isinstance(message, dict)
+            message_id = message.get("id")
+            assert isinstance(message_id, str)
+            message_ids[message_id] = f"message-{len(message_ids)}"
+            result.append(
+                {
+                    "sessionUpdate": "message_added",
+                    "messageId": message_ids[message_id],
+                    "message": _message_payload(update),
+                }
+            )
+            continue
+        if update_type == "message_delta":
+            message_id = update["messageId"]
+            assert isinstance(message_id, str)
+            result.append(
+                {
+                    "sessionUpdate": "message_delta",
+                    "messageId": message_ids.get(message_id, message_id),
+                    "appendText": update["appendText"],
+                }
+            )
+            continue
+        result.append(dict(update))
+    return result
+
+
 def make_system_history() -> list[BaseMessage]:
     return [SystemMessage(content="# Instructions\n\nTest instructions")]
 
@@ -432,28 +475,38 @@ async def test_worker_server_streams_tool_messages_before_final_answer() -> None
             "result": {"stopReason": "end_turn"},
         }
         update_payloads = [update["params"]["update"] for update in updates]
-        assert [update["sessionUpdate"] for update in update_payloads] == [
-            "message_added",
-            "message_added",
-            "message_added",
-            "message_delta",
+        assert _normalized_updates(update_payloads) == [
+            {
+                "sessionUpdate": "message_added",
+                "messageId": "message-0",
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "function": {"name": "echo_tool", "arguments": '{"text": "hello"}'},
+                            "type": "function",
+                        }
+                    ],
+                },
+            },
+            {
+                "sessionUpdate": "message_added",
+                "messageId": "message-1",
+                "message": {
+                    "role": "tool",
+                    "content": "echo:hello",
+                    "name": "echo_tool",
+                    "tool_call_id": "call-1",
+                },
+            },
+            {
+                "sessionUpdate": "message_added",
+                "messageId": "message-2",
+                "message": {"role": "assistant", "content": ""},
+            },
+            {"sessionUpdate": "message_delta", "messageId": "message-2", "appendText": "Done"},
         ]
-        assert update_payloads[0]["message"]["role"] == "assistant"
-        assert update_payloads[0]["message"]["tool_calls"][0]["function"]["name"] == "echo_tool"
-        assert update_payloads[1]["message"] == {
-            "id": update_payloads[1]["message"]["id"],
-            "role": "tool",
-            "content": "echo:hello",
-            "name": "echo_tool",
-            "tool_call_id": "call-1",
-        }
-        assert update_payloads[2]["message"] == {
-            "id": update_payloads[2]["message"]["id"],
-            "role": "assistant",
-            "content": "",
-        }
-        assert update_payloads[3]["messageId"] == update_payloads[2]["message"]["id"]
-        assert update_payloads[3]["appendText"] == "Done"
         assert commit["method"] == "_session/commit"
         assert [message["role"] for message in commit["params"]["messages"]] == [
             "user",
