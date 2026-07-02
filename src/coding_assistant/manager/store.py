@@ -15,7 +15,6 @@ from sqlmodel import col, select
 from coding_assistant.core.session_updates import SessionAttachment
 from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
 from coding_assistant.manager.db import create_manager_engine
-from coding_assistant.manager.migrations import migrate_database
 from coding_assistant.manager.models import ManagerSession, SessionAttachmentRow, SessionMessageRow
 from coding_assistant.manager.workspace import WorkspacePaths
 
@@ -163,7 +162,6 @@ class SessionStore:
     def __init__(self, *, database_path: Path, workspaces: WorkspacePaths) -> None:
         self.database_path = database_path
         self.workspaces = workspaces
-        migrate_database(self.database_path)
         self._engine: Engine = create_manager_engine(self.database_path)
 
     def reserve_session_workspace(self) -> SessionWorkspaceReservation:

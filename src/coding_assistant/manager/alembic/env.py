@@ -10,6 +10,10 @@ from sqlmodel import SQLModel
 
 from coding_assistant.manager import models  # noqa: F401
 from coding_assistant.manager.db import database_url
+from coding_assistant.manager.migrations import (
+    CODING_ASSISTANT_MANAGER_DATABASE_PATH_ENV,
+    CODING_ASSISTANT_MANAGER_DATA_DIR_ENV,
+)
 
 
 config = context.config
@@ -21,11 +25,11 @@ target_metadata = SQLModel.metadata
 
 
 def _configure_database_url() -> None:
-    database_path = os.environ.get("CODING_ASSISTANT_MANAGER_DATABASE_PATH")
+    database_path = os.environ.get(CODING_ASSISTANT_MANAGER_DATABASE_PATH_ENV)
     if database_path:
         config.set_main_option("sqlalchemy.url", database_url(Path(database_path)))
         return
-    data_dir = os.environ.get("CODING_ASSISTANT_MANAGER_DATA_DIR")
+    data_dir = os.environ.get(CODING_ASSISTANT_MANAGER_DATA_DIR_ENV)
     if data_dir:
         config.set_main_option("sqlalchemy.url", database_url(Path(data_dir) / "sessions.sqlite"))
 

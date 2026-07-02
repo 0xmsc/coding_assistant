@@ -27,9 +27,8 @@ from coding_assistant.manager.service import (
     WorkerPrompt,
     WorkerRunner,
 )
-from coding_assistant.manager.store import SessionStore
 from coding_assistant.manager.tests.fakes import FakeWorkerRunner
-from coding_assistant.manager.workspace import WorkspacePaths
+from coding_assistant.manager.tests.store_helpers import create_session_store
 from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
 from coding_assistant.remote.client import RemoteClientEvent, RemoteSessionClient
 
@@ -204,10 +203,7 @@ async def _manager_endpoint(
     worker: WorkerRunner | None = None,
     auth_secret: str | None = None,
 ) -> AsyncIterator[str]:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     service = ManagerService(
         store=store,
         worker_runner=worker or FakeWorkerRunner(),
@@ -293,10 +289,7 @@ async def test_manager_lists_models_from_provider(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_manager_model_list_is_empty_when_provider_fails_without_cache(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     service = ManagerService(
         store=store,
         worker_runner=FakeWorkerRunner(),
@@ -331,10 +324,7 @@ async def test_manager_creates_and_lists_sessions_by_scope(tmp_path: Path) -> No
 
 @pytest.mark.asyncio
 async def test_manager_preserves_existing_sessions_without_model_metadata(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     service = ManagerService(
         store=store,
         worker_runner=FakeWorkerRunner(),
@@ -621,10 +611,7 @@ async def test_manager_upload_file_uses_unique_ids_for_duplicate_bytes(tmp_path:
 
 @pytest.mark.asyncio
 async def test_manager_upload_file_accepts_pdf_and_instructs_text_extraction(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     service = ManagerService(
         store=store,
         worker_runner=FakeWorkerRunner(),
@@ -714,10 +701,7 @@ async def test_manager_upload_file_rejects_unsupported_mime_type(tmp_path: Path)
 
 @pytest.mark.asyncio
 async def test_manager_upload_file_rejects_too_large_attachment(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     service = ManagerService(
         store=store,
         worker_runner=FakeWorkerRunner(),
@@ -740,10 +724,7 @@ async def test_manager_upload_file_rejects_too_large_attachment(tmp_path: Path) 
 
 @pytest.mark.asyncio
 async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     service = ManagerService(
         store=store,
         worker_runner=FakeWorkerRunner(),
@@ -820,10 +801,7 @@ async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None
 
 @pytest.mark.asyncio
 async def test_manager_load_replays_load_image_tool_message_content(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     service = ManagerService(
         store=store,
         worker_runner=FakeWorkerRunner(),
