@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from alembic import command
@@ -7,6 +8,21 @@ from alembic.config import Config
 from sqlalchemy import inspect, text
 
 from coding_assistant.manager.db import create_manager_engine, database_url
+
+
+DEFAULT_MANAGER_DATA_DIR = Path("/data")
+CODING_ASSISTANT_MANAGER_DATABASE_PATH_ENV = "CODING_ASSISTANT_MANAGER_DATABASE_PATH"
+CODING_ASSISTANT_MANAGER_DATA_DIR_ENV = "CODING_ASSISTANT_MANAGER_DATA_DIR"
+
+
+def database_path_from_env() -> Path:
+    database_path = os.environ.get(CODING_ASSISTANT_MANAGER_DATABASE_PATH_ENV)
+    if database_path:
+        return Path(database_path)
+    data_dir = os.environ.get(CODING_ASSISTANT_MANAGER_DATA_DIR_ENV)
+    if data_dir:
+        return Path(data_dir) / "sessions.sqlite"
+    return DEFAULT_MANAGER_DATA_DIR / "sessions.sqlite"
 
 
 def alembic_config(database_path: Path) -> Config:
@@ -122,3 +138,11 @@ def _bootstrap_legacy_schema(database_path: Path) -> None:
                 "on session_attachments(session_id, attachment_id)",
             ),
         )
+
+
+def main() -> None:
+    migrate_database(database_path_from_env())
+
+
+if __name__ == "__main__":
+    main()

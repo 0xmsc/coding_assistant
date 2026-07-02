@@ -13,15 +13,13 @@ from coding_assistant.llm.types import (
     UserMessage,
 )
 from coding_assistant.core.session_updates import SessionAttachment
-from coding_assistant.manager.store import SessionNotFoundError, SessionStore, StaleSessionCommitError
+from coding_assistant.manager.store import SessionNotFoundError, StaleSessionCommitError
+from coding_assistant.manager.tests.store_helpers import create_session_store
 from coding_assistant.manager.workspace import WorkspaceMissingError, WorkspacePaths
 
 
 def test_create_list_and_load_session_by_scope(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
 
     created = store.create_session(
         scope_id="scope-a",
@@ -44,10 +42,7 @@ def test_create_list_and_load_session_by_scope(tmp_path: Path) -> None:
 
 
 def test_create_and_load_session_private_worker_env(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
 
     created = store.create_session(
         scope_id="scope-a",
@@ -62,10 +57,7 @@ def test_create_and_load_session_private_worker_env(tmp_path: Path) -> None:
 
 
 def test_commit_messages_persists_attachments_separately(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
 
     store.commit_messages(
@@ -94,10 +86,7 @@ def test_commit_messages_persists_attachments_separately(tmp_path: Path) -> None
 
 
 def test_attachment_ids_can_repeat_across_sessions(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     first = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
     second = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
     attachment = SessionAttachment(
@@ -135,10 +124,7 @@ def test_attachment_ids_can_repeat_across_sessions(tmp_path: Path) -> None:
 
 
 def test_create_session_uses_reserved_workspace(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     reservation = store.reserve_session_workspace()
     marker = reservation.workspace / ".agents" / "marker.txt"
     marker.parent.mkdir(parents=True)
@@ -158,10 +144,7 @@ def test_create_session_uses_reserved_workspace(tmp_path: Path) -> None:
 
 
 def test_load_session_rejects_cross_scope_access(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[])
 
     with pytest.raises(SessionNotFoundError):
@@ -169,10 +152,7 @@ def test_load_session_rejects_cross_scope_access(tmp_path: Path) -> None:
 
 
 def test_commit_messages_appends_json_payloads_and_increments_version(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
     tool_call = ToolCall(id="call-1", function=FunctionCall(name="echo_tool", arguments='{"text": "hi"}'))
 
@@ -203,10 +183,7 @@ def test_commit_messages_appends_json_payloads_and_increments_version(tmp_path: 
 
 
 def test_commit_messages_rejects_stale_base_version(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[])
 
     store.commit_messages(
@@ -230,10 +207,7 @@ def test_commit_messages_rejects_stale_base_version(tmp_path: Path) -> None:
 
 
 def test_rename_session_updates_title_without_changing_version(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
 
     renamed = store.rename_session(scope_id="scope-a", session_id=created.record.session_id, title="Renamed")
@@ -249,10 +223,7 @@ def test_rename_session_updates_title_without_changing_version(tmp_path: Path) -
 
 
 def test_rename_session_rejects_cross_scope_access(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[])
 
     with pytest.raises(SessionNotFoundError):
@@ -260,10 +231,7 @@ def test_rename_session_rejects_cross_scope_access(tmp_path: Path) -> None:
 
 
 def test_update_session_metadata_merges_without_changing_version(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     created = store.create_session(
         scope_id="scope-a",
         messages=[SystemMessage(content="system")],
@@ -283,10 +251,7 @@ def test_update_session_metadata_merges_without_changing_version(tmp_path: Path)
 
 
 def test_update_session_metadata_rejects_cross_scope_access(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[])
 
     with pytest.raises(SessionNotFoundError):
@@ -298,10 +263,7 @@ def test_update_session_metadata_rejects_cross_scope_access(tmp_path: Path) -> N
 
 
 def test_load_session_fails_when_workspace_is_missing(tmp_path: Path) -> None:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[])
     created.workspace.rmdir()
 

@@ -9,7 +9,7 @@ from sqlalchemy import inspect, text
 
 from coding_assistant.llm.types import SystemMessage, message_to_dict
 from coding_assistant.manager.db import create_manager_engine
-from coding_assistant.manager.migrations import alembic_config
+from coding_assistant.manager.migrations import alembic_config, migrate_database
 from coding_assistant.manager.store import SessionStore
 from coding_assistant.manager.workspace import WorkspacePaths
 
@@ -46,6 +46,7 @@ def test_store_bootstraps_unversioned_legacy_database(tmp_path: Path) -> None:
     _create_legacy_database(database_path=database_path, session_id=session_id)
     WorkspacePaths(root=tmp_path / "sessions").create_for_session(session_id)
 
+    migrate_database(database_path)
     store = SessionStore(
         database_path=database_path,
         workspaces=WorkspacePaths(root=tmp_path / "sessions"),

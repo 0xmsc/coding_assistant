@@ -20,6 +20,8 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --locked --no-editable --no-install-project
 
 COPY src ./src
+COPY alembic.ini .
+COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN uv sync --locked --no-editable
 
 RUN groupadd --gid 1000 app \
@@ -29,4 +31,4 @@ RUN groupadd --gid 1000 app \
 
 USER app
 
-CMD ["coding-assistant-manager"]
+CMD ["/bin/sh", "/app/entrypoint.sh"]

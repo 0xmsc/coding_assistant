@@ -32,7 +32,7 @@ from coding_assistant.manager.remote_worker import RemoteWorkerRunner
 from coding_assistant.manager.server import start_manager_server
 from coding_assistant.manager.service import ManagerService
 from coding_assistant.manager.store import SessionStore
-from coding_assistant.manager.workspace import WorkspacePaths
+from coding_assistant.manager.tests.store_helpers import create_session_store
 from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
 from coding_assistant.testing.fake_openai import run_fake_openai_server
 from coding_assistant.worker.server import WorkerRuntimeConfig, start_session_worker_server
@@ -179,10 +179,7 @@ async def _test_model_lister() -> list[str]:
 
 
 def _manager_service(*, tmp_path: Path, endpoint: str) -> tuple[ManagerService, SessionStore]:
-    store = SessionStore(
-        database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
-    )
+    store = create_session_store(tmp_path)
     return ManagerService(
         store=store,
         worker_runner=RemoteWorkerRunner(endpoint=endpoint),
