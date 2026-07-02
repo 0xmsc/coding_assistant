@@ -7,21 +7,19 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.infra.logging import setup_logging
-from coding_assistant.llm.types import BaseMessage
 from coding_assistant.manager.docker_worker import DockerWorkerConfig, DockerWorkerRunner
 from coding_assistant.manager.server import start_manager_server
 from coding_assistant.manager.service import ManagerService
 from coding_assistant.manager.store import SessionStore
 from coding_assistant.manager.workspace import WorkspacePaths
-from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
 
 CODING_ASSISTANT_HOST_DATA_DIR_ENV = "CODING_ASSISTANT_HOST_DATA_DIR"
 CODING_ASSISTANT_MANAGER_AUTH_SECRET_ENV = "CODING_ASSISTANT_MANAGER_AUTH_SECRET"
 CODING_ASSISTANT_WORKER_IMAGE_ENV = "CODING_ASSISTANT_WORKER_IMAGE"
 CODING_ASSISTANT_WORKER_NETWORK_ENV = "CODING_ASSISTANT_WORKER_NETWORK"
+CODING_ASSISTANT_WORKER_EXTRA_HOSTS_ENV = "CODING_ASSISTANT_WORKER_EXTRA_HOSTS"
 OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
 OPENAI_BASE_URL_ENV = "OPENAI_BASE_URL"
 MANAGER_DATA_DIR = Path("/data")
@@ -39,19 +37,25 @@ class ManagerConfig:
     host_data_dir: Path
     worker_image: str
     worker_network: str
-    workspace_source_root: Path
+    worker_extra_hosts: tuple[str, ...]
+    session_source_root: Path
 
     @property
     def database_path(self) -> Path:
         return self.data_dir / "sessions.sqlite"
 
     @property
-    def workspace_root(self) -> Path:
-        return self.data_dir / "workspaces"
+    def session_root(self) -> Path:
+        return self.data_dir / "sessions"
 
 
 def _worker_environment_from_env() -> dict[str, str]:
     return {key: os.environ[key] for key in WORKER_PROVIDER_ENV_KEYS if os.environ.get(key)}
+
+
+def _worker_extra_hosts_from_env() -> tuple[str, ...]:
+    raw_value = os.environ.get(CODING_ASSISTANT_WORKER_EXTRA_HOSTS_ENV, "")
+    return tuple(host.strip() for host in raw_value.split(",") if host.strip())
 
 
 def _required_env(name: str) -> str:
@@ -81,7 +85,8 @@ def _manager_config_from_env() -> ManagerConfig:
         host_data_dir=host_data_dir,
         worker_image=_required_env(CODING_ASSISTANT_WORKER_IMAGE_ENV),
         worker_network=_required_env(CODING_ASSISTANT_WORKER_NETWORK_ENV),
-        workspace_source_root=host_data_dir / "workspaces",
+        worker_extra_hosts=_worker_extra_hosts_from_env(),
+        session_source_root=host_data_dir / "sessions",
     )
 
 
@@ -91,34 +96,28 @@ def _reject_cli_args(argv: Sequence[str]) -> None:
 
 
 async def _main(config: ManagerConfig) -> None:
-    config.workspace_root.mkdir(parents=True, exist_ok=True)
+    config.session_root.mkdir(parents=True, exist_ok=True)
     store = SessionStore(
         database_path=config.database_path,
-        workspaces=WorkspacePaths(root=config.workspace_root),
+        workspaces=WorkspacePaths(root=config.session_root),
     )
     worker_config = DockerWorkerConfig(
         image=config.worker_image,
         network=config.worker_network,
-        manager_workspace_root=str(config.workspace_root),
+        manager_session_root=str(config.session_root),
         worker_port=WORKER_PORT,
-        workspace_source_root=str(config.workspace_source_root),
+        session_source_root=str(config.session_source_root),
         workspace_mount=WORKER_WORKSPACE,
         environment=_worker_environment_from_env(),
+        extra_hosts=config.worker_extra_hosts,
     )
     service = ManagerService(
         store=store,
         worker_runner=DockerWorkerRunner(config=worker_config),
+        worker_workspace=Path(WORKER_WORKSPACE),
     )
-    agent_config = WorkerAgentConfig(
-        working_directory=Path(WORKER_WORKSPACE),
-        user_instructions=(),
-        skills_directories=(),
-    )
-    instructions = build_worker_instructions(config=agent_config)
-    initial_messages: list[BaseMessage] = [build_initial_system_message(instructions=instructions)]
     async with start_manager_server(
         service=service,
-        initial_messages=initial_messages,
         host=MANAGER_HOST,
         port=MANAGER_PORT,
         auth_secret=config.auth_secret,
@@ -129,7 +128,7 @@ async def _main(config: ManagerConfig) -> None:
 
 def main() -> None:
     _reject_cli_args(sys.argv)
-    setup_logging()
+    setup_logging(console=True)
     asyncio.run(_main(_manager_config_from_env()))
 
 

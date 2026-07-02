@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from pathlib import Path
 
 from coding_assistant.infra.logging import setup_logging
 from coding_assistant.worker.agent import WorkerAgentConfig, create_worker_agent
 from coding_assistant.worker.server import WorkerRuntimeConfig, start_session_worker_server
+
+
+TOOL_ENV_KEYS_ENV = "CODING_ASSISTANT_TOOL_ENV_KEYS"
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,6 +25,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _tool_process_env_from_env() -> dict[str, str]:
+    raw_keys = os.environ.get(TOOL_ENV_KEYS_ENV, "")
+    keys = [key.strip() for key in raw_keys.split(",") if key.strip()]
+    return {key: os.environ[key] for key in keys if key in os.environ}
+
+
 async def _main(args: argparse.Namespace) -> None:
     workspace = Path(args.workspace)
     workspace.mkdir(parents=True, exist_ok=True)
@@ -28,9 +38,14 @@ async def _main(args: argparse.Namespace) -> None:
         working_directory=workspace,
         skills_directories=tuple(args.skills_directories),
         user_instructions=tuple(args.instructions),
+        process_env=_tool_process_env_from_env(),
     )
     async with create_worker_agent(config=config) as bundle:
-        runtime = WorkerRuntimeConfig(model=args.model, tools=bundle.tools)
+        runtime = WorkerRuntimeConfig(
+            model=args.model,
+            tools=bundle.tools,
+            commit_metadata_provider=bundle.session_title_state.commit_metadata,
+        )
         async with start_session_worker_server(runtime=runtime, host=args.host, port=args.port) as server:
             print(f"Worker endpoint: {server.endpoint}", flush=True)
             await asyncio.Event().wait()
@@ -38,7 +53,7 @@ async def _main(args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
-    setup_logging()
+    setup_logging(console=True)
     asyncio.run(_main(args))
 
 

@@ -10,10 +10,10 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
 from coding_assistant.core.session_updates import (
-    AgentMessageChunkUpdate,
+    MessageAddedUpdate,
+    MessageDeltaUpdate,
     SessionUpdate,
-    ToolCallLifecycleUpdate,
-    ToolCallStartedUpdate,
+    content_text,
 )
 from coding_assistant.llm.types import BaseMessage
 from coding_assistant.remote.acp import (
@@ -24,6 +24,7 @@ from coding_assistant.remote.acp import (
     parse_jsonrpc_message,
     text_block,
 )
+from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
 from coding_assistant.remote.protocol import messages_from_jsonrpc, session_update_from_jsonrpc_update
 
 
@@ -34,21 +35,19 @@ def _client_version() -> str:
         return "0.0.0"
 
 
+def _commit_title(metadata: object) -> str | None:
+    if not isinstance(metadata, dict):
+        return None
+    title = metadata.get("title")
+    if not isinstance(title, str):
+        return None
+    stripped = title.strip()
+    return stripped or None
+
+
 @dataclass(frozen=True)
 class RemoteContentDeltaEvent:
     content: str
-
-
-@dataclass(frozen=True)
-class RemoteToolCallEvent:
-    title: str
-
-
-@dataclass(frozen=True)
-class RemoteToolCallUpdateEvent:
-    status: str
-    title: str | None = None
-    content: str | None = None
 
 
 @dataclass(frozen=True)
@@ -67,15 +66,10 @@ class RemoteCommit:
     base_version: int
     messages: list[BaseMessage]
     stop_reason: str
+    title: str | None = None
 
 
-RemoteClientEvent = (
-    RemoteContentDeltaEvent
-    | RemoteToolCallEvent
-    | RemoteToolCallUpdateEvent
-    | RemotePromptFinishedEvent
-    | RemotePromptFailedEvent
-)
+RemoteClientEvent = RemoteContentDeltaEvent | RemotePromptFinishedEvent | RemotePromptFailedEvent
 
 
 @dataclass
@@ -123,7 +117,7 @@ class RemoteSessionClient:
         auth_token: str | None = None,
     ) -> RemoteSessionClient:
         headers = {"Authorization": f"Bearer {auth_token}"} if auth_token is not None else None
-        websocket = await connect(endpoint, additional_headers=headers)
+        websocket = await connect(endpoint, additional_headers=headers, max_size=WEBSOCKET_MAX_SIZE)
         return cls(
             endpoint=endpoint,
             websocket=websocket,
@@ -177,7 +171,6 @@ class RemoteSessionClient:
             return "This remote connection already has an active prompt turn."
 
         request_id = self._next_id()
-        response_future = self._create_request_future(request_id)
         submission_future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._active_prompt = _ActivePrompt(request_id=request_id, submission_future=submission_future)
 
@@ -198,10 +191,7 @@ class RemoteSessionClient:
         except TimeoutError:
             return None
         except Exception as exc:
-            self._pending_requests.pop(request_id, None)
             self._active_prompt = None
-            if not response_future.done():
-                response_future.cancel()
             return str(exc)
         return None
 
@@ -307,6 +297,7 @@ class RemoteSessionClient:
         base_version = params.get("baseVersion")
         messages = params.get("messages")
         stop_reason = params.get("stopReason")
+        metadata = params.get("_meta")
         if (
             not isinstance(session_id, str)
             or not isinstance(base_version, int)
@@ -321,26 +312,19 @@ class RemoteSessionClient:
                 base_version=base_version,
                 messages=messages_from_jsonrpc(messages),
                 stop_reason=stop_reason,
+                title=_commit_title(metadata),
             ),
         )
 
     async def _publish_session_update(self, update: SessionUpdate) -> None:
-        if isinstance(update, AgentMessageChunkUpdate):
-            await self._on_event(RemoteContentDeltaEvent(content=update.content))
+        if isinstance(update, MessageDeltaUpdate):
+            await self._on_event(RemoteContentDeltaEvent(content=update.append_text))
             return
 
-        if isinstance(update, ToolCallStartedUpdate):
-            await self._on_event(RemoteToolCallEvent(title=update.title))
-            return
-
-        if isinstance(update, ToolCallLifecycleUpdate):
-            await self._on_event(
-                RemoteToolCallUpdateEvent(
-                    status=update.status,
-                    title=update.title,
-                    content=update.content,
-                ),
-            )
+        if isinstance(update, MessageAddedUpdate) and update.message.role == "assistant":
+            content = content_text(update.message.content)
+            if content:
+                await self._on_event(RemoteContentDeltaEvent(content=content))
 
     async def _handle_response(self, payload: JsonObject) -> None:
         response_id = payload.get("id")

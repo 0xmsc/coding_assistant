@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
@@ -13,6 +14,7 @@ from coding_assistant.core.tool_calls import (
     ToolCallExecutionCompleted,
     ToolCallLifecycleEvent,
     ToolExecutionCancelled,
+    ToolMessageProduced,
     stream_tool_call_execution,
 )
 from coding_assistant.llm.openai import stream_completion as openai_stream_completion
@@ -25,8 +27,13 @@ from coding_assistant.llm.types import (
     StatusEvent,
     Tool,
     Usage,
+    ToolMessage,
     UserMessage,
 )
+
+
+logger = logging.getLogger(__name__)
+
 
 CompletionStreamer = Callable[[Sequence[BaseMessage], Sequence[Tool], str], AsyncIterator[object]]
 PromptContent = str | list[dict[str, Any]]
@@ -74,6 +81,14 @@ class ToolCallUpdateEvent:
 
 
 @dataclass(frozen=True)
+class ToolMessageEvent:
+    """Event emitted when a tool result message is appended to the run history."""
+
+    message: ToolMessage
+    source: str = "local"
+
+
+@dataclass(frozen=True)
 class RunFinishedEvent:
     """Event emitted after a completed run is committed to history."""
 
@@ -105,6 +120,7 @@ AgentSessionEvent = (
     | PromptStartedEvent
     | ToolCallsEvent
     | ToolCallUpdateEvent
+    | ToolMessageEvent
     | RunFinishedEvent
     | RunCancelledEvent
     | RunFailedEvent
@@ -445,6 +461,9 @@ class AgentSession:
                         if isinstance(item, ToolCallLifecycleEvent):
                             self._publish_event(ToolCallUpdateEvent(event=item, source=source))
                             continue
+                        if isinstance(item, ToolMessageProduced):
+                            self._publish_event(ToolMessageEvent(message=item.message, source=source))
+                            continue
                         if isinstance(item, ToolCallExecutionCompleted):
                             completed_history = item.history
 
@@ -480,6 +499,7 @@ class AgentSession:
         except asyncio.CancelledError:
             return _RunResult(history=current_history, source=source, cancelled=True)
         except Exception as exc:
+            logger.exception("Agent session run failed for source %s.", source)
             return _RunResult(history=None, source=source, error=str(exc))
 
     async def _pop_next_steering_prompt(self) -> _QueuedPrompt | None:

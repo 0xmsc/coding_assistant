@@ -26,8 +26,9 @@ class PythonExecuteInput(BaseModel):
 class PythonExecuteTool(Tool):
     """Execute Python snippets through the local task manager."""
 
-    def __init__(self, *, manager: TaskManager) -> None:
+    def __init__(self, *, manager: TaskManager, process_env: dict[str, str] | None = None) -> None:
         self._manager = manager
+        self._process_env = dict(process_env or {})
 
     def name(self) -> str:
         return "python_execute"
@@ -49,7 +50,7 @@ class PythonExecuteTool(Tool):
             handle = await start_process(
                 args=["uv", "run", "-q", "-"],
                 stdin_input=code,
-                env={},
+                env=self._process_env,
             )
             task_id = self._manager.register_task("python script", handle)
 
@@ -82,6 +83,6 @@ class PythonExecuteTool(Tool):
             return TextToolResult(content=f"Error executing script: {exc}")
 
 
-def create_python_tools(*, manager: TaskManager) -> list[Tool]:
+def create_python_tools(*, manager: TaskManager, process_env: dict[str, str] | None = None) -> list[Tool]:
     """Create the local Python execution tool."""
-    return [PythonExecuteTool(manager=manager)]
+    return [PythonExecuteTool(manager=manager, process_env=process_env)]

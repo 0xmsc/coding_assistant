@@ -8,13 +8,24 @@ from typing import Any
 import pytest
 from websockets.asyncio.client import connect
 
-from coding_assistant.core.session_updates import SessionUpdate
+from coding_assistant.core.session_updates import (
+    MessageAddedUpdate,
+    MessageDeltaUpdate,
+    SessionUpdate,
+    SessionUpdatedUpdate,
+)
 from coding_assistant.llm.types import (
     AssistantMessage,
     Completion,
     CompletionEvent,
     ContentDeltaEvent,
+    FunctionCall,
     SystemMessage,
+    TextToolResult,
+    Tool,
+    ToolCall,
+    ToolMessage,
+    UserMessage,
     Usage,
 )
 from coding_assistant.manager.remote_worker import RemoteWorkerRunner
@@ -59,12 +70,108 @@ class BlockingStreamer:
         )
 
 
+class EchoTool(Tool):
+    def name(self) -> str:
+        return "echo_tool"
+
+    def description(self) -> str:
+        return "Echo the provided text."
+
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        }
+
+    async def execute(self, parameters: dict[str, Any]) -> TextToolResult:
+        return TextToolResult(content=f"echo:{parameters['text']}")
+
+
 def _scope_params(session_id: str, prompt: str) -> dict[str, Any]:
     return {
         "_meta": {"scopeId": "scope-a"},
         "sessionId": session_id,
         "prompt": [text_block(prompt)],
     }
+
+
+def _update(message: dict[str, Any]) -> dict[str, Any]:
+    update = message["params"]["update"]
+    assert isinstance(update, dict)
+    return update
+
+
+def _message_payload(update: dict[str, Any]) -> dict[str, Any]:
+    payload = update["message"]
+    assert isinstance(payload, dict)
+    payload = dict(payload)
+    payload.pop("id", None)
+    payload.pop("createdAt", None)
+    if payload.get("role") == "system":
+        return {"role": "system"}
+    return payload
+
+
+def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    message_ids: dict[str, str] = {}
+    result: list[dict[str, Any]] = []
+    for update in updates:
+        update_type = update.get("sessionUpdate")
+        if update_type == "message_added":
+            message = update["message"]
+            assert isinstance(message, dict)
+            message_id = message.get("id")
+            assert isinstance(message_id, str)
+            message_ids[message_id] = f"message-{len(message_ids)}"
+            result.append(
+                {
+                    "sessionUpdate": "message_added",
+                    "messageId": message_ids[message_id],
+                    "message": _message_payload(update),
+                }
+            )
+            continue
+        if update_type == "message_delta":
+            message_id = update["messageId"]
+            assert isinstance(message_id, str)
+            result.append(
+                {
+                    "sessionUpdate": "message_delta",
+                    "messageId": message_ids.get(message_id, message_id),
+                    "appendText": update["appendText"],
+                }
+            )
+            continue
+        result.append(dict(update))
+    return result
+
+
+def _message_id(update: SessionUpdate) -> str:
+    assert isinstance(update, MessageAddedUpdate)
+    return update.message_id
+
+
+def _session_payload(update: SessionUpdate) -> dict[str, Any]:
+    assert isinstance(update, SessionUpdatedUpdate)
+    return update.session
+
+
+async def _recv_response(websocket: Any) -> dict[str, Any]:
+    while True:
+        message = parse_jsonrpc_message(await websocket.recv())
+        if message.get("method") != "session/update":
+            return message
+
+
+async def _recv_response_with_updates(websocket: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    updates: list[dict[str, Any]] = []
+    while True:
+        message = parse_jsonrpc_message(await websocket.recv())
+        if message.get("method") == "session/update":
+            updates.append(message)
+            continue
+        return message, updates
 
 
 async def _test_model_lister() -> list[str]:
@@ -74,7 +181,7 @@ async def _test_model_lister() -> list[str]:
 def _manager_service(*, tmp_path: Path, endpoint: str) -> tuple[ManagerService, SessionStore]:
     store = SessionStore(
         database_path=tmp_path / "sessions.sqlite",
-        workspaces=WorkspacePaths(root=tmp_path / "workspaces"),
+        workspaces=WorkspacePaths(root=tmp_path / "sessions"),
     )
     return ManagerService(
         store=store,
@@ -93,6 +200,7 @@ async def test_remote_worker_prompt_streams_update_and_commits_to_sqlite(tmp_pat
         model="test-model",
         tools=[],
         completion_streamer=ScriptedStreamer([AssistantMessage(content="hello")]),
+        commit_metadata_provider=lambda: {"title": "Remote worker title"},
     )
 
     async with start_session_worker_server(runtime=runtime) as worker_server:
@@ -114,10 +222,21 @@ async def test_remote_worker_prompt_streams_update_and_commits_to_sqlite(tmp_pat
         loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert result.stop_reason == "end_turn"
-    assert len(updates) == 1
+    session_update = _session_payload(updates[3])
+    assert updates == [
+        MessageAddedUpdate(message_id=_message_id(updates[0]), message=UserMessage(content="Do it")),
+        MessageAddedUpdate(message_id=_message_id(updates[1]), message=AssistantMessage(content="")),
+        MessageDeltaUpdate(message_id=_message_id(updates[1]), append_text="hello"),
+        SessionUpdatedUpdate(session=session_update),
+    ]
+    assert session_update["title"] == "Remote worker title"
     assert loaded.record.version == 1
-    assert [message.role for message in loaded.messages] == ["system", "user", "assistant"]
-    assert [getattr(message, "content", None) for message in loaded.messages] == ["system", "Do it", "hello"]
+    assert loaded.record.title == "Remote worker title"
+    assert loaded.messages == [
+        SystemMessage(content="system"),
+        UserMessage(content="Do it"),
+        AssistantMessage(content="hello"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -165,6 +284,65 @@ async def test_remote_worker_two_sequential_prompts_advance_history_once(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_remote_worker_streams_tool_messages_before_final_answer_without_commit_duplicates(
+    tmp_path: Path,
+) -> None:
+    tool_call = ToolCall(
+        id="call-1",
+        function=FunctionCall(name="echo_tool", arguments='{"text": "hello"}'),
+    )
+    runtime = WorkerRuntimeConfig(
+        model="test-model",
+        tools=[EchoTool()],
+        completion_streamer=ScriptedStreamer(
+            [
+                AssistantMessage(tool_calls=[tool_call]),
+                AssistantMessage(content="done"),
+            ],
+        ),
+    )
+
+    async with start_session_worker_server(runtime=runtime) as worker_server:
+        service, store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
+        created = store.create_session(
+            scope_id="scope-a",
+            messages=[SystemMessage(content="system")],
+            metadata={"model": "test-model"},
+        )
+        updates: list[SessionUpdate] = []
+
+        async def collect_update(update: SessionUpdate) -> None:
+            updates.append(update)
+
+        result = await service.prompt(
+            params=_scope_params(created.record.session_id, "Use tool"),
+            on_update=collect_update,
+        )
+        loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    assert result.stop_reason == "end_turn"
+    session_update = _session_payload(updates[5])
+    assert updates == [
+        MessageAddedUpdate(message_id=_message_id(updates[0]), message=UserMessage(content="Use tool")),
+        MessageAddedUpdate(message_id=_message_id(updates[1]), message=AssistantMessage(tool_calls=[tool_call])),
+        MessageAddedUpdate(
+            message_id=_message_id(updates[2]),
+            message=ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
+        ),
+        MessageAddedUpdate(message_id=_message_id(updates[3]), message=AssistantMessage(content="")),
+        MessageDeltaUpdate(message_id=_message_id(updates[3]), append_text="done"),
+        SessionUpdatedUpdate(session=session_update),
+    ]
+    assert loaded.messages == [
+        SystemMessage(content="system"),
+        UserMessage(content="Use tool"),
+        AssistantMessage(tool_calls=[tool_call]),
+        ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
+        AssistantMessage(content="done"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_remote_worker_cancel_reaches_active_worker(tmp_path: Path) -> None:
     streamer = BlockingStreamer()
     runtime = WorkerRuntimeConfig(model="test-model", tools=[], completion_streamer=streamer)
@@ -203,7 +381,7 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
 
     async with start_session_worker_server(runtime=runtime) as worker_server:
         service, _store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
-        async with start_manager_server(service=service, initial_messages=[SystemMessage(content="system")]) as manager:
+        async with start_manager_server(service=service) as manager:
             async with connect(manager.endpoint) as websocket:
                 await websocket.send(
                     jsonrpc_request(
@@ -232,7 +410,7 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
                         },
                     ),
                 )
-                set_model_response = parse_jsonrpc_message(await websocket.recv())
+                set_model_response = await _recv_response(websocket)
 
                 await websocket.send(
                     jsonrpc_request(
@@ -241,20 +419,47 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
                         _scope_params(session_id, "server prompt"),
                     ),
                 )
-                update = parse_jsonrpc_message(await websocket.recv())
-                prompt_response = parse_jsonrpc_message(await websocket.recv())
+                prompt_response, live_updates = await _recv_response_with_updates(websocket)
 
                 await websocket.send(
                     jsonrpc_request(5, "session/load", {"_meta": {"scopeId": "scope-a"}, "sessionId": session_id}),
                 )
-                replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(2)]
+                replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
                 load_response = parse_jsonrpc_message(await websocket.recv())
 
     assert initialize_response["result"]["protocolVersion"] == ACP_PROTOCOL_VERSION
     assert set_model_response["result"]["_meta"]["model"] == "test-model"
-    assert update["params"]["update"]["content"]["text"] == "server answer"
+    live_payloads = [_update(message) for message in live_updates]
+    assert _normalized_updates(live_payloads[:3]) == [
+        {
+            "sessionUpdate": "message_added",
+            "messageId": "message-0",
+            "message": {"role": "user", "content": "server prompt"},
+        },
+        {
+            "sessionUpdate": "message_added",
+            "messageId": "message-1",
+            "message": {"role": "assistant", "content": ""},
+        },
+        {"sessionUpdate": "message_delta", "messageId": "message-1", "appendText": "server answer"},
+    ]
     assert prompt_response["result"] == {"stopReason": "end_turn"}
-    assert [message["params"]["update"]["content"]["text"] for message in replay] == ["server prompt", "server answer"]
+    replay_payloads = [_update(message) for message in replay]
+    assert _normalized_updates(replay_payloads) == [
+        {"sessionUpdate": "history_reset"},
+        {"sessionUpdate": "message_added", "messageId": "message-0", "message": {"role": "system"}},
+        {
+            "sessionUpdate": "message_added",
+            "messageId": "message-1",
+            "message": {"role": "user", "content": "server prompt"},
+        },
+        {
+            "sessionUpdate": "message_added",
+            "messageId": "message-2",
+            "message": {"role": "assistant", "content": "server answer"},
+        },
+        {"sessionUpdate": "history_complete", "version": 1},
+    ]
     assert load_response["result"]["_meta"]["version"] == 1
 
 

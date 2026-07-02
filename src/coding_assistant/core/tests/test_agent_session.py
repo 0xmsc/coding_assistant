@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -575,15 +576,16 @@ async def test_agent_session_emits_tool_call_and_finish_events() -> None:
     assert tool_event.message.tool_calls[0].function.name == "echo_tool"
     assert isinstance(tool_started_event, ToolCallUpdateEvent)
     assert tool_started_event.event.tool_call_id == "call-1"
-    assert tool_started_event.event.raw_input == {"text": "hello"}
+    assert tool_started_event.event.arguments == {"text": "hello"}
     assert isinstance(tool_completed_event, ToolCallUpdateEvent)
-    assert tool_completed_event.event.raw_output == "echo:hello"
+    assert tool_completed_event.event.arguments == {"text": "hello"}
     assert isinstance(finished_event, RunFinishedEvent)
     assert finished_event.summary == "Done"
 
 
 @pytest.mark.asyncio
-async def test_agent_session_publishes_run_failed_event() -> None:
+async def test_agent_session_publishes_run_failed_event(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.ERROR, logger="coding_assistant.core.agent_session")
     session = make_session(completion_streamer=FailingStreamer())
 
     async with session.subscribe() as queue:
@@ -596,6 +598,9 @@ async def test_agent_session_publishes_run_failed_event() -> None:
     await session.close()
     assert isinstance(failed_event, RunFailedEvent)
     assert failed_event.error == "boom"
+    assert "Agent session run failed for source local." in caplog.text
+    assert "boom" in caplog.text
+    assert "Traceback" in caplog.text
 
 
 @pytest.mark.asyncio

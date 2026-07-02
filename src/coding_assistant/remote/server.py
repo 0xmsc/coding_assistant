@@ -12,6 +12,7 @@ from websockets.exceptions import ConnectionClosed
 from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.remote.acp import ERROR_INVALID_REQUEST, ERROR_SERVER, jsonrpc_error, parse_jsonrpc_message
 from coding_assistant.remote.control import RemoteAgentController, RemoteAgentInfo, RemoteControlledSession
+from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
 
 
 @dataclass(frozen=True)
@@ -72,7 +73,7 @@ async def start_worker_server(
                 if active_connection is websocket:
                     active_connection = None
 
-    async with serve(handle_connection, "127.0.0.1", 0) as server:
+    async with serve(handle_connection, "127.0.0.1", 0, max_size=WEBSOCKET_MAX_SIZE) as server:
         socket = server.sockets[0]
         port = socket.getsockname()[1]
         endpoint = f"ws://127.0.0.1:{port}"

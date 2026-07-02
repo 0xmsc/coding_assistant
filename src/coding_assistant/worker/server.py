@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +21,7 @@ from coding_assistant.remote.acp import (
     session_id_from_params,
 )
 from coding_assistant.remote.control import RemoteAgentController, RemoteAgentInfo, RemoteControlledSession
+from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
 from coding_assistant.remote.protocol import messages_from_jsonrpc
 
 
@@ -34,6 +35,7 @@ class WorkerRuntimeConfig:
     model: str
     tools: list[Tool]
     completion_streamer: CompletionStreamer | None = None
+    commit_metadata_provider: Callable[[], JsonObject | None] | None = None
 
 
 def _base_version_from_params(params: JsonObject) -> int:
@@ -116,6 +118,7 @@ async def start_session_worker_server(
             agent_info=RemoteAgentInfo(name="coding-assistant-worker", title="Coding Assistant Worker"),
             busy_message="Session already has an active prompt.",
             unopened_message="_session/start must be called first.",
+            commit_metadata_provider=runtime.commit_metadata_provider,
         )
         sender_task: asyncio.Task[None] | None = None
 
@@ -156,7 +159,7 @@ async def start_session_worker_server(
             if session is not None:
                 await session.close()
 
-    async with serve(handle_connection, host, port) as server:
+    async with serve(handle_connection, host, port, max_size=WEBSOCKET_MAX_SIZE) as server:
         socket = server.sockets[0]
         bound_port = socket.getsockname()[1]
         endpoint = f"ws://{host}:{bound_port}"

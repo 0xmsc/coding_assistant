@@ -80,7 +80,7 @@ class RemoteWorkerRunner:
                 raise RemoteWorkerError(prompt_error)
 
             commit = await commit_future
-            return WorkerCommit(messages=commit.messages, stop_reason=commit.stop_reason)
+            return WorkerCommit(messages=commit.messages, stop_reason=commit.stop_reason, title=commit.title)
         finally:
             await self._unregister_client(session_id=prompt.session_id, client=client)
             await client.close()

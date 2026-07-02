@@ -20,17 +20,89 @@ from coding_assistant.llm.types import (
     ContentDeltaEvent,
     ReasoningDeltaEvent,
     StatusEvent,
-    ToolCall,
-    ToolMessage,
-    UserMessage,
 )
 
 JsonObject = dict[str, Any]
 
 
 @dataclass(frozen=True)
-class UserMessageChunkUpdate:
-    content: str
+class SessionAttachment:
+    attachment_id: str
+    name: str
+    mime_type: str
+    size: int
+    path: str
+    sha256: str
+
+    def to_json(self) -> JsonObject:
+        return {
+            "id": self.attachment_id,
+            "name": self.name,
+            "mimeType": self.mime_type,
+            "size": self.size,
+            "path": self.path,
+            "sha256": self.sha256,
+        }
+
+    @classmethod
+    def from_json(cls, value: JsonObject) -> SessionAttachment | None:
+        attachment_id = value.get("id")
+        name = value.get("name")
+        mime_type = value.get("mimeType")
+        size = value.get("size")
+        path = value.get("path")
+        sha256 = value.get("sha256")
+        if not (
+            isinstance(attachment_id, str)
+            and isinstance(name, str)
+            and isinstance(mime_type, str)
+            and isinstance(size, int)
+            and isinstance(path, str)
+            and isinstance(sha256, str)
+        ):
+            return None
+        return cls(
+            attachment_id=attachment_id,
+            name=name,
+            mime_type=mime_type,
+            size=size,
+            path=path,
+            sha256=sha256,
+        )
+
+
+@dataclass(frozen=True)
+class HistoryResetUpdate:
+    pass
+
+
+@dataclass(frozen=True)
+class HistoryCompleteUpdate:
+    version: int
+
+
+@dataclass(frozen=True)
+class MessageAddedUpdate:
+    message_id: str
+    message: BaseMessage
+    created_at: str | None = None
+
+
+@dataclass(frozen=True)
+class MessageDeltaUpdate:
+    message_id: str
+    append_text: str
+
+
+@dataclass(frozen=True)
+class AttachmentAddedUpdate:
+    attachment: SessionAttachment
+    created_at: str | None = None
+
+
+@dataclass(frozen=True)
+class SessionUpdatedUpdate:
+    session: JsonObject
 
 
 @dataclass(frozen=True)
@@ -58,10 +130,9 @@ class PromptStartedUpdate:
 class ToolCallStartedUpdate:
     source: str
     tool_call_id: str
-    title: str
-    tool_kind: str
+    tool_name: str
     status: str
-    raw_input: JsonObject | None
+    arguments: JsonObject | None
     message: AssistantMessage | None
 
 
@@ -69,12 +140,10 @@ class ToolCallStartedUpdate:
 class ToolCallLifecycleUpdate:
     source: str | None
     tool_call_id: str
+    tool_name: str
     status: str
-    title: str | None = None
-    tool_kind: str | None = None
-    raw_input: JsonObject | None = None
-    raw_output: Any | None = None
-    content: str | None = None
+    arguments: JsonObject | None = None
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -95,7 +164,12 @@ class RunFailedUpdate:
 
 
 SessionUpdate = (
-    UserMessageChunkUpdate
+    HistoryResetUpdate
+    | HistoryCompleteUpdate
+    | MessageAddedUpdate
+    | MessageDeltaUpdate
+    | AttachmentAddedUpdate
+    | SessionUpdatedUpdate
     | AgentMessageChunkUpdate
     | ReasoningMessageChunkUpdate
     | StatusUpdate
@@ -109,17 +183,6 @@ SessionUpdate = (
 
 
 @dataclass(frozen=True)
-class CommittedMessage:
-    """One model-visible message committed to durable history."""
-
-    role: str
-    content: str | list[JsonObject] | None
-    tool_calls: list[ToolCall] | None = None
-    tool_call_id: str | None = None
-    name: str | None = None
-
-
-@dataclass(frozen=True)
 class PromptResult:
     """Terminal result for one active prompt request."""
 
@@ -128,7 +191,7 @@ class PromptResult:
     error: str | None = None
 
 
-def _tool_call_raw_input(arguments: str) -> JsonObject | None:
+def tool_call_arguments(arguments: str) -> JsonObject | None:
     try:
         parsed = json.loads(arguments)
     except json.JSONDecodeError:
@@ -152,6 +215,10 @@ def _committed_content_text(content: str | list[JsonObject] | None) -> str | Non
     return "\n".join(text_parts)
 
 
+def content_text(content: str | list[JsonObject] | None) -> str | None:
+    return _committed_content_text(content)
+
+
 def session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUpdate]:
     """Convert raw AgentSession events to normalized updates."""
     if isinstance(event, ContentDeltaEvent):
@@ -171,10 +238,9 @@ def session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUp
             ToolCallStartedUpdate(
                 source=event.source,
                 tool_call_id=tool_call.id,
-                title=tool_call.function.name or "tool_call",
-                tool_kind="other",
+                tool_name=tool_call.function.name,
                 status="pending",
-                raw_input=_tool_call_raw_input(tool_call.function.arguments),
+                arguments=tool_call_arguments(tool_call.function.arguments),
                 message=event.message,
             )
             for tool_call in event.message.tool_calls
@@ -185,12 +251,10 @@ def session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUp
             ToolCallLifecycleUpdate(
                 source=event.source,
                 tool_call_id=event.event.tool_call_id,
-                title=event.event.title,
-                tool_kind=event.event.kind,
+                tool_name=event.event.tool_name,
                 status=event.event.status,
-                raw_input=event.event.raw_input,
-                raw_output=event.event.raw_output,
-                content=event.event.content,
+                arguments=event.event.arguments,
+                error=event.event.error,
             ),
         ]
 
@@ -214,58 +278,3 @@ def prompt_result_from_update(update: SessionUpdate) -> PromptResult | None:
     if isinstance(update, RunFailedUpdate):
         return PromptResult(source=update.source, error=update.error)
     return None
-
-
-def committed_message_from_history_message(message: BaseMessage) -> CommittedMessage | None:
-    if isinstance(message, UserMessage):
-        return CommittedMessage(role="user", content=message.content)
-    if isinstance(message, AssistantMessage):
-        return CommittedMessage(role="assistant", content=message.content, tool_calls=message.tool_calls)
-    if isinstance(message, ToolMessage):
-        return CommittedMessage(
-            role="tool",
-            content=message.content,
-            tool_call_id=message.tool_call_id,
-            name=message.name,
-        )
-    return None
-
-
-def replay_updates_from_committed_message(message: CommittedMessage) -> list[SessionUpdate]:
-    if message.role == "user":
-        text = _committed_content_text(message.content)
-        if text is None:
-            return []
-        return [UserMessageChunkUpdate(content=text)]
-    if message.role == "assistant":
-        updates: list[SessionUpdate] = []
-        text = _committed_content_text(message.content)
-        if text is not None:
-            updates.append(AgentMessageChunkUpdate(content=text))
-        for tool_call in message.tool_calls or []:
-            updates.append(
-                ToolCallStartedUpdate(
-                    source="history",
-                    tool_call_id=tool_call.id,
-                    title=tool_call.function.name or "tool_call",
-                    tool_kind="other",
-                    status="pending",
-                    raw_input=_tool_call_raw_input(tool_call.function.arguments),
-                    message=None,
-                )
-            )
-        return updates
-    if message.role == "tool" and message.tool_call_id:
-        text = _committed_content_text(message.content)
-        return [
-            ToolCallLifecycleUpdate(
-                source="history",
-                tool_call_id=message.tool_call_id,
-                status="completed",
-                title=message.name,
-                tool_kind="other",
-                raw_output=message.content,
-                content=text,
-            )
-        ]
-    return []

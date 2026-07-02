@@ -1,24 +1,62 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+import base64
+import binascii
+import hashlib
+import re
+import shutil
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
 from time import monotonic
 from typing import Protocol
+from uuid import uuid4
 
+from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.core.session_updates import (
+    AttachmentAddedUpdate,
+    HistoryCompleteUpdate,
+    HistoryResetUpdate,
+    MessageAddedUpdate,
     SessionUpdate,
-    committed_message_from_history_message,
-    replay_updates_from_committed_message,
+    SessionAttachment,
+    SessionUpdatedUpdate,
+    content_text,
 )
 from coding_assistant.llm.openai import list_models as list_provider_models
-from coding_assistant.llm.types import BaseMessage
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolMessage, UserMessage
 from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
 from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp, session_id_from_params
+from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
 MODEL_METADATA_KEY = "model"
 MODEL_CACHE_TTL_SECONDS = 300.0
 ModelLister = Callable[[], Awaitable[list[str]]]
+ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+SKILL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+MAX_WORKER_ENV_VARS = 32
+MAX_WORKER_ENV_VALUE_BYTES = 8192
+MAX_SKILL_BUNDLES = 8
+MAX_SKILL_FILES_PER_BUNDLE = 32
+MAX_SKILL_FILE_BYTES = 64 * 1024
+MAX_SKILL_BUNDLE_BYTES = 256 * 1024
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+SAFE_ATTACHMENT_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+SUPPORTED_ATTACHMENT_TYPES = {
+    "application/csv",
+    "application/json",
+    "application/markdown",
+    "application/pdf",
+    "application/x-ndjson",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "text/csv",
+    "text/markdown",
+    "text/plain",
+}
 
 
 class ManagerError(RuntimeError):
@@ -35,13 +73,22 @@ class PromptResult:
 
 
 @dataclass(frozen=True)
+class SkillBundle:
+    name: str
+    description: str
+    files: dict[str, str]
+
+
+@dataclass(frozen=True)
 class WorkerPrompt:
     session_id: str
     base_version: int
     history: list[BaseMessage]
     model: str
     workspace: str
+    attachments: str
     prompt: list[JsonObject]
+    worker_env: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -71,6 +118,304 @@ def _scope_id_from_params(params: JsonObject) -> str:
     if not isinstance(scope_id, str) or not scope_id:
         raise ManagerError("Request params must include _meta.scopeId.")
     return scope_id
+
+
+def _skill_bundles_from_params(params: JsonObject) -> tuple[SkillBundle, ...]:
+    metadata = params.get("_meta")
+    if not isinstance(metadata, dict):
+        return ()
+    return tuple(_skill_bundles_from_value(metadata.get("skills", []), field_name="_meta.skills"))
+
+
+def _worker_env_from_params(params: JsonObject) -> dict[str, str]:
+    metadata = params.get("_meta")
+    if not isinstance(metadata, dict):
+        return {}
+    return _worker_env_from_value(metadata.get("workerEnv", {}), field_name="_meta.workerEnv")
+
+
+def _reject_prompt_skills(params: JsonObject) -> None:
+    metadata = params.get("_meta")
+    if isinstance(metadata, dict) and "skills" in metadata:
+        raise ManagerError("session/prompt does not accept _meta.skills; pass skills to session/new.")
+
+
+def _worker_env_from_value(raw_worker_env: object, *, field_name: str) -> dict[str, str]:
+    worker_env = raw_worker_env
+    if worker_env is None:
+        return {}
+    if not isinstance(worker_env, dict):
+        raise ManagerError(f"{field_name} must be an object.")
+    if len(worker_env) > MAX_WORKER_ENV_VARS:
+        raise ManagerError(f"{field_name} has too many entries.")
+
+    result: dict[str, str] = {}
+    for key, value in worker_env.items():
+        if not isinstance(key, str) or not ENV_NAME_RE.fullmatch(key):
+            raise ManagerError(f"Invalid worker environment variable name: {key!r}.")
+        if not isinstance(value, str):
+            raise ManagerError(f"Worker environment variable {key} must be a string.")
+        if len(value.encode("utf-8")) > MAX_WORKER_ENV_VALUE_BYTES:
+            raise ManagerError(f"Worker environment variable {key} is too large.")
+        result[key] = value
+    return result
+
+
+def _skill_bundles_from_value(raw_skills: object, *, field_name: str) -> list[SkillBundle]:
+    if raw_skills is None:
+        return []
+    if not isinstance(raw_skills, list):
+        raise ManagerError(f"{field_name} must be an array.")
+    if len(raw_skills) > MAX_SKILL_BUNDLES:
+        raise ManagerError(f"{field_name} has too many bundles.")
+
+    bundles: list[SkillBundle] = []
+    seen_names: set[str] = set()
+    for raw_skill in raw_skills:
+        if not isinstance(raw_skill, dict):
+            raise ManagerError("Each injected skill must be an object.")
+        name = raw_skill.get("name")
+        description = raw_skill.get("description")
+        raw_files = raw_skill.get("files")
+        if not isinstance(name, str) or not SKILL_NAME_RE.fullmatch(name):
+            raise ManagerError(f"Invalid injected skill name: {name!r}.")
+        if name in seen_names:
+            raise ManagerError(f"Duplicate injected skill name: {name}.")
+        if not isinstance(description, str) or not description.strip():
+            raise ManagerError(f"Injected skill {name} requires a description.")
+        if not isinstance(raw_files, dict):
+            raise ManagerError(f"Injected skill {name} files must be an object.")
+        files = _skill_files_from_payload(name=name, raw_files=raw_files)
+        if "SKILL.md" not in files:
+            raise ManagerError(f"Injected skill {name} requires SKILL.md.")
+        bundles.append(SkillBundle(name=name, description=description, files=files))
+        seen_names.add(name)
+    return bundles
+
+
+def _skill_files_from_payload(*, name: str, raw_files: dict[object, object]) -> dict[str, str]:
+    if len(raw_files) > MAX_SKILL_FILES_PER_BUNDLE:
+        raise ManagerError(f"Injected skill {name} has too many files.")
+
+    total_size = 0
+    files: dict[str, str] = {}
+    for raw_path, raw_content in raw_files.items():
+        if not isinstance(raw_path, str) or not _safe_skill_file_path(raw_path):
+            raise ManagerError(f"Injected skill {name} has an invalid file path: {raw_path!r}.")
+        if not isinstance(raw_content, str):
+            raise ManagerError(f"Injected skill {name} file {raw_path} must be a string.")
+        content_size = len(raw_content.encode("utf-8"))
+        if content_size > MAX_SKILL_FILE_BYTES:
+            raise ManagerError(f"Injected skill {name} file {raw_path} is too large.")
+        total_size += content_size
+        if total_size > MAX_SKILL_BUNDLE_BYTES:
+            raise ManagerError(f"Injected skill {name} bundle is too large.")
+        files[raw_path] = raw_content
+    return files
+
+
+def _safe_skill_file_path(path: str) -> bool:
+    parsed = PurePosixPath(path)
+    return path == parsed.as_posix() and not parsed.is_absolute() and bool(parsed.parts) and ".." not in parsed.parts
+
+
+def _write_session_skill_bundles(*, workspace: Path, skills: tuple[SkillBundle, ...]) -> Path:
+    skills_root = workspace / ".agents" / "skills"
+    skills_root.mkdir(parents=True, exist_ok=True)
+    for skill in skills:
+        skill_root = skills_root / skill.name
+        shutil.rmtree(skill_root, ignore_errors=True)
+        skill_root.mkdir(parents=True, exist_ok=True)
+        for relative_path, content in skill.files.items():
+            target = skill_root / relative_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+    return skills_root
+
+
+def _safe_attachment_name(name: object) -> str | None:
+    if not isinstance(name, str) or not name.strip():
+        return None
+    candidate = PurePosixPath(name).name.strip()
+    candidate = SAFE_ATTACHMENT_NAME_RE.sub("-", candidate).strip(".-")
+    return candidate[:120] if candidate else None
+
+
+def _attachment_mime_type(*, raw_mime_type: object, name: str | None) -> str:
+    if isinstance(raw_mime_type, str) and raw_mime_type.strip():
+        mime_type = raw_mime_type.strip().lower()
+    elif name and name.lower().endswith(".json"):
+        mime_type = "application/json"
+    elif name and name.lower().endswith(".md"):
+        mime_type = "text/markdown"
+    elif name and name.lower().endswith(".csv"):
+        mime_type = "text/csv"
+    elif name and name.lower().endswith(".pdf"):
+        mime_type = "application/pdf"
+    elif name and name.lower().endswith(".txt"):
+        mime_type = "text/plain"
+    else:
+        raise ManagerError("session/upload_file requires a supported MIME type.")
+
+    if mime_type.startswith("text/") or mime_type in SUPPORTED_ATTACHMENT_TYPES:
+        return mime_type
+    raise ManagerError(f"Unsupported attachment MIME type: {mime_type}.")
+
+
+def _default_attachment_name(mime_type: str) -> str:
+    if mime_type == "image/gif":
+        return "attachment.gif"
+    if mime_type == "image/jpeg":
+        return "attachment.jpg"
+    if mime_type == "image/png":
+        return "attachment.png"
+    if mime_type == "image/webp":
+        return "attachment.webp"
+    if mime_type == "application/json":
+        return "attachment.json"
+    if mime_type == "application/pdf":
+        return "attachment.pdf"
+    if mime_type in {"application/markdown", "text/markdown"}:
+        return "attachment.md"
+    if mime_type in {"application/csv", "text/csv"}:
+        return "attachment.csv"
+    if mime_type == "application/x-ndjson":
+        return "attachment.ndjson"
+    return "attachment.txt"
+
+
+def _upload_bytes(raw_data: object) -> bytes:
+    if not isinstance(raw_data, str) or not raw_data:
+        raise ManagerError("session/upload_file requires base64 file data.")
+    if len(raw_data) > MAX_ATTACHMENT_BYTES * 2:
+        raise ManagerError("Attachment upload is too large.")
+    try:
+        data = base64.b64decode(raw_data, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ManagerError("session/upload_file data must be valid base64.") from exc
+    if not data:
+        raise ManagerError("Attachment upload cannot be empty.")
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise ManagerError("Attachment upload is too large.")
+    return data
+
+
+def _write_attachment(*, attachments: Path, params: JsonObject) -> SessionAttachment:
+    name = _safe_attachment_name(params.get("name"))
+    mime_type = _attachment_mime_type(raw_mime_type=params.get("mimeType"), name=name)
+    if name is None:
+        name = _default_attachment_name(mime_type)
+    data = _upload_bytes(params.get("data"))
+    content_hash = hashlib.sha256(data).hexdigest()
+    attachment_id = f"att_{uuid4().hex}"
+    filename = f"{attachment_id}-{name}"
+    worker_path = f"/attachments/{filename}"
+    target = attachments / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return SessionAttachment(
+        attachment_id=attachment_id,
+        name=name,
+        mime_type=mime_type,
+        size=len(data),
+        path=worker_path,
+        sha256=content_hash,
+    )
+
+
+def _attachment_message(attachment: SessionAttachment) -> str:
+    return (
+        f"Attached file `{attachment.name}` as `{attachment.path}` "
+        f"({attachment.mime_type}, {attachment.size} bytes). "
+        f"{_attachment_instruction(attachment)}"
+    )
+
+
+def _attachment_instruction(attachment: SessionAttachment) -> str:
+    if attachment.mime_type.startswith("image/"):
+        return f'Use `load_image("{attachment.path}")` before reasoning from this image.'
+    if attachment.mime_type == "application/pdf":
+        return (
+            "Use the `pdf-text-extraction` skill and extract text with "
+            f'`mkdir -p extracted && pdftotext -layout -enc UTF-8 "{attachment.path}" '
+            f'"{_pdf_text_output_path(attachment)}"` '
+            "before reasoning from this PDF."
+        )
+    return "Inspect this text-like file with shell or Python before reasoning from it."
+
+
+def _pdf_text_output_path(attachment: SessionAttachment) -> str:
+    stem = Path(attachment.name).stem or "attachment"
+    return f"extracted/{attachment.attachment_id}-{stem}.txt"
+
+
+def _new_message_update_id() -> str:
+    return f"msg_{uuid4().hex}"
+
+
+def _stored_message_update_id(message_id: int) -> str:
+    return f"msg_{message_id}"
+
+
+def _history_updates(session: LoadedSession) -> list[SessionUpdate]:
+    updates: list[SessionUpdate] = []
+    attachments_by_message_id: dict[int, list[AttachmentAddedUpdate]] = {}
+    for attachment_record in session.attachment_records:
+        attachments_by_message_id.setdefault(attachment_record.message_id, []).append(
+            AttachmentAddedUpdate(
+                attachment=attachment_record.attachment,
+                created_at=attachment_record.created_at,
+            )
+        )
+
+    for record in session.message_records:
+        updates.append(
+            MessageAddedUpdate(
+                message_id=_stored_message_update_id(record.message_id),
+                message=record.message,
+                created_at=record.created_at,
+            )
+        )
+        updates.extend(attachments_by_message_id.get(record.message_id, []))
+    return updates
+
+
+def _post_commit_updates(
+    messages: list[BaseMessage],
+    *,
+    streamed_messages: Sequence[BaseMessage] = (),
+) -> list[MessageAddedUpdate]:
+    updates: list[MessageAddedUpdate] = []
+    remaining_streamed_messages = list(streamed_messages)
+    for message in messages:
+        try:
+            streamed_index = remaining_streamed_messages.index(message)
+        except ValueError:
+            streamed_index = None
+        if streamed_index is not None:
+            del remaining_streamed_messages[streamed_index]
+            continue
+        if isinstance(message, AssistantMessage) and message.tool_calls:
+            updates.append(MessageAddedUpdate(message_id=_new_message_update_id(), message=message))
+        elif isinstance(message, ToolMessage):
+            updates.append(MessageAddedUpdate(message_id=_new_message_update_id(), message=message))
+    return updates
+
+
+def _attachment_file_path(*, attachments: Path, attachment: SessionAttachment) -> Path:
+    parsed = PurePosixPath(attachment.path)
+    if not parsed.is_absolute() or parsed.parts[:2] != ("/", "attachments") or len(parsed.parts) != 3:
+        raise ManagerError(f"Attachment {attachment.attachment_id} has invalid stored path.")
+    return attachments / parsed.name
+
+
+def _verified_attachment_bytes(*, attachments: Path, attachment: SessionAttachment) -> bytes:
+    target = _attachment_file_path(attachments=attachments, attachment=attachment)
+    data = target.read_bytes()
+    actual_hash = hashlib.sha256(data).hexdigest()
+    if actual_hash != attachment.sha256:
+        raise ManagerError(f"Attachment {attachment.attachment_id} failed hash verification.")
+    return data
 
 
 def _model_from_record(record: SessionRecord) -> str:
@@ -119,6 +464,10 @@ def _record_metadata(record: SessionRecord) -> JsonObject:
     return payload
 
 
+def _session_updated(record: SessionRecord) -> SessionUpdatedUpdate:
+    return SessionUpdatedUpdate(session=_record_metadata(record))
+
+
 class ManagerService:
     def __init__(
         self,
@@ -127,11 +476,15 @@ class ManagerService:
         worker_runner: WorkerRunner,
         model_lister: ModelLister = list_provider_models,
         model_cache_ttl_seconds: float = MODEL_CACHE_TTL_SECONDS,
+        worker_workspace: Path = Path("/workspace"),
+        user_instructions: Sequence[str] = (),
     ) -> None:
         self._store = store
         self._worker_runner = worker_runner
         self._model_lister = model_lister
         self._model_cache_ttl_seconds = model_cache_ttl_seconds
+        self._worker_workspace = worker_workspace
+        self._user_instructions = tuple(user_instructions)
         self._model_cache: tuple[float, list[str]] | None = None
         self._active_prompts: set[str] = set()
         self._active_lock = asyncio.Lock()
@@ -149,15 +502,31 @@ class ManagerService:
             "nextCursor": None,
         }
 
-    def new_session(self, *, params: JsonObject, initial_messages: list[BaseMessage]) -> JsonObject:
+    def new_session(self, *, params: JsonObject) -> JsonObject:
         scope_id = _scope_id_from_params(params)
-        session = self._store.create_session(
-            scope_id=scope_id,
-            messages=initial_messages,
-        )
+        worker_env = _worker_env_from_params(params)
+        skills = _skill_bundles_from_params(params)
+        reservation = self._store.reserve_session_workspace()
+        try:
+            skills_root = _write_session_skill_bundles(workspace=reservation.workspace, skills=skills)
+            initial_messages = self._initial_messages(skills_root=skills_root)
+            session = self._store.create_session(
+                scope_id=scope_id,
+                messages=initial_messages,
+                worker_env=worker_env,
+                reserved_workspace=reservation,
+            )
+        except Exception:
+            shutil.rmtree(reservation.root, ignore_errors=True)
+            raise
         return {"sessionId": session.record.session_id}
 
-    def rename_session(self, *, params: JsonObject) -> JsonObject:
+    async def rename_session(
+        self,
+        *,
+        params: JsonObject,
+        on_update: Callable[[SessionUpdate], Awaitable[None]],
+    ) -> JsonObject:
         scope_id = _scope_id_from_params(params)
         session_id = session_id_from_params(params)
         title = params.get("title")
@@ -169,9 +538,15 @@ class ManagerService:
         else:
             raise ManagerError("session/rename requires a string or null title.")
         record = self._store.rename_session(scope_id=scope_id, session_id=session_id, title=next_title)
+        await on_update(_session_updated(record))
         return _record_metadata(record)
 
-    async def set_session_model(self, *, params: JsonObject) -> JsonObject:
+    async def set_session_model(
+        self,
+        *,
+        params: JsonObject,
+        on_update: Callable[[SessionUpdate], Awaitable[None]],
+    ) -> JsonObject:
         scope_id = _scope_id_from_params(params)
         session_id = session_id_from_params(params)
         model = _model_param(params)
@@ -189,6 +564,7 @@ class ManagerService:
             session_id=session_id,
             metadata={MODEL_METADATA_KEY: model},
         )
+        await on_update(_session_updated(record))
         return _record_metadata(record)
 
     async def load_session(
@@ -197,13 +573,71 @@ class ManagerService:
         scope_id = _scope_id_from_params(params)
         session_id = session_id_from_params(params)
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
-        for message in session.messages:
-            committed = committed_message_from_history_message(message)
-            if committed is None:
-                continue
-            for update in replay_updates_from_committed_message(committed):
-                await on_update(update)
+        await on_update(HistoryResetUpdate())
+        for update in _history_updates(session):
+            await on_update(update)
+        await on_update(HistoryCompleteUpdate(version=session.record.version))
         return _session_metadata(session)
+
+    async def upload_file(
+        self,
+        *,
+        params: JsonObject,
+        on_update: Callable[[SessionUpdate], Awaitable[None]],
+    ) -> JsonObject:
+        scope_id = _scope_id_from_params(params)
+        session_id = session_id_from_params(params)
+
+        async with self._active_lock:
+            if session_id in self._active_prompts:
+                raise SessionBusyError("Cannot upload a file while session has an active prompt.")
+            session = self._store.load_session(scope_id=scope_id, session_id=session_id)
+            attachment = _write_attachment(attachments=session.attachments, params=params)
+            message_text = _attachment_message(attachment)
+            self._store.commit_messages(
+                scope_id=scope_id,
+                session_id=session_id,
+                base_version=session.record.version,
+                messages=[UserMessage(content=message_text)],
+                attachments=[attachment],
+            )
+
+        await on_update(
+            MessageAddedUpdate(
+                message_id=_new_message_update_id(),
+                message=UserMessage(content=message_text),
+            )
+        )
+        await on_update(AttachmentAddedUpdate(attachment=attachment))
+        updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
+        await on_update(_session_updated(updated.record))
+        return {"attachment": attachment.to_json(), "session": _record_metadata(updated.record)}
+
+    async def download_attachment(self, *, params: JsonObject) -> JsonObject:
+        scope_id = _scope_id_from_params(params)
+        session_id = session_id_from_params(params)
+        attachment_id = params.get("attachmentId")
+        if not isinstance(attachment_id, str) or not attachment_id:
+            raise ManagerError("session/download_attachment requires an attachmentId.")
+
+        session = self._store.load_session(scope_id=scope_id, session_id=session_id)
+        attachment = next(
+            (
+                record.attachment
+                for record in session.attachment_records
+                if record.attachment.attachment_id == attachment_id
+            ),
+            None,
+        )
+        if attachment is None:
+            raise ManagerError(f"Attachment {attachment_id} was not found.")
+
+        data = _verified_attachment_bytes(attachments=session.attachments, attachment=attachment)
+        return {
+            "attachment": attachment.to_json(),
+            "encoding": "base64",
+            "data": base64.b64encode(data).decode("ascii"),
+        }
 
     async def prompt(
         self,
@@ -217,14 +651,30 @@ class ManagerService:
         if not isinstance(prompt_blocks, list) or not all(isinstance(block, dict) for block in prompt_blocks):
             raise ManagerError("session/prompt requires a prompt array.")
         try:
-            prompt_content_from_acp(prompt_blocks)
+            prompt_content = prompt_content_from_acp(prompt_blocks)
         except ValueError as exc:
             raise ManagerError(str(exc)) from exc
+        prompt_worker_env = _worker_env_from_params(params)
+        _reject_prompt_skills(params)
 
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         model = _model_from_record(session.record)
+        streamed_messages: list[BaseMessage] = []
+
+        async def forward_worker_update(update: SessionUpdate) -> None:
+            if isinstance(update, MessageAddedUpdate):
+                streamed_messages.append(update.message)
+            await on_update(update)
+
         await self._mark_prompt_active(session_id)
         try:
+            if content_text(prompt_content) is not None:
+                await on_update(
+                    MessageAddedUpdate(
+                        message_id=_new_message_update_id(),
+                        message=UserMessage(content=prompt_content),
+                    )
+                )
             worker_commit = await self._worker_runner.run_prompt(
                 prompt=WorkerPrompt(
                     session_id=session_id,
@@ -232,9 +682,11 @@ class ManagerService:
                     history=session.messages,
                     model=model,
                     workspace=str(session.workspace),
+                    attachments=str(session.attachments),
                     prompt=prompt_blocks,
+                    worker_env={**session.worker_env, **prompt_worker_env},
                 ),
-                on_update=on_update,
+                on_update=forward_worker_update,
             )
             self._store.commit_messages(
                 scope_id=scope_id,
@@ -244,6 +696,10 @@ class ManagerService:
                 title=worker_commit.title,
                 metadata=worker_commit.metadata,
             )
+            for update in _post_commit_updates(worker_commit.messages, streamed_messages=streamed_messages):
+                await on_update(update)
+            updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
+            await on_update(_session_updated(updated.record))
             return PromptResult(stop_reason=worker_commit.stop_reason)
         finally:
             await self._mark_prompt_idle(session_id)
@@ -263,6 +719,16 @@ class ManagerService:
     async def _mark_prompt_idle(self, session_id: str) -> None:
         async with self._active_lock:
             self._active_prompts.discard(session_id)
+
+    def _initial_messages(self, *, skills_root: Path) -> list[BaseMessage]:
+        instructions = build_worker_instructions(
+            config=WorkerAgentConfig(
+                working_directory=self._worker_workspace,
+                skills_directories=(str(skills_root),),
+                user_instructions=self._user_instructions,
+            ),
+        )
+        return [build_initial_system_message(instructions=instructions)]
 
     async def _available_models(self) -> list[str]:
         now = monotonic()

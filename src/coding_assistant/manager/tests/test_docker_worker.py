@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import subprocess
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -13,9 +14,11 @@ from websockets.asyncio.client import ClientConnection, connect
 
 from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.manager.docker_worker import (
+    DockerCommandResult,
     DockerWorkerConfig,
     DockerWorkerError,
     DockerWorkerRunner,
+    TOOL_ENV_KEYS_ENV,
     _docker_run_args,
     _run_command,
 )
@@ -147,8 +150,14 @@ async def _load_session(websocket: ClientConnection, *, request_id: int, session
         if message.get("method") != "session/update":
             continue
         update = message["params"]["update"]
-        if update.get("sessionUpdate") == "agent_message_chunk":
-            texts.append(update["content"]["text"])
+        if update.get("sessionUpdate") == "message_added":
+            message_payload = update.get("message")
+            if not isinstance(message_payload, dict):
+                continue
+            if message_payload.get("role") == "assistant":
+                content = message_payload.get("content")
+                if isinstance(content, str):
+                    texts.append(content)
 
 
 def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
@@ -158,12 +167,14 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
         environment={"OPENAI_API_KEY": "test-key"},
         instructions=("Be concise.",),
         skills_directories=("/skills",),
+        extra_hosts=("host.docker.internal:host-gateway",),
     )
 
     args = _docker_run_args(
         config=config,
         container_name="coding-assistant-worker-sess",
-        workspace="/data/ws/sess",
+        workspace="/data/sessions/sess/workspace",
+        attachments="/data/sessions/sess/attachments",
         model="test-model",
     )
 
@@ -172,7 +183,8 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
     assert "--security-opt" in args
     assert "no-new-privileges" in args
     assert "-v" in args
-    assert "/data/ws/sess:/workspace:rw" in args
+    assert "/data/sessions/sess/workspace:/workspace:rw" in args
+    assert "/data/sessions/sess/attachments:/attachments:ro" in args
     assert "coding-assistant:test" in args
     assert "coding-assistant-worker" in args
     assert args[args.index("--network") + 1] == "assistant-net"
@@ -180,27 +192,133 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
     assert args[args.index("--host") + 1] == "0.0.0.0"
     assert args[args.index("--workspace") + 1] == "/workspace"
     assert "OPENAI_API_KEY=test-key" in args
+    assert ["--add-host", "host.docker.internal:host-gateway"] == args[
+        args.index("--add-host") : args.index("--add-host") + 2
+    ]
     assert "Be concise." in args
     assert "--mcp-servers" not in args
     assert "/skills" in args
 
 
-def test_docker_run_args_maps_manager_workspace_to_host_source() -> None:
+def test_docker_run_args_merges_session_environment() -> None:
     config = DockerWorkerConfig(
         image="coding-assistant:test",
         network="assistant-net",
-        manager_workspace_root="/data/workspaces",
-        workspace_source_root="/host/coding-assistant/workspaces",
+        environment={"OPENAI_API_KEY": "test-key"},
+        skills_directories=("/skills",),
     )
 
     args = _docker_run_args(
         config=config,
         container_name="coding-assistant-worker-sess",
-        workspace="/data/workspaces/sess",
+        workspace="/data/sessions/sess/workspace",
+        attachments="/data/sessions/sess/attachments",
+        model="test-model",
+        extra_environment={
+            "APPS_API_BASE_URL": "http://apps-api",
+            "APPS_API_TOKEN": "secret-token",
+        },
+    )
+
+    assert "OPENAI_API_KEY=test-key" in args
+    assert "APPS_API_BASE_URL=http://apps-api" in args
+    assert "APPS_API_TOKEN=secret-token" in args
+    assert f"{TOOL_ENV_KEYS_ENV}=APPS_API_BASE_URL,APPS_API_TOKEN" in args
+    skills_index = args.index("--skills-directories")
+    assert args[skills_index + 1 : skills_index + 2] == ["/skills"]
+
+
+def test_docker_run_args_rejects_session_environment_collision() -> None:
+    config = DockerWorkerConfig(
+        image="coding-assistant:test",
+        network="assistant-net",
+        environment={"OPENAI_API_KEY": "test-key"},
+    )
+
+    with pytest.raises(
+        DockerWorkerError,
+        match="Session worker environment collides with manager environment: OPENAI_API_KEY",
+    ):
+        _docker_run_args(
+            config=config,
+            container_name="coding-assistant-worker-sess",
+            workspace="/data/sessions/sess/workspace",
+            attachments="/data/sessions/sess/attachments",
+            model="test-model",
+            extra_environment={"OPENAI_API_KEY": "attacker-key"},
+        )
+
+
+@pytest.mark.parametrize(
+    ("base_environment", "extra_environment"),
+    [
+        ({TOOL_ENV_KEYS_ENV: "OPENAI_API_KEY"}, {}),
+        ({}, {TOOL_ENV_KEYS_ENV: "APPS_API_TOKEN"}),
+    ],
+)
+def test_docker_run_args_rejects_reserved_tool_env_key(
+    base_environment: dict[str, str], extra_environment: dict[str, str]
+) -> None:
+    config = DockerWorkerConfig(
+        image="coding-assistant:test",
+        network="assistant-net",
+        environment=base_environment,
+    )
+
+    with pytest.raises(
+        DockerWorkerError,
+        match=f"{TOOL_ENV_KEYS_ENV} is reserved for manager-provided worker tool env.",
+    ):
+        _docker_run_args(
+            config=config,
+            container_name="coding-assistant-worker-sess",
+            workspace="/data/sessions/sess/workspace",
+            attachments="/data/sessions/sess/attachments",
+            model="test-model",
+            extra_environment=extra_environment,
+        )
+
+
+def test_docker_run_args_maps_manager_session_paths_to_host_source() -> None:
+    config = DockerWorkerConfig(
+        image="coding-assistant:test",
+        network="assistant-net",
+        manager_session_root="/data/sessions",
+        session_source_root="/host/coding-assistant/sessions",
+    )
+
+    args = _docker_run_args(
+        config=config,
+        container_name="coding-assistant-worker-sess",
+        workspace="/data/sessions/sess/workspace",
+        attachments="/data/sessions/sess/attachments",
         model="test-model",
     )
 
-    assert "/host/coding-assistant/workspaces/sess:/workspace:rw" in args
+    assert "/host/coding-assistant/sessions/sess/workspace:/workspace:rw" in args
+    assert "/host/coding-assistant/sessions/sess/attachments:/attachments:ro" in args
+
+
+@pytest.mark.asyncio
+async def test_docker_worker_runner_logs_container_output_before_removal(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    commands: list[list[str]] = []
+
+    async def fake_run_command(args: Sequence[str]) -> DockerCommandResult:
+        commands.append(list(args))
+        return DockerCommandResult(stdout="worker stdout\n", stderr="worker stderr\n", returncode=0)
+
+    monkeypatch.setattr("coding_assistant.manager.docker_worker._run_command", fake_run_command)
+    caplog.set_level(logging.ERROR, logger="coding_assistant.manager.docker_worker")
+
+    runner = DockerWorkerRunner(config=DockerWorkerConfig(image="image", network="network"))
+    await runner._log_container_output("coding-assistant-worker-sess")
+
+    assert commands == [["docker", "logs", "--tail", "200", "coding-assistant-worker-sess"]]
+    assert "Worker container coding-assistant-worker-sess stdout before removal:\nworker stdout" in caplog.text
+    assert "Worker container coding-assistant-worker-sess stderr before removal:\nworker stderr" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -330,11 +448,11 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
                     jsonrpc_request(5, "session/set_model", _scope_params(second_session_id, model="fake-model"))
                 )
                 second_set_model = parse_jsonrpc_message(await websocket.recv())
-                (tmp_path / "workspaces" / first_session_id / "smoke.txt").write_text(
+                (tmp_path / "sessions" / first_session_id / "workspace" / "smoke.txt").write_text(
                     "alpha from first workspace",
                     encoding="utf-8",
                 )
-                (tmp_path / "workspaces" / second_session_id / "smoke.txt").write_text(
+                (tmp_path / "sessions" / second_session_id / "workspace" / "smoke.txt").write_text(
                     "bravo from second workspace",
                     encoding="utf-8",
                 )
@@ -394,6 +512,7 @@ async def test_docker_worker_runner_reports_real_container_start_failure(tmp_pat
         history=[],
         model="test-model",
         workspace=str(tmp_path),
+        attachments=str(tmp_path / "attachments"),
         prompt=[],
     )
 

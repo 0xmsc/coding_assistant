@@ -65,16 +65,19 @@ socket group as a supplemental group.
 The manager container also needs a persistent data mount for:
 
 - SQLite session state.
-- Session workspaces.
+- Session directories.
 
 Mount the host path from `CODING_ASSISTANT_HOST_DATA_DIR` at `/data` inside the
 manager container. The manager stores `sessions.sqlite` at `/data/sessions.sqlite`
-and session workspaces below `/data/workspaces`.
+and session directories below `/data/sessions`.
 
 The manager creates worker containers through the host Docker socket, so worker
-workspace bind mounts must use host paths. The manager maps
-`/data/workspaces/<session>` to
-`$CODING_ASSISTANT_HOST_DATA_DIR/workspaces/<session>` when starting a worker.
+bind mounts must use host paths. The manager maps
+`/data/sessions/<session>/workspace` to
+`$CODING_ASSISTANT_HOST_DATA_DIR/sessions/<session>/workspace` as `/workspace`
+and maps `/data/sessions/<session>/attachments` to
+`$CODING_ASSISTANT_HOST_DATA_DIR/sessions/<session>/attachments` as read-only
+`/attachments` when starting a worker.
 
 In the reference Compose configuration, `CODING_ASSISTANT_DOCKER_SOCKET_GID`
 is only a Compose interpolation value for the Docker socket group. It is not a
@@ -97,7 +100,8 @@ connects to the manager with this secret.
 The manager starts one temporary worker container for each active prompt.
 Workers run from `CODING_ASSISTANT_WORKER_IMAGE` and join
 `CODING_ASSISTANT_WORKER_NETWORK`. Workers listen on port `8765`, and their
-session workspace is mounted at `/workspace`.
+session workspace is mounted at `/workspace`. Session attachments are mounted
+read-only at `/attachments`.
 
 Worker containers do not inherit the full manager environment. The manager
 forwards only the provider variables the built-in worker needs:
@@ -112,7 +116,8 @@ runtime environment predictable. There is no generic worker environment
 pass-through option.
 
 Workers do not receive the Docker socket. They receive only their generated
-session workspace mount and the provider environment allowlist.
+session workspace mount, read-only attachments mount, and the provider
+environment allowlist.
 
 ## Docker Socket Trust Boundary
 

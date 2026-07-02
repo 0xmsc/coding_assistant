@@ -85,6 +85,49 @@ class EchoTool(Tool):
         return TextToolResult(content=f"echo:{parameters['text']}")
 
 
+def _message_payload(update: dict[str, Any]) -> dict[str, Any]:
+    message = update["message"]
+    assert isinstance(message, dict)
+    payload = dict(message)
+    payload.pop("id", None)
+    payload.pop("createdAt", None)
+    return payload
+
+
+def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    message_ids: dict[str, str] = {}
+    result: list[dict[str, Any]] = []
+    for update in updates:
+        update_type = update.get("sessionUpdate")
+        if update_type == "message_added":
+            message = update["message"]
+            assert isinstance(message, dict)
+            message_id = message.get("id")
+            assert isinstance(message_id, str)
+            message_ids[message_id] = f"message-{len(message_ids)}"
+            result.append(
+                {
+                    "sessionUpdate": "message_added",
+                    "messageId": message_ids[message_id],
+                    "message": _message_payload(update),
+                }
+            )
+            continue
+        if update_type == "message_delta":
+            message_id = update["messageId"]
+            assert isinstance(message_id, str)
+            result.append(
+                {
+                    "sessionUpdate": "message_delta",
+                    "messageId": message_ids.get(message_id, message_id),
+                    "appendText": update["appendText"],
+                }
+            )
+            continue
+        result.append(dict(update))
+    return result
+
+
 def make_system_history() -> list[BaseMessage]:
     return [SystemMessage(content="# Instructions\n\nTest instructions")]
 
@@ -339,8 +382,8 @@ async def test_worker_server_completes_acp_prompt_turn() -> None:
         assert commit["params"]["baseVersion"] == 0
         assert [message["role"] for message in commit["params"]["messages"]] == ["user", "assistant"]
         assert any(
-            update["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
-            and update["params"]["update"]["content"]["text"] == "Hello from the worker"
+            update["params"]["update"]["sessionUpdate"] == "message_delta"
+            and update["params"]["update"]["appendText"] == "Hello from the worker"
             for update in updates
         )
     finally:
@@ -379,7 +422,7 @@ async def test_worker_server_rejects_busy_acp_prompt_turn() -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_server_reports_tool_call_lifecycle_over_acp() -> None:
+async def test_worker_server_streams_tool_messages_before_final_answer() -> None:
     session = make_agent_session(
         completion_streamer=ScriptedStreamer(
             [
@@ -424,37 +467,52 @@ async def test_worker_server_reports_tool_call_lifecycle_over_acp() -> None:
                         updates.append(payload)
                     else:
                         response = payload
+                commit = parse_jsonrpc_message(await websocket.recv())
 
         assert response == {
             "jsonrpc": "2.0",
             "id": 3,
             "result": {"stopReason": "end_turn"},
         }
-        assert any(
-            update["params"]["update"]
-            == {
-                "sessionUpdate": "tool_call",
-                "toolCallId": "call-1",
-                "title": "echo_tool",
-                "kind": "other",
-                "status": "pending",
-                "rawInput": {"text": "hello"},
-            }
-            for update in updates
-        )
-        assert any(
-            update["params"]["update"]["sessionUpdate"] == "tool_call_update"
-            and update["params"]["update"]["toolCallId"] == "call-1"
-            and update["params"]["update"]["status"] == "in_progress"
-            for update in updates
-        )
-        assert any(
-            update["params"]["update"]["sessionUpdate"] == "tool_call_update"
-            and update["params"]["update"]["toolCallId"] == "call-1"
-            and update["params"]["update"]["status"] == "completed"
-            and update["params"]["update"]["rawOutput"] == "echo:hello"
-            and update["params"]["update"]["content"][0]["content"]["text"] == "echo:hello"
-            for update in updates
-        )
+        update_payloads = [update["params"]["update"] for update in updates]
+        assert _normalized_updates(update_payloads) == [
+            {
+                "sessionUpdate": "message_added",
+                "messageId": "message-0",
+                "message": {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "function": {"name": "echo_tool", "arguments": '{"text": "hello"}'},
+                            "type": "function",
+                        }
+                    ],
+                },
+            },
+            {
+                "sessionUpdate": "message_added",
+                "messageId": "message-1",
+                "message": {
+                    "role": "tool",
+                    "content": "echo:hello",
+                    "name": "echo_tool",
+                    "tool_call_id": "call-1",
+                },
+            },
+            {
+                "sessionUpdate": "message_added",
+                "messageId": "message-2",
+                "message": {"role": "assistant", "content": ""},
+            },
+            {"sessionUpdate": "message_delta", "messageId": "message-2", "appendText": "Done"},
+        ]
+        assert commit["method"] == "_session/commit"
+        assert [message["role"] for message in commit["params"]["messages"]] == [
+            "user",
+            "assistant",
+            "tool",
+            "assistant",
+        ]
     finally:
         await session.close()

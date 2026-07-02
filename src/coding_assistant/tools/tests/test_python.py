@@ -54,6 +54,24 @@ async def test_python_run_happy_path_stdout(execute: Tool) -> None:
 
 
 @pytest.mark.asyncio
+async def test_python_run_uses_explicit_process_env(manager: TaskManager) -> None:
+    tool = create_python_tools(manager=manager, process_env={"APPS_API_TOKEN": "prompt-token"})[0]
+
+    out = _text(await tool.execute({"code": "import os; print(os.environ['APPS_API_TOKEN'], end='')"}))
+
+    assert out == "prompt-token"
+
+
+@pytest.mark.asyncio
+async def test_python_run_does_not_inherit_unlisted_env(execute: Tool, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "provider-secret")
+
+    out = _text(await execute.execute({"code": "import os; print(os.environ.get('OPENAI_API_KEY', 'unset'), end='')"}))
+
+    assert out == "unset"
+
+
+@pytest.mark.asyncio
 async def test_python_run_stderr_captured_with_zero_exit(execute: Tool) -> None:
     out = _text(await execute.execute({"code": "import sys; sys.stderr.write('oops\\n')"}))
     assert out == "oops\n"

@@ -6,14 +6,15 @@ from uuid import uuid4
 
 from websockets.asyncio.server import ServerConnection
 
-from coding_assistant.core.agent_session import AgentSession
+from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, ToolCallsEvent, ToolMessageEvent
 from coding_assistant.core.session_updates import (
-    AgentMessageChunkUpdate,
+    MessageAddedUpdate,
+    MessageDeltaUpdate,
     SessionUpdate,
     prompt_result_from_update,
     session_updates_from_agent_event,
 )
-from coding_assistant.llm.types import BaseMessage
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, ContentDeltaEvent
 from coding_assistant.remote.acp import (
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
@@ -33,6 +34,7 @@ from coding_assistant.remote.protocol import messages_to_jsonrpc, session_update
 
 
 UnhandledMethod = Callable[[str, int | str | None, JsonObject], Awaitable[bool]]
+CommitMetadataProvider = Callable[[], JsonObject | None]
 
 
 @dataclass(frozen=True)
@@ -55,12 +57,7 @@ class _RemoteControlState:
     session_opened: bool = False
     active_prompt_request_id: int | str | None = None
     active_prompt_source: str | None = None
-
-
-def _update_matches_active_prompt(update: SessionUpdate, source: str | None) -> bool:
-    if source is None:
-        return False
-    return getattr(update, "source", None) == source
+    assistant_message_id: str | None = None
 
 
 def _commit_notification(
@@ -69,15 +66,19 @@ def _commit_notification(
     base_version: int,
     messages: list[BaseMessage],
     stop_reason: str,
+    metadata: JsonObject | None = None,
 ) -> str:
+    params: JsonObject = {
+        "sessionId": session_id,
+        "baseVersion": base_version,
+        "messages": messages_to_jsonrpc(messages),
+        "stopReason": stop_reason,
+    }
+    if metadata:
+        params["_meta"] = metadata
     return jsonrpc_notification(
         "_session/commit",
-        {
-            "sessionId": session_id,
-            "baseVersion": base_version,
-            "messages": messages_to_jsonrpc(messages),
-            "stopReason": stop_reason,
-        },
+        params,
     )
 
 
@@ -104,12 +105,14 @@ class RemoteAgentController:
         supports_session_new: bool = False,
         busy_message: str = "Session is busy.",
         unopened_message: str = "Session must be opened first.",
+        commit_metadata_provider: CommitMetadataProvider | None = None,
     ) -> None:
         self._agent_info = agent_info
         self._controlled_session = controlled_session
         self._supports_session_new = supports_session_new
         self._busy_message = busy_message
         self._unopened_message = unopened_message
+        self._commit_metadata_provider = commit_metadata_provider
         self._state = _RemoteControlState()
 
     @property
@@ -147,7 +150,11 @@ class RemoteAgentController:
         async with controlled_session.session.subscribe() as queue:
             while True:
                 event = await queue.get()
-                for update in session_updates_from_agent_event(event):
+                source = getattr(event, "source", None)
+                active_source = self._state.active_prompt_source
+                if source is not None and active_source is not None and source != active_source:
+                    continue
+                for update in self._session_updates_from_agent_event(event):
                     current_session = self._controlled_session
                     if current_session is None:
                         return
@@ -155,6 +162,7 @@ class RemoteAgentController:
                         websocket=websocket,
                         controlled_session=current_session,
                         update=update,
+                        source=source,
                     )
 
     async def handle_jsonrpc_message(
@@ -201,12 +209,14 @@ class RemoteAgentController:
         websocket: ServerConnection,
         controlled_session: RemoteControlledSession,
         update: SessionUpdate,
+        source: str | None,
     ) -> None:
-        if isinstance(update, AgentMessageChunkUpdate) and self._state.active_prompt_source is not None:
-            await _send_session_update(websocket=websocket, session_id=controlled_session.session_id, update=update)
+        active_source = self._state.active_prompt_source
+        if active_source is None:
             return
 
-        if not _update_matches_active_prompt(update, self._state.active_prompt_source):
+        update_source = source if source is not None else getattr(update, "source", None)
+        if update_source is not None and update_source != active_source:
             return
 
         await _send_session_update(websocket=websocket, session_id=controlled_session.session_id, update=update)
@@ -227,6 +237,7 @@ class RemoteAgentController:
                     base_version=controlled_session.base_version,
                     messages=controlled_session.session.history[controlled_session.base_message_count :],
                     stop_reason=result.stop_reason,
+                    metadata=self._commit_metadata_provider() if self._commit_metadata_provider else None,
                 ),
             )
             self._controlled_session = RemoteControlledSession(
@@ -240,6 +251,29 @@ class RemoteAgentController:
 
         self._state.active_prompt_request_id = None
         self._state.active_prompt_source = None
+        self._state.assistant_message_id = None
+
+    def _session_updates_from_agent_event(self, event: AgentSessionEvent) -> list[SessionUpdate]:
+        if isinstance(event, ContentDeltaEvent):
+            return self._append_assistant_text(event.content)
+        if isinstance(event, ToolCallsEvent):
+            return [MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=event.message)]
+        if isinstance(event, ToolMessageEvent):
+            return [MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=event.message)]
+        return session_updates_from_agent_event(event)
+
+    def _append_assistant_text(self, content: str) -> list[SessionUpdate]:
+        updates: list[SessionUpdate] = []
+        if self._state.assistant_message_id is None:
+            self._state.assistant_message_id = f"msg_{uuid4().hex}"
+            updates.append(
+                MessageAddedUpdate(
+                    message_id=self._state.assistant_message_id,
+                    message=AssistantMessage(content=""),
+                )
+            )
+        updates.append(MessageDeltaUpdate(message_id=self._state.assistant_message_id, append_text=content))
+        return updates
 
     async def _handle_initialize(
         self,
@@ -320,6 +354,7 @@ class RemoteAgentController:
         prompt_source = f"remote:{controlled_session.session_id}:{response_id}:{uuid4().hex}"
         self._state.active_prompt_request_id = response_id
         self._state.active_prompt_source = prompt_source
+        self._state.assistant_message_id = None
         accepted = await controlled_session.session.enqueue_prompt_if_idle(prompt_content, source=prompt_source)
         if not accepted:
             self._state.active_prompt_request_id = None

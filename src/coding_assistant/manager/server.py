@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import logging
 from http import HTTPStatus
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
@@ -12,7 +13,6 @@ from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
 from coding_assistant.core.session_updates import SessionUpdate
-from coding_assistant.llm.types import BaseMessage
 from coding_assistant.manager.service import ManagerError, ManagerService, SessionBusyError
 from coding_assistant.manager.store import SessionNotFoundError, StaleSessionCommitError
 from coding_assistant.manager.workspace import WorkspaceMissingError
@@ -31,7 +31,11 @@ from coding_assistant.remote.acp import (
     response_id_from_payload,
     session_id_from_params,
 )
+from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
 from coding_assistant.remote.protocol import session_update_notification
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -72,15 +76,17 @@ async def _run_prompt_request(
     response_id: int | str,
     params: JsonObject,
 ) -> None:
-    session_id = session_id_from_params(params)
-
-    async def send_update(update: SessionUpdate) -> None:
-        await _send_session_update(websocket=websocket, session_id=session_id, update=update)
-
+    session_id = "<unknown>"
     try:
+        session_id = session_id_from_params(params)
+
+        async def send_update(update: SessionUpdate) -> None:
+            await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+
         result = await service.prompt(params=params, on_update=send_update)
         await websocket.send(jsonrpc_result(response_id, {"stopReason": result.stop_reason}))
     except Exception as exc:
+        logger.exception("Manager prompt request failed for session %s.", session_id)
         await websocket.send(jsonrpc_error(response_id, _error_code_for_exception(exc), str(exc)))
 
 
@@ -127,7 +133,6 @@ async def _handle_session_method(
     method: str,
     response_id: int | str | None,
     params: JsonObject,
-    initial_messages: list[BaseMessage],
     state: _ConnectionState,
 ) -> None:
     if method == "session/list":
@@ -138,7 +143,7 @@ async def _handle_session_method(
         await websocket.send(
             jsonrpc_result_required(
                 response_id,
-                service.new_session(params=params, initial_messages=initial_messages),
+                service.new_session(params=params),
             ),
         )
         return
@@ -153,12 +158,38 @@ async def _handle_session_method(
         await websocket.send(jsonrpc_result_required(response_id, result))
         return
 
+    if method == "session/upload_file":
+        session_id = session_id_from_params(params)
+
+        async def send_update(update: SessionUpdate) -> None:
+            await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+
+        result = await service.upload_file(params=params, on_update=send_update)
+        await websocket.send(jsonrpc_result_required(response_id, result))
+        return
+
+    if method == "session/download_attachment":
+        await websocket.send(jsonrpc_result_required(response_id, await service.download_attachment(params=params)))
+        return
+
     if method == "session/rename":
-        await websocket.send(jsonrpc_result_required(response_id, service.rename_session(params=params)))
+        session_id = session_id_from_params(params)
+
+        async def send_update(update: SessionUpdate) -> None:
+            await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+
+        result = await service.rename_session(params=params, on_update=send_update)
+        await websocket.send(jsonrpc_result_required(response_id, result))
         return
 
     if method == "session/set_model":
-        await websocket.send(jsonrpc_result_required(response_id, await service.set_session_model(params=params)))
+        session_id = session_id_from_params(params)
+
+        async def send_update(update: SessionUpdate) -> None:
+            await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+
+        result = await service.set_session_model(params=params, on_update=send_update)
+        await websocket.send(jsonrpc_result_required(response_id, result))
         return
 
     if method == "session/prompt":
@@ -192,7 +223,6 @@ async def _handle_jsonrpc_message(
     service: ManagerService,
     state: _ConnectionState,
     payload: JsonObject,
-    initial_messages: list[BaseMessage],
 ) -> None:
     response_id = response_id_from_payload(payload)
     method = payload.get("method")
@@ -220,10 +250,10 @@ async def _handle_jsonrpc_message(
             method=method,
             response_id=response_id,
             params=params,
-            initial_messages=initial_messages,
             state=state,
         )
     except Exception as exc:
+        logger.exception("Manager method %s failed.", method)
         await websocket.send(jsonrpc_error(response_id, _error_code_for_exception(exc), str(exc)))
 
 
@@ -237,7 +267,6 @@ def _is_authorized_request(request: Request, auth_secret: str) -> bool:
 async def start_manager_server(
     *,
     service: ManagerService,
-    initial_messages: list[BaseMessage],
     host: str = "127.0.0.1",
     port: int = 0,
     auth_secret: str | None = None,
@@ -261,7 +290,6 @@ async def start_manager_server(
                     service=service,
                     state=state,
                     payload=payload,
-                    initial_messages=initial_messages,
                 )
         except ConnectionClosed:
             pass
@@ -272,7 +300,9 @@ async def start_manager_server(
                 with suppress(asyncio.CancelledError):
                     await task
 
-    async with serve(handle_connection, host, port, process_request=process_request) as server:
+    async with serve(
+        handle_connection, host, port, process_request=process_request, max_size=WEBSOCKET_MAX_SIZE
+    ) as server:
         socket = server.sockets[0]
         bound_port = socket.getsockname()[1]
         endpoint = f"ws://{host}:{bound_port}"

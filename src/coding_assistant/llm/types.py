@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Literal, Optional, Protocol
 
 from dacite import from_dict
+
+MessageContent = str | list[dict[str, Any]]
 
 
 class ToolDefinition(Protocol):
@@ -30,13 +34,17 @@ class TextToolResult:
 
 
 @dataclass(frozen=True)
+class ToolMessageResult:
+    """Normal tool output that should be appended as one tool message."""
+
+    content: MessageContent
+
+
+@dataclass(frozen=True)
 class CompactConversationResult:
     """A request to compact transcript history around a summary."""
 
     summary: str
-
-
-ToolResult = TextToolResult | CompactConversationResult
 
 
 class Tool(ToolDefinition, ABC):
@@ -64,19 +72,19 @@ class ToolCall:
 @dataclass(frozen=True, kw_only=True)
 class BaseMessage:
     role: str
-    content: Optional[str | list[dict[str, Any]]] = None
+    content: Optional[MessageContent] = None
     name: Optional[str] = None
 
 
 @dataclass(frozen=True, kw_only=True)
 class SystemMessage(BaseMessage):
-    content: str | list[dict[str, Any]]
+    content: MessageContent
     role: Literal["system"] = "system"
 
 
 @dataclass(frozen=True, kw_only=True)
 class UserMessage(BaseMessage):
-    content: str | list[dict[str, Any]]
+    content: MessageContent
     role: Literal["user"] = "user"
 
 
@@ -91,9 +99,12 @@ class AssistantMessage(BaseMessage):
 
 @dataclass(frozen=True, kw_only=True)
 class ToolMessage(BaseMessage):
-    content: str
+    content: MessageContent
     tool_call_id: str
     role: Literal["tool"] = "tool"
+
+
+ToolResult = TextToolResult | ToolMessageResult | CompactConversationResult
 
 
 class StatusLevel(Enum):

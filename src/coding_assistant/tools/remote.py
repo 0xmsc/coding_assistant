@@ -14,8 +14,6 @@ from coding_assistant.remote.client import (
     RemotePromptFailedEvent,
     RemotePromptFinishedEvent,
     RemoteSessionClient,
-    RemoteToolCallEvent,
-    RemoteToolCallUpdateEvent,
 )
 from coding_assistant.remote.registry import discover_remote_instances
 
@@ -181,19 +179,6 @@ class _WorkerManager:
             snapshot.running = True
             snapshot.last_content = (snapshot.last_content + message.content).strip()
             snapshot.last_update = snapshot.last_content
-            return
-
-        if isinstance(message, RemoteToolCallEvent):
-            snapshot.running = True
-            snapshot.last_update = f"Tool call: {message.title}"
-            return
-
-        if isinstance(message, RemoteToolCallUpdateEvent):
-            snapshot.running = True
-            if message.content:
-                snapshot.last_update = message.content
-            elif message.title:
-                snapshot.last_update = f"Tool {message.status}: {message.title}"
             return
 
         if isinstance(message, RemotePromptFinishedEvent):

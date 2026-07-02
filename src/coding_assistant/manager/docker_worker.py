@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 from collections.abc import Awaitable, Callable, Sequence
@@ -12,6 +13,11 @@ from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.manager.remote_worker import RemoteWorkerRunner
 from coding_assistant.manager.service import WorkerCommit, WorkerPrompt
 from coding_assistant.remote.client import RemoteClientEvent, RemoteSessionClient
+
+
+logger = logging.getLogger(__name__)
+
+TOOL_ENV_KEYS_ENV = "CODING_ASSISTANT_TOOL_ENV_KEYS"
 
 
 class DockerWorkerError(RuntimeError):
@@ -30,15 +36,17 @@ class DockerWorkerConfig:
     image: str
     network: str
     container_prefix: str = "coding-assistant-worker-"
-    manager_workspace_root: str | None = None
+    manager_session_root: str | None = None
     worker_port: int = 8765
-    workspace_source_root: str | None = None
+    session_source_root: str | None = None
     workspace_mount: str = "/workspace"
+    attachments_mount: str = "/attachments"
     docker_command: str = "docker"
     startup_timeout: float = 15.0
     environment: dict[str, str] = field(default_factory=dict)
     instructions: tuple[str, ...] = ()
     skills_directories: tuple[str, ...] = ()
+    extra_hosts: tuple[str, ...] = ()
 
 
 class DockerWorkerRunner:
@@ -60,12 +68,21 @@ class DockerWorkerRunner:
         endpoint = f"ws://{container_name}:{self._config.worker_port}"
         runner = RemoteWorkerRunner(endpoint=endpoint)
         await self._remove_container(container_name, allow_failure=True)
-        await self._start_container(container_name=container_name, workspace=prompt.workspace, model=prompt.model)
+        await self._start_container(
+            container_name=container_name,
+            workspace=prompt.workspace,
+            attachments=prompt.attachments,
+            model=prompt.model,
+            worker_env=prompt.worker_env,
+        )
         await self._register_active(session_id=prompt.session_id, container_name=container_name, runner=runner)
         try:
             await self._wait_until_ready(endpoint)
             worker_prompt = replace(prompt, workspace=self._config.workspace_mount)
             return await runner.run_prompt(prompt=worker_prompt, on_update=on_update)
+        except Exception:
+            await self._log_container_output(container_name)
+            raise
         finally:
             await self._unregister_active(session_id=prompt.session_id, runner=runner)
             await self._remove_container(container_name, allow_failure=True)
@@ -94,8 +111,23 @@ class DockerWorkerRunner:
                 self._active_runners.pop(session_id, None)
                 self._active_containers.pop(session_id, None)
 
-    async def _start_container(self, *, container_name: str, workspace: str, model: str) -> None:
-        args = _docker_run_args(config=self._config, container_name=container_name, workspace=workspace, model=model)
+    async def _start_container(
+        self,
+        *,
+        container_name: str,
+        workspace: str,
+        attachments: str,
+        model: str,
+        worker_env: dict[str, str],
+    ) -> None:
+        args = _docker_run_args(
+            config=self._config,
+            container_name=container_name,
+            workspace=workspace,
+            attachments=attachments,
+            model=model,
+            extra_environment=worker_env,
+        )
         result = await _run_command(args)
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
@@ -107,6 +139,22 @@ class DockerWorkerRunner:
             return
         detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
         raise DockerWorkerError(f"Failed to remove worker container {container_name}: {detail}")
+
+    async def _log_container_output(self, container_name: str) -> None:
+        result = await _run_command([self._config.docker_command, "logs", "--tail", "200", container_name])
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+            logger.error("Failed to read worker container logs for %s: %s", container_name, detail)
+            return
+
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
+        if stdout:
+            logger.error("Worker container %s stdout before removal:\n%s", container_name, stdout)
+        if stderr:
+            logger.error("Worker container %s stderr before removal:\n%s", container_name, stderr)
+        if not stdout and not stderr:
+            logger.error("Worker container %s produced no logs before removal.", container_name)
 
     async def _wait_until_ready(self, endpoint: str) -> None:
         deadline = monotonic() + self._config.startup_timeout
@@ -134,14 +182,31 @@ def _container_name(*, prefix: str, session_id: str) -> str:
     return f"{prefix}{normalized or 'session'}"
 
 
-def _workspace_source(*, config: DockerWorkerConfig, workspace: str) -> str:
-    if config.manager_workspace_root is None or config.workspace_source_root is None:
-        return workspace
+def _host_source(*, config: DockerWorkerConfig, path: str) -> str:
+    if config.manager_session_root is None or config.session_source_root is None:
+        return path
     try:
-        relative_workspace = Path(workspace).relative_to(config.manager_workspace_root)
+        relative_path = Path(path).relative_to(config.manager_session_root)
     except ValueError:
-        return workspace
-    return str(Path(config.workspace_source_root) / relative_workspace)
+        return path
+    return str(Path(config.session_source_root) / relative_path)
+
+
+def _merged_environment(
+    *,
+    config: DockerWorkerConfig,
+    extra_environment: dict[str, str],
+) -> dict[str, str]:
+    collisions = sorted(set(config.environment) & set(extra_environment))
+    if collisions:
+        joined = ", ".join(collisions)
+        raise DockerWorkerError(f"Session worker environment collides with manager environment: {joined}")
+    if TOOL_ENV_KEYS_ENV in config.environment or TOOL_ENV_KEYS_ENV in extra_environment:
+        raise DockerWorkerError(f"{TOOL_ENV_KEYS_ENV} is reserved for manager-provided worker tool env.")
+    environment = {**config.environment, **extra_environment}
+    if extra_environment:
+        environment[TOOL_ENV_KEYS_ENV] = ",".join(sorted(extra_environment))
+    return environment
 
 
 def _docker_run_args(
@@ -149,7 +214,9 @@ def _docker_run_args(
     config: DockerWorkerConfig,
     container_name: str,
     workspace: str,
+    attachments: str,
     model: str,
+    extra_environment: dict[str, str] | None = None,
 ) -> list[str]:
     args = [
         config.docker_command,
@@ -165,10 +232,15 @@ def _docker_run_args(
         "--security-opt",
         "no-new-privileges",
         "-v",
-        f"{_workspace_source(config=config, workspace=workspace)}:{config.workspace_mount}:rw",
+        f"{_host_source(config=config, path=workspace)}:{config.workspace_mount}:rw",
+        "-v",
+        f"{_host_source(config=config, path=attachments)}:{config.attachments_mount}:ro",
     ]
-    for key, value in config.environment.items():
+    environment = _merged_environment(config=config, extra_environment=extra_environment or {})
+    for key, value in environment.items():
         args.extend(["-e", f"{key}={value}"])
+    for host in config.extra_hosts:
+        args.extend(["--add-host", host])
     args.extend(
         [
             config.image,

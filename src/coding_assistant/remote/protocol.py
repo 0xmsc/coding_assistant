@@ -1,82 +1,78 @@
 from __future__ import annotations
 
-from typing import Any, TypeGuard
-
 from coding_assistant.core.session_updates import (
-    AgentMessageChunkUpdate,
+    AttachmentAddedUpdate,
+    HistoryCompleteUpdate,
+    HistoryResetUpdate,
+    MessageAddedUpdate,
+    MessageDeltaUpdate,
+    SessionAttachment,
     SessionUpdate,
-    ToolCallLifecycleUpdate,
-    ToolCallStartedUpdate,
-    UserMessageChunkUpdate,
+    SessionUpdatedUpdate,
 )
 from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
-from coding_assistant.remote.acp import JsonObject, jsonrpc_notification, text_block, tool_content_text
+from coding_assistant.remote.acp import JsonObject, jsonrpc_notification
 
 
-def _is_json_object_list(value: Any) -> TypeGuard[list[JsonObject]]:
-    return isinstance(value, list) and all(isinstance(item, dict) for item in value)
+def _message_added_payload(update: MessageAddedUpdate) -> JsonObject:
+    message = message_to_dict(update.message)
+    message["id"] = update.message_id
+    if update.created_at is not None:
+        message["createdAt"] = update.created_at
+    return message
 
 
-def _content_text_from_tool_content(content: list[JsonObject] | None) -> str | None:
-    if not content:
+def _message_added_from_payload(value: JsonObject) -> MessageAddedUpdate | None:
+    message_id = value.get("id")
+    created_at = value.get("createdAt")
+    if not isinstance(message_id, str):
         return None
-    first_item = content[0]
-    if not (
-        isinstance(first_item, dict)
-        and isinstance(first_item.get("content"), dict)
-        and first_item["content"].get("type") == "text"
-        and isinstance(first_item["content"].get("text"), str)
-    ):
-        return None
-    text = first_item["content"]["text"]
-    if not isinstance(text, str):
-        return None
-    return text
+    message_payload = {key: item for key, item in value.items() if key not in {"id", "createdAt"}}
+    return MessageAddedUpdate(
+        message_id=message_id,
+        message=message_from_dict(message_payload),
+        created_at=created_at if isinstance(created_at, str) else None,
+    )
 
 
 def session_update_to_jsonrpc_update(update: SessionUpdate) -> JsonObject | None:
     """Serialize one normalized update to a session/update payload update object."""
-    if isinstance(update, UserMessageChunkUpdate):
+    if isinstance(update, HistoryResetUpdate):
+        return {"sessionUpdate": "history_reset"}
+
+    if isinstance(update, HistoryCompleteUpdate):
         return {
-            "sessionUpdate": "user_message_chunk",
-            "content": text_block(update.content),
+            "sessionUpdate": "history_complete",
+            "version": update.version,
         }
 
-    if isinstance(update, AgentMessageChunkUpdate):
+    if isinstance(update, MessageAddedUpdate):
         return {
-            "sessionUpdate": "agent_message_chunk",
-            "content": text_block(update.content),
+            "sessionUpdate": "message_added",
+            "message": _message_added_payload(update),
         }
 
-    if isinstance(update, ToolCallStartedUpdate):
-        payload: JsonObject = {
-            "sessionUpdate": "tool_call",
-            "toolCallId": update.tool_call_id,
-            "title": update.title,
-            "kind": update.tool_kind,
-            "status": update.status,
+    if isinstance(update, MessageDeltaUpdate):
+        return {
+            "sessionUpdate": "message_delta",
+            "messageId": update.message_id,
+            "appendText": update.append_text,
         }
-        if update.raw_input is not None:
-            payload["rawInput"] = update.raw_input
-        return payload
 
-    if isinstance(update, ToolCallLifecycleUpdate):
-        payload = {
-            "sessionUpdate": "tool_call_update",
-            "toolCallId": update.tool_call_id,
-            "status": update.status,
+    if isinstance(update, AttachmentAddedUpdate):
+        attachment = update.attachment.to_json()
+        if update.created_at is not None:
+            attachment["createdAt"] = update.created_at
+        return {
+            "sessionUpdate": "attachment_added",
+            "attachment": attachment,
         }
-        if update.title is not None:
-            payload["title"] = update.title
-        if update.tool_kind is not None:
-            payload["kind"] = update.tool_kind
-        if update.raw_input is not None:
-            payload["rawInput"] = update.raw_input
-        if update.raw_output is not None:
-            payload["rawOutput"] = update.raw_output
-        if update.content:
-            payload["content"] = tool_content_text(update.content)
-        return payload
+
+    if isinstance(update, SessionUpdatedUpdate):
+        return {
+            "sessionUpdate": "session_updated",
+            "session": update.session,
+        }
 
     return None
 
@@ -105,44 +101,43 @@ def messages_from_jsonrpc(messages: list[JsonObject]) -> list[BaseMessage]:
 def session_update_from_jsonrpc_update(update: JsonObject) -> SessionUpdate | None:
     """Parse a session/update payload update object into a normalized update."""
     update_type = update.get("sessionUpdate")
-    if update_type == "user_message_chunk":
-        content = update.get("content", {})
-        if isinstance(content, dict) and content.get("type") == "text" and isinstance(content.get("text"), str):
-            return UserMessageChunkUpdate(content=content["text"])
-        return None
+    if update_type == "history_reset":
+        return HistoryResetUpdate()
 
-    if update_type == "agent_message_chunk":
-        content = update.get("content", {})
-        if isinstance(content, dict) and content.get("type") == "text" and isinstance(content.get("text"), str):
-            return AgentMessageChunkUpdate(content=content["text"])
-        return None
+    if update_type == "history_complete":
+        version = update.get("version")
+        return HistoryCompleteUpdate(version=version if isinstance(version, int) else 0)
 
-    if update_type == "tool_call":
-        title = update.get("title")
-        if not isinstance(title, str):
+    if update_type == "message_added":
+        message = update.get("message")
+        if not isinstance(message, dict):
             return None
-        return ToolCallStartedUpdate(
-            source="remote",
-            tool_call_id=str(update.get("toolCallId", "")),
-            title=title,
-            tool_kind=str(update.get("kind", "other")),
-            status=str(update.get("status", "pending")),
-            raw_input=update.get("rawInput") if isinstance(update.get("rawInput"), dict) else None,
-            message=None,
+        return _message_added_from_payload(message)
+
+    if update_type == "message_delta":
+        message_id = update.get("messageId")
+        append_text = update.get("appendText")
+        if isinstance(message_id, str) and isinstance(append_text, str):
+            return MessageDeltaUpdate(message_id=message_id, append_text=append_text)
+        return None
+
+    if update_type == "attachment_added":
+        attachment = update.get("attachment")
+        if not isinstance(attachment, dict):
+            return None
+        parsed_attachment = SessionAttachment.from_json(attachment)
+        if parsed_attachment is None:
+            return None
+        created_at = attachment.get("createdAt")
+        return AttachmentAddedUpdate(
+            attachment=parsed_attachment,
+            created_at=created_at if isinstance(created_at, str) else None,
         )
 
-    if update_type == "tool_call_update":
-        content = update.get("content")
-        raw_input = update.get("rawInput")
-        return ToolCallLifecycleUpdate(
-            source="remote",
-            tool_call_id=str(update.get("toolCallId", "")),
-            status=str(update.get("status", "")),
-            title=update.get("title") if isinstance(update.get("title"), str) else None,
-            tool_kind=update.get("kind") if isinstance(update.get("kind"), str) else None,
-            raw_input=raw_input if isinstance(raw_input, dict) else None,
-            raw_output=update.get("rawOutput"),
-            content=_content_text_from_tool_content(content if _is_json_object_list(content) else None),
-        )
+    if update_type == "session_updated":
+        session = update.get("session")
+        if not isinstance(session, dict):
+            return None
+        return SessionUpdatedUpdate(session=dict(session))
 
     return None

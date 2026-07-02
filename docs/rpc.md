@@ -42,7 +42,8 @@ browser
 
 The application backend owns browser authentication. The manager owns canonical
 session state and worker lifecycle. Each active prompt runs in a temporary
-worker container with the session's managed workspace mounted at `/workspace`.
+worker container with the session's managed workspace mounted at `/workspace`
+and session attachments mounted read-only at `/attachments`.
 
 The CLI path remains direct:
 
@@ -70,8 +71,10 @@ This protocol is ACP-inspired:
 This protocol also has `coding-assistant` extensions:
 
 - Backend-injected `params._meta.scopeId` session scoping.
-- Manager-owned workspaces derived from `sessionId`.
+- Manager-owned session directories derived from `sessionId`.
 - Manager-owned SQLite persistence.
+- Session-scoped injected skills plus session-scoped and prompt-scoped private
+  worker environment.
 - Private manager/worker `_session/*` methods.
 - Per-active-prompt worker containers.
 
@@ -196,12 +199,15 @@ for `session/list`, `session/new`, `session/load`, `session/rename`,
 
 The web manager does not accept arbitrary `cwd` values for v1 sessions.
 
-Each session gets a managed workspace derived from the session id:
+Each session gets a managed session directory derived from the session id:
 
 ```text
-manager workspace root: /data/workspaces
-host workspace path:    $CODING_ASSISTANT_HOST_DATA_DIR/workspaces/<sessionId>
-worker mount:           /workspace
+manager session root:     /data/sessions
+manager workspace path:   /data/sessions/<sessionId>/workspace
+manager attachments path: /data/sessions/<sessionId>/attachments
+host session path:        $CODING_ASSISTANT_HOST_DATA_DIR/sessions/<sessionId>
+worker workspace mount:   /workspace
+worker attachments mount: /attachments (read-only)
 ```
 
 The worker process starts with `/workspace` as its working directory. This is
@@ -220,7 +226,7 @@ Workspace seeding/import is out of scope for v1.
 The manager owns canonical session state in SQLite. Worker containers hold an
 in-memory `AgentSession` only while active.
 
-V1 uses two tables:
+V1 uses these tables:
 
 ```text
 sessions
@@ -231,6 +237,7 @@ sessions
   created_at text not null
   updated_at text not null
   metadata_json text not null default '{}'
+  worker_env_json text not null default '{}'
 
 session_messages
   id integer primary key autoincrement
@@ -239,7 +246,28 @@ session_messages
   role text not null
   payload_json text not null
   created_at text not null
+
+session_attachments
+  id integer primary key autoincrement
+  attachment_id text not null
+  session_id text not null
+  message_id integer not null references session_messages(id) on delete cascade
+  sequence integer not null
+  name text not null
+  mime_type text not null
+  size integer not null
+  path text not null
+  sha256 text not null
+  created_at text not null
 ```
+
+`metadata_json` is public session metadata returned in `_meta`.
+`worker_env_json` is private manager state and must not be returned by
+`session/list`, `session/load`, or other public session metadata responses.
+`session_messages` is the source of truth for LLM history and replay. Every
+message row is replayed to clients in insertion order, including system
+messages and upload messages. Session attachments are metadata rows in
+`session_attachments` linked to the upload message row that introduced them.
 
 Do not add a durable `session_runs` table for v1. Active runs live in manager
 memory while a worker is running.
@@ -427,7 +455,8 @@ Session metadata must not expose arbitrary host workspace paths.
 
 ### session/new
 
-Creates a new session in `params._meta.scopeId`.
+Creates a new session in `params._meta.scopeId`. The manager may also accept
+private session-scoped worker setup under `_meta`.
 
 Request:
 
@@ -438,11 +467,38 @@ Request:
   "method": "session/new",
   "params": {
     "_meta": {
-      "scopeId": "tenant:abc123"
+      "scopeId": "tenant:abc123",
+      "skills": [
+        {
+          "name": "apps-api",
+          "description": "Use apps REST APIs.",
+          "files": {
+            "SKILL.md": "---\nname: apps-api\ndescription: Use apps REST APIs.\n---\n",
+            "references/calories.md": "calories reference"
+          }
+        }
+      ]
     }
   }
 }
 ```
+
+`_meta.workerEnv` is optional private session state for durable values. The
+manager stores it in SQLite outside public session metadata and passes it to
+worker tool processes for prompts in that session. Keys must be uppercase
+environment variable names and values must be strings. Send short-lived
+credentials as prompt-scoped worker env on `session/prompt`; prompt-scoped
+values override session-scoped values for that run only.
+
+`_meta.skills` is an optional array of injected skill bundles. The manager
+writes each bundle to `workspace/.agents/skills/<name>` in the session directory
+before building the initial system message. Workers then discover those skills
+through normal workspace skill loading. Each skill requires a valid `name`, a non-empty
+`description`, and a `files` object containing `SKILL.md`. File paths must be
+relative paths inside the skill directory.
+
+These `_meta` fields are setup inputs only. They are not copied into public
+session metadata and are not returned by `session/list` or `session/load`.
 
 Response:
 
@@ -456,9 +512,9 @@ Response:
 }
 ```
 
-The manager creates `/data/workspaces/<sessionId>` inside the manager
-container and initializes the session transcript with system instructions for
-the managed workspace.
+The manager creates `/data/sessions/<sessionId>` inside the manager container,
+writes any injected skills under `workspace/.agents/skills`, and initializes the
+session transcript with system instructions for the managed workspace.
 
 External `cwd` input is ignored or rejected until a future workspace import
 feature is designed.
@@ -484,7 +540,8 @@ Request:
 }
 ```
 
-During load, the server streams historical messages:
+During load, the server streams canonical message and attachment replay
+updates:
 
 ```json
 {
@@ -493,10 +550,12 @@ During load, the server streams historical messages:
   "params": {
     "sessionId": "sess_abc123",
     "update": {
-      "sessionUpdate": "user_message_chunk",
-      "content": {
-        "type": "text",
-        "text": "Fix the failing tests."
+      "sessionUpdate": "message_added",
+      "message": {
+        "id": "msg_123",
+        "role": "user",
+        "content": "Fix the failing tests.",
+        "createdAt": "2026-06-23T19:30:00Z"
       }
     }
   }
@@ -618,6 +677,13 @@ the server sends `session/update` notifications.
 
 The session must already have a model in metadata. Use `session/set_model`
 before prompting new sessions or older sessions without a stored model.
+`_meta.workerEnv` may provide private prompt-scoped environment variables. The
+manager passes them to the worker for this prompt only, without persisting or
+returning them. Prompt-scoped values override session-scoped values with the
+same key for the run.
+
+`_meta.skills` is not accepted on `session/prompt`; injected skills are session
+setup and must be provided on `session/new`.
 
 Request:
 
@@ -628,7 +694,11 @@ Request:
   "method": "session/prompt",
   "params": {
     "_meta": {
-      "scopeId": "tenant:abc123"
+      "scopeId": "tenant:abc123",
+      "workerEnv": {
+        "APPS_API_BASE_URL": "http://apps-api",
+        "APPS_API_TOKEN": "fresh-secret-token"
+      }
     },
     "sessionId": "sess_abc123",
     "prompt": [
@@ -698,6 +768,112 @@ Prompt blocks follow ACP-compatible content shapes where practical:
 }
 ```
 
+### session/upload_file
+
+Uploads one bounded file into the session attachments directory in
+`params._meta.scopeId`. The manager validates scope, file name, MIME type, and
+size, writes the bytes under the session attachments directory, commits an
+upload message and linked attachment metadata, emits message and attachment
+events through `session/update`, and returns attachment metadata. If `name` is
+`null` or blank, the manager derives a generic filename with an extension from
+the MIME type.
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 8,
+  "method": "session/upload_file",
+  "params": {
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
+    "sessionId": "sess_abc123",
+    "name": "meal.jpg",
+    "mimeType": "image/jpeg",
+    "data": "base64-encoded-file"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 8,
+  "result": {
+    "attachment": {
+      "id": "att_abc123",
+      "name": "meal.jpg",
+      "mimeType": "image/jpeg",
+      "size": 12345,
+      "path": "/attachments/att_abc123-meal.jpg",
+      "sha256": "..."
+    },
+    "session": {
+      "sessionId": "sess_abc123",
+      "updatedAt": "2026-06-23T19:30:00Z",
+      "_meta": {
+        "version": 2
+      }
+    }
+  }
+}
+```
+
+Workers do not receive attachment bytes automatically. For images, use the
+worker `load_image(path)` tool with the returned `attachment.path` before
+reasoning from the image. For PDFs, extract text in the workspace with
+`pdftotext`, then inspect the extracted text. Text-like attachments can be read
+with shell or Python from their `/attachments/...` path.
+
+### session/download_attachment
+
+Downloads a stored session attachment. The manager authorizes the session by
+`params._meta.scopeId`, finds the persisted attachment row, reads the file
+from the manager-owned attachments directory, recomputes its SHA-256 hash, and
+returns bytes only if the hash still matches the stored attachment metadata.
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 9,
+  "method": "session/download_attachment",
+  "params": {
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
+    "sessionId": "sess_abc123",
+    "attachmentId": "att_abc123"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 9,
+  "result": {
+    "attachment": {
+      "id": "att_abc123",
+      "name": "meal.jpg",
+      "mimeType": "image/jpeg",
+      "size": 12345,
+      "path": "/attachments/att_abc123-meal.jpg",
+      "sha256": "..."
+    },
+    "encoding": "base64",
+    "data": "base64-encoded-file"
+  }
+}
+```
+
 ### session/cancel
 
 Cancels the current run for a session in `params._meta.scopeId`. This
@@ -751,10 +927,14 @@ The original `session/prompt` request should later resolve with
 
 ### session/update
 
-The server streams replay, run output, and tool status through JSON-RPC
-notifications.
+The server sends transcript history through JSON-RPC notifications.
+`session/load`, `session/prompt`, and `session/upload_file`
+all use this same update path; RPC responses acknowledge commands and return
+metadata, but clients should not render transcript content from those
+responses.
 
-Assistant text delta:
+History replay starts with `history_reset`, sends persisted messages and linked
+attachments as update events, and ends with `history_complete`:
 
 ```json
 {
@@ -763,17 +943,34 @@ Assistant text delta:
   "params": {
     "sessionId": "sess_abc123",
     "update": {
-      "sessionUpdate": "agent_message_chunk",
-      "content": {
-        "type": "text",
-        "text": "I'll inspect the repository."
+      "sessionUpdate": "history_reset"
+    }
+  }
+}
+```
+
+Message added:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "sess_abc123",
+    "update": {
+      "sessionUpdate": "message_added",
+      "message": {
+        "id": "msg_123",
+        "role": "assistant",
+        "content": "I'll inspect the repository.",
+        "createdAt": "2026-06-23T19:30:00Z"
       }
     }
   }
 }
 ```
 
-Tool call announced:
+Attachment added:
 
 ```json
 {
@@ -782,20 +979,22 @@ Tool call announced:
   "params": {
     "sessionId": "sess_abc123",
     "update": {
-      "sessionUpdate": "tool_call",
-      "toolCallId": "call_1",
-      "title": "shell_execute",
-      "kind": "other",
-      "status": "pending",
-      "rawInput": {
-        "command": "ls"
+      "sessionUpdate": "attachment_added",
+      "attachment": {
+        "id": "att_abc123",
+        "name": "meal.jpg",
+        "mimeType": "image/jpeg",
+        "size": 12345,
+        "path": "/attachments/att_abc123-meal.jpg",
+        "sha256": "...",
+        "createdAt": "2026-06-23T19:30:00Z"
       }
     }
   }
 }
 ```
 
-Tool call updated:
+Assistant text delta for an existing message:
 
 ```json
 {
@@ -804,23 +1003,33 @@ Tool call updated:
   "params": {
     "sessionId": "sess_abc123",
     "update": {
-      "sessionUpdate": "tool_call_update",
-      "toolCallId": "call_1",
-      "status": "completed",
-      "title": "shell_execute",
-      "kind": "other",
-      "rawOutput": {
-        "exit_code": 0
-      },
-      "content": [
-        {
-          "type": "content",
-          "content": {
-            "type": "text",
-            "text": "Command completed."
-          }
+      "sessionUpdate": "message_delta",
+      "messageId": "msg_assistant_1",
+      "appendText": "I'll inspect the repository."
+    }
+  }
+}
+```
+
+Session metadata update:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "sess_abc123",
+    "update": {
+      "sessionUpdate": "session_updated",
+      "session": {
+        "sessionId": "sess_abc123",
+        "title": "Fix failing tests",
+        "updatedAt": "2026-06-23T19:35:00Z",
+        "_meta": {
+          "version": 2,
+          "model": "openai/gpt-5.1"
         }
-      ]
+      }
     }
   }
 }
@@ -830,14 +1039,19 @@ Supported `sessionUpdate` values:
 
 | Value | Description |
 | --- | --- |
-| `user_message_chunk` | A user message chunk, primarily used during `session/load` replay. |
-| `agent_message_chunk` | A streamed assistant text delta. |
-| `tool_call` | A tool call was requested. |
-| `tool_call_update` | A tool call lifecycle update. |
-| `session_info_update` | Session title, updated timestamp, or metadata changed. |
+| `history_reset` | Clear local transcript before replay. |
+| `message_added` | Add a canonical message. |
+| `message_delta` | Append streamed text to an existing assistant message. |
+| `attachment_added` | Add an attachment metadata record linked to a message. |
+| `session_updated` | Replace or merge session metadata such as title, model, updated time, and version. |
+| `history_complete` | Replay is complete and includes the durable session version. |
 
-Live streamed updates are provisional until the worker commits the completed
-turn and the manager persists it.
+Live streamed assistant message updates are provisional until the worker
+commits the completed turn and the manager persists it. Tool calls and tool
+results are represented as canonical assistant/tool messages; clients that want
+tool cards or image previews derive those UI elements from message content.
+The manager sends `session_updated` after persisted session metadata changes,
+including rename, model changes, uploads, and prompt commits.
 
 ## Internal Worker Methods
 
@@ -863,7 +1077,6 @@ Request params:
 | `baseVersion` | integer | yes | History version used to start the worker session. |
 | `messages` | array | yes | Model-visible committed history from SQLite. |
 | `workspace` | string | yes | Worker workspace path, normally `/workspace`. |
-| `config` | object | yes | Model, MCP, skills, and runtime configuration. |
 
 ### _session/commit
 
@@ -880,6 +1093,10 @@ Notification params:
 | `usage` | object | no | Usage metadata. |
 | `_meta` | object | no | Implementation metadata such as title updates. |
 
+Workers may include `_meta.title` to request a persisted session title update.
+The manager stores the title with the commit and emits `session_updated` to
+clients.
+
 The manager rejects commits when `baseVersion` does not match the current
 SQLite session version.
 
@@ -890,7 +1107,7 @@ Use honest module names:
 - `remote/jsonrpc.py` for generic JSON-RPC helpers.
 - `remote/protocol.py` for the custom `coding-assistant` remote protocol.
 
-Do not put manager workspaces, scope metadata, worker commits, or private
+Do not put manager session paths, scope metadata, worker commits, or private
 `_session/*` methods into a module named as if it were pure ACP.
 
 ## Current Limitations

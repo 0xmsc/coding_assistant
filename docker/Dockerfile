@@ -12,7 +12,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash curl ca-certificates docker-cli \
+    && apt-get install -y --no-install-recommends bash curl ca-certificates docker-cli poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock README.md ./

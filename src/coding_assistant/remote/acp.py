@@ -108,10 +108,6 @@ def text_block(text: str) -> JsonObject:
     return {"type": "text", "text": text}
 
 
-def tool_content_text(text: str) -> list[JsonObject]:
-    return [{"type": "content", "content": text_block(text)}]
-
-
 def initialize_result(*, agent_name: str, agent_title: str, agent_version: str) -> JsonObject:
     return {
         "protocolVersion": ACP_PROTOCOL_VERSION,
@@ -212,74 +208,3 @@ def _render_resource_link(block: JsonObject) -> str:
     if isinstance(description, str) and description:
         return f"Resource link {name}: {uri}\n{description}"
     return f"Resource link {name}: {uri}"
-
-
-def agent_message_update(session_id: str, text: str) -> str:
-    return jsonrpc_notification(
-        "session/update",
-        {
-            "sessionId": session_id,
-            "update": {
-                "sessionUpdate": "agent_message_chunk",
-                "content": text_block(text),
-            },
-        },
-    )
-
-
-def tool_call_update_notification(session_id: str, update: JsonObject) -> str:
-    return jsonrpc_notification(
-        "session/update",
-        {
-            "sessionId": session_id,
-            "update": update,
-        },
-    )
-
-
-def tool_call_notification(
-    *,
-    tool_call_id: str,
-    title: str,
-    kind: str,
-    status: str = "pending",
-    raw_input: JsonObject | None = None,
-) -> JsonObject:
-    update: JsonObject = {
-        "sessionUpdate": "tool_call",
-        "toolCallId": tool_call_id,
-        "title": title,
-        "kind": kind,
-        "status": status,
-    }
-    if raw_input is not None:
-        update["rawInput"] = raw_input
-    return update
-
-
-def tool_call_lifecycle_update(
-    *,
-    tool_call_id: str,
-    status: str,
-    title: str | None = None,
-    kind: str | None = None,
-    raw_input: Any | None = None,
-    raw_output: Any | None = None,
-    content_text: str | None = None,
-) -> JsonObject:
-    update: JsonObject = {
-        "sessionUpdate": "tool_call_update",
-        "toolCallId": tool_call_id,
-        "status": status,
-    }
-    if title is not None:
-        update["title"] = title
-    if kind is not None:
-        update["kind"] = kind
-    if raw_input is not None:
-        update["rawInput"] = raw_input
-    if raw_output is not None:
-        update["rawOutput"] = raw_output
-    if content_text:
-        update["content"] = tool_content_text(content_text)
-    return update
