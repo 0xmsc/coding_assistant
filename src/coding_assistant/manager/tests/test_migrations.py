@@ -4,20 +4,19 @@ import json
 import sqlite3
 from pathlib import Path
 
-from alembic import command
 from sqlalchemy import inspect, text
 
 from coding_assistant.llm.types import SystemMessage, message_to_dict
 from coding_assistant.manager.db import create_manager_engine
-from coding_assistant.manager.migrations import alembic_config, migrate_database
 from coding_assistant.manager.store import SessionStore
+from coding_assistant.manager.tests.migration_helpers import run_migrations
 from coding_assistant.manager.workspace import WorkspacePaths
 
 
 def test_alembic_upgrade_creates_manager_schema(tmp_path: Path) -> None:
     database_path = tmp_path / "sessions.sqlite"
 
-    command.upgrade(alembic_config(database_path), "head")
+    run_migrations(database_path)
 
     engine = create_manager_engine(database_path)
     with engine.connect() as connection:
@@ -46,7 +45,7 @@ def test_store_bootstraps_unversioned_legacy_database(tmp_path: Path) -> None:
     _create_legacy_database(database_path=database_path, session_id=session_id)
     WorkspacePaths(root=tmp_path / "sessions").create_for_session(session_id)
 
-    migrate_database(database_path)
+    run_migrations(database_path)
     store = SessionStore(
         database_path=database_path,
         workspaces=WorkspacePaths(root=tmp_path / "sessions"),
