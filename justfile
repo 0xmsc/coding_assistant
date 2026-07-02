@@ -7,6 +7,9 @@ test-integration:
 lint:
     make lint
 
+check-migrations:
+    tmp_dir="$(mktemp -d)"; trap 'rm -rf "$tmp_dir"' EXIT; CODING_ASSISTANT_MANAGER_DATA_DIR="$tmp_dir" uv run alembic upgrade head; CODING_ASSISTANT_MANAGER_DATA_DIR="$tmp_dir" uv run alembic check
+
 publish:
     ./docker/publish.sh
 

@@ -21,6 +21,9 @@ dependencies = [
     "python-frontmatter",
     "Pillow",
     "websockets",
+    "sqlmodel>=0.0.39",
+    "sqlalchemy>=2.0.51",
+    "alembic>=1.18.5",
 ]
 
 [dependency-groups]
