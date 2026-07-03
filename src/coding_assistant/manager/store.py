@@ -284,7 +284,6 @@ class SessionStore:
                 row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
                 row.title = title
                 row.updated_at = now
-                session.add(row)
                 session.flush()
                 return _record_from_row(row)
 
@@ -302,7 +301,6 @@ class SessionStore:
                 next_metadata = {**_metadata_from_json(row.metadata_json), **metadata}
                 row.updated_at = now
                 row.metadata_json = _metadata_to_json(next_metadata)
-                session.add(row)
                 session.flush()
                 return _record_from_row(row)
 
@@ -349,7 +347,6 @@ class SessionStore:
                 session_row.title = next_title
                 session_row.updated_at = now
                 session_row.metadata_json = _metadata_to_json(next_metadata)
-                session.add(session_row)
         return new_version
 
     def _get_session_row(
