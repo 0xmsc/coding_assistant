@@ -19,18 +19,26 @@ if config.config_file_name is not None:
 
 target_metadata = SQLModel.metadata
 
-DEFAULT_MANAGER_DATA_DIR = Path("/data")
 CODING_ASSISTANT_MANAGER_DATABASE_PATH_ENV = "CODING_ASSISTANT_MANAGER_DATABASE_PATH"
 CODING_ASSISTANT_MANAGER_DATA_DIR_ENV = "CODING_ASSISTANT_MANAGER_DATA_DIR"
 
 
 def _configure_database_url() -> None:
+    # Honor a URL already set on the config (e.g. by tests driving alembic.command
+    # directly) so callers do not need to mutate the process environment.
+    if config.get_main_option("sqlalchemy.url"):
+        return
     database_path = os.environ.get(CODING_ASSISTANT_MANAGER_DATABASE_PATH_ENV)
     if database_path:
         path = Path(database_path)
     else:
         data_dir = os.environ.get(CODING_ASSISTANT_MANAGER_DATA_DIR_ENV)
-        path = Path(data_dir) / "sessions.sqlite" if data_dir else DEFAULT_MANAGER_DATA_DIR / "sessions.sqlite"
+        if not data_dir:
+            raise RuntimeError(
+                "CODING_ASSISTANT_MANAGER_DATABASE_PATH or "
+                "CODING_ASSISTANT_MANAGER_DATA_DIR must be set to run migrations."
+            )
+        path = Path(data_dir) / "sessions.sqlite"
     path.parent.mkdir(parents=True, exist_ok=True)
     config.set_main_option("sqlalchemy.url", database_url(path))
 
