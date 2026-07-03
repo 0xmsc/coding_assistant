@@ -21,6 +21,9 @@ dependencies = [
     "python-frontmatter",
     "Pillow",
     "websockets",
+    "sqlmodel",
+    "sqlalchemy",
+    "alembic",
 ]
 
 [dependency-groups]
