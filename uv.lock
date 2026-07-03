@@ -310,7 +310,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiofiles" },
-    { name = "alembic", specifier = ">=1.18.5" },
+    { name = "alembic" },
     { name = "dacite" },
     { name = "debugpy" },
     { name = "fastmcp" },
@@ -323,8 +323,8 @@ requires-dist = [
     { name = "python-frontmatter" },
     { name = "requests" },
     { name = "rich" },
-    { name = "sqlalchemy", specifier = ">=2.0.51" },
-    { name = "sqlmodel", specifier = ">=0.0.39" },
+    { name = "sqlalchemy" },
+    { name = "sqlmodel" },
     { name = "websockets" },
 ]
 
