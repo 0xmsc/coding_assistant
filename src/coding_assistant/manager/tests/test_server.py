@@ -1317,6 +1317,7 @@ async def test_manager_rejects_model_change_during_active_prompt(tmp_path: Path)
 
     assert _message_payload(_update(first_updates[0])) == {"role": "user", "content": "first"}
     assert _update(first_updates[2])["appendText"] == "fake response"
+    assert busy_response["error"]["code"] == -32000
     assert busy_response["error"]["message"] == "Cannot change model while session has an active prompt."
     assert first_response["result"] == {"stopReason": "end_turn"}
 
