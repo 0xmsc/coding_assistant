@@ -7,7 +7,8 @@ import hashlib
 import re
 import shutil
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from time import monotonic
 from typing import Protocol
@@ -28,7 +29,7 @@ from coding_assistant.core.session_updates import (
 )
 from coding_assistant.llm.openai import list_models as list_provider_models
 from coding_assistant.llm.types import AssistantMessage, BaseMessage, UserMessage
-from coding_assistant.manager.store import LoadedSession, PromptRunRecord, SessionRecord, SessionStore, StoredMessage
+from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore, StoredMessage
 from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp, session_id_from_params
 from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
@@ -98,6 +99,18 @@ class WorkerRunFinished:
     stop_reason: str
     title: str | None = None
     metadata: JsonObject | None = None
+
+
+@dataclass(frozen=True)
+class PromptRunRecord:
+    run_id: str
+    session_id: str
+    status: str
+    started_at: str
+    updated_at: str
+    ended_at: str | None = None
+    stop_reason: str | None = None
+    error: str | None = None
 
 
 class WorkerRunner(Protocol):
@@ -354,6 +367,10 @@ def _new_message_update_id() -> str:
     return f"msg_{uuid4().hex}"
 
 
+def _new_run_id() -> str:
+    return f"run_{uuid4().hex}"
+
+
 def _stored_message_update_id(message_id: int) -> str:
     return f"msg_{message_id}"
 
@@ -447,6 +464,10 @@ def _session_updated(record: SessionRecord) -> SessionUpdatedUpdate:
     return SessionUpdatedUpdate(session=_record_metadata(record))
 
 
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
 def _run_metadata(run: PromptRunRecord) -> JsonObject:
     payload: JsonObject = {
         "runId": run.run_id,
@@ -494,7 +515,7 @@ class ManagerService:
         self._worker_workspace = worker_workspace
         self._user_instructions = tuple(user_instructions)
         self._model_cache: tuple[float, list[str]] | None = None
-        self._active_prompts: set[str] = set()
+        self._active_runs: dict[str, PromptRunRecord] = {}
         self._active_lock = asyncio.Lock()
 
     async def list_models(self) -> JsonObject:
@@ -553,7 +574,7 @@ class ManagerService:
         scope_id = _scope_id_from_params(params)
         session_id = session_id_from_params(params)
         async with self._active_lock:
-            if session_id in self._active_prompts:
+            if session_id in self._active_runs:
                 raise SessionBusyError("Cannot delete session while it has an active prompt. Cancel it first.")
         self._store.delete_session(scope_id=scope_id, session_id=session_id)
 
@@ -569,7 +590,7 @@ class ManagerService:
         self._store.load_session(scope_id=scope_id, session_id=session_id)
 
         async with self._active_lock:
-            if session_id in self._active_prompts:
+            if session_id in self._active_runs:
                 raise SessionBusyError("Cannot change model while session has an active prompt.")
 
         if model not in await self._available_models():
@@ -592,8 +613,9 @@ class ManagerService:
         await on_update(HistoryResetUpdate())
         for update in _history_updates(session):
             await on_update(update)
-        if session.active_run is not None:
-            await on_update(_run_updated(session.active_run))
+        active_run = await self._active_run(session_id)
+        if active_run is not None:
+            await on_update(_run_updated(active_run))
         await on_update(HistoryCompleteUpdate(version=session.record.version))
         return _session_metadata(session)
 
@@ -607,7 +629,7 @@ class ManagerService:
         session_id = session_id_from_params(params)
 
         async with self._active_lock:
-            if session_id in self._active_prompts:
+            if session_id in self._active_runs:
                 raise SessionBusyError("Cannot upload a file while session has an active prompt.")
             session = self._store.load_session(scope_id=scope_id, session_id=session_id)
             attachment = _write_attachment(attachments=session.attachments, params=params)
@@ -677,7 +699,6 @@ class ManagerService:
 
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         model = _model_from_record(session.record)
-        run: PromptRunRecord | None = None
         message_id_map: dict[str, StoredMessage] = {}
         assistant_text_buffers: dict[str, str] = {}
 
@@ -713,9 +734,8 @@ class ManagerService:
                 return
             await on_update(update)
 
-        await self._mark_prompt_active(session_id)
+        run = await self._start_prompt_run(session_id)
         try:
-            run = self._store.create_prompt_run(scope_id=scope_id, session_id=session_id)
             await on_update(_run_updated(run))
             if content_text(prompt_content) is not None:
                 stored_prompt = self._store.append_messages(
@@ -744,14 +764,16 @@ class ManagerService:
                 assistant_text_buffers=assistant_text_buffers,
             )
             status = "cancelled" if worker_result.stop_reason == "cancelled" else "completed"
-            updated_record, finished_run = self._store.finish_prompt_run(
+            updated_record = self._store.apply_prompt_result(
                 scope_id=scope_id,
                 session_id=session_id,
-                run_id=run.run_id,
-                status=status,
-                stop_reason=worker_result.stop_reason,
                 title=worker_result.title,
                 metadata=worker_result.metadata,
+            )
+            finished_run = await self._finish_prompt_run(
+                run,
+                status=status,
+                stop_reason=worker_result.stop_reason,
             )
             await on_update(_run_updated(finished_run))
             await on_update(_session_updated(updated_record))
@@ -763,18 +785,13 @@ class ManagerService:
                 message_id_map=message_id_map,
                 assistant_text_buffers=assistant_text_buffers,
             )
-            if run is not None:
-                _updated_record, failed_run = self._store.finish_prompt_run(
-                    scope_id=scope_id,
-                    session_id=session_id,
-                    run_id=run.run_id,
-                    status="failed",
-                    error=str(exc),
-                )
-                await on_update(_run_updated(failed_run))
+            failed_run = await self._finish_prompt_run(
+                run,
+                status="failed",
+                error=str(exc),
+            )
+            await on_update(_run_updated(failed_run))
             raise
-        finally:
-            await self._mark_prompt_idle(session_id)
 
     async def cancel(self, *, params: JsonObject) -> None:
         scope_id = _scope_id_from_params(params)
@@ -782,15 +799,46 @@ class ManagerService:
         self._store.load_session(scope_id=scope_id, session_id=session_id)
         await self._worker_runner.cancel(session_id=session_id)
 
-    async def _mark_prompt_active(self, session_id: str) -> None:
+    async def _active_run(self, session_id: str) -> PromptRunRecord | None:
         async with self._active_lock:
-            if session_id in self._active_prompts:
-                raise SessionBusyError("Session already has an active prompt.")
-            self._active_prompts.add(session_id)
+            return self._active_runs.get(session_id)
 
-    async def _mark_prompt_idle(self, session_id: str) -> None:
+    async def _start_prompt_run(self, session_id: str) -> PromptRunRecord:
+        now = _now_iso()
+        run = PromptRunRecord(
+            run_id=_new_run_id(),
+            session_id=session_id,
+            status="running",
+            started_at=now,
+            updated_at=now,
+        )
         async with self._active_lock:
-            self._active_prompts.discard(session_id)
+            if session_id in self._active_runs:
+                raise SessionBusyError("Session already has an active prompt.")
+            self._active_runs[session_id] = run
+        return run
+
+    async def _finish_prompt_run(
+        self,
+        run: PromptRunRecord,
+        *,
+        status: str,
+        stop_reason: str | None = None,
+        error: str | None = None,
+    ) -> PromptRunRecord:
+        now = _now_iso()
+        finished_run = replace(
+            run,
+            status=status,
+            updated_at=now,
+            ended_at=now,
+            stop_reason=stop_reason,
+            error=error,
+        )
+        async with self._active_lock:
+            if self._active_runs.get(run.session_id) == run:
+                self._active_runs.pop(run.session_id, None)
+        return finished_run
 
     def _flush_assistant_text_buffers(
         self,
