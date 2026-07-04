@@ -43,7 +43,8 @@ browser
 The application backend owns browser authentication. The manager owns canonical
 session state and worker lifecycle. Each active prompt runs in a temporary
 worker container with the session's managed workspace mounted at `/workspace`
-and session attachments mounted read-only at `/attachments`.
+and session attachments mounted read-only at `/attachments`. Worker processes
+are one-shot and exit after sending `_session/run_finished`.
 
 The CLI path remains direct:
 
@@ -280,13 +281,13 @@ turn.
 1. The manager starts a worker from history version `N`.
 2. The worker creates an in-memory `AgentSession`.
 3. The worker streams live `session/update` notifications.
-4. The worker sends `_session/commit` with `baseVersion: N`.
+4. The worker sends `_session/run_finished` with `baseVersion: N`.
 5. The manager atomically verifies `sessions.version == N`.
 6. The manager inserts committed messages and updates the session to version
    `N + 1`.
 
-Stale commits are rejected. If a worker crashes before commit, SQLite history
-is not advanced.
+Stale run completions are rejected. If a worker crashes before completion,
+SQLite history is not advanced.
 
 ## Connection Lifecycle
 
@@ -738,7 +739,7 @@ Response on cancellation:
 Only one active prompt may run per session. Different sessions may run
 concurrently. For each active prompt, the manager starts a temporary worker
 container. The worker receives the session history, runs tools inside
-`/workspace`, and is removed after the prompt finishes.
+`/workspace`, sends `_session/run_finished`, and exits normally.
 
 Prompt blocks follow ACP-compatible content shapes where practical:
 
@@ -1111,7 +1112,7 @@ Request params:
 | `messages` | array | yes | Model-visible committed history from SQLite. |
 | `workspace` | string | yes | Worker workspace path, normally `/workspace`. |
 
-### _session/commit
+### _session/run_finished
 
 Sent by the worker when a prompt turn finishes and should become durable.
 

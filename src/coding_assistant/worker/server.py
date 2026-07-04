@@ -28,6 +28,10 @@ from coding_assistant.remote.protocol import messages_from_jsonrpc
 @dataclass(frozen=True)
 class WorkerServer:
     endpoint: str
+    _finished: asyncio.Event
+
+    async def wait_finished(self) -> None:
+        await self._finished.wait()
 
 
 @dataclass(frozen=True)
@@ -113,12 +117,18 @@ async def start_session_worker_server(
     host: str = "127.0.0.1",
     port: int = 0,
 ) -> AsyncIterator[WorkerServer]:
+    finished = asyncio.Event()
+
+    async def mark_finished() -> None:
+        finished.set()
+
     async def handle_connection(websocket: ServerConnection) -> None:
         controller = RemoteAgentController(
             agent_info=RemoteAgentInfo(name="coding-assistant-worker", title="Coding Assistant Worker"),
             busy_message="Session already has an active prompt.",
             unopened_message="_session/start must be called first.",
             finish_metadata_provider=runtime.finish_metadata_provider,
+            on_run_finished=mark_finished,
         )
         sender_task: asyncio.Task[None] | None = None
 
@@ -160,7 +170,19 @@ async def start_session_worker_server(
                 await session.close()
 
     async with serve(handle_connection, host, port, max_size=WEBSOCKET_MAX_SIZE) as server:
+
+        async def close_after_finished() -> None:
+            await finished.wait()
+            server.close()
+            await server.wait_closed()
+
+        closer_task = asyncio.create_task(close_after_finished())
         socket = server.sockets[0]
         bound_port = socket.getsockname()[1]
         endpoint = f"ws://{host}:{bound_port}"
-        yield WorkerServer(endpoint=endpoint)
+        try:
+            yield WorkerServer(endpoint=endpoint, _finished=finished)
+        finally:
+            closer_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await closer_task

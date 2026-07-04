@@ -5,6 +5,7 @@ import logging
 import os
 import re
 from collections.abc import Awaitable, Callable, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from time import monotonic
@@ -43,6 +44,7 @@ class DockerWorkerConfig:
     attachments_mount: str = "/attachments"
     docker_command: str = "docker"
     startup_timeout: float = 15.0
+    worker_exit_timeout: float = 2.0
     environment: dict[str, str] = field(default_factory=dict)
     instructions: tuple[str, ...] = ()
     skills_directories: tuple[str, ...] = ()
@@ -85,6 +87,7 @@ class DockerWorkerRunner:
             raise
         finally:
             await self._unregister_active(session_id=prompt.session_id, runner=runner)
+            await self._wait_for_container_exit(container_name)
             await self._remove_container(container_name, allow_failure=True)
 
     async def cancel(self, *, session_id: str) -> None:
@@ -139,6 +142,19 @@ class DockerWorkerRunner:
             return
         detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
         raise DockerWorkerError(f"Failed to remove worker container {container_name}: {detail}")
+
+    async def _wait_for_container_exit(self, container_name: str) -> None:
+        try:
+            await asyncio.wait_for(
+                _run_command([self._config.docker_command, "wait", container_name]),
+                timeout=self._config.worker_exit_timeout,
+            )
+        except TimeoutError:
+            logger.warning(
+                "Worker container %s did not exit within %.1fs; removing it.",
+                container_name,
+                self._config.worker_exit_timeout,
+            )
 
     async def _log_container_output(self, container_name: str) -> None:
         result = await _run_command([self._config.docker_command, "logs", "--tail", "200", container_name])
@@ -281,7 +297,13 @@ async def _run_command(args: Sequence[str]) -> DockerCommandResult:
         )
     except FileNotFoundError as exc:
         raise DockerWorkerError(f"Docker command not found: {args[0]}") from exc
-    stdout_bytes, stderr_bytes = await process.communicate()
+    try:
+        stdout_bytes, stderr_bytes = await process.communicate()
+    except asyncio.CancelledError:
+        with suppress(ProcessLookupError):
+            process.kill()
+        await process.wait()
+        raise
     return DockerCommandResult(
         stdout=stdout_bytes.decode(errors="replace"),
         stderr=stderr_bytes.decode(errors="replace"),
