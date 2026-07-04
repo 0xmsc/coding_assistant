@@ -20,6 +20,7 @@ def test_alembic_upgrade_creates_manager_schema(tmp_path: Path) -> None:
             "alembic_version",
             "session_attachments",
             "session_messages",
+            "session_runs",
             "sessions",
         }
         assert {column["name"] for column in inspector.get_columns("sessions")} == {
@@ -31,4 +32,14 @@ def test_alembic_upgrade_creates_manager_schema(tmp_path: Path) -> None:
             "updated_at",
             "metadata_json",
             "worker_env_json",
+        }
+        assert {column["name"] for column in inspector.get_columns("session_runs")} == {
+            "run_id",
+            "session_id",
+            "status",
+            "started_at",
+            "updated_at",
+            "ended_at",
+            "stop_reason",
+            "error",
         }

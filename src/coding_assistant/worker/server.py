@@ -35,7 +35,7 @@ class WorkerRuntimeConfig:
     model: str
     tools: list[Tool]
     completion_streamer: CompletionStreamer | None = None
-    commit_metadata_provider: Callable[[], JsonObject | None] | None = None
+    finish_metadata_provider: Callable[[], JsonObject | None] | None = None
 
 
 def _base_version_from_params(params: JsonObject) -> int:
@@ -118,7 +118,7 @@ async def start_session_worker_server(
             agent_info=RemoteAgentInfo(name="coding-assistant-worker", title="Coding Assistant Worker"),
             busy_message="Session already has an active prompt.",
             unopened_message="_session/start must be called first.",
-            commit_metadata_provider=runtime.commit_metadata_provider,
+            finish_metadata_provider=runtime.finish_metadata_provider,
         )
         sender_task: asyncio.Task[None] | None = None
 

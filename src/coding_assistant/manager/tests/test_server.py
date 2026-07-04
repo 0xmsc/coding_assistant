@@ -23,8 +23,8 @@ from coding_assistant.manager.service import (
     MAX_ATTACHMENT_BYTES,
     ManagerError,
     ManagerService,
-    WorkerCommit,
     WorkerPrompt,
+    WorkerRunFinished,
     WorkerRunner,
 )
 from coding_assistant.manager.tests.fakes import FakeWorkerRunner
@@ -966,7 +966,8 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
 
     assert set_model_response["result"]["_meta"]["model"] == "alternate-model"
     live_payloads = [_update(message) for message in live_updates]
-    assert _normalized_updates(live_payloads[:3]) == [
+    live_message_payloads = [update for update in live_payloads if update.get("sessionUpdate") != "run_updated"]
+    assert _normalized_updates(live_message_payloads[:3]) == [
         {
             "sessionUpdate": "message_added",
             "messageId": "message-0",
@@ -994,7 +995,7 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "history_complete", "version": 1},
+        {"sessionUpdate": "history_complete", "version": 2},
     ]
     assert load_response["result"]["_meta"]["model"] == "alternate-model"
     assert worker.prompts is not None
@@ -1040,7 +1041,8 @@ async def test_manager_stores_session_worker_env_privately_and_injects_session_s
             load_response = parse_jsonrpc_message(await websocket.recv())
 
     live_payloads = [_update(message) for message in live_updates]
-    assert _normalized_updates(live_payloads[:3]) == [
+    live_message_payloads = [update for update in live_payloads if update.get("sessionUpdate") != "run_updated"]
+    assert _normalized_updates(live_message_payloads[:3]) == [
         {
             "sessionUpdate": "message_added",
             "messageId": "message-0",
@@ -1068,7 +1070,7 @@ async def test_manager_stores_session_worker_env_privately_and_injects_session_s
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "history_complete", "version": 1},
+        {"sessionUpdate": "history_complete", "version": 2},
     ]
     assert "capabilities" not in load_response["result"]["_meta"]
     assert "skills" not in load_response["result"]["_meta"]
@@ -1162,7 +1164,8 @@ async def test_manager_uses_prompt_worker_env_for_one_run(tmp_path: Path) -> Non
             second_response, _second_live_updates = await _recv_response_with_updates(websocket)
 
     live_payloads = [_update(message) for message in live_updates]
-    assert _normalized_updates(live_payloads[:3]) == [
+    live_message_payloads = [update for update in live_payloads if update.get("sessionUpdate") != "run_updated"]
+    assert _normalized_updates(live_message_payloads[:3]) == [
         {
             "sessionUpdate": "message_added",
             "messageId": "message-0",
@@ -1301,7 +1304,12 @@ async def test_manager_rejects_model_change_during_active_prompt(tmp_path: Path)
                     _scope_params("scope-a", sessionId=session_id, prompt=[text_block("first")]),
                 ),
             )
-            first_updates = [parse_jsonrpc_message(await websocket.recv()) for _ in range(3)]
+            first_updates: list[dict[str, Any]] = []
+            saw_delta = False
+            while not saw_delta:
+                message = parse_jsonrpc_message(await websocket.recv())
+                first_updates.append(message)
+                saw_delta = _update(message).get("sessionUpdate") == "message_delta"
             await asyncio.wait_for(started.wait(), timeout=1)
 
             await websocket.send(
@@ -1315,8 +1323,10 @@ async def test_manager_rejects_model_change_during_active_prompt(tmp_path: Path)
             release.set()
             first_response = await _recv_response(websocket)
 
-    assert _message_payload(_update(first_updates[0])) == {"role": "user", "content": "first"}
-    assert _update(first_updates[2])["appendText"] == "fake response"
+    first_payloads = [_update(message) for message in first_updates]
+    first_message_payloads = [update for update in first_payloads if update.get("sessionUpdate") != "run_updated"]
+    assert _message_payload(first_message_payloads[0]) == {"role": "user", "content": "first"}
+    assert first_message_payloads[2]["appendText"] == "fake response"
     assert busy_response["error"]["code"] == -32000
     assert busy_response["error"]["message"] == "Cannot change model while session has an active prompt."
     assert first_response["result"] == {"stopReason": "end_turn"}
@@ -1330,7 +1340,7 @@ async def test_manager_logs_prompt_request_errors(tmp_path: Path, caplog: pytest
             *,
             prompt: WorkerPrompt,
             on_update: Callable[[SessionUpdate], Awaitable[None]],
-        ) -> WorkerCommit:
+        ) -> WorkerRunFinished:
             del prompt, on_update
             raise RuntimeError("provider returned JSON instead of event-stream")
 
@@ -1352,10 +1362,19 @@ async def test_manager_logs_prompt_request_errors(tmp_path: Path, caplog: pytest
                     _scope_params("scope-a", sessionId=session_id, prompt=[text_block("Do it")]),
                 ),
             )
-            user_update = parse_jsonrpc_message(await websocket.recv())
-            response = parse_jsonrpc_message(await websocket.recv())
+            response, updates = await _recv_response_with_updates(websocket)
 
-    assert _message_payload(_update(user_update)) == {"role": "user", "content": "Do it"}
+    assert any(
+        _update(update).get("sessionUpdate") == "message_added"
+        and _message_payload(_update(update)) == {"role": "user", "content": "Do it"}
+        for update in updates
+    )
+    assert any(
+        _update(update).get("sessionUpdate") == "run_updated"
+        and isinstance(_update(update).get("run"), dict)
+        and _update(update)["run"].get("status") == "failed"
+        for update in updates
+    )
     assert response["error"]["message"] == "provider returned JSON instead of event-stream"
     assert f"Manager prompt request failed for session {session_id}." in caplog.text
     assert "provider returned JSON instead of event-stream" in caplog.text
@@ -1392,7 +1411,7 @@ async def test_manager_logs_method_errors(tmp_path: Path, caplog: pytest.LogCapt
 
 
 @pytest.mark.asyncio
-async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path) -> None:
+async def test_manager_prompt_streams_update_and_persists_messages(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path, worker=FakeWorkerRunner(response_text="done")) as endpoint:
         async with connect(endpoint) as websocket:
             await _initialize(websocket)
@@ -1413,7 +1432,8 @@ async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path
             load_response = parse_jsonrpc_message(await websocket.recv())
 
     live_payloads = [_update(message) for message in live_updates]
-    assert _normalized_updates(live_payloads[:3]) == [
+    live_message_payloads = [update for update in live_payloads if update.get("sessionUpdate") != "run_updated"]
+    assert _normalized_updates(live_message_payloads[:3]) == [
         {
             "sessionUpdate": "message_added",
             "messageId": "message-0",
@@ -1441,20 +1461,87 @@ async def test_manager_prompt_streams_update_and_commits_messages(tmp_path: Path
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "history_complete", "version": 1},
+        {"sessionUpdate": "history_complete", "version": 2},
     ]
-    assert load_response["result"]["_meta"]["version"] == 1
+    assert load_response["result"]["_meta"]["version"] == 2
 
 
 @pytest.mark.asyncio
-async def test_manager_emits_committed_tool_messages_without_live_tool_progress(tmp_path: Path) -> None:
+async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path: Path) -> None:
+    release = asyncio.Event()
+    worker = FakeWorkerRunner(response_text="done", release=release)
+
+    async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
+        async with connect(endpoint) as first:
+            await _initialize(first)
+            session_id = await _new_session(first, scope_id="scope-a")
+            await _set_model(first, scope_id="scope-a", session_id=session_id, request_id=3)
+
+            await first.send(
+                jsonrpc_request(
+                    4,
+                    "session/prompt",
+                    _scope_params("scope-a", sessionId=session_id, prompt=[text_block("Do it")]),
+                ),
+            )
+            first_updates: list[dict[str, Any]] = []
+            saw_delta = False
+            while not saw_delta:
+                message = parse_jsonrpc_message(await first.recv())
+                first_updates.append(message)
+                update = _update(message)
+                saw_delta = update.get("sessionUpdate") == "message_delta"
+
+        assert any(_update(message).get("sessionUpdate") == "run_updated" for message in first_updates)
+
+        async with connect(endpoint) as second:
+            await _initialize(second)
+            await second.send(jsonrpc_request(5, "session/load", _scope_params("scope-a", sessionId=session_id)))
+            load_response, replay = await _recv_response_with_updates(second)
+            release.set()
+
+            completed_run: dict[str, Any] | None = None
+            while completed_run is None:
+                message = parse_jsonrpc_message(await second.recv())
+                update = _update(message)
+                if update.get("sessionUpdate") == "run_updated":
+                    run = update.get("run")
+                    if isinstance(run, dict) and run.get("status") == "completed":
+                        completed_run = run
+
+            await second.send(jsonrpc_request(6, "session/load", _scope_params("scope-a", sessionId=session_id)))
+            final_load_response, final_replay = await _recv_response_with_updates(second)
+
+    assert load_response["result"]["_meta"]["version"] == 2
+    replay_payloads = [_update(message) for message in replay]
+    assert any(
+        update.get("sessionUpdate") == "run_updated"
+        and isinstance(update.get("run"), dict)
+        and update["run"].get("status") == "running"
+        for update in replay_payloads
+    )
+    assert completed_run["stopReason"] == "end_turn"
+    assert final_load_response["result"]["_meta"]["version"] == 2
+    final_payloads = [_update(message) for message in final_replay]
+    assert {
+        tuple(item.get("message", {}).items())
+        for item in _normalized_updates(final_payloads)
+        if item.get("sessionUpdate") == "message_added"
+    } >= {
+        tuple({"role": "user", "content": "Do it"}.items()),
+        tuple({"role": "assistant", "content": "done"}.items()),
+    }
+
+
+@pytest.mark.asyncio
+async def test_manager_persists_live_tool_messages(tmp_path: Path) -> None:
     class ToolStreamingWorker:
         async def run_prompt(
             self,
             *,
             prompt: WorkerPrompt,
             on_update: Callable[[SessionUpdate], Awaitable[None]],
-        ) -> WorkerCommit:
+        ) -> WorkerRunFinished:
             del prompt
             message_id = "msg_worker"
             await on_update(MessageAddedUpdate(message_id=message_id, message=AssistantMessage(content="")))
@@ -1463,11 +1550,13 @@ async def test_manager_emits_committed_tool_messages_without_live_tool_progress(
                 id="call-1",
                 function=FunctionCall(name="load_image", arguments='{"path": "/attachments/att_1-meal.png"}'),
             )
-            return WorkerCommit(
-                messages=[
-                    UserMessage(content="Use tool"),
-                    AssistantMessage(tool_calls=[tool_call]),
-                    ToolMessage(
+            await on_update(
+                MessageAddedUpdate(message_id="tool_calls", message=AssistantMessage(tool_calls=[tool_call]))
+            )
+            await on_update(
+                MessageAddedUpdate(
+                    message_id="tool_result",
+                    message=ToolMessage(
                         tool_call_id="call-1",
                         name="load_image",
                         content=[
@@ -1475,10 +1564,9 @@ async def test_manager_emits_committed_tool_messages_without_live_tool_progress(
                             IMAGE_BLOCK,
                         ],
                     ),
-                    AssistantMessage(content="done"),
-                ],
-                stop_reason="end_turn",
+                )
             )
+            return WorkerRunFinished(stop_reason="end_turn")
 
         async def cancel(self, *, session_id: str) -> None:
             del session_id
@@ -1499,7 +1587,8 @@ async def test_manager_emits_committed_tool_messages_without_live_tool_progress(
             response, live_messages = await _recv_response_with_updates(websocket)
 
     live_payloads = [_update(message) for message in live_messages]
-    assert _normalized_updates(live_payloads[:5]) == [
+    live_message_payloads = [update for update in live_payloads if update.get("sessionUpdate") != "run_updated"]
+    assert _normalized_updates(live_message_payloads[:5]) == [
         {
             "sessionUpdate": "message_added",
             "messageId": "message-0",
@@ -1618,7 +1707,12 @@ async def test_manager_rejects_second_active_prompt_for_same_session(tmp_path: P
                     _scope_params("scope-a", sessionId=session_id, prompt=[text_block("first")]),
                 ),
             )
-            first_updates = [parse_jsonrpc_message(await websocket.recv()) for _ in range(3)]
+            first_updates: list[dict[str, Any]] = []
+            saw_delta = False
+            while not saw_delta:
+                message = parse_jsonrpc_message(await websocket.recv())
+                first_updates.append(message)
+                saw_delta = _update(message).get("sessionUpdate") == "message_delta"
             await asyncio.wait_for(started.wait(), timeout=1)
 
             await websocket.send(
@@ -1632,8 +1726,10 @@ async def test_manager_rejects_second_active_prompt_for_same_session(tmp_path: P
             release.set()
             first_response = await _recv_response(websocket)
 
-    assert _message_payload(_update(first_updates[0])) == {"role": "user", "content": "first"}
-    assert _update(first_updates[2])["appendText"] == "fake response"
+    first_payloads = [_update(message) for message in first_updates]
+    first_message_payloads = [update for update in first_payloads if update.get("sessionUpdate") != "run_updated"]
+    assert _message_payload(first_message_payloads[0]) == {"role": "user", "content": "first"}
+    assert first_message_payloads[2]["appendText"] == "fake response"
     assert busy_response["error"]["message"] == "Session already has an active prompt."
     assert first_response["result"] == {"stopReason": "end_turn"}
 

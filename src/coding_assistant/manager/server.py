@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 import hmac
 import logging
-from http import HTTPStatus
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
+from http import HTTPStatus
 
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
@@ -46,7 +46,39 @@ class ManagerServer:
 @dataclass
 class _ConnectionState:
     initialized: bool = False
-    prompt_tasks: set[asyncio.Task[None]] = field(default_factory=set)
+    subscribed_session_ids: set[str] = field(default_factory=set)
+
+
+class _SessionUpdateBroker:
+    def __init__(self) -> None:
+        self._subscribers: dict[str, set[ServerConnection]] = {}
+        self._lock = asyncio.Lock()
+
+    async def subscribe(self, *, websocket: ServerConnection, session_id: str, state: _ConnectionState) -> None:
+        async with self._lock:
+            self._subscribers.setdefault(session_id, set()).add(websocket)
+            state.subscribed_session_ids.add(session_id)
+
+    async def unsubscribe_all(self, *, websocket: ServerConnection, state: _ConnectionState) -> None:
+        async with self._lock:
+            for session_id in state.subscribed_session_ids:
+                subscribers = self._subscribers.get(session_id)
+                if subscribers is None:
+                    continue
+                subscribers.discard(websocket)
+                if not subscribers:
+                    self._subscribers.pop(session_id, None)
+            state.subscribed_session_ids.clear()
+
+    async def publish(self, *, session_id: str, update: SessionUpdate) -> None:
+        async with self._lock:
+            subscribers = list(self._subscribers.get(session_id, ()))
+        for websocket in subscribers:
+            try:
+                await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+            except ConnectionClosed:
+                async with self._lock:
+                    self._subscribers.get(session_id, set()).discard(websocket)
 
 
 def _error_code_for_exception(exc: Exception) -> int:
@@ -72,6 +104,7 @@ async def _send_session_update(
 async def _run_prompt_request(
     *,
     websocket: ServerConnection,
+    broker: _SessionUpdateBroker,
     service: ManagerService,
     response_id: int | str,
     params: JsonObject,
@@ -81,13 +114,15 @@ async def _run_prompt_request(
         session_id = session_id_from_params(params)
 
         async def send_update(update: SessionUpdate) -> None:
-            await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+            await broker.publish(session_id=session_id, update=update)
 
         result = await service.prompt(params=params, on_update=send_update)
-        await websocket.send(jsonrpc_result(response_id, {"stopReason": result.stop_reason}))
+        with suppress(ConnectionClosed):
+            await websocket.send(jsonrpc_result(response_id, {"stopReason": result.stop_reason}))
     except Exception as exc:
         logger.exception("Manager prompt request failed for session %s.", session_id)
-        await websocket.send(jsonrpc_error(response_id, _error_code_for_exception(exc), str(exc)))
+        with suppress(ConnectionClosed):
+            await websocket.send(jsonrpc_error(response_id, _error_code_for_exception(exc), str(exc)))
 
 
 async def _handle_initialize(
@@ -130,6 +165,8 @@ async def _handle_session_method(
     *,
     websocket: ServerConnection,
     service: ManagerService,
+    broker: _SessionUpdateBroker,
+    prompt_tasks: set[asyncio.Task[None]],
     method: str,
     response_id: int | str | None,
     params: JsonObject,
@@ -150,6 +187,7 @@ async def _handle_session_method(
 
     if method == "session/load":
         session_id = session_id_from_params(params)
+        await broker.subscribe(websocket=websocket, session_id=session_id, state=state)
 
         async def send_update(update: SessionUpdate) -> None:
             await _send_session_update(websocket=websocket, session_id=session_id, update=update)
@@ -160,9 +198,10 @@ async def _handle_session_method(
 
     if method == "session/upload_file":
         session_id = session_id_from_params(params)
+        await broker.subscribe(websocket=websocket, session_id=session_id, state=state)
 
         async def send_update(update: SessionUpdate) -> None:
-            await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+            await broker.publish(session_id=session_id, update=update)
 
         result = await service.upload_file(params=params, on_update=send_update)
         await websocket.send(jsonrpc_result_required(response_id, result))
@@ -174,9 +213,10 @@ async def _handle_session_method(
 
     if method == "session/rename":
         session_id = session_id_from_params(params)
+        await broker.subscribe(websocket=websocket, session_id=session_id, state=state)
 
         async def send_update(update: SessionUpdate) -> None:
-            await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+            await broker.publish(session_id=session_id, update=update)
 
         result = await service.rename_session(params=params, on_update=send_update)
         await websocket.send(jsonrpc_result_required(response_id, result))
@@ -184,9 +224,10 @@ async def _handle_session_method(
 
     if method == "session/set_model":
         session_id = session_id_from_params(params)
+        await broker.subscribe(websocket=websocket, session_id=session_id, state=state)
 
         async def send_update(update: SessionUpdate) -> None:
-            await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+            await broker.publish(session_id=session_id, update=update)
 
         result = await service.set_session_model(params=params, on_update=send_update)
         await websocket.send(jsonrpc_result_required(response_id, result))
@@ -196,16 +237,19 @@ async def _handle_session_method(
         if response_id is None:
             await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "session/prompt must be a request."))
             return
+        session_id = session_id_from_params(params)
+        await broker.subscribe(websocket=websocket, session_id=session_id, state=state)
         task = asyncio.create_task(
             _run_prompt_request(
                 websocket=websocket,
+                broker=broker,
                 service=service,
                 response_id=response_id,
                 params=params,
             ),
         )
-        state.prompt_tasks.add(task)
-        task.add_done_callback(state.prompt_tasks.discard)
+        prompt_tasks.add(task)
+        task.add_done_callback(prompt_tasks.discard)
         return
 
     if method == "session/cancel":
@@ -227,6 +271,8 @@ async def _handle_jsonrpc_message(
     *,
     websocket: ServerConnection,
     service: ManagerService,
+    broker: _SessionUpdateBroker,
+    prompt_tasks: set[asyncio.Task[None]],
     state: _ConnectionState,
     payload: JsonObject,
 ) -> None:
@@ -253,6 +299,8 @@ async def _handle_jsonrpc_message(
         await _handle_session_method(
             websocket=websocket,
             service=service,
+            broker=broker,
+            prompt_tasks=prompt_tasks,
             method=method,
             response_id=response_id,
             params=params,
@@ -277,6 +325,9 @@ async def start_manager_server(
     port: int = 0,
     auth_secret: str | None = None,
 ) -> AsyncIterator[ManagerServer]:
+    broker = _SessionUpdateBroker()
+    prompt_tasks: set[asyncio.Task[None]] = set()
+
     def process_request(connection: ServerConnection, request: Request) -> Response | None:
         if auth_secret is None or _is_authorized_request(request, auth_secret):
             return None
@@ -294,17 +345,15 @@ async def start_manager_server(
                 await _handle_jsonrpc_message(
                     websocket=websocket,
                     service=service,
+                    broker=broker,
+                    prompt_tasks=prompt_tasks,
                     state=state,
                     payload=payload,
                 )
         except ConnectionClosed:
             pass
         finally:
-            for task in list(state.prompt_tasks):
-                task.cancel()
-            for task in list(state.prompt_tasks):
-                with suppress(asyncio.CancelledError):
-                    await task
+            await broker.unsubscribe_all(websocket=websocket, state=state)
 
     async with serve(
         handle_connection, host, port, process_request=process_request, max_size=WEBSOCKET_MAX_SIZE
@@ -312,4 +361,11 @@ async def start_manager_server(
         socket = server.sockets[0]
         bound_port = socket.getsockname()[1]
         endpoint = f"ws://{host}:{bound_port}"
-        yield ManagerServer(endpoint=endpoint)
+        try:
+            yield ManagerServer(endpoint=endpoint)
+        finally:
+            for task in list(prompt_tasks):
+                task.cancel()
+            for task in list(prompt_tasks):
+                with suppress(asyncio.CancelledError):
+                    await task

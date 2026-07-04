@@ -19,14 +19,16 @@ from coding_assistant.core.session_updates import (
     HistoryCompleteUpdate,
     HistoryResetUpdate,
     MessageAddedUpdate,
+    MessageDeltaUpdate,
+    RunUpdatedUpdate,
     SessionUpdate,
     SessionAttachment,
     SessionUpdatedUpdate,
     content_text,
 )
 from coding_assistant.llm.openai import list_models as list_provider_models
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, ToolMessage, UserMessage
-from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, UserMessage
+from coding_assistant.manager.store import LoadedSession, PromptRunRecord, SessionRecord, SessionStore, StoredMessage
 from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp, session_id_from_params
 from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
@@ -92,8 +94,7 @@ class WorkerPrompt:
 
 
 @dataclass(frozen=True)
-class WorkerCommit:
-    messages: list[BaseMessage]
+class WorkerRunFinished:
     stop_reason: str
     title: str | None = None
     metadata: JsonObject | None = None
@@ -105,7 +106,7 @@ class WorkerRunner(Protocol):
         *,
         prompt: WorkerPrompt,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
-    ) -> WorkerCommit: ...
+    ) -> WorkerRunFinished: ...
 
     async def cancel(self, *, session_id: str) -> None: ...
 
@@ -380,28 +381,6 @@ def _history_updates(session: LoadedSession) -> list[SessionUpdate]:
     return updates
 
 
-def _post_commit_updates(
-    messages: list[BaseMessage],
-    *,
-    streamed_messages: Sequence[BaseMessage] = (),
-) -> list[MessageAddedUpdate]:
-    updates: list[MessageAddedUpdate] = []
-    remaining_streamed_messages = list(streamed_messages)
-    for message in messages:
-        try:
-            streamed_index = remaining_streamed_messages.index(message)
-        except ValueError:
-            streamed_index = None
-        if streamed_index is not None:
-            del remaining_streamed_messages[streamed_index]
-            continue
-        if isinstance(message, AssistantMessage) and message.tool_calls:
-            updates.append(MessageAddedUpdate(message_id=_new_message_update_id(), message=message))
-        elif isinstance(message, ToolMessage):
-            updates.append(MessageAddedUpdate(message_id=_new_message_update_id(), message=message))
-    return updates
-
-
 def _attachment_file_path(*, attachments: Path, attachment: SessionAttachment) -> Path:
     parsed = PurePosixPath(attachment.path)
     if not parsed.is_absolute() or parsed.parts[:2] != ("/", "attachments") or len(parsed.parts) != 3:
@@ -466,6 +445,35 @@ def _record_metadata(record: SessionRecord) -> JsonObject:
 
 def _session_updated(record: SessionRecord) -> SessionUpdatedUpdate:
     return SessionUpdatedUpdate(session=_record_metadata(record))
+
+
+def _run_metadata(run: PromptRunRecord) -> JsonObject:
+    payload: JsonObject = {
+        "runId": run.run_id,
+        "sessionId": run.session_id,
+        "status": run.status,
+        "startedAt": run.started_at,
+        "updatedAt": run.updated_at,
+    }
+    if run.ended_at is not None:
+        payload["endedAt"] = run.ended_at
+    if run.stop_reason is not None:
+        payload["stopReason"] = run.stop_reason
+    if run.error is not None:
+        payload["error"] = run.error
+    return payload
+
+
+def _run_updated(run: PromptRunRecord) -> RunUpdatedUpdate:
+    return RunUpdatedUpdate(run=_run_metadata(run))
+
+
+def _single_stored_update(stored_message: StoredMessage) -> MessageAddedUpdate:
+    return MessageAddedUpdate(
+        message_id=_stored_message_update_id(stored_message.message_id),
+        message=stored_message.message,
+        created_at=stored_message.created_at,
+    )
 
 
 class ManagerService:
@@ -584,6 +592,8 @@ class ManagerService:
         await on_update(HistoryResetUpdate())
         for update in _history_updates(session):
             await on_update(update)
+        if session.active_run is not None:
+            await on_update(_run_updated(session.active_run))
         await on_update(HistoryCompleteUpdate(version=session.record.version))
         return _session_metadata(session)
 
@@ -667,23 +677,54 @@ class ManagerService:
 
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         model = _model_from_record(session.record)
-        streamed_messages: list[BaseMessage] = []
+        run: PromptRunRecord | None = None
+        message_id_map: dict[str, StoredMessage] = {}
+        assistant_text_buffers: dict[str, str] = {}
 
         async def forward_worker_update(update: SessionUpdate) -> None:
             if isinstance(update, MessageAddedUpdate):
-                streamed_messages.append(update.message)
+                stored = self._store.append_messages(
+                    scope_id=scope_id,
+                    session_id=session_id,
+                    messages=[update.message],
+                )[0]
+                message_id_map[update.message_id] = stored
+                if (
+                    isinstance(update.message, AssistantMessage)
+                    and not update.message.tool_calls
+                    and content_text(update.message.content) == ""
+                ):
+                    assistant_text_buffers[update.message_id] = ""
+                await on_update(_single_stored_update(stored))
+                return
+            if isinstance(update, MessageDeltaUpdate):
+                stored_message = message_id_map.get(update.message_id)
+                if stored_message is None:
+                    await on_update(update)
+                    return
+                if update.message_id in assistant_text_buffers:
+                    assistant_text_buffers[update.message_id] += update.append_text
+                await on_update(
+                    MessageDeltaUpdate(
+                        message_id=_stored_message_update_id(stored_message.message_id),
+                        append_text=update.append_text,
+                    )
+                )
+                return
             await on_update(update)
 
         await self._mark_prompt_active(session_id)
         try:
+            run = self._store.create_prompt_run(scope_id=scope_id, session_id=session_id)
+            await on_update(_run_updated(run))
             if content_text(prompt_content) is not None:
-                await on_update(
-                    MessageAddedUpdate(
-                        message_id=_new_message_update_id(),
-                        message=UserMessage(content=prompt_content),
-                    )
+                stored_prompt = self._store.append_messages(
+                    scope_id=scope_id,
+                    session_id=session_id,
+                    messages=[UserMessage(content=prompt_content)],
                 )
-            worker_commit = await self._worker_runner.run_prompt(
+                await on_update(_single_stored_update(stored_prompt[0]))
+            worker_result = await self._worker_runner.run_prompt(
                 prompt=WorkerPrompt(
                     session_id=session_id,
                     base_version=session.record.version,
@@ -696,19 +737,42 @@ class ManagerService:
                 ),
                 on_update=forward_worker_update,
             )
-            self._store.commit_messages(
+            self._flush_assistant_text_buffers(
                 scope_id=scope_id,
                 session_id=session_id,
-                base_version=session.record.version,
-                messages=worker_commit.messages,
-                title=worker_commit.title,
-                metadata=worker_commit.metadata,
+                message_id_map=message_id_map,
+                assistant_text_buffers=assistant_text_buffers,
             )
-            for update in _post_commit_updates(worker_commit.messages, streamed_messages=streamed_messages):
-                await on_update(update)
-            updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
-            await on_update(_session_updated(updated.record))
-            return PromptResult(stop_reason=worker_commit.stop_reason)
+            status = "cancelled" if worker_result.stop_reason == "cancelled" else "completed"
+            updated_record, finished_run = self._store.finish_prompt_run(
+                scope_id=scope_id,
+                session_id=session_id,
+                run_id=run.run_id,
+                status=status,
+                stop_reason=worker_result.stop_reason,
+                title=worker_result.title,
+                metadata=worker_result.metadata,
+            )
+            await on_update(_run_updated(finished_run))
+            await on_update(_session_updated(updated_record))
+            return PromptResult(stop_reason=worker_result.stop_reason)
+        except Exception as exc:
+            self._flush_assistant_text_buffers(
+                scope_id=scope_id,
+                session_id=session_id,
+                message_id_map=message_id_map,
+                assistant_text_buffers=assistant_text_buffers,
+            )
+            if run is not None:
+                _updated_record, failed_run = self._store.finish_prompt_run(
+                    scope_id=scope_id,
+                    session_id=session_id,
+                    run_id=run.run_id,
+                    status="failed",
+                    error=str(exc),
+                )
+                await on_update(_run_updated(failed_run))
+            raise
         finally:
             await self._mark_prompt_idle(session_id)
 
@@ -727,6 +791,26 @@ class ManagerService:
     async def _mark_prompt_idle(self, session_id: str) -> None:
         async with self._active_lock:
             self._active_prompts.discard(session_id)
+
+    def _flush_assistant_text_buffers(
+        self,
+        *,
+        scope_id: str,
+        session_id: str,
+        message_id_map: dict[str, StoredMessage],
+        assistant_text_buffers: dict[str, str],
+    ) -> None:
+        for update_message_id, content in list(assistant_text_buffers.items()):
+            stored = message_id_map.get(update_message_id)
+            if stored is None:
+                continue
+            self._store.replace_message(
+                scope_id=scope_id,
+                session_id=session_id,
+                message_id=stored.message_id,
+                message=AssistantMessage(content=content),
+            )
+        assistant_text_buffers.clear()
 
     def _initial_messages(self, *, skills_root: Path) -> list[BaseMessage]:
         instructions = build_worker_instructions(

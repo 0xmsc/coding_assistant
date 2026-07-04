@@ -6,6 +6,7 @@ from coding_assistant.core.session_updates import (
     HistoryResetUpdate,
     MessageAddedUpdate,
     MessageDeltaUpdate,
+    RunUpdatedUpdate,
     SessionAttachment,
     SessionUpdate,
     SessionUpdatedUpdate,
@@ -74,6 +75,12 @@ def session_update_to_jsonrpc_update(update: SessionUpdate) -> JsonObject | None
             "session": update.session,
         }
 
+    if isinstance(update, RunUpdatedUpdate):
+        return {
+            "sessionUpdate": "run_updated",
+            "run": update.run,
+        }
+
     return None
 
 
@@ -139,5 +146,11 @@ def session_update_from_jsonrpc_update(update: JsonObject) -> SessionUpdate | No
         if not isinstance(session, dict):
             return None
         return SessionUpdatedUpdate(session=dict(session))
+
+    if update_type == "run_updated":
+        run = update.get("run")
+        if not isinstance(run, dict):
+            return None
+        return RunUpdatedUpdate(run=dict(run))
 
     return None

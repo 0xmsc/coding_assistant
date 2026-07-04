@@ -15,7 +15,7 @@ from sqlmodel import col, select
 from coding_assistant.core.session_updates import SessionAttachment
 from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
 from coding_assistant.manager.db import create_manager_engine
-from coding_assistant.manager.models import ManagerSession, SessionAttachmentRow, SessionMessageRow
+from coding_assistant.manager.models import ManagerSession, SessionAttachmentRow, SessionMessageRow, SessionRunRow
 from coding_assistant.manager.workspace import WorkspacePaths
 
 
@@ -25,6 +25,9 @@ class SessionNotFoundError(RuntimeError):
 
 class StaleSessionCommitError(RuntimeError):
     pass
+
+
+TERMINAL_RUN_STATUSES = {"completed", "failed", "cancelled", "timed_out"}
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,18 @@ class StoredAttachment:
 
 
 @dataclass(frozen=True)
+class PromptRunRecord:
+    run_id: str
+    session_id: str
+    status: str
+    started_at: str
+    updated_at: str
+    ended_at: str | None = None
+    stop_reason: str | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class LoadedSession:
     record: SessionRecord
     messages: list[BaseMessage]
@@ -62,6 +77,7 @@ class LoadedSession:
     workspace: Path
     attachments: Path
     worker_env: dict[str, str] = field(default_factory=dict)
+    active_run: PromptRunRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -80,6 +96,10 @@ def _now_iso() -> str:
 
 def _new_session_id() -> str:
     return f"sess_{uuid4().hex}"
+
+
+def _new_run_id() -> str:
+    return f"run_{uuid4().hex}"
 
 
 def _message_to_json(message: BaseMessage) -> str:
@@ -158,6 +178,19 @@ def _attachment_record_from_row(row: SessionAttachmentRow) -> StoredAttachment:
     )
 
 
+def _run_record_from_row(row: SessionRunRow) -> PromptRunRecord:
+    return PromptRunRecord(
+        run_id=row.run_id,
+        session_id=row.session_id,
+        status=row.status,
+        started_at=row.started_at,
+        updated_at=row.updated_at,
+        ended_at=row.ended_at,
+        stop_reason=row.stop_reason,
+        error=row.error,
+    )
+
+
 class SessionStore:
     def __init__(self, *, database_path: Path, workspaces: WorkspacePaths) -> None:
         self.database_path = database_path
@@ -233,6 +266,7 @@ class SessionStore:
             workspace=workspace,
             attachments=reserved_workspace.attachments,
             worker_env=dict(worker_env or {}),
+            active_run=None,
         )
 
     def list_sessions(self, *, scope_id: str) -> list[SessionRecord]:
@@ -262,6 +296,14 @@ class SessionStore:
                     col(SessionAttachmentRow.attachment_id).asc(),
                 ),
             ).all()
+            active_run_row = session.exec(
+                select(SessionRunRow)
+                .where(
+                    col(SessionRunRow.session_id) == session_id,
+                    col(SessionRunRow.status).not_in(TERMINAL_RUN_STATUSES),
+                )
+                .order_by(col(SessionRunRow.started_at).desc())
+            ).first()
             worker_env = _worker_env_from_json(session_row.worker_env_json)
         paths = self.workspaces.require_for_session(session_id)
         message_records = [_message_record_from_row(row) for row in message_rows]
@@ -275,6 +317,7 @@ class SessionStore:
             workspace=paths.workspace,
             attachments=paths.attachments,
             worker_env=worker_env,
+            active_run=_run_record_from_row(active_run_row) if active_run_row is not None else None,
         )
 
     def rename_session(self, *, scope_id: str, session_id: str, title: str | None) -> SessionRecord:
@@ -361,6 +404,121 @@ class SessionStore:
                 session_row.updated_at = now
                 session_row.metadata_json = _metadata_to_json(next_metadata)
         return new_version
+
+    def append_messages(
+        self,
+        *,
+        scope_id: str,
+        session_id: str,
+        messages: list[BaseMessage],
+        attachments: list[SessionAttachment] | None = None,
+    ) -> list[StoredMessage]:
+        now = _now_iso()
+        with SQLModelSession(self._engine, expire_on_commit=False) as session:
+            with session.begin():
+                session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
+                record = _record_from_row(session_row)
+                new_version = record.version + 1
+                inserted_messages = self._insert_messages(
+                    session,
+                    session_id=session_id,
+                    version=new_version,
+                    messages=messages,
+                    created_at=now,
+                )
+                if attachments and not inserted_messages:
+                    raise ValueError("Attachments must be linked to an inserted message.")
+                self._insert_attachments(
+                    session,
+                    session_id=session_id,
+                    message_id=inserted_messages[-1].message_id if attachments else None,
+                    attachments=attachments or [],
+                    created_at=now,
+                )
+                session_row.version = new_version
+                session_row.updated_at = now
+                return inserted_messages
+
+    def replace_message(
+        self,
+        *,
+        scope_id: str,
+        session_id: str,
+        message_id: int,
+        message: BaseMessage,
+    ) -> StoredMessage:
+        now = _now_iso()
+        with SQLModelSession(self._engine, expire_on_commit=False) as session:
+            with session.begin():
+                session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
+                row = session.get(SessionMessageRow, message_id)
+                if row is None or row.session_id != session_id:
+                    raise SessionNotFoundError(f"Message {message_id} was not found.")
+                row.role = message.role
+                row.payload_json = _message_to_json(message)
+                session_row.updated_at = now
+                session.flush()
+                return StoredMessage(message_id=message_id, message=message, created_at=row.created_at)
+
+    def create_prompt_run(self, *, scope_id: str, session_id: str) -> PromptRunRecord:
+        now = _now_iso()
+        run_id = _new_run_id()
+        with SQLModelSession(self._engine, expire_on_commit=False) as session:
+            with session.begin():
+                session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
+                active_run = session.exec(
+                    select(SessionRunRow).where(
+                        col(SessionRunRow.session_id) == session_id,
+                        col(SessionRunRow.status).not_in(TERMINAL_RUN_STATUSES),
+                    )
+                ).first()
+                if active_run is not None:
+                    raise RuntimeError(f"Session {session_id} already has an active run.")
+                row = SessionRunRow(
+                    run_id=run_id,
+                    session_id=session_id,
+                    status="running",
+                    started_at=now,
+                    updated_at=now,
+                )
+                session.add(row)
+                session_row.updated_at = now
+                session.flush()
+                return _run_record_from_row(row)
+
+    def finish_prompt_run(
+        self,
+        *,
+        scope_id: str,
+        session_id: str,
+        run_id: str,
+        status: str,
+        stop_reason: str | None = None,
+        error: str | None = None,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> tuple[SessionRecord, PromptRunRecord]:
+        if status not in TERMINAL_RUN_STATUSES:
+            raise ValueError(f"Invalid terminal run status: {status}.")
+        now = _now_iso()
+        with SQLModelSession(self._engine, expire_on_commit=False) as session:
+            with session.begin():
+                session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
+                run_row = session.get(SessionRunRow, run_id)
+                if run_row is None or run_row.session_id != session_id:
+                    raise SessionNotFoundError(f"Run {run_id} was not found.")
+                run_row.status = status
+                run_row.updated_at = now
+                run_row.ended_at = now
+                run_row.stop_reason = stop_reason
+                run_row.error = error
+
+                record = _record_from_row(session_row)
+                session_row.title = title if title is not None else record.title
+                session_row.updated_at = now
+                session_row.metadata_json = _metadata_to_json(metadata if metadata is not None else record.metadata)
+                session.flush()
+                return _record_from_row(session_row), _run_record_from_row(run_row)
 
     def _get_session_row(
         self,
