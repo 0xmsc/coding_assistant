@@ -50,10 +50,10 @@ class _ConnectionState:
 
 
 def _error_code_for_exception(exc: Exception) -> int:
-    if isinstance(exc, (ValueError, ManagerError, SessionNotFoundError, WorkspaceMissingError)):
-        return ERROR_INVALID_PARAMS
     if isinstance(exc, (SessionBusyError, StaleSessionCommitError)):
         return ERROR_SERVER
+    if isinstance(exc, (ValueError, ManagerError, SessionNotFoundError, WorkspaceMissingError)):
+        return ERROR_INVALID_PARAMS
     return ERROR_SERVER
 
 
