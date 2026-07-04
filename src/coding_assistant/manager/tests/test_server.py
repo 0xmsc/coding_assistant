@@ -902,6 +902,38 @@ async def test_manager_renames_session(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_manager_deletes_session_and_workspace(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(jsonrpc_request(3, "session/delete", _scope_params("scope-a", sessionId=session_id)))
+            delete_response = parse_jsonrpc_message(await websocket.recv())
+            await websocket.send(jsonrpc_request(4, "session/list", _scope_params("scope-a")))
+            list_response = parse_jsonrpc_message(await websocket.recv())
+
+    assert delete_response.get("result") is None
+    assert list_response["result"]["sessions"] == []
+    # Workspace and attachments directories are removed.
+    assert not (tmp_path / "sessions" / session_id).exists()
+
+
+@pytest.mark.asyncio
+async def test_manager_delete_session_rejects_cross_scope(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+
+            await websocket.send(jsonrpc_request(3, "session/delete", _scope_params("scope-b", sessionId=session_id)))
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["error"]["code"] == -32602
+    assert "not found" in response["error"]["message"].lower()
+
+
+@pytest.mark.asyncio
 async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path) -> None:
     worker = FakeWorkerRunner(response_text="done")
     async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:

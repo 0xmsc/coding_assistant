@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -260,6 +261,48 @@ def test_update_session_metadata_rejects_cross_scope_access(tmp_path: Path) -> N
             session_id=created.record.session_id,
             metadata={"model": "bad-model"},
         )
+
+
+def test_delete_session_removes_row_messages_and_workspace(tmp_path: Path) -> None:
+    store = create_session_store(tmp_path)
+    created = store.create_session(scope_id="scope-a", messages=[UserMessage(content="hello")])
+    session_id = created.record.session_id
+    assert created.workspace.is_dir()
+    assert created.attachments.is_dir()
+
+    store.delete_session(scope_id="scope-a", session_id=session_id)
+
+    with pytest.raises(SessionNotFoundError):
+        store.load_session(scope_id="scope-a", session_id=session_id)
+    assert not created.workspace.exists()
+    assert not created.attachments.exists()
+    assert not created.workspace.parent.exists()
+    assert store.list_sessions(scope_id="scope-a") == []
+
+
+def test_delete_session_is_noop_when_workspace_already_removed(tmp_path: Path) -> None:
+    store = create_session_store(tmp_path)
+    created = store.create_session(scope_id="scope-a", messages=[])
+    session_id = created.record.session_id
+
+    shutil.rmtree(created.workspace.parent, ignore_errors=True)
+    store.delete_session(scope_id="scope-a", session_id=session_id)
+
+    with pytest.raises(SessionNotFoundError):
+        store.load_session(scope_id="scope-a", session_id=session_id)
+
+
+def test_delete_session_rejects_cross_scope_access(tmp_path: Path) -> None:
+    store = create_session_store(tmp_path)
+    created = store.create_session(scope_id="scope-a", messages=[])
+
+    with pytest.raises(SessionNotFoundError):
+        store.delete_session(scope_id="scope-b", session_id=created.record.session_id)
+
+    # The session and its workspace are untouched after a rejected delete.
+    loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+    assert loaded.record.session_id == created.record.session_id
+    assert created.workspace.is_dir()
 
 
 def test_load_session_fails_when_workspace_is_missing(tmp_path: Path) -> None:
