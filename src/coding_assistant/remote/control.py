@@ -35,6 +35,7 @@ from coding_assistant.remote.protocol import messages_to_jsonrpc, session_update
 
 UnhandledMethod = Callable[[str, int | str | None, JsonObject], Awaitable[bool]]
 FinishMetadataProvider = Callable[[], JsonObject | None]
+RunFinishedCallback = Callable[[], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -106,6 +107,7 @@ class RemoteAgentController:
         busy_message: str = "Session is busy.",
         unopened_message: str = "Session must be opened first.",
         finish_metadata_provider: FinishMetadataProvider | None = None,
+        on_run_finished: RunFinishedCallback | None = None,
     ) -> None:
         self._agent_info = agent_info
         self._controlled_session = controlled_session
@@ -113,6 +115,7 @@ class RemoteAgentController:
         self._busy_message = busy_message
         self._unopened_message = unopened_message
         self._finish_metadata_provider = finish_metadata_provider
+        self._on_run_finished = on_run_finished
         self._state = _RemoteControlState()
 
     @property
@@ -240,6 +243,8 @@ class RemoteAgentController:
                     metadata=self._finish_metadata_provider() if self._finish_metadata_provider else None,
                 ),
             )
+            if self._on_run_finished is not None:
+                await self._on_run_finished()
             self._controlled_session = RemoteControlledSession(
                 session_id=controlled_session.session_id,
                 session=controlled_session.session,

@@ -192,7 +192,7 @@ async def test_worker_prompt_streams_update_and_emits_run_finished(tmp_path: Pat
     runtime = WorkerRuntimeConfig(
         model="test-model",
         tools=[],
-        completion_streamer=ScriptedStreamer([AssistantMessage(content="hello"), AssistantMessage(content="again")]),
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="hello")]),
         finish_metadata_provider=lambda: {"title": "Worker title"},
     )
 
@@ -213,18 +213,7 @@ async def test_worker_prompt_streams_update_and_emits_run_finished(tmp_path: Pat
                 else:
                     response = payload
             finished = parse_jsonrpc_message(await websocket.recv())
-            await websocket.send(
-                jsonrpc_request(4, "session/prompt", {"sessionId": session_id, "prompt": [text_block("Again")]}),
-            )
-            second_updates: list[dict[str, Any]] = []
-            second_response: dict[str, Any] | None = None
-            while second_response is None:
-                payload = parse_jsonrpc_message(await websocket.recv())
-                if payload.get("method") == "session/update":
-                    second_updates.append(payload)
-                else:
-                    second_response = payload
-            second_finished = parse_jsonrpc_message(await websocket.recv())
+            await server.wait_finished()
 
     assert any(
         update["params"]["update"]["sessionUpdate"] == "message_delta"
@@ -237,20 +226,6 @@ async def test_worker_prompt_streams_update_and_emits_run_finished(tmp_path: Pat
         "sessionId": session_id,
         "baseVersion": 7,
         "messages": messages_to_jsonrpc([UserMessage(content="Do it"), AssistantMessage(content="hello")]),
-        "stopReason": "end_turn",
-        "_meta": {"title": "Worker title"},
-    }
-    assert any(
-        update["params"]["update"]["sessionUpdate"] == "message_delta"
-        and update["params"]["update"]["appendText"] == "again"
-        for update in second_updates
-    )
-    assert second_response["result"] == {"stopReason": "end_turn"}
-    assert second_finished["method"] == "_session/run_finished"
-    assert second_finished["params"] == {
-        "sessionId": session_id,
-        "baseVersion": 8,
-        "messages": messages_to_jsonrpc([UserMessage(content="Again"), AssistantMessage(content="again")]),
         "stopReason": "end_turn",
         "_meta": {"title": "Worker title"},
     }

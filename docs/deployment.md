@@ -103,6 +103,10 @@ Workers run from `CODING_ASSISTANT_WORKER_IMAGE` and join
 session workspace is mounted at `/workspace`. Session attachments are mounted
 read-only at `/attachments`.
 
+Worker processes are one-shot. After sending `_session/run_finished` for the
+prompt, the worker server exits normally and Docker removes the temporary
+container.
+
 Worker containers do not inherit the full manager environment. The manager
 forwards only the provider variables the built-in worker needs:
 
