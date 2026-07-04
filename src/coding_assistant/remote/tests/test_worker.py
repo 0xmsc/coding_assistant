@@ -28,9 +28,12 @@ from coding_assistant.llm.types import (
     TextToolResult,
     Tool,
     ToolCall,
+    ToolMessage,
+    UserMessage,
     Usage,
 )
 from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
+from coding_assistant.remote.protocol import messages_to_jsonrpc
 from coding_assistant.remote.server import start_worker_server
 
 
@@ -381,6 +384,9 @@ async def test_worker_server_completes_acp_prompt_turn() -> None:
         assert finished["params"] == {
             "sessionId": session_id,
             "baseVersion": 0,
+            "messages": messages_to_jsonrpc(
+                [UserMessage(content="Do the task"), AssistantMessage(content="Hello from the worker")]
+            ),
             "stopReason": "end_turn",
         }
         assert any(
@@ -513,6 +519,20 @@ async def test_worker_server_streams_tool_messages_before_final_answer() -> None
         assert finished["params"] == {
             "sessionId": session_id,
             "baseVersion": 0,
+            "messages": messages_to_jsonrpc(
+                [
+                    UserMessage(content="Use the tool"),
+                    AssistantMessage(
+                        tool_calls=[
+                            ToolCall(
+                                id="call-1", function=FunctionCall(name="echo_tool", arguments='{"text": "hello"}')
+                            )
+                        ]
+                    ),
+                    ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
+                    AssistantMessage(content="Done"),
+                ]
+            ),
             "stopReason": "end_turn",
         }
     finally:
