@@ -97,6 +97,7 @@ class WorkerPrompt:
 @dataclass(frozen=True)
 class WorkerRunFinished:
     stop_reason: str
+    messages: list[BaseMessage] = field(default_factory=list)
     title: str | None = None
     metadata: JsonObject | None = None
 
@@ -497,6 +498,10 @@ def _single_stored_update(stored_message: StoredMessage) -> MessageAddedUpdate:
     )
 
 
+def _is_assistant_text_message(message: BaseMessage) -> bool:
+    return isinstance(message, AssistantMessage) and not message.tool_calls
+
+
 class ManagerService:
     def __init__(
         self,
@@ -699,38 +704,23 @@ class ManagerService:
 
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         model = _model_from_record(session.record)
-        message_id_map: dict[str, StoredMessage] = {}
-        assistant_text_buffers: dict[str, str] = {}
+        persisted_messages: list[StoredMessage] = []
 
         async def forward_worker_update(update: SessionUpdate) -> None:
             if isinstance(update, MessageAddedUpdate):
+                if _is_assistant_text_message(update.message):
+                    await on_update(update)
+                    return
                 stored = self._store.append_messages(
                     scope_id=scope_id,
                     session_id=session_id,
                     messages=[update.message],
                 )[0]
-                message_id_map[update.message_id] = stored
-                if (
-                    isinstance(update.message, AssistantMessage)
-                    and not update.message.tool_calls
-                    and content_text(update.message.content) == ""
-                ):
-                    assistant_text_buffers[update.message_id] = ""
+                persisted_messages.append(stored)
                 await on_update(_single_stored_update(stored))
                 return
             if isinstance(update, MessageDeltaUpdate):
-                stored_message = message_id_map.get(update.message_id)
-                if stored_message is None:
-                    await on_update(update)
-                    return
-                if update.message_id in assistant_text_buffers:
-                    assistant_text_buffers[update.message_id] += update.append_text
-                await on_update(
-                    MessageDeltaUpdate(
-                        message_id=_stored_message_update_id(stored_message.message_id),
-                        append_text=update.append_text,
-                    )
-                )
+                await on_update(update)
                 return
             await on_update(update)
 
@@ -743,6 +733,7 @@ class ManagerService:
                     session_id=session_id,
                     messages=[UserMessage(content=prompt_content)],
                 )
+                persisted_messages.extend(stored_prompt)
                 await on_update(_single_stored_update(stored_prompt[0]))
             worker_result = await self._worker_runner.run_prompt(
                 prompt=WorkerPrompt(
@@ -757,11 +748,11 @@ class ManagerService:
                 ),
                 on_update=forward_worker_update,
             )
-            self._flush_assistant_text_buffers(
+            self._persist_final_worker_messages(
                 scope_id=scope_id,
                 session_id=session_id,
-                message_id_map=message_id_map,
-                assistant_text_buffers=assistant_text_buffers,
+                final_messages=worker_result.messages,
+                persisted_messages=persisted_messages,
             )
             status = "cancelled" if worker_result.stop_reason == "cancelled" else "completed"
             updated_record = self._store.apply_prompt_result(
@@ -779,12 +770,6 @@ class ManagerService:
             await on_update(_session_updated(updated_record))
             return PromptResult(stop_reason=worker_result.stop_reason)
         except Exception as exc:
-            self._flush_assistant_text_buffers(
-                scope_id=scope_id,
-                session_id=session_id,
-                message_id_map=message_id_map,
-                assistant_text_buffers=assistant_text_buffers,
-            )
             failed_run = await self._finish_prompt_run(
                 run,
                 status="failed",
@@ -840,25 +825,38 @@ class ManagerService:
                 self._active_runs.pop(run.session_id, None)
         return finished_run
 
-    def _flush_assistant_text_buffers(
+    def _persist_final_worker_messages(
         self,
         *,
         scope_id: str,
         session_id: str,
-        message_id_map: dict[str, StoredMessage],
-        assistant_text_buffers: dict[str, str],
+        final_messages: list[BaseMessage],
+        persisted_messages: list[StoredMessage],
     ) -> None:
-        for update_message_id, content in list(assistant_text_buffers.items()):
-            stored = message_id_map.get(update_message_id)
-            if stored is None:
+        remaining_persisted = list(persisted_messages)
+        messages_to_append: list[BaseMessage] = []
+        for message in final_messages:
+            if remaining_persisted and remaining_persisted[0].message == message:
+                remaining_persisted.pop(0)
                 continue
-            self._store.replace_message(
+            if remaining_persisted and _is_assistant_text_message(remaining_persisted[0].message):
+                if _is_assistant_text_message(message):
+                    stored = remaining_persisted.pop(0)
+                    self._store.replace_message(
+                        scope_id=scope_id,
+                        session_id=session_id,
+                        message_id=stored.message_id,
+                        message=message,
+                    )
+                    continue
+            messages_to_append.append(message)
+
+        if messages_to_append:
+            self._store.append_messages(
                 scope_id=scope_id,
                 session_id=session_id,
-                message_id=stored.message_id,
-                message=AssistantMessage(content=content),
+                messages=messages_to_append,
             )
-        assistant_text_buffers.clear()
 
     def _initial_messages(self, *, skills_root: Path) -> list[BaseMessage]:
         instructions = build_worker_instructions(

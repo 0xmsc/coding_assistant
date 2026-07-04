@@ -14,7 +14,7 @@ from coding_assistant.core.session_updates import (
     prompt_result_from_update,
     session_updates_from_agent_event,
 )
-from coding_assistant.llm.types import AssistantMessage, ContentDeltaEvent
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, ContentDeltaEvent
 from coding_assistant.remote.acp import (
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
@@ -30,7 +30,7 @@ from coding_assistant.remote.acp import (
     response_id_from_payload,
     session_id_from_params,
 )
-from coding_assistant.remote.protocol import session_update_notification
+from coding_assistant.remote.protocol import messages_to_jsonrpc, session_update_notification
 
 
 UnhandledMethod = Callable[[str, int | str | None, JsonObject], Awaitable[bool]]
@@ -64,12 +64,14 @@ def _run_finished_notification(
     *,
     session_id: str,
     base_version: int,
+    messages: list[BaseMessage],
     stop_reason: str,
     metadata: JsonObject | None = None,
 ) -> str:
     params: JsonObject = {
         "sessionId": session_id,
         "baseVersion": base_version,
+        "messages": messages_to_jsonrpc(messages),
         "stopReason": stop_reason,
     }
     if metadata:
@@ -233,6 +235,7 @@ class RemoteAgentController:
                 _run_finished_notification(
                     session_id=controlled_session.session_id,
                     base_version=controlled_session.base_version,
+                    messages=controlled_session.session.history[controlled_session.base_message_count :],
                     stop_reason=result.stop_reason,
                     metadata=self._finish_metadata_provider() if self._finish_metadata_provider else None,
                 ),

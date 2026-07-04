@@ -1512,7 +1512,7 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
             await second.send(jsonrpc_request(6, "session/load", _scope_params("scope-a", sessionId=session_id)))
             final_load_response, final_replay = await _recv_response_with_updates(second)
 
-    assert load_response["result"]["_meta"]["version"] == 2
+    assert load_response["result"]["_meta"]["version"] == 1
     replay_payloads = [_update(message) for message in replay]
     assert any(
         update.get("sessionUpdate") == "run_updated"
@@ -1566,7 +1566,7 @@ async def test_manager_persists_live_tool_messages(tmp_path: Path) -> None:
                     ),
                 )
             )
-            return WorkerRunFinished(stop_reason="end_turn")
+            return WorkerRunFinished(stop_reason="end_turn", messages=[AssistantMessage(content="done")])
 
         async def cancel(self, *, session_id: str) -> None:
             del session_id

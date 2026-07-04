@@ -41,6 +41,7 @@ class FakeWorkerRunner:
         del prompt
         return WorkerRunFinished(
             stop_reason="end_turn",
+            messages=[AssistantMessage(content=self.response_text)],
         )
 
     async def cancel(self, *, session_id: str) -> None:

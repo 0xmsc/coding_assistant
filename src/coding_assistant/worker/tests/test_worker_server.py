@@ -19,6 +19,7 @@ from coding_assistant.llm.types import (
     TextToolResult,
     Tool,
     ToolCall,
+    UserMessage,
     Usage,
 )
 from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
@@ -235,6 +236,7 @@ async def test_worker_prompt_streams_update_and_emits_run_finished(tmp_path: Pat
     assert finished["params"] == {
         "sessionId": session_id,
         "baseVersion": 7,
+        "messages": messages_to_jsonrpc([UserMessage(content="Do it"), AssistantMessage(content="hello")]),
         "stopReason": "end_turn",
         "_meta": {"title": "Worker title"},
     }
@@ -248,6 +250,7 @@ async def test_worker_prompt_streams_update_and_emits_run_finished(tmp_path: Pat
     assert second_finished["params"] == {
         "sessionId": session_id,
         "baseVersion": 8,
+        "messages": messages_to_jsonrpc([UserMessage(content="Again"), AssistantMessage(content="again")]),
         "stopReason": "end_turn",
         "_meta": {"title": "Worker title"},
     }

@@ -15,6 +15,7 @@ from coding_assistant.core.session_updates import (
     SessionUpdate,
     content_text,
 )
+from coding_assistant.llm.types import BaseMessage
 from coding_assistant.remote.acp import (
     ACP_PROTOCOL_VERSION,
     JsonObject,
@@ -24,7 +25,7 @@ from coding_assistant.remote.acp import (
     text_block,
 )
 from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
-from coding_assistant.remote.protocol import session_update_from_jsonrpc_update
+from coding_assistant.remote.protocol import messages_from_jsonrpc, session_update_from_jsonrpc_update
 
 
 def _client_version() -> str:
@@ -64,6 +65,7 @@ class RemoteRunFinished:
     session_id: str
     base_version: int
     stop_reason: str
+    messages: list[BaseMessage]
     title: str | None = None
     metadata: JsonObject | None = None
 
@@ -294,15 +296,23 @@ class RemoteSessionClient:
             return
         session_id = params.get("sessionId")
         base_version = params.get("baseVersion")
+        messages = params.get("messages")
         stop_reason = params.get("stopReason")
         metadata = params.get("_meta")
-        if not isinstance(session_id, str) or not isinstance(base_version, int) or not isinstance(stop_reason, str):
+        if (
+            not isinstance(session_id, str)
+            or not isinstance(base_version, int)
+            or not isinstance(messages, list)
+            or not all(isinstance(message, dict) for message in messages)
+            or not isinstance(stop_reason, str)
+        ):
             return
         await self._on_run_finished(
             RemoteRunFinished(
                 session_id=session_id,
                 base_version=base_version,
                 stop_reason=stop_reason,
+                messages=messages_from_jsonrpc(messages),
                 title=_finish_title(metadata),
                 metadata=dict(metadata) if isinstance(metadata, dict) else None,
             ),

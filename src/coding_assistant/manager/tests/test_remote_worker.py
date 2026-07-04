@@ -58,6 +58,20 @@ class ScriptedStreamer:
         yield CompletionEvent(completion=Completion(message=message, usage=Usage(tokens=1, cost=0.0)))
 
 
+class FinalMessageDiffersFromDeltaStreamer:
+    async def __call__(
+        self,
+        messages: Any,
+        tools: Any,
+        model: Any,
+    ) -> AsyncIterator[ContentDeltaEvent | CompletionEvent]:
+        del messages, tools, model
+        yield ContentDeltaEvent(content="draft answer")
+        yield CompletionEvent(
+            completion=Completion(message=AssistantMessage(content="final answer"), usage=Usage(tokens=1, cost=0.0)),
+        )
+
+
 class BlockingStreamer:
     def __init__(self) -> None:
         self.started = asyncio.Event()
@@ -241,6 +255,44 @@ async def test_remote_worker_prompt_streams_update_and_persists_to_sqlite(tmp_pa
         SystemMessage(content="system"),
         UserMessage(content="Do it"),
         AssistantMessage(content="hello"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_remote_worker_persists_final_message_not_streamed_delta(tmp_path: Path) -> None:
+    runtime = WorkerRuntimeConfig(
+        model="test-model",
+        tools=[],
+        completion_streamer=FinalMessageDiffersFromDeltaStreamer(),
+    )
+
+    async with start_session_worker_server(runtime=runtime) as worker_server:
+        service, store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
+        created = store.create_session(
+            scope_id="scope-a",
+            messages=[SystemMessage(content="system")],
+            metadata={"model": "test-model"},
+        )
+        updates: list[SessionUpdate] = []
+
+        async def collect_update(update: SessionUpdate) -> None:
+            updates.append(update)
+
+        result = await service.prompt(
+            params=_scope_params(created.record.session_id, "Do it"),
+            on_update=collect_update,
+        )
+        loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    message_updates = [update for update in updates if not isinstance(update, (RunUpdatedUpdate, SessionUpdatedUpdate))]
+    assert result.stop_reason == "end_turn"
+    assert message_updates[-1] == MessageDeltaUpdate(
+        message_id=_message_id(message_updates[1]), append_text="draft answer"
+    )
+    assert loaded.messages == [
+        SystemMessage(content="system"),
+        UserMessage(content="Do it"),
+        AssistantMessage(content="final answer"),
     ]
 
 

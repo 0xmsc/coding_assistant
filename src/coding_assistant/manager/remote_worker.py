@@ -82,6 +82,7 @@ class RemoteWorkerRunner:
             finished = await finish_future
             return WorkerRunFinished(
                 stop_reason=finished.stop_reason,
+                messages=finished.messages,
                 title=finished.title,
                 metadata=finished.metadata,
             )
