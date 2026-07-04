@@ -60,22 +60,3 @@ class SessionAttachmentRow(SQLModel, table=True):
     path: str = Field(sa_column=Column(String, nullable=False))
     sha256: str = Field(sa_column=Column(String, nullable=False))
     created_at: str = Field(sa_column=Column(String, nullable=False))
-
-
-class SessionRunRow(SQLModel, table=True):
-    __tablename__: ClassVar[str] = "session_runs"
-    __table_args__: ClassVar[Any] = (
-        Index("idx_session_runs_session", "session_id", "started_at"),
-        Index("idx_session_runs_status", "session_id", "status"),
-    )
-
-    run_id: str = Field(sa_column=Column(String, primary_key=True))
-    session_id: str = Field(
-        sa_column=Column(String, ForeignKey("sessions.session_id", ondelete="CASCADE"), nullable=False),
-    )
-    status: str = Field(sa_column=Column(String, nullable=False))
-    started_at: str = Field(sa_column=Column(String, nullable=False))
-    updated_at: str = Field(sa_column=Column(String, nullable=False))
-    ended_at: str | None = Field(default=None, sa_column=Column(String, nullable=True))
-    stop_reason: str | None = Field(default=None, sa_column=Column(String, nullable=True))
-    error: str | None = Field(default=None, sa_column=Column(String, nullable=True))
