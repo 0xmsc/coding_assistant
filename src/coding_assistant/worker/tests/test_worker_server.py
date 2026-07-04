@@ -187,12 +187,12 @@ async def test_worker_starts_session_from_manager_state(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> None:
+async def test_worker_prompt_streams_update_and_emits_run_finished(tmp_path: Path) -> None:
     runtime = WorkerRuntimeConfig(
         model="test-model",
         tools=[],
         completion_streamer=ScriptedStreamer([AssistantMessage(content="hello"), AssistantMessage(content="again")]),
-        commit_metadata_provider=lambda: {"title": "Worker title"},
+        finish_metadata_provider=lambda: {"title": "Worker title"},
     )
 
     async with start_session_worker_server(runtime=runtime) as server:
@@ -211,7 +211,7 @@ async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> 
                     updates.append(payload)
                 else:
                     response = payload
-            commit = parse_jsonrpc_message(await websocket.recv())
+            finished = parse_jsonrpc_message(await websocket.recv())
             await websocket.send(
                 jsonrpc_request(4, "session/prompt", {"sessionId": session_id, "prompt": [text_block("Again")]}),
             )
@@ -223,7 +223,7 @@ async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> 
                     second_updates.append(payload)
                 else:
                     second_response = payload
-            second_commit = parse_jsonrpc_message(await websocket.recv())
+            second_finished = parse_jsonrpc_message(await websocket.recv())
 
     assert any(
         update["params"]["update"]["sessionUpdate"] == "message_delta"
@@ -231,26 +231,30 @@ async def test_worker_prompt_streams_update_and_emits_commit(tmp_path: Path) -> 
         for update in updates
     )
     assert response["result"] == {"stopReason": "end_turn"}
-    assert commit["method"] == "_session/commit"
-    assert commit["params"]["sessionId"] == session_id
-    assert commit["params"]["baseVersion"] == 7
-    assert commit["params"]["stopReason"] == "end_turn"
-    assert commit["params"]["_meta"] == {"title": "Worker title"}
-    assert [message["role"] for message in commit["params"]["messages"]] == ["user", "assistant"]
+    assert finished["method"] == "_session/run_finished"
+    assert finished["params"] == {
+        "sessionId": session_id,
+        "baseVersion": 7,
+        "stopReason": "end_turn",
+        "_meta": {"title": "Worker title"},
+    }
     assert any(
         update["params"]["update"]["sessionUpdate"] == "message_delta"
         and update["params"]["update"]["appendText"] == "again"
         for update in second_updates
     )
     assert second_response["result"] == {"stopReason": "end_turn"}
-    assert second_commit["method"] == "_session/commit"
-    assert second_commit["params"]["baseVersion"] == 8
-    assert second_commit["params"]["_meta"] == {"title": "Worker title"}
-    assert [message["role"] for message in second_commit["params"]["messages"]] == ["user", "assistant"]
+    assert second_finished["method"] == "_session/run_finished"
+    assert second_finished["params"] == {
+        "sessionId": session_id,
+        "baseVersion": 8,
+        "stopReason": "end_turn",
+        "_meta": {"title": "Worker title"},
+    }
 
 
 @pytest.mark.asyncio
-async def test_worker_cancel_produces_cancelled_commit(tmp_path: Path) -> None:
+async def test_worker_cancel_produces_cancelled_run_finished(tmp_path: Path) -> None:
     streamer = BlockingStreamer()
     runtime = WorkerRuntimeConfig(model="test-model", tools=[], completion_streamer=streamer)
 
@@ -266,11 +270,12 @@ async def test_worker_cancel_produces_cancelled_commit(tmp_path: Path) -> None:
             await websocket.send(jsonrpc_request(4, "session/cancel", {"sessionId": session_id}))
             cancel_response = parse_jsonrpc_message(await websocket.recv())
             prompt_response = parse_jsonrpc_message(await websocket.recv())
-            commit = parse_jsonrpc_message(await websocket.recv())
+            finished = parse_jsonrpc_message(await websocket.recv())
 
     assert cancel_response["result"] is None
     assert prompt_response["result"] == {"stopReason": "cancelled"}
-    assert commit["params"]["stopReason"] == "cancelled"
+    assert finished["method"] == "_session/run_finished"
+    assert finished["params"]["stopReason"] == "cancelled"
 
 
 @pytest.mark.asyncio
@@ -303,12 +308,12 @@ async def test_worker_streams_tool_messages_before_final_answer(tmp_path: Path) 
             )
 
             messages: list[dict[str, Any]] = []
-            commit: dict[str, Any] | None = None
-            while commit is None:
+            finished: dict[str, Any] | None = None
+            while finished is None:
                 payload = parse_jsonrpc_message(await websocket.recv())
                 messages.append(payload)
-                if payload.get("method") == "_session/commit":
-                    commit = payload
+                if payload.get("method") == "_session/run_finished":
+                    finished = payload
 
     updates = [message["params"]["update"] for message in messages if message.get("method") == "session/update"]
     assert _normalized_updates(updates) == [
@@ -343,13 +348,8 @@ async def test_worker_streams_tool_messages_before_final_answer(tmp_path: Path) 
         },
         {"sessionUpdate": "message_delta", "messageId": "message-2", "appendText": "done"},
     ]
-    assert commit is not None
-    assert [message["role"] for message in commit["params"]["messages"]] == [
-        "user",
-        "assistant",
-        "tool",
-        "assistant",
-    ]
+    assert finished is not None
+    assert finished["params"]["stopReason"] == "end_turn"
 
 
 @pytest.mark.asyncio

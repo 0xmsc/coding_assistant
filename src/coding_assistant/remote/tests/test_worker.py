@@ -370,17 +370,19 @@ async def test_worker_server_completes_acp_prompt_turn() -> None:
                         updates.append(payload)
                     else:
                         response = payload
-                commit = parse_jsonrpc_message(await websocket.recv())
+                finished = parse_jsonrpc_message(await websocket.recv())
 
         assert response == {
             "jsonrpc": "2.0",
             "id": 3,
             "result": {"stopReason": "end_turn"},
         }
-        assert commit["method"] == "_session/commit"
-        assert commit["params"]["sessionId"] == session_id
-        assert commit["params"]["baseVersion"] == 0
-        assert [message["role"] for message in commit["params"]["messages"]] == ["user", "assistant"]
+        assert finished["method"] == "_session/run_finished"
+        assert finished["params"] == {
+            "sessionId": session_id,
+            "baseVersion": 0,
+            "stopReason": "end_turn",
+        }
         assert any(
             update["params"]["update"]["sessionUpdate"] == "message_delta"
             and update["params"]["update"]["appendText"] == "Hello from the worker"
@@ -467,7 +469,7 @@ async def test_worker_server_streams_tool_messages_before_final_answer() -> None
                         updates.append(payload)
                     else:
                         response = payload
-                commit = parse_jsonrpc_message(await websocket.recv())
+                finished = parse_jsonrpc_message(await websocket.recv())
 
         assert response == {
             "jsonrpc": "2.0",
@@ -507,12 +509,11 @@ async def test_worker_server_streams_tool_messages_before_final_answer() -> None
             },
             {"sessionUpdate": "message_delta", "messageId": "message-2", "appendText": "Done"},
         ]
-        assert commit["method"] == "_session/commit"
-        assert [message["role"] for message in commit["params"]["messages"]] == [
-            "user",
-            "assistant",
-            "tool",
-            "assistant",
-        ]
+        assert finished["method"] == "_session/run_finished"
+        assert finished["params"] == {
+            "sessionId": session_id,
+            "baseVersion": 0,
+            "stopReason": "end_turn",
+        }
     finally:
         await session.close()
