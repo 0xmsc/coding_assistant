@@ -214,6 +214,12 @@ async def _handle_session_method(
             await websocket.send(jsonrpc_result(response_id, None))
         return
 
+    if method == "session/delete":
+        await service.delete_session(params=params)
+        if response_id is not None:
+            await websocket.send(jsonrpc_result(response_id, None))
+        return
+
     await websocket.send(jsonrpc_error(response_id, ERROR_METHOD_NOT_FOUND, f"Unsupported manager method: {method}"))
 
 

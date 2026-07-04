@@ -304,6 +304,19 @@ class SessionStore:
                 session.flush()
                 return _record_from_row(row)
 
+    def delete_session(self, *, scope_id: str, session_id: str) -> None:
+        """Delete a session, its messages/attachments, and the workspace tree.
+
+        Raises ``SessionNotFoundError`` if the session does not exist or belongs
+        to a different scope. The filesystem teardown runs after the row is
+        deleted and is a no-op if the workspace directory is already gone.
+        """
+        with SQLModelSession(self._engine) as session:
+            with session.begin():
+                row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
+                session.delete(row)
+        self.workspaces.remove_for_session(session_id)
+
     def commit_messages(
         self,
         *,

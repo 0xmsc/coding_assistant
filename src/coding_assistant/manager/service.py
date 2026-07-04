@@ -541,6 +541,14 @@ class ManagerService:
         await on_update(_session_updated(record))
         return _record_metadata(record)
 
+    async def delete_session(self, *, params: JsonObject) -> None:
+        scope_id = _scope_id_from_params(params)
+        session_id = session_id_from_params(params)
+        async with self._active_lock:
+            if session_id in self._active_prompts:
+                raise SessionBusyError("Cannot delete session while it has an active prompt. Cancel it first.")
+        self._store.delete_session(scope_id=scope_id, session_id=session_id)
+
     async def set_session_model(
         self,
         *,

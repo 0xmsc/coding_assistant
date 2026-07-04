@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,3 +42,12 @@ class WorkspacePaths:
         if not paths.workspace.is_dir() or not paths.attachments.is_dir():
             raise WorkspaceMissingError(f"Workspace is missing for session {session_id}.")
         return paths
+
+    def remove_for_session(self, session_id: str) -> None:
+        """Delete the session's workspace and attachments directory tree.
+
+        No-op if the session root does not exist (e.g. already removed).
+        """
+        root = self.path_for_session(session_id)
+        if root.exists():
+            shutil.rmtree(root, ignore_errors=True)
