@@ -923,6 +923,39 @@ Response when sent as a request:
 The original `session/prompt` request should later resolve with
 `stopReason: cancelled` when cancellation reaches the active run.
 
+### session/delete
+
+Deletes a session in `params._meta.scopeId`, including persisted messages,
+attachment metadata, uploaded attachment files, and the manager-owned workspace
+directory. The manager rejects cross-scope deletes and rejects deletion while
+the session has an active prompt; clients should cancel the prompt first.
+
+Request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "method": "session/delete",
+  "params": {
+    "_meta": {
+      "scopeId": "tenant:abc123"
+    },
+    "sessionId": "sess_abc123"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "result": null
+}
+```
+
 ## Notifications
 
 ### session/update

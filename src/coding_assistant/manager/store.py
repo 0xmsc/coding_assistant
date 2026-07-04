@@ -304,6 +304,19 @@ class SessionStore:
                 session.flush()
                 return _record_from_row(row)
 
+    def delete_session(self, *, scope_id: str, session_id: str) -> None:
+        """Delete a session, its messages/attachments, and the workspace tree.
+
+        Raises ``SessionNotFoundError`` if the session does not exist or belongs
+        to a different scope. The filesystem teardown runs after the row is
+        deleted and is a no-op if the workspace directory is already gone.
+        """
+        with SQLModelSession(self._engine) as session:
+            with session.begin():
+                row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
+                session.delete(row)
+        self.workspaces.remove_for_session(session_id)
+
     def commit_messages(
         self,
         *,
@@ -348,6 +361,80 @@ class SessionStore:
                 session_row.updated_at = now
                 session_row.metadata_json = _metadata_to_json(next_metadata)
         return new_version
+
+    def append_messages(
+        self,
+        *,
+        scope_id: str,
+        session_id: str,
+        messages: list[BaseMessage],
+        attachments: list[SessionAttachment] | None = None,
+    ) -> list[StoredMessage]:
+        now = _now_iso()
+        with SQLModelSession(self._engine, expire_on_commit=False) as session:
+            with session.begin():
+                session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
+                record = _record_from_row(session_row)
+                new_version = record.version + 1
+                inserted_messages = self._insert_messages(
+                    session,
+                    session_id=session_id,
+                    version=new_version,
+                    messages=messages,
+                    created_at=now,
+                )
+                if attachments and not inserted_messages:
+                    raise ValueError("Attachments must be linked to an inserted message.")
+                self._insert_attachments(
+                    session,
+                    session_id=session_id,
+                    message_id=inserted_messages[-1].message_id if attachments else None,
+                    attachments=attachments or [],
+                    created_at=now,
+                )
+                session_row.version = new_version
+                session_row.updated_at = now
+                return inserted_messages
+
+    def replace_message(
+        self,
+        *,
+        scope_id: str,
+        session_id: str,
+        message_id: int,
+        message: BaseMessage,
+    ) -> StoredMessage:
+        now = _now_iso()
+        with SQLModelSession(self._engine, expire_on_commit=False) as session:
+            with session.begin():
+                session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
+                row = session.get(SessionMessageRow, message_id)
+                if row is None or row.session_id != session_id:
+                    raise SessionNotFoundError(f"Message {message_id} was not found.")
+                row.role = message.role
+                row.payload_json = _message_to_json(message)
+                session_row.updated_at = now
+                session.flush()
+                return StoredMessage(message_id=message_id, message=message, created_at=row.created_at)
+
+    def apply_prompt_result(
+        self,
+        *,
+        scope_id: str,
+        session_id: str,
+        title: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> SessionRecord:
+        now = _now_iso()
+        with SQLModelSession(self._engine, expire_on_commit=False) as session:
+            with session.begin():
+                session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
+                record = _record_from_row(session_row)
+                session_row.title = title if title is not None else record.title
+                session_row.updated_at = now
+                session_row.metadata_json = _metadata_to_json(metadata if metadata is not None else record.metadata)
+                session.flush()
+                return _record_from_row(session_row)
 
     def _get_session_row(
         self,

@@ -10,9 +10,8 @@ from coding_assistant.core.session_updates import (
     MessageDeltaUpdate,
     SessionUpdate,
 )
-from coding_assistant.llm.types import AssistantMessage, UserMessage
-from coding_assistant.manager.service import WorkerCommit, WorkerPrompt
-from coding_assistant.remote.acp import prompt_content_from_acp
+from coding_assistant.llm.types import AssistantMessage
+from coding_assistant.manager.service import WorkerPrompt, WorkerRunFinished
 
 
 @dataclass
@@ -28,7 +27,7 @@ class FakeWorkerRunner:
         *,
         prompt: WorkerPrompt,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
-    ) -> WorkerCommit:
+    ) -> WorkerRunFinished:
         if self.prompts is None:
             self.prompts = []
         self.prompts.append(prompt)
@@ -39,12 +38,10 @@ class FakeWorkerRunner:
         await on_update(MessageDeltaUpdate(message_id=message_id, append_text=self.response_text))
         if self.release is not None:
             await self.release.wait()
-        return WorkerCommit(
-            messages=[
-                UserMessage(content=prompt_content_from_acp(prompt.prompt)),
-                AssistantMessage(content=self.response_text),
-            ],
+        del prompt
+        return WorkerRunFinished(
             stop_reason="end_turn",
+            messages=[AssistantMessage(content=self.response_text)],
         )
 
     async def cancel(self, *, session_id: str) -> None:

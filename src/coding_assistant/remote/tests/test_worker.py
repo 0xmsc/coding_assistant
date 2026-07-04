@@ -28,9 +28,12 @@ from coding_assistant.llm.types import (
     TextToolResult,
     Tool,
     ToolCall,
+    ToolMessage,
+    UserMessage,
     Usage,
 )
 from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
+from coding_assistant.remote.protocol import messages_to_jsonrpc
 from coding_assistant.remote.server import start_worker_server
 
 
@@ -370,17 +373,22 @@ async def test_worker_server_completes_acp_prompt_turn() -> None:
                         updates.append(payload)
                     else:
                         response = payload
-                commit = parse_jsonrpc_message(await websocket.recv())
+                finished = parse_jsonrpc_message(await websocket.recv())
 
         assert response == {
             "jsonrpc": "2.0",
             "id": 3,
             "result": {"stopReason": "end_turn"},
         }
-        assert commit["method"] == "_session/commit"
-        assert commit["params"]["sessionId"] == session_id
-        assert commit["params"]["baseVersion"] == 0
-        assert [message["role"] for message in commit["params"]["messages"]] == ["user", "assistant"]
+        assert finished["method"] == "_session/run_finished"
+        assert finished["params"] == {
+            "sessionId": session_id,
+            "baseVersion": 0,
+            "messages": messages_to_jsonrpc(
+                [UserMessage(content="Do the task"), AssistantMessage(content="Hello from the worker")]
+            ),
+            "stopReason": "end_turn",
+        }
         assert any(
             update["params"]["update"]["sessionUpdate"] == "message_delta"
             and update["params"]["update"]["appendText"] == "Hello from the worker"
@@ -467,7 +475,7 @@ async def test_worker_server_streams_tool_messages_before_final_answer() -> None
                         updates.append(payload)
                     else:
                         response = payload
-                commit = parse_jsonrpc_message(await websocket.recv())
+                finished = parse_jsonrpc_message(await websocket.recv())
 
         assert response == {
             "jsonrpc": "2.0",
@@ -507,12 +515,25 @@ async def test_worker_server_streams_tool_messages_before_final_answer() -> None
             },
             {"sessionUpdate": "message_delta", "messageId": "message-2", "appendText": "Done"},
         ]
-        assert commit["method"] == "_session/commit"
-        assert [message["role"] for message in commit["params"]["messages"]] == [
-            "user",
-            "assistant",
-            "tool",
-            "assistant",
-        ]
+        assert finished["method"] == "_session/run_finished"
+        assert finished["params"] == {
+            "sessionId": session_id,
+            "baseVersion": 0,
+            "messages": messages_to_jsonrpc(
+                [
+                    UserMessage(content="Use the tool"),
+                    AssistantMessage(
+                        tool_calls=[
+                            ToolCall(
+                                id="call-1", function=FunctionCall(name="echo_tool", arguments='{"text": "hello"}')
+                            )
+                        ]
+                    ),
+                    ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
+                    AssistantMessage(content="Done"),
+                ]
+            ),
+            "stopReason": "end_turn",
+        }
     finally:
         await session.close()

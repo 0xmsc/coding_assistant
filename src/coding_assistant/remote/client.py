@@ -35,7 +35,7 @@ def _client_version() -> str:
         return "0.0.0"
 
 
-def _commit_title(metadata: object) -> str | None:
+def _finish_title(metadata: object) -> str | None:
     if not isinstance(metadata, dict):
         return None
     title = metadata.get("title")
@@ -61,12 +61,13 @@ class RemotePromptFailedEvent:
 
 
 @dataclass(frozen=True)
-class RemoteCommit:
+class RemoteRunFinished:
     session_id: str
     base_version: int
-    messages: list[BaseMessage]
     stop_reason: str
+    messages: list[BaseMessage]
     title: str | None = None
+    metadata: JsonObject | None = None
 
 
 RemoteClientEvent = RemoteContentDeltaEvent | RemotePromptFinishedEvent | RemotePromptFailedEvent
@@ -89,14 +90,14 @@ class RemoteSessionClient:
         on_event: Callable[[RemoteClientEvent], Awaitable[None]],
         on_disconnect: Callable[[str], Awaitable[None]],
         on_session_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
-        on_commit: Callable[[RemoteCommit], Awaitable[None]] | None = None,
+        on_run_finished: Callable[[RemoteRunFinished], Awaitable[None]] | None = None,
     ) -> None:
         self.endpoint = endpoint
         self._websocket = websocket
         self._on_event = on_event
         self._on_disconnect = on_disconnect
         self._on_session_update = on_session_update
-        self._on_commit = on_commit
+        self._on_run_finished = on_run_finished
         self._send_lock = asyncio.Lock()
         self._next_request_id = 1
         self._pending_requests: dict[int, asyncio.Future[JsonObject]] = {}
@@ -113,7 +114,7 @@ class RemoteSessionClient:
         on_event: Callable[[RemoteClientEvent], Awaitable[None]],
         on_disconnect: Callable[[str], Awaitable[None]],
         on_session_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
-        on_commit: Callable[[RemoteCommit], Awaitable[None]] | None = None,
+        on_run_finished: Callable[[RemoteRunFinished], Awaitable[None]] | None = None,
         auth_token: str | None = None,
     ) -> RemoteSessionClient:
         headers = {"Authorization": f"Bearer {auth_token}"} if auth_token is not None else None
@@ -124,7 +125,7 @@ class RemoteSessionClient:
             on_event=on_event,
             on_disconnect=on_disconnect,
             on_session_update=on_session_update,
-            on_commit=on_commit,
+            on_run_finished=on_run_finished,
         )
 
     async def initialize(self) -> None:
@@ -263,8 +264,8 @@ class RemoteSessionClient:
 
     async def _handle_notification(self, payload: JsonObject) -> None:
         method = payload.get("method")
-        if method == "_session/commit":
-            await self._handle_commit_notification(payload)
+        if method == "_session/run_finished":
+            await self._handle_run_finished_notification(payload)
             return
         if method != "session/update":
             return
@@ -287,8 +288,8 @@ class RemoteSessionClient:
             await self._on_session_update(session_update)
         await self._publish_session_update(session_update)
 
-    async def _handle_commit_notification(self, payload: JsonObject) -> None:
-        if self._on_commit is None:
+    async def _handle_run_finished_notification(self, payload: JsonObject) -> None:
+        if self._on_run_finished is None:
             return
         params = payload.get("params", {})
         if not isinstance(params, dict):
@@ -306,13 +307,14 @@ class RemoteSessionClient:
             or not isinstance(stop_reason, str)
         ):
             return
-        await self._on_commit(
-            RemoteCommit(
+        await self._on_run_finished(
+            RemoteRunFinished(
                 session_id=session_id,
                 base_version=base_version,
-                messages=messages_from_jsonrpc(messages),
                 stop_reason=stop_reason,
-                title=_commit_title(metadata),
+                messages=messages_from_jsonrpc(messages),
+                title=_finish_title(metadata),
+                metadata=dict(metadata) if isinstance(metadata, dict) else None,
             ),
         )
 

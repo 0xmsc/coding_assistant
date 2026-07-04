@@ -12,7 +12,7 @@ from coding_assistant.llm.types import TextToolResult, Tool
 class SessionTitleState:
     title: str | None = None
 
-    def commit_metadata(self) -> dict[str, Any] | None:
+    def finish_metadata(self) -> dict[str, Any] | None:
         if self.title is None:
             return None
         return {"title": self.title}
@@ -23,7 +23,7 @@ class SetSessionTitleInput(BaseModel):
 
 
 class SetSessionTitleTool(Tool):
-    """Set the title that the worker commits for the current manager session."""
+    """Set the title that the worker returns for the current manager session."""
 
     def __init__(self, *, state: SessionTitleState) -> None:
         self._state = state

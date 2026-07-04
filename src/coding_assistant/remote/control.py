@@ -34,7 +34,7 @@ from coding_assistant.remote.protocol import messages_to_jsonrpc, session_update
 
 
 UnhandledMethod = Callable[[str, int | str | None, JsonObject], Awaitable[bool]]
-CommitMetadataProvider = Callable[[], JsonObject | None]
+FinishMetadataProvider = Callable[[], JsonObject | None]
 
 
 @dataclass(frozen=True)
@@ -60,7 +60,7 @@ class _RemoteControlState:
     assistant_message_id: str | None = None
 
 
-def _commit_notification(
+def _run_finished_notification(
     *,
     session_id: str,
     base_version: int,
@@ -77,7 +77,7 @@ def _commit_notification(
     if metadata:
         params["_meta"] = metadata
     return jsonrpc_notification(
-        "_session/commit",
+        "_session/run_finished",
         params,
     )
 
@@ -105,14 +105,14 @@ class RemoteAgentController:
         supports_session_new: bool = False,
         busy_message: str = "Session is busy.",
         unopened_message: str = "Session must be opened first.",
-        commit_metadata_provider: CommitMetadataProvider | None = None,
+        finish_metadata_provider: FinishMetadataProvider | None = None,
     ) -> None:
         self._agent_info = agent_info
         self._controlled_session = controlled_session
         self._supports_session_new = supports_session_new
         self._busy_message = busy_message
         self._unopened_message = unopened_message
-        self._commit_metadata_provider = commit_metadata_provider
+        self._finish_metadata_provider = finish_metadata_provider
         self._state = _RemoteControlState()
 
     @property
@@ -232,12 +232,12 @@ class RemoteAgentController:
         if result.stop_reason is not None:
             await websocket.send(jsonrpc_result(request_id, {"stopReason": result.stop_reason}))
             await websocket.send(
-                _commit_notification(
+                _run_finished_notification(
                     session_id=controlled_session.session_id,
                     base_version=controlled_session.base_version,
                     messages=controlled_session.session.history[controlled_session.base_message_count :],
                     stop_reason=result.stop_reason,
-                    metadata=self._commit_metadata_provider() if self._commit_metadata_provider else None,
+                    metadata=self._finish_metadata_provider() if self._finish_metadata_provider else None,
                 ),
             )
             self._controlled_session = RemoteControlledSession(

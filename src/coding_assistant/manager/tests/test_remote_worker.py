@@ -11,6 +11,7 @@ from websockets.asyncio.client import connect
 from coding_assistant.core.session_updates import (
     MessageAddedUpdate,
     MessageDeltaUpdate,
+    RunUpdatedUpdate,
     SessionUpdate,
     SessionUpdatedUpdate,
 )
@@ -55,6 +56,20 @@ class ScriptedStreamer:
         if isinstance(message.content, str) and message.content:
             yield ContentDeltaEvent(content=message.content)
         yield CompletionEvent(completion=Completion(message=message, usage=Usage(tokens=1, cost=0.0)))
+
+
+class FinalMessageDiffersFromDeltaStreamer:
+    async def __call__(
+        self,
+        messages: Any,
+        tools: Any,
+        model: Any,
+    ) -> AsyncIterator[ContentDeltaEvent | CompletionEvent]:
+        del messages, tools, model
+        yield ContentDeltaEvent(content="draft answer")
+        yield CompletionEvent(
+            completion=Completion(message=AssistantMessage(content="final answer"), usage=Usage(tokens=1, cost=0.0)),
+        )
 
 
 class BlockingStreamer:
@@ -157,6 +172,11 @@ def _session_payload(update: SessionUpdate) -> dict[str, Any]:
     return update.session
 
 
+def _run_payload(update: SessionUpdate) -> dict[str, Any]:
+    assert isinstance(update, RunUpdatedUpdate)
+    return update.run
+
+
 async def _recv_response(websocket: Any) -> dict[str, Any]:
     while True:
         message = parse_jsonrpc_message(await websocket.recv())
@@ -192,12 +212,12 @@ async def _ignore_update(update: SessionUpdate) -> None:
 
 
 @pytest.mark.asyncio
-async def test_remote_worker_prompt_streams_update_and_commits_to_sqlite(tmp_path: Path) -> None:
+async def test_remote_worker_prompt_streams_update_and_persists_to_sqlite(tmp_path: Path) -> None:
     runtime = WorkerRuntimeConfig(
         model="test-model",
         tools=[],
         completion_streamer=ScriptedStreamer([AssistantMessage(content="hello")]),
-        commit_metadata_provider=lambda: {"title": "Remote worker title"},
+        finish_metadata_provider=lambda: {"title": "Remote worker title"},
     )
 
     async with start_session_worker_server(runtime=runtime) as worker_server:
@@ -219,20 +239,60 @@ async def test_remote_worker_prompt_streams_update_and_commits_to_sqlite(tmp_pat
         loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert result.stop_reason == "end_turn"
-    session_update = _session_payload(updates[3])
-    assert updates == [
-        MessageAddedUpdate(message_id=_message_id(updates[0]), message=UserMessage(content="Do it")),
-        MessageAddedUpdate(message_id=_message_id(updates[1]), message=AssistantMessage(content="")),
-        MessageDeltaUpdate(message_id=_message_id(updates[1]), append_text="hello"),
-        SessionUpdatedUpdate(session=session_update),
+    session_update = _session_payload(updates[-1])
+    run_updates = [_run_payload(update) for update in updates if isinstance(update, RunUpdatedUpdate)]
+    message_updates = [update for update in updates if not isinstance(update, (RunUpdatedUpdate, SessionUpdatedUpdate))]
+    assert [update["status"] for update in run_updates] == ["running", "completed"]
+    assert [update.message for update in message_updates if isinstance(update, MessageAddedUpdate)] == [
+        UserMessage(content="Do it"),
+        AssistantMessage(content=""),
     ]
+    assert message_updates[-1] == MessageDeltaUpdate(message_id=_message_id(message_updates[1]), append_text="hello")
     assert session_update["title"] == "Remote worker title"
-    assert loaded.record.version == 1
+    assert loaded.record.version == 2
     assert loaded.record.title == "Remote worker title"
     assert loaded.messages == [
         SystemMessage(content="system"),
         UserMessage(content="Do it"),
         AssistantMessage(content="hello"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_remote_worker_persists_final_message_not_streamed_delta(tmp_path: Path) -> None:
+    runtime = WorkerRuntimeConfig(
+        model="test-model",
+        tools=[],
+        completion_streamer=FinalMessageDiffersFromDeltaStreamer(),
+    )
+
+    async with start_session_worker_server(runtime=runtime) as worker_server:
+        service, store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
+        created = store.create_session(
+            scope_id="scope-a",
+            messages=[SystemMessage(content="system")],
+            metadata={"model": "test-model"},
+        )
+        updates: list[SessionUpdate] = []
+
+        async def collect_update(update: SessionUpdate) -> None:
+            updates.append(update)
+
+        result = await service.prompt(
+            params=_scope_params(created.record.session_id, "Do it"),
+            on_update=collect_update,
+        )
+        loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    message_updates = [update for update in updates if not isinstance(update, (RunUpdatedUpdate, SessionUpdatedUpdate))]
+    assert result.stop_reason == "end_turn"
+    assert message_updates[-1] == MessageDeltaUpdate(
+        message_id=_message_id(message_updates[1]), append_text="draft answer"
+    )
+    assert loaded.messages == [
+        SystemMessage(content="system"),
+        UserMessage(content="Do it"),
+        AssistantMessage(content="final answer"),
     ]
 
 
@@ -269,7 +329,7 @@ async def test_remote_worker_two_sequential_prompts_advance_history_once(tmp_pat
 
     assert first.stop_reason == "end_turn"
     assert second.stop_reason == "end_turn"
-    assert loaded.record.version == 2
+    assert loaded.record.version == 4
     assert [message.role for message in loaded.messages] == ["system", "user", "assistant", "user", "assistant"]
     assert [getattr(message, "content", None) for message in loaded.messages] == [
         "system",
@@ -281,7 +341,7 @@ async def test_remote_worker_two_sequential_prompts_advance_history_once(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_remote_worker_streams_tool_messages_before_final_answer_without_commit_duplicates(
+async def test_remote_worker_streams_tool_messages_before_final_answer_without_duplicates(
     tmp_path: Path,
 ) -> None:
     tool_call = ToolCall(
@@ -318,18 +378,16 @@ async def test_remote_worker_streams_tool_messages_before_final_answer_without_c
         loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert result.stop_reason == "end_turn"
-    session_update = _session_payload(updates[5])
-    assert updates == [
-        MessageAddedUpdate(message_id=_message_id(updates[0]), message=UserMessage(content="Use tool")),
-        MessageAddedUpdate(message_id=_message_id(updates[1]), message=AssistantMessage(tool_calls=[tool_call])),
-        MessageAddedUpdate(
-            message_id=_message_id(updates[2]),
-            message=ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
-        ),
-        MessageAddedUpdate(message_id=_message_id(updates[3]), message=AssistantMessage(content="")),
-        MessageDeltaUpdate(message_id=_message_id(updates[3]), append_text="done"),
-        SessionUpdatedUpdate(session=session_update),
+    run_updates = [_run_payload(update) for update in updates if isinstance(update, RunUpdatedUpdate)]
+    message_updates = [update for update in updates if not isinstance(update, (RunUpdatedUpdate, SessionUpdatedUpdate))]
+    assert [update["status"] for update in run_updates] == ["running", "completed"]
+    assert [update.message for update in message_updates if isinstance(update, MessageAddedUpdate)] == [
+        UserMessage(content="Use tool"),
+        AssistantMessage(tool_calls=[tool_call]),
+        ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
+        AssistantMessage(content=""),
     ]
+    assert message_updates[-1] == MessageDeltaUpdate(message_id=_message_id(message_updates[3]), append_text="done")
     assert loaded.messages == [
         SystemMessage(content="system"),
         UserMessage(content="Use tool"),
@@ -369,7 +427,7 @@ async def test_remote_worker_cancel_reaches_active_worker(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_manager_server_uses_remote_worker_and_replays_committed_history(tmp_path: Path) -> None:
+async def test_manager_server_uses_remote_worker_and_replays_persisted_history(tmp_path: Path) -> None:
     runtime = WorkerRuntimeConfig(
         model="test-model",
         tools=[],
@@ -427,7 +485,8 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
     assert initialize_response["result"]["protocolVersion"] == ACP_PROTOCOL_VERSION
     assert set_model_response["result"]["_meta"]["model"] == "test-model"
     live_payloads = [_update(message) for message in live_updates]
-    assert _normalized_updates(live_payloads[:3]) == [
+    live_message_payloads = [update for update in live_payloads if update.get("sessionUpdate") != "run_updated"]
+    assert _normalized_updates(live_message_payloads[:3]) == [
         {
             "sessionUpdate": "message_added",
             "messageId": "message-0",
@@ -455,9 +514,9 @@ async def test_manager_server_uses_remote_worker_and_replays_committed_history(t
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "server answer"},
         },
-        {"sessionUpdate": "history_complete", "version": 1},
+        {"sessionUpdate": "history_complete", "version": 2},
     ]
-    assert load_response["result"]["_meta"]["version"] == 1
+    assert load_response["result"]["_meta"]["version"] == 2
 
 
 @pytest.mark.asyncio
@@ -489,7 +548,7 @@ async def test_remote_worker_smoke_uses_fake_openai_adapter(
             loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert result.stop_reason == "end_turn"
-    assert loaded.record.version == 1
+    assert loaded.record.version == 2
     assert [getattr(message, "content", None) for message in loaded.messages] == [
         "system",
         "container smoke",

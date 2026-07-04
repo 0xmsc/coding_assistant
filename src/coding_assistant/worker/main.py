@@ -44,7 +44,7 @@ async def _main(args: argparse.Namespace) -> None:
         runtime = WorkerRuntimeConfig(
             model=args.model,
             tools=bundle.tools,
-            commit_metadata_provider=bundle.session_title_state.commit_metadata,
+            finish_metadata_provider=bundle.session_title_state.finish_metadata,
         )
         async with start_session_worker_server(runtime=runtime, host=args.host, port=args.port) as server:
             print(f"Worker endpoint: {server.endpoint}", flush=True)
