@@ -19,7 +19,7 @@ publish:
     ./docker/publish.sh
 
 dev-manager:
-    docker compose --env-file docker/.env -f docker/compose.manager.yml up --watch --abort-on-container-failure manager
+    docker compose --env-file docker/.env -f docker/compose.manager.yml up --watch manager
 
 dev-manager-down:
     docker compose --env-file docker/.env -f docker/compose.manager.yml down
