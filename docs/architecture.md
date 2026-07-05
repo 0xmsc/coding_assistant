@@ -27,7 +27,7 @@ clients. The terminal UI itself is not a JSON-RPC client.
 
 `coding_assistant.remote` owns JSON-RPC framing and protocol serialization.
 
-- `acp.py` contains the custom ACP-inspired JSON-RPC helpers and common payload
+- `jsonrpc.py` contains the custom ACP-inspired JSON-RPC helpers and common payload
   validation.
 - `control.py` contains the shared remote-control implementation for
   JSON-RPC-driven `AgentSession` prompt, cancel, update, and run-finished

@@ -5,7 +5,6 @@ import dataclasses
 import functools
 import json
 import logging
-import os
 import re
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, Literal, cast
@@ -14,6 +13,7 @@ import httpx
 from httpx_sse import SSEError, aconnect_sse
 
 from coding_assistant.infra.trace import trace_json
+from coding_assistant.llm.provider_config import resolve_provider_config
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -54,10 +54,8 @@ async def _get_tools_payload(tools: Sequence[ToolDefinition]) -> list[dict[str, 
 
 def _get_base_url_and_api_key() -> tuple[str, str]:
     """Resolve the API base URL and key from the configured provider env vars."""
-    if os.environ.get("OPENAI_BASE_URL"):
-        return (os.environ["OPENAI_BASE_URL"], os.environ["OPENAI_API_KEY"])
-    else:
-        return ("https://api.openai.com/v1", os.environ["OPENAI_API_KEY"])
+    config = resolve_provider_config()
+    return (config.base_url, config.api_key)
 
 
 async def list_models() -> list[str]:

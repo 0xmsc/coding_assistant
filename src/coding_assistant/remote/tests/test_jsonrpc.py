@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from coding_assistant.remote.acp import (
+from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_REQUEST,
     ACP_PROTOCOL_VERSION,
     initialize_response,

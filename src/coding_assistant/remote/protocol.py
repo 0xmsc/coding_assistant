@@ -12,7 +12,7 @@ from coding_assistant.core.session_updates import (
     SessionUpdatedUpdate,
 )
 from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
-from coding_assistant.remote.acp import JsonObject, jsonrpc_notification
+from coding_assistant.remote.jsonrpc import JsonObject, jsonrpc_notification
 
 
 def _message_added_payload(update: MessageAddedUpdate) -> JsonObject:
