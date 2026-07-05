@@ -8,6 +8,20 @@ import pytest
 from coding_assistant.tools.process import start_process
 
 
+def _process_is_running(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+
+    stat_path = Path(f"/proc/{pid}/stat")
+    if stat_path.exists():
+        state = stat_path.read_text().split()[2]
+        return state != "Z"
+
+    return True
+
+
 @pytest.mark.asyncio
 async def test_start_process_uses_scrubbed_environment_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PARENT_VAR", "parent_value")
@@ -81,9 +95,7 @@ async def test_terminate_kills_child_process_group(tmp_path: Path) -> None:
     assert await handle.wait(timeout=1.0) is True
 
     for _ in range(20):
-        try:
-            os.kill(child_pid, 0)
-        except ProcessLookupError:
+        if not _process_is_running(child_pid):
             break
         await asyncio.sleep(0.05)
     else:
