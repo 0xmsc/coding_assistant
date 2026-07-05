@@ -22,7 +22,7 @@ CODING_ASSISTANT_MANAGER_AUTH_SECRET=<long-random-secret>
 CODING_ASSISTANT_HOST_DATA_DIR=/absolute/host/path/backing/manager-data
 CODING_ASSISTANT_WORKER_IMAGE=<worker-image>
 CODING_ASSISTANT_WORKER_NETWORK=<worker-network>
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=sk-... # or OPENROUTER_API_KEY=sk-or-...
 ```
 
 `CODING_ASSISTANT_MANAGER_AUTH_SECRET` is the bearer token clients use when
@@ -36,9 +36,10 @@ to the absolute Docker-host path backing that mount.
 containers. `CODING_ASSISTANT_WORKER_NETWORK` is the container network where
 workers are reachable by container name from the manager.
 
-`OPENAI_API_KEY` is forwarded to worker containers. Provider and tool variables
+Set `OPENAI_API_KEY` for OpenAI or OpenAI-compatible providers. Set
+`OPENROUTER_API_KEY` instead when using OpenRouter. Provider and tool variables
 keep their standard names; project-owned variables use the
-`CODING_ASSISTANT_` prefix.
+`CODING_ASSISTANT_` prefix. Provider keys are forwarded to worker containers.
 
 The manager does not choose a default model. Clients must call `model/list`,
 let the user or application select a model, and persist it with
@@ -53,7 +54,8 @@ base URL:
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
 ```
 
-Leave it unset to use the default OpenAI API base URL.
+Leave it unset to use the default OpenAI API base URL, or OpenRouter's default
+base URL when `OPENROUTER_API_KEY` is set.
 
 ## Runtime Requirements
 
@@ -113,6 +115,7 @@ forwards only the provider variables the built-in worker needs:
 ```text
 OPENAI_API_KEY
 OPENAI_BASE_URL
+OPENROUTER_API_KEY
 ```
 
 This allowlist keeps manager-only secrets out of workers and makes the worker

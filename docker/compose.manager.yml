@@ -32,6 +32,7 @@ services:
       CODING_ASSISTANT_WORKER_NETWORK: coding-assistant-dev
       OPENAI_API_KEY:
       OPENAI_BASE_URL:
+      OPENROUTER_API_KEY:
 
 networks:
   default:
