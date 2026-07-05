@@ -15,7 +15,7 @@ from coding_assistant.remote.websocket_server import receive_jsonrpc_messages, s
 
 
 @dataclass(frozen=True)
-class WorkerServer:
+class RemoteServer:
     """Handle returned by the server context, exposing the chosen endpoint."""
 
     endpoint: str
@@ -25,7 +25,7 @@ class WorkerServer:
 async def start_worker_server(
     *,
     session: AgentSession,
-) -> AsyncIterator[WorkerServer]:
+) -> AsyncIterator[RemoteServer]:
     """Serve one JSON-RPC remote-control connection for a live session."""
     connection_lock = asyncio.Lock()
     active_connection: ServerConnection | None = None
@@ -69,4 +69,4 @@ async def start_worker_server(
                     active_connection = None
 
     async with serve_jsonrpc_websocket(handler=handle_connection) as server:
-        yield WorkerServer(endpoint=server.endpoint)
+        yield RemoteServer(endpoint=server.endpoint)

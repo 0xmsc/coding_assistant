@@ -23,7 +23,7 @@ from coding_assistant.cli.output import (
 from coding_assistant.core.agent_session import AgentSession, RunFinishedEvent, SessionState
 from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, UserMessage
-from coding_assistant.remote.server import WorkerServer
+from coding_assistant.remote.server import RemoteServer
 from coding_assistant.testing.fake_openai import run_fake_openai_server
 
 
@@ -114,7 +114,7 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
 
     @asynccontextmanager
     async def fake_start_worker_server(*, session: Any) -> Any:
-        yield WorkerServer(endpoint="ws://127.0.0.1:1234")
+        yield RemoteServer(endpoint="ws://127.0.0.1:1234")
 
     @asynccontextmanager
     async def fake_register_remote_instance(*, endpoint: str) -> Any:
