@@ -13,7 +13,6 @@ from coding_assistant.tools.session_title import SessionTitleState, create_sessi
 from coding_assistant.tools.shell import create_shell_tools
 from coding_assistant.tools.skills import create_skill_tools, format_skills_instructions
 from coding_assistant.tools.tasks import TaskManager, create_task_tools
-from coding_assistant.tools.todo import TodoManager, create_todo_tools
 
 
 @dataclass(slots=True)
@@ -38,7 +37,6 @@ def create_worker_tool_bundle(
 ) -> WorkerToolBundle:
     """Build the local execution tool bundle used by worker agents."""
     task_manager = TaskManager()
-    todo_manager = TodoManager()
     session_title_state = SessionTitleState()
     tool_process_env = process_env or {}
 
@@ -49,7 +47,6 @@ def create_worker_tool_bundle(
         instructions = f"{instructions}\n\n{skill_instructions}"
 
     tools: list[Tool] = [
-        *create_todo_tools(manager=todo_manager),
         *create_shell_tools(manager=task_manager, process_env=tool_process_env),
         *create_python_tools(manager=task_manager, process_env=tool_process_env),
         *create_filesystem_tools(),

@@ -14,7 +14,6 @@ from coding_assistant.tools.remote import WorkerToolRuntime
 from coding_assistant.tools.shell import create_shell_tools
 from coding_assistant.tools.skills import create_skill_tools, format_skills_instructions
 from coding_assistant.tools.tasks import TaskManager, create_task_tools
-from coding_assistant.tools.todo import TodoManager, create_todo_tools
 
 
 @dataclass(slots=True)
@@ -45,7 +44,6 @@ def create_cli_tool_bundle(
 ) -> CliToolBundle:
     """Build the in-process tool bundle used by the interactive CLI."""
     task_manager = TaskManager()
-    todo_manager = TodoManager()
     worker_runtime = WorkerToolRuntime()
 
     skill_tools, skills = create_skill_tools(skills_directories=[get_builtin_skills_dir(), *skills_directories])
@@ -55,7 +53,6 @@ def create_cli_tool_bundle(
         instructions = f"{instructions}\n\n{skill_instructions}"
 
     tools: list[Tool] = [
-        *create_todo_tools(manager=todo_manager),
         *create_shell_tools(manager=task_manager),
         *create_python_tools(manager=task_manager),
         *create_filesystem_tools(),
