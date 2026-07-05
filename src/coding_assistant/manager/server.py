@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from http import HTTPStatus
 
-from websockets.asyncio.server import ServerConnection, serve
+from websockets.asyncio.server import ServerConnection
 from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
@@ -27,12 +27,11 @@ from coding_assistant.remote.acp import (
     jsonrpc_result,
     jsonrpc_result_required,
     params_from_payload,
-    parse_jsonrpc_message,
     response_id_from_payload,
     session_id_from_params,
 )
-from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
 from coding_assistant.remote.protocol import session_update_notification
+from coding_assistant.remote.websocket_server import receive_jsonrpc_messages, serve_jsonrpc_websocket
 
 
 logger = logging.getLogger(__name__)
@@ -335,34 +334,30 @@ async def start_manager_server(
 
     async def handle_connection(websocket: ServerConnection) -> None:
         state = _ConnectionState()
+
+        async def handle_message(payload: JsonObject) -> None:
+            await _handle_jsonrpc_message(
+                websocket=websocket,
+                service=service,
+                broker=broker,
+                prompt_tasks=prompt_tasks,
+                state=state,
+                payload=payload,
+            )
+
         try:
-            async for raw_message in websocket:
-                try:
-                    payload = parse_jsonrpc_message(raw_message)
-                except ValueError:
-                    await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "Invalid JSON-RPC payload."))
-                    continue
-                await _handle_jsonrpc_message(
-                    websocket=websocket,
-                    service=service,
-                    broker=broker,
-                    prompt_tasks=prompt_tasks,
-                    state=state,
-                    payload=payload,
-                )
-        except ConnectionClosed:
-            pass
+            await receive_jsonrpc_messages(websocket=websocket, on_message=handle_message)
         finally:
             await broker.unsubscribe_all(websocket=websocket, state=state)
 
-    async with serve(
-        handle_connection, host, port, process_request=process_request, max_size=WEBSOCKET_MAX_SIZE
+    async with serve_jsonrpc_websocket(
+        handler=handle_connection,
+        host=host,
+        port=port,
+        process_request=process_request,
     ) as server:
-        socket = server.sockets[0]
-        bound_port = socket.getsockname()[1]
-        endpoint = f"ws://{host}:{bound_port}"
         try:
-            yield ManagerServer(endpoint=endpoint)
+            yield ManagerServer(endpoint=server.endpoint)
         finally:
             for task in list(prompt_tasks):
                 task.cancel()
