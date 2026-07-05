@@ -22,6 +22,24 @@ def _process_is_running(pid: int) -> bool:
     return True
 
 
+async def _read_pid_when_ready(path: Path) -> int:
+    for _ in range(20):
+        if path.exists():
+            raw_pid = path.read_text().strip()
+            if raw_pid:
+                return int(raw_pid)
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"PID was not written to {path}.")
+
+
+async def _wait_until_not_running(pid: int) -> None:
+    for _ in range(20):
+        if not _process_is_running(pid):
+            return
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"Child process {pid} is still running after terminate().")
+
+
 @pytest.mark.asyncio
 async def test_start_process_uses_scrubbed_environment_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PARENT_VAR", "parent_value")
@@ -75,28 +93,24 @@ async def test_start_process_does_not_expose_provider_or_manager_secrets(monkeyp
 @pytest.mark.asyncio
 @pytest.mark.skipif(os.name != "posix", reason="process group termination is only exercised on POSIX")
 async def test_terminate_kills_child_process_group(tmp_path: Path) -> None:
+    shell_pid_path = tmp_path / "shell.pid"
     child_pid_path = tmp_path / "child.pid"
-    command = f"sleep 30 & echo $! > {shlex.quote(str(child_pid_path))}; wait"
+    shell_pid_file = shlex.quote(str(shell_pid_path))
+    child_pid_file = shlex.quote(str(child_pid_path))
+    command = "; ".join(
+        [
+            f"echo $$ > {shell_pid_file}",
+            f"sleep 30 & echo $! > {child_pid_file}",
+            "wait",
+        ]
+    )
 
     handle = await start_process(args=["bash", "-c", command])
 
-    child_pid = None
-    for _ in range(20):
-        if child_pid_path.exists():
-            raw_pid = child_pid_path.read_text().strip()
-            if raw_pid:
-                child_pid = int(raw_pid)
-                break
-        await asyncio.sleep(0.05)
-
-    assert child_pid is not None
+    shell_pid = await _read_pid_when_ready(shell_pid_path)
+    child_pid = await _read_pid_when_ready(child_pid_path)
+    assert os.getpgid(child_pid) == os.getpgid(shell_pid)
 
     await handle.terminate()
     assert await handle.wait(timeout=1.0) is True
-
-    for _ in range(20):
-        if not _process_is_running(child_pid):
-            break
-        await asyncio.sleep(0.05)
-    else:
-        raise AssertionError(f"Child process {child_pid} is still running after terminate().")
+    await _wait_until_not_running(child_pid)
