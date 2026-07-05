@@ -1093,11 +1093,11 @@ Manager-to-worker traffic uses the same JSON-RPC protocol family as external
 remote traffic. This is not a second protocol mode: the CLI-owned local remote
 endpoint and manager-controlled remote workers/subagents should share envelope
 parsing, request/response/error handling, content blocks, `session/update`
-serialization, and normalized update/commit models.
+serialization, and normalized run-finished payloads.
 
 Private methods use the `_session/*` prefix only where the public session
 methods do not define the manager/worker operation, such as starting a worker
-from manager-owned state and completed-turn commit semantics.
+from manager-owned state and completed-turn result semantics.
 
 ### _session/start
 
@@ -1141,8 +1141,8 @@ Use honest module names:
 - `remote/jsonrpc.py` for generic JSON-RPC helpers.
 - `remote/protocol.py` for the custom `coding-assistant` remote protocol.
 
-Do not put manager session paths, scope metadata, worker commits, or private
-`_session/*` methods into a module named as if it were pure ACP.
+Do not put manager session paths, scope metadata, worker run-finished payloads,
+or private `_session/*` methods into a module named as if it were pure ACP.
 
 ## Current Limitations
 
@@ -1166,8 +1166,8 @@ Required coverage:
 - Transcript replay order.
 - Prompt streaming through `session/update`.
 - Tool call and tool call update shapes.
-- Versioned commit success and stale commit rejection.
-- Worker crash before commit does not advance SQLite history.
+- Versioned run-finished success and stale run-finished rejection.
+- Worker crash before run completion does not advance SQLite history.
 - Concurrent prompts on different sessions.
 - Rejection of a second active prompt for one session.
 - Model listing, default fallback, per-session model changes, and per-prompt

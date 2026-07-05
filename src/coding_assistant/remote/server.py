@@ -6,13 +6,12 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from uuid import uuid4
 
-from websockets.asyncio.server import ServerConnection, serve
-from websockets.exceptions import ConnectionClosed
+from websockets.asyncio.server import ServerConnection
 
 from coding_assistant.core.agent_session import AgentSession
-from coding_assistant.remote.acp import ERROR_INVALID_REQUEST, ERROR_SERVER, jsonrpc_error, parse_jsonrpc_message
+from coding_assistant.remote.acp import ERROR_SERVER, JsonObject, jsonrpc_error
 from coding_assistant.remote.control import RemoteAgentController, RemoteAgentInfo, RemoteControlledSession
-from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
+from coding_assistant.remote.websocket_server import receive_jsonrpc_messages, serve_jsonrpc_websocket
 
 
 @dataclass(frozen=True)
@@ -56,15 +55,11 @@ async def start_worker_server(
         )
         sender_task = asyncio.create_task(controller.publish_session_events(websocket=websocket))
         try:
-            async for raw_message in websocket:
-                try:
-                    payload = parse_jsonrpc_message(raw_message)
-                except ValueError:
-                    await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "Invalid JSON-RPC payload."))
-                    continue
+
+            async def handle_message(payload: JsonObject) -> None:
                 await controller.handle_jsonrpc_message(websocket=websocket, payload=payload)
-        except ConnectionClosed:
-            pass
+
+            await receive_jsonrpc_messages(websocket=websocket, on_message=handle_message)
         finally:
             sender_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -73,8 +68,5 @@ async def start_worker_server(
                 if active_connection is websocket:
                     active_connection = None
 
-    async with serve(handle_connection, "127.0.0.1", 0, max_size=WEBSOCKET_MAX_SIZE) as server:
-        socket = server.sockets[0]
-        port = socket.getsockname()[1]
-        endpoint = f"ws://127.0.0.1:{port}"
-        yield WorkerServer(endpoint=endpoint)
+    async with serve_jsonrpc_websocket(handler=handle_connection) as server:
+        yield WorkerServer(endpoint=server.endpoint)
