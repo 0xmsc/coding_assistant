@@ -16,7 +16,7 @@ from coding_assistant.core.session_updates import (
     content_text,
 )
 from coding_assistant.llm.types import BaseMessage
-from coding_assistant.remote.acp import (
+from coding_assistant.remote.jsonrpc import (
     ACP_PROTOCOL_VERSION,
     JsonObject,
     jsonrpc_notification,

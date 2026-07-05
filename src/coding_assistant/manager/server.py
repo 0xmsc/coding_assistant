@@ -16,7 +16,7 @@ from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.manager.service import ManagerError, ManagerService, SessionBusyError
 from coding_assistant.manager.store import SessionNotFoundError, StaleSessionCommitError
 from coding_assistant.manager.workspace import WorkspaceMissingError
-from coding_assistant.remote.acp import (
+from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
     ERROR_METHOD_NOT_FOUND,

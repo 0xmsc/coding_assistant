@@ -9,7 +9,7 @@ from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
-from coding_assistant.remote.acp import ERROR_INVALID_REQUEST, JsonObject, jsonrpc_error, parse_jsonrpc_message
+from coding_assistant.remote.jsonrpc import ERROR_INVALID_REQUEST, JsonObject, jsonrpc_error, parse_jsonrpc_message
 from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
 
 

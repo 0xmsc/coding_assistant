@@ -9,7 +9,7 @@ from uuid import uuid4
 from websockets.asyncio.server import ServerConnection
 
 from coding_assistant.core.agent_session import AgentSession
-from coding_assistant.remote.acp import ERROR_SERVER, JsonObject, jsonrpc_error
+from coding_assistant.remote.jsonrpc import ERROR_SERVER, JsonObject, jsonrpc_error
 from coding_assistant.remote.control import RemoteAgentController, RemoteAgentInfo, RemoteControlledSession
 from coding_assistant.remote.websocket_server import receive_jsonrpc_messages, serve_jsonrpc_websocket
 

@@ -29,7 +29,7 @@ from coding_assistant.manager.service import (
 )
 from coding_assistant.manager.tests.fakes import FakeWorkerRunner
 from coding_assistant.manager.tests.store_helpers import create_session_store
-from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
+from coding_assistant.remote.jsonrpc import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
 from coding_assistant.remote.client import RemoteClientEvent, RemoteSessionClient
 
 

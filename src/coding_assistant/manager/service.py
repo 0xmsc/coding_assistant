@@ -30,7 +30,7 @@ from coding_assistant.core.session_updates import (
 from coding_assistant.llm.openai import list_models as list_provider_models
 from coding_assistant.llm.types import AssistantMessage, BaseMessage, UserMessage
 from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore, StoredMessage
-from coding_assistant.remote.acp import JsonObject, prompt_content_from_acp, session_id_from_params
+from coding_assistant.remote.jsonrpc import JsonObject, prompt_content_from_acp, session_id_from_params
 from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
 MODEL_METADATA_KEY = "model"
