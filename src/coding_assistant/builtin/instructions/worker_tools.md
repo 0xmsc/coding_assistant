@@ -16,11 +16,6 @@
 - Prefer Python over Shell for readability.
 - Add comments to your scripts to explain your logic.
 
-## TODO
-
-- Always manage a TODO list while working on your task.
-- Use the `todo_*` tools for managing the list.
-
 ## Filesystem
 
 - Use filesystem tools to read, write, and edit files.

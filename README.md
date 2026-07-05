@@ -115,18 +115,20 @@ The default CLI includes these local tools:
 - `shell_execute` for running shell commands.
 - `python_execute` for running Python snippets.
 - `filesystem_write_file` and `filesystem_edit_file` for targeted file changes.
-- `todo_add`, `todo_list_todos`, and `todo_complete` for TODO tracking.
 - `tasks_list_tasks`, `tasks_get_status`, `tasks_get_output`, `tasks_kill_task`, and `tasks_remove_task` for background task management.
 
 The core runtime also adds internal helper tools such as `compact_conversation` and `redirect_tool_call`.
 
 ## Skills
 
-Coding Assistant currently ships one bundled builtin skill:
+Coding Assistant ships bundled builtin skills:
 
 - `advanced-tool-usage`
+- `pdf-text-extraction`
+- `todo`
 
-It documents patterns for large-output handling and multi-stage tool orchestration with `redirect_tool_call`.
+They document patterns for large-output handling, multi-stage tool orchestration with `redirect_tool_call`,
+PDF text extraction, and workspace TODO continuity through `.agents/todo.md`.
 
 You can add more skills with `--skills-directories`. Each additional skill directory should contain child directories with a `SKILL.md` file:
 

@@ -11,6 +11,7 @@ async def test_create_cli_tool_bundle_includes_remote_tools() -> None:
 
         assert bundle.instructions.startswith(load_tool_instructions())
         assert "advanced-tool-usage" in bundle.instructions
+        assert "workspace TODO continuity" in bundle.instructions
         assert {
             "skills_list_resources",
             "skills_read",
@@ -23,5 +24,10 @@ async def test_create_cli_tool_bundle_includes_remote_tools() -> None:
             "remote_cancel",
             "remote_disconnect",
         } <= tool_names
+        assert {
+            "todo_add",
+            "todo_list_todos",
+            "todo_complete",
+        }.isdisjoint(tool_names)
     finally:
         await bundle.close()
