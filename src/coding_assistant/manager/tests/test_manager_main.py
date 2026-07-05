@@ -2,13 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from coding_assistant.manager.main import (
+from coding_assistant.manager.config import (
     _manager_auth_secret_from_env,
     _manager_config_from_env,
-    _reject_cli_args,
     _worker_environment_from_env,
     _worker_extra_hosts_from_env,
 )
+from coding_assistant.manager.main import _reject_cli_args
 
 
 MANAGER_ENV_KEYS = (
