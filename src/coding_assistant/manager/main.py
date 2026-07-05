@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from coding_assistant.infra.logging import setup_logging
+from coding_assistant.llm.provider_config import require_provider_key, worker_provider_environment
 from coding_assistant.manager.docker_worker import DockerWorkerConfig, DockerWorkerRunner
 from coding_assistant.manager.server import start_manager_server
 from coding_assistant.manager.service import ManagerService
@@ -20,15 +21,11 @@ CODING_ASSISTANT_MANAGER_AUTH_SECRET_ENV = "CODING_ASSISTANT_MANAGER_AUTH_SECRET
 CODING_ASSISTANT_WORKER_IMAGE_ENV = "CODING_ASSISTANT_WORKER_IMAGE"
 CODING_ASSISTANT_WORKER_NETWORK_ENV = "CODING_ASSISTANT_WORKER_NETWORK"
 CODING_ASSISTANT_WORKER_EXTRA_HOSTS_ENV = "CODING_ASSISTANT_WORKER_EXTRA_HOSTS"
-OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
-OPENAI_BASE_URL_ENV = "OPENAI_BASE_URL"
-OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
 MANAGER_DATA_DIR = Path("/data")
 MANAGER_HOST = "0.0.0.0"
 MANAGER_PORT = 8764
 WORKER_PORT = 8765
 WORKER_WORKSPACE = "/workspace"
-WORKER_PROVIDER_ENV_KEYS = (OPENAI_API_KEY_ENV, OPENAI_BASE_URL_ENV, OPENROUTER_API_KEY_ENV)
 
 
 @dataclass(frozen=True)
@@ -51,7 +48,7 @@ class ManagerConfig:
 
 
 def _worker_environment_from_env() -> dict[str, str]:
-    return {key: os.environ[key] for key in WORKER_PROVIDER_ENV_KEYS if os.environ.get(key)}
+    return worker_provider_environment()
 
 
 def _worker_extra_hosts_from_env() -> tuple[str, ...]:
@@ -66,11 +63,6 @@ def _required_env(name: str) -> str:
     return value
 
 
-def _require_provider_key() -> None:
-    if not os.environ.get(OPENAI_API_KEY_ENV) and not os.environ.get(OPENROUTER_API_KEY_ENV):
-        raise ValueError(f"{OPENAI_API_KEY_ENV} or {OPENROUTER_API_KEY_ENV} must be set to start the manager.")
-
-
 def _absolute_path_env(name: str) -> Path:
     path = Path(_required_env(name))
     if not path.is_absolute():
@@ -83,7 +75,7 @@ def _manager_auth_secret_from_env() -> str:
 
 
 def _manager_config_from_env() -> ManagerConfig:
-    _require_provider_key()
+    require_provider_key()
     host_data_dir = _absolute_path_env(CODING_ASSISTANT_HOST_DATA_DIR_ENV)
     return ManagerConfig(
         auth_secret=_manager_auth_secret_from_env(),
