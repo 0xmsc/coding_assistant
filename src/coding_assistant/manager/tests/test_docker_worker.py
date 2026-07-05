@@ -23,7 +23,7 @@ from coding_assistant.manager.docker_worker import (
     _run_command,
 )
 from coding_assistant.manager.service import WorkerPrompt
-from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
+from coding_assistant.remote.jsonrpc import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
 
 
 def _docker(args: list[str], *, timeout: int = 60) -> subprocess.CompletedProcess[str]:

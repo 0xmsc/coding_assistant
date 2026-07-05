@@ -15,7 +15,7 @@ from coding_assistant.core.session_updates import (
     session_updates_from_agent_event,
 )
 from coding_assistant.llm.types import AssistantMessage, BaseMessage, ContentDeltaEvent
-from coding_assistant.remote.acp import (
+from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
     ERROR_METHOD_NOT_FOUND,

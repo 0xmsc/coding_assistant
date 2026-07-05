@@ -32,7 +32,7 @@ from coding_assistant.llm.types import (
     UserMessage,
     Usage,
 )
-from coding_assistant.remote.acp import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
+from coding_assistant.remote.jsonrpc import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
 from coding_assistant.remote.protocol import messages_to_jsonrpc
 from coding_assistant.remote.server import start_worker_server
 

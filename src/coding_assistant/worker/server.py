@@ -10,7 +10,7 @@ from websockets.asyncio.server import ServerConnection
 
 from coding_assistant.core.agent_session import AgentSession, CompletionStreamer
 from coding_assistant.llm.types import BaseMessage, Tool
-from coding_assistant.remote.acp import (
+from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
     ERROR_SERVER,
