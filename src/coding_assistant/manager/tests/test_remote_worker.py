@@ -298,19 +298,19 @@ async def test_remote_worker_persists_final_message_not_streamed_delta(tmp_path:
 
 @pytest.mark.asyncio
 async def test_remote_worker_two_sequential_prompts_advance_history_once(tmp_path: Path) -> None:
-    runtime = WorkerRuntimeConfig(
+    first_runtime = WorkerRuntimeConfig(
         model="test-model",
         tools=[],
-        completion_streamer=ScriptedStreamer(
-            [
-                AssistantMessage(content="first answer"),
-                AssistantMessage(content="second answer"),
-            ],
-        ),
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="first answer")]),
+    )
+    second_runtime = WorkerRuntimeConfig(
+        model="test-model",
+        tools=[],
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="second answer")]),
     )
 
-    async with start_session_worker_server(runtime=runtime) as worker_server:
-        service, store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
+    async with start_session_worker_server(runtime=first_runtime) as first_worker:
+        service, store = _manager_service(tmp_path=tmp_path, endpoint=first_worker.endpoint)
         created = store.create_session(
             scope_id="scope-a",
             messages=[SystemMessage(content="system")],
@@ -321,10 +321,15 @@ async def test_remote_worker_two_sequential_prompts_advance_history_once(tmp_pat
             params=_scope_params(created.record.session_id, "first"),
             on_update=lambda update: _ignore_update(update),
         )
+        await first_worker.wait_finished()
+
+    async with start_session_worker_server(runtime=second_runtime) as second_worker:
+        service, store = _manager_service(tmp_path=tmp_path, endpoint=second_worker.endpoint)
         second = await service.prompt(
             params=_scope_params(created.record.session_id, "second"),
             on_update=lambda update: _ignore_update(update),
         )
+        await second_worker.wait_finished()
         loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert first.stop_reason == "end_turn"

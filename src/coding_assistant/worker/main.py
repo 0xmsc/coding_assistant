@@ -48,7 +48,7 @@ async def _main(args: argparse.Namespace) -> None:
         )
         async with start_session_worker_server(runtime=runtime, host=args.host, port=args.port) as server:
             print(f"Worker endpoint: {server.endpoint}", flush=True)
-            await asyncio.Event().wait()
+            await server.wait_finished()
 
 
 def main() -> None:

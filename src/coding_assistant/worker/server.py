@@ -6,8 +6,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
-from websockets.asyncio.server import ServerConnection, serve
-from websockets.exceptions import ConnectionClosed
+from websockets.asyncio.server import ServerConnection
 
 from coding_assistant.core.agent_session import AgentSession, CompletionStreamer
 from coding_assistant.llm.types import BaseMessage, Tool
@@ -17,17 +16,20 @@ from coding_assistant.remote.acp import (
     ERROR_SERVER,
     JsonObject,
     jsonrpc_error,
-    parse_jsonrpc_message,
     session_id_from_params,
 )
 from coding_assistant.remote.control import RemoteAgentController, RemoteAgentInfo, RemoteControlledSession
-from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
 from coding_assistant.remote.protocol import messages_from_jsonrpc
+from coding_assistant.remote.websocket_server import receive_jsonrpc_messages, serve_jsonrpc_websocket
 
 
 @dataclass(frozen=True)
 class WorkerServer:
     endpoint: str
+    _finished: asyncio.Event
+
+    async def wait_finished(self) -> None:
+        await self._finished.wait()
 
 
 @dataclass(frozen=True)
@@ -113,12 +115,18 @@ async def start_session_worker_server(
     host: str = "127.0.0.1",
     port: int = 0,
 ) -> AsyncIterator[WorkerServer]:
+    finished = asyncio.Event()
+
+    async def mark_finished() -> None:
+        finished.set()
+
     async def handle_connection(websocket: ServerConnection) -> None:
         controller = RemoteAgentController(
             agent_info=RemoteAgentInfo(name="coding-assistant-worker", title="Coding Assistant Worker"),
             busy_message="Session already has an active prompt.",
             unopened_message="_session/start must be called first.",
             finish_metadata_provider=runtime.finish_metadata_provider,
+            on_run_finished=mark_finished,
         )
         sender_task: asyncio.Task[None] | None = None
 
@@ -135,12 +143,10 @@ async def start_session_worker_server(
             return True
 
         try:
-            async for raw_message in websocket:
-                try:
-                    payload = parse_jsonrpc_message(raw_message)
-                except ValueError:
-                    await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "Invalid JSON-RPC payload."))
-                    continue
+
+            async def handle_message(payload: JsonObject) -> None:
+                nonlocal sender_task
+
                 await controller.handle_jsonrpc_message(
                     websocket=websocket,
                     payload=payload,
@@ -148,8 +154,8 @@ async def start_session_worker_server(
                 )
                 if controller.has_session and sender_task is None:
                     sender_task = asyncio.create_task(controller.publish_session_events(websocket=websocket))
-        except ConnectionClosed:
-            pass
+
+            await receive_jsonrpc_messages(websocket=websocket, on_message=handle_message)
         finally:
             if sender_task is not None:
                 sender_task.cancel()
@@ -159,8 +165,5 @@ async def start_session_worker_server(
             if session is not None:
                 await session.close()
 
-    async with serve(handle_connection, host, port, max_size=WEBSOCKET_MAX_SIZE) as server:
-        socket = server.sockets[0]
-        bound_port = socket.getsockname()[1]
-        endpoint = f"ws://{host}:{bound_port}"
-        yield WorkerServer(endpoint=endpoint)
+    async with serve_jsonrpc_websocket(handler=handle_connection, host=host, port=port, close_when=finished) as server:
+        yield WorkerServer(endpoint=server.endpoint, _finished=finished)

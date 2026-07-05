@@ -30,7 +30,8 @@ clients. The terminal UI itself is not a JSON-RPC client.
 - `acp.py` contains the custom ACP-inspired JSON-RPC helpers and common payload
   validation.
 - `control.py` contains the shared remote-control implementation for
-  JSON-RPC-driven `AgentSession` prompt, cancel, update, and commit behavior.
+  JSON-RPC-driven `AgentSession` prompt, cancel, update, and run-finished
+  behavior.
 - `protocol.py` converts between core messages/session updates and JSON-RPC
   payloads.
 - `client.py` contains `RemoteSessionClient`, the single client abstraction for
@@ -49,9 +50,9 @@ RPC.
 
 `coding_assistant.worker` owns the worker-side remote runtime. A worker receives
 manager-provided session state, creates one `AgentSession`, streams
-`session/update` notifications, and sends `_session/commit` notifications for
-the new messages produced by the active turn. Workers do not persist canonical
-history.
+`session/update` notifications, and sends `_session/run_finished` notifications
+for the new messages produced by the active turn. Workers do not persist
+canonical history.
 
 ## Modes
 
@@ -81,9 +82,9 @@ remote client
 
 This endpoint wraps one already-created `AgentSession` with the shared
 remote-control implementation. It emits the same provisional `session/update`
-and completed-turn `_session/commit` notifications as managed workers, but
-local callers may ignore commit notifications. It is useful for CLI-owned
-remote access and tests. It is not the web manager.
+and completed-turn `_session/run_finished` notifications as managed workers,
+but local callers may ignore run-finished notifications. It is useful for
+CLI-owned remote access and tests. It is not the web manager.
 
 ### Managed Web Sessions
 
@@ -109,7 +110,8 @@ The manager is the source of truth for managed web sessions.
 - Workspace paths are derived from session ids.
 - SQLite stores committed history and session metadata.
 - Workers hold only one active in-memory `AgentSession`.
-- A worker commit is appended by the manager after the worker completes a turn.
+- A worker run result is appended by the manager after the worker completes a
+  turn.
 
 This avoids split durable history between manager and worker. The worker can be
 discarded and recreated from manager-provided state.
@@ -124,9 +126,9 @@ should use core dataclasses such as `BaseMessage` and `SessionUpdate` rather
 than passing raw protocol dictionaries around.
 
 Every remote-controlled `AgentSession` emits provisional `session/update`
-notifications and a completed-turn `_session/commit` notification. Persistence
-is still caller-specific: the manager persists commits, while CLI-owned local
-remote callers may ignore them.
+notifications and a completed-turn `_session/run_finished` notification.
+Persistence is still caller-specific: the manager persists completed worker
+runs, while CLI-owned local remote callers may ignore them.
 
 Private `_session/*` methods are manager/worker control methods. Browser-facing
 or application-facing code should use the public session methods documented in
