@@ -4,8 +4,6 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-just publish
-
 ssh server <<'EOF'
 set -e
 cd ~/Server/containers

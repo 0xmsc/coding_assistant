@@ -23,7 +23,7 @@ check: lint-check check-migrations test
 publish:
     ./docker/publish.sh
 
-deploy: check
+deploy: check publish
     ./docker/deploy.sh
 
 dev-manager:
