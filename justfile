@@ -24,15 +24,7 @@ publish:
     ./docker/publish.sh
 
 deploy: check
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just publish
-    ssh server <<'EOF'
-    set -e
-    cd ~/Server/containers
-    docker pull forgejo.schneiderm.net/marcel/coding-assistant
-    docker compose up -d coding-assistant-manager
-    EOF
+    ./docker/deploy.sh
 
 dev-manager:
     docker compose --env-file docker/.env -f docker/compose.manager.yml up --build --watch manager
