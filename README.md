@@ -192,6 +192,13 @@ Run integration tests:
 just test-integration
 ```
 
+Run the normal deploy gate, publish the manager image, then deploy the manager
+service on the server:
+
+```bash
+just deploy
+```
+
 ## License
 
 MIT
