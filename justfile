@@ -23,22 +23,9 @@ check: lint-check check-migrations test
 publish:
     ./docker/publish.sh
 
-deploy-check: check
-
-deploy: deploy-check deploy-force
-
-deploy-force:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
+deploy: check
     just publish
-
-    ssh server <<'EOF'
-        set -e
-        cd ~/Server/containers
-        docker pull forgejo.schneiderm.net/marcel/coding-assistant
-        docker compose up -d coding-assistant-manager
-    EOF
+    ssh server 'set -e; cd ~/Server/containers; docker pull forgejo.schneiderm.net/marcel/coding-assistant; docker compose up -d coding-assistant-manager'
 
 dev-manager:
     docker compose --env-file docker/.env -f docker/compose.manager.yml up --build --watch manager
