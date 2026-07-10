@@ -125,6 +125,108 @@ boundary.
 **Likely scope:** `manager/service.py`, `manager/store.py`, and attachment tests.
 Medium.
 
+## Agent loop and protocol simplifications
+
+These ideas preserve the current core boundaries: the CLI continues to drive
+`AgentSession` in process, workers remain disposable, the manager owns durable
+state, and JSON-RPC remains a process/container concern.
+
+- [ ] **P2 — Separate runtime events from protocol updates**
+
+**Why:** `SessionUpdate` currently combines in-process runtime events such as
+content chunks, prompt starts, and run completion with durable/wire updates such
+as messages, attachments, history resets, and session metadata. The CLI converts
+`AgentSessionEvent` into this second runtime representation before rendering it,
+while `RemoteAgentController` overrides part of that conversion to synthesize
+message IDs and deltas. This makes one runtime event flow have two overlapping
+models and leaves some update variants meaningful to only one consumer.
+
+**Direction:** Keep `AgentSessionEvent` as the in-process event contract and let
+the CLI render it directly. Restrict `SessionUpdate` to protocol/history
+updates, with `RemoteAgentController` as the single projector from runtime
+events to wire updates. Use `StateChangedEvent` to invalidate the terminal UI
+instead of periodic polling, and render each `ToolCallsEvent` once instead of
+deduplicating per-call updates by Python object identity.
+
+**Likely scope:** `core/agent_session.py`, `core/session_updates.py`, `cli/ui.py`,
+`remote/control.py`, and protocol tests. Medium.
+
+- [ ] **P1 — Commit each managed turn at one durable boundary**
+
+**Why:** the manager currently persists the user prompt and non-text worker
+messages while a run is provisional, forwards assistant text without persisting
+it, then structurally compares the final worker message list with the messages
+already stored. It replaces or appends the remainder across multiple session
+versions. This gives provisional updates, final worker output, and durable
+history overlapping ownership while still producing an incomplete replay for a
+client that loads during a streamed assistant response.
+
+**Direction:** Treat worker updates as forward-only provisional output. On a
+successful or cancelled run, commit the complete new message list, title, and
+permitted metadata once using the starting `baseVersion`; increment the session
+version once per committed turn. A load during an active run should return the
+last committed history plus active-run status. If late-subscriber partial replay
+becomes a requirement, model it explicitly as an in-memory active-run
+projection instead of partially durable history.
+
+**Likely scope:** `manager/service.py`, `manager/store.py`, worker-result
+handling, RPC documentation, and managed-session tests. Medium to large.
+
+- [ ] **P2 — Use one terminal contract for remote prompts**
+
+**Why:** a remote prompt currently finishes through both the `session/prompt`
+response and a private `_session/run_finished` notification. The client also
+waits for up to 100 milliseconds to guess whether the request was accepted,
+which makes protocol timing part of application behavior. Manager-worker code
+then needs a separate finish future even though JSON-RPC already has a request
+future.
+
+**Direction:** Choose one completion mechanism. Prefer a normal long-running
+`session/prompt` request whose final response contains the typed run result and,
+for worker execution, the new messages, base version, and allowed finish
+metadata. `RemoteWorkerRunner` can await that response directly, while the
+remote-tool runtime can launch the same request in its own background task to
+preserve `remote_prompt`/`remote_wait` behavior. Remove the private duplicate
+notification and the 100-millisecond submission heuristic.
+
+**Likely scope:** `remote/control.py`, `remote/client.py`,
+`manager/remote_worker.py`, `tools/remote.py`, worker shutdown, RPC docs, and
+remote tests. Medium.
+
+- [ ] **P4 — Resolve and validate tools once per agent session**
+
+**Why:** the resolved tool set, including built-in compaction and redirection,
+is rebuilt and duplicate-checked before each model step and again before each
+tool-execution boundary. A session's tool set is fixed, so this repeats work and
+delays configuration failures until the first run.
+
+**Direction:** Build the final ordered tool list and name-to-tool lookup once in
+`AgentSession.__init__`. Pass the list to the model stream and the lookup to tool
+execution, failing immediately on duplicate names. Two stored fields are enough;
+avoid introducing a registry abstraction unless it gains another concrete
+responsibility.
+
+**Likely scope:** `core/agent_session.py`, `core/agent.py`,
+`core/tool_calls.py`, and core tests. Small.
+
+- [ ] **P4 — Replace flag bundles with explicit run and prompt states**
+
+**Why:** `_RunResult` represents completion, cancellation, and failure through
+optional history plus independent boolean/error fields, while remote control
+represents one active prompt through three independent optional fields. Both
+allow combinations that should be impossible and require repeated reset
+branches.
+
+**Direction:** Use explicit completed/cancelled/failed run outcomes and one
+optional active-prompt record containing request ID, source, and assistant
+message ID. Do this while touching the surrounding flow rather than as a
+standalone abstraction project. At the same time, rename the single-model-step
+stream and full-turn methods if needed so their different stopping boundaries
+are obvious.
+
+**Likely scope:** `core/agent_session.py`, `remote/control.py`, and focused
+state-transition tests. Small.
+
 ## Product and UX
 
 - [ ] **P1 — Bring CLI image handling up to the worker image contract**
