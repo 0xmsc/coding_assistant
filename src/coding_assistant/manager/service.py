@@ -99,7 +99,6 @@ class WorkerRunFinished:
     stop_reason: str
     messages: list[BaseMessage] = field(default_factory=list)
     title: str | None = None
-    metadata: JsonObject | None = None
 
 
 @dataclass(frozen=True)
@@ -759,7 +758,6 @@ class ManagerService:
                 scope_id=scope_id,
                 session_id=session_id,
                 title=worker_result.title,
-                metadata=worker_result.metadata,
             )
             finished_run = await self._finish_prompt_run(
                 run,

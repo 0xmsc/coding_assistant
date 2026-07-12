@@ -273,6 +273,14 @@ class TestFormatSessionStatus:
         state = SessionState(running=False, usage=Usage(tokens=0, cost=0.0))
         assert format_session_status(state) == "idle"
 
+    def test_missing_cost_is_rendered_as_unavailable(self) -> None:
+        state = SessionState(running=False, usage=Usage(tokens=500, cost=None))
+        assert format_session_status(state) == "idle — 500 tokens, cost unavailable"
+
+    def test_missing_token_count_is_rendered_as_unavailable(self) -> None:
+        state = SessionState(running=False, usage=Usage(tokens=None, cost=0.01))
+        assert format_session_status(state) == "idle — token count unavailable, $0.01"
+
 
 # =============================================================================
 # print_* Function Tests

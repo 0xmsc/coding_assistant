@@ -84,7 +84,6 @@ class RemoteWorkerRunner:
                 stop_reason=finished.stop_reason,
                 messages=finished.messages,
                 title=finished.title,
-                metadata=finished.metadata,
             )
         finally:
             await self._unregister_client(session_id=prompt.session_id, client=client)
