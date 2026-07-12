@@ -33,13 +33,12 @@ the stored `model`; the next prompt then fails with `Session has no model
 selected.` This path is especially likely because workers are instructed to set
 a title during the first turn.
 
-**Direction:** Treat title as its own field all the way through the worker
-result, define which worker metadata keys are actually allowed to update durable
-session metadata, and merge those keys without removing manager-owned metadata.
-Add a real two-prompt manager/worker test in which the first prompt sets a title
-and the second reuses the selected model.
+**Implemented:** Title is carried as its own worker-result field, and worker
+finish metadata no longer replaces durable session metadata. A two-prompt
+manager/worker test verifies that setting the title preserves the selected
+model for the next prompt.
 
-**Likely scope:** `remote/client.py`, `manager/remote_worker.py`,
+**Scope:** `remote/client.py`, `manager/remote_worker.py`,
 `manager/service.py`, `manager/store.py`, and manager integration tests. Small.
 
 - [x] **P0 — Normalize incomplete provider usage data**
@@ -50,13 +49,12 @@ already exercise a provider response without cost, but not through
 `AgentSession`, where `float + None` can fail the run. The CLI status formatter
 also assumes cost is always numeric.
 
-**Direction:** Choose one explicit contract: either normalize missing provider
-fields to safe numeric values while retaining an “unknown” marker elsewhere, or
-make the fields optional throughout and render/accumulate them accordingly.
-Test the complete provider-to-session-to-status path for missing cost and
-missing token counts.
+**Implemented:** Usage fields are optional throughout. The session preserves an
+unknown cumulative cost once any component is unknown, and the CLI reports
+missing cost or token counts as unavailable. Provider, session, and status tests
+cover both missing fields.
 
-**Likely scope:** `llm/types.py`, `llm/openai.py`, `core/agent_session.py`, and
+**Scope:** `llm/types.py`, `llm/openai.py`, `core/agent_session.py`, and
 `cli/output.py`. Small.
 
 - [ ] **P1 — Make retries safe after streaming has begun**
@@ -85,13 +83,12 @@ text, which means the part beyond `truncate_at` is discarded even though the
 caller has not seen it. Python failures also return `handle.stdout` without the
 normal truncation path.
 
-**Direction:** Retain a bounded in-memory chunk buffer, discard the oldest bytes
-with an explicit notice when its limit is reached, and return one bounded page
-at a time without consuming later pages. Apply the same result formatting to
-successful and failed shell/Python processes, and validate positive `timeout`
-and `truncate_at` inputs.
+**Implemented:** `OutputBuffer` uses a bounded `bytearray`, trimming old output
+in batches and reporting discarded bytes. `tasks_get_output` consumes one page
+at a time, leaving later output available, and failed Python output follows the
+same truncation path as successful output.
 
-**Likely scope:** `tools/process.py`, `tools/tasks.py`, `tools/shell.py`, and
+**Scope:** `tools/process.py`, `tools/tasks.py`, `tools/shell.py`, and
 `tools/python.py`. Medium.
 
 - [x] **P1 — Close all subprocesses when a tool bundle shuts down**
@@ -102,11 +99,11 @@ started by an exiting CLI can remain alive. Worker containers eventually remove
 their processes, but making lifecycle ownership explicit benefits both runtime
 definitions.
 
-**Direction:** Give `TaskManager` an async, idempotent `close()` that terminates
-and awaits every live process. Make both tool bundles own and close their task
-manager; make worker agent creation use `try/finally` around bundle lifetime.
+**Implemented:** `TaskManager.close()` terminates and awaits its tracked
+processes. Both tool bundles own and close their manager, and worker agent
+creation closes its bundle in `try/finally`.
 
-**Likely scope:** tool-bundle and process lifecycle code plus shutdown tests.
+**Scope:** tool-bundle and process lifecycle code plus shutdown tests.
 Small.
 
 - [ ] **P1 — Make attachment upload atomic across files and SQLite**

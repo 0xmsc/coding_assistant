@@ -6,17 +6,15 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from coding_assistant.llm.types import TextToolResult, Tool
-from coding_assistant.tools.process import MAX_RETAINED_OUTPUT_BYTES, start_process, truncate_output
+from coding_assistant.tools.process import start_process, truncate_output
 from coding_assistant.tools.tasks import TaskManager
 
 
 class PythonExecuteInput(BaseModel):
     code: str = Field(description="The Python code to execute.")
-    timeout: int = Field(default=30, gt=0, description="The timeout for execution in seconds.")
+    timeout: int = Field(default=30, description="The timeout for execution in seconds.")
     truncate_at: int = Field(
         default=50_000,
-        gt=0,
-        le=MAX_RETAINED_OUTPUT_BYTES,
         description="Maximum number of characters to return in stdout and stderr combined.",
     )
     background: bool = Field(
