@@ -46,14 +46,12 @@ class OutputBuffer:
                 self._dropped_bytes += discarded
 
     @staticmethod
-    def _format_output(*, content: bytes, dropped_bytes: int, remaining_bytes: int = 0) -> str:
+    def _format_output(*, content: bytes, dropped_bytes: int) -> str:
         parts: list[str] = []
         if dropped_bytes:
             parts.append(f"[output limit reached: {dropped_bytes} earlier bytes discarded]")
         if content:
             parts.append(content.decode(errors="replace"))
-        if remaining_bytes:
-            parts.append(f"[{remaining_bytes} unread output bytes remain; call tasks_get_output again]")
         return "\n".join(parts)
 
     @property
@@ -61,19 +59,13 @@ class OutputBuffer:
         """Return all retained output as decoded text."""
         return self._format_output(content=bytes(self._buffer), dropped_bytes=self._dropped_bytes)
 
-    def consume_text(self, max_bytes: int) -> str:
-        """Return one output page, leaving later bytes available for the next read."""
-        consumed = min(max_bytes, len(self._buffer))
-        content = bytes(self._buffer[:consumed])
-        del self._buffer[:consumed]
-
+    def consume_text(self) -> str:
+        """Return retained output and clear the buffer."""
+        content = bytes(self._buffer)
+        self._buffer.clear()
         dropped_bytes = self._dropped_bytes
         self._dropped_bytes = 0
-        return self._format_output(
-            content=content,
-            dropped_bytes=dropped_bytes,
-            remaining_bytes=len(self._buffer),
-        )
+        return self._format_output(content=content, dropped_bytes=dropped_bytes)
 
     async def wait_for_finish(self, timeout: float | None = 5.0) -> None:
         """Wait briefly for the background reader to finish draining output."""
@@ -110,9 +102,9 @@ class ProcessHandle:
         """Return whether the process is still running."""
         return self.exit_code is None
 
-    def consume_text(self, max_bytes: int) -> str:
-        """Return one page of output accumulated since the last read."""
-        return self._output.consume_text(max_bytes)
+    def consume_text(self) -> str:
+        """Return and clear the output accumulated since the last read."""
+        return self._output.consume_text()
 
     async def wait(self, timeout: float | None = None) -> bool:
         """Wait for process exit and return `False` on timeout."""

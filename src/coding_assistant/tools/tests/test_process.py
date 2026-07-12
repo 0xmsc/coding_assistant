@@ -9,24 +9,18 @@ from coding_assistant.tools.process import OutputBuffer, start_process
 
 
 @pytest.mark.asyncio
-async def test_output_buffer_bounds_and_pages_unread_output() -> None:
+async def test_output_buffer_bounds_retained_output() -> None:
     stream = asyncio.StreamReader()
     output = OutputBuffer(stream, max_bytes=10)
     stream.feed_data(b"0123456789abcdef")
     stream.feed_eof()
     await output.wait_for_finish()
 
-    first = output.consume_text(4)
-    second = output.consume_text(4)
-    third = output.consume_text(4)
+    first = output.consume_text()
+    second = output.consume_text()
 
-    assert first == (
-        "[output limit reached: 11 earlier bytes discarded]\n"
-        "bcde\n"
-        "[1 unread output bytes remain; call tasks_get_output again]"
-    )
-    assert second == "f"
-    assert third == ""
+    assert first == "[output limit reached: 11 earlier bytes discarded]\nbcdef"
+    assert second == ""
 
 
 def _process_is_running(pid: int) -> bool:

@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from coding_assistant.llm.types import TextToolResult, Tool
-from coding_assistant.tools.process import ProcessHandle
+from coding_assistant.tools.process import ProcessHandle, truncate_output
 
 
 @dataclass
@@ -86,7 +86,7 @@ class TasksGetOutputInput(BaseModel):
     truncate_at: int = Field(
         default=50_000,
         gt=0,
-        description="Maximum number of output bytes to consume in this call.",
+        description="Maximum number of characters to return from the task output.",
     )
 
 
@@ -156,7 +156,7 @@ class TasksGetOutputTool(Tool):
         result = f"Task {validated.task_id} ({task.name})\n"
         result += f"Status: {_format_task_status(task)}\n"
 
-        output = task.handle.consume_text(validated.truncate_at)
+        output = truncate_output(task.handle.consume_text(), validated.truncate_at)
         return TextToolResult(content=f"{result}\n\n{output}")
 
 

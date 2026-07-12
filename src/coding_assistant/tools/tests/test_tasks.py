@@ -80,22 +80,6 @@ async def test_truncation_note_with_id(shell_execute: Tool, tasks_get_output: To
 
 
 @pytest.mark.asyncio
-async def test_get_output_returns_pages_without_discarding_remainder(
-    shell_execute: Tool,
-    tasks_get_output: Tool,
-) -> None:
-    await shell_execute.execute({"command": "printf 'abcdefghij'", "background": True})
-
-    first = _text(await tasks_get_output.execute({"task_id": 1, "wait": True, "timeout": 5, "truncate_at": 4}))
-    second = _text(await tasks_get_output.execute({"task_id": 1, "truncate_at": 4}))
-    third = _text(await tasks_get_output.execute({"task_id": 1, "truncate_at": 4}))
-
-    assert first.endswith("abcd\n[6 unread output bytes remain; call tasks_get_output again]")
-    assert second.endswith("efgh\n[2 unread output bytes remain; call tasks_get_output again]")
-    assert third.endswith("ij")
-
-
-@pytest.mark.asyncio
 async def test_auto_cleanup(manager: TaskManager) -> None:
     manager._max_finished_tasks = 1
     shell_execute_tool = create_shell_tools(manager=manager)[0]
