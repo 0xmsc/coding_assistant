@@ -44,7 +44,20 @@ async def test_python_run_exception_includes_traceback(execute: Tool) -> None:
 async def test_python_run_truncates_output(execute: Tool) -> None:
     out = _text(await execute.execute({"code": "print('x'*1000)", "truncate_at": 200}))
     assert "[truncated output at: " in out
-    assert "Full output available" in out
+    assert "Retained output available" in out
+
+
+@pytest.mark.asyncio
+async def test_python_run_truncates_failed_output(execute: Tool) -> None:
+    out = _text(
+        await execute.execute(
+            {"code": "import sys; print('x'*1000); sys.exit(1)", "truncate_at": 200},
+        ),
+    )
+
+    assert out.startswith("Exception (exit code 1):\n\n")
+    assert "[truncated output at: " in out
+    assert len(out) < 400
 
 
 @pytest.mark.asyncio

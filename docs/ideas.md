@@ -76,7 +76,7 @@ available.
 **Likely scope:** `llm/openai.py`, session update semantics, and provider/remote
 streaming tests. Medium.
 
-- [ ] **P1 — Bound background-task output without silently losing unread data**
+- [x] **P1 — Bound background-task output without silently losing unread data**
 
 **Why:** `OutputBuffer` retains all subprocess output in a growing `bytearray`,
 so a noisy or long-lived background command can grow the process indefinitely.
@@ -85,11 +85,11 @@ text, which means the part beyond `truncate_at` is discarded even though the
 caller has not seen it. Python failures also return `handle.stdout` without the
 normal truncation path.
 
-**Direction:** Back task output with a bounded spool file or bounded chunk/ring
-buffer and a read cursor. Report how much is available, return one bounded page
-at a time, and make truncation non-destructive. Apply the same result formatting
-to successful and failed shell/Python processes. Add positive bounds to
-`timeout` and `truncate_at` inputs.
+**Direction:** Retain a bounded in-memory chunk buffer, discard the oldest bytes
+with an explicit notice when its limit is reached, and return one bounded page
+at a time without consuming later pages. Apply the same result formatting to
+successful and failed shell/Python processes, and validate positive `timeout`
+and `truncate_at` inputs.
 
 **Likely scope:** `tools/process.py`, `tools/tasks.py`, `tools/shell.py`, and
 `tools/python.py`. Medium.

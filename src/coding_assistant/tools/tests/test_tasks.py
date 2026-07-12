@@ -74,10 +74,26 @@ async def test_all_tasks_registered(shell_execute: Tool, tasks_list_tasks: Tool,
 async def test_truncation_note_with_id(shell_execute: Tool, tasks_get_output: Tool) -> None:
     res = _text(await shell_execute.execute({"command": "echo '1234567890'", "truncate_at": 5}))
     assert "truncated" in res
-    assert "Full output available via `tasks_get_output(task_id=1)`" in res
+    assert "Retained output available via `tasks_get_output(task_id=1)`" in res
 
     full = _text(await tasks_get_output.execute({"task_id": 1}))
     assert "1234567890" in full
+
+
+@pytest.mark.asyncio
+async def test_get_output_returns_pages_without_discarding_remainder(
+    shell_execute: Tool,
+    tasks_get_output: Tool,
+) -> None:
+    await shell_execute.execute({"command": "printf 'abcdefghij'", "background": True})
+
+    first = _text(await tasks_get_output.execute({"task_id": 1, "wait": True, "timeout": 5, "truncate_at": 4}))
+    second = _text(await tasks_get_output.execute({"task_id": 1, "truncate_at": 4}))
+    third = _text(await tasks_get_output.execute({"task_id": 1, "truncate_at": 4}))
+
+    assert first.endswith("abcd\n[6 unread output bytes remain; call tasks_get_output again]")
+    assert second.endswith("efgh\n[2 unread output bytes remain; call tasks_get_output again]")
+    assert third.endswith("ij")
 
 
 @pytest.mark.asyncio
