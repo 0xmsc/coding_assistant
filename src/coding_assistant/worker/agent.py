@@ -65,8 +65,11 @@ async def create_worker_agent(*, config: WorkerAgentConfig) -> AsyncIterator[Wor
         user_instructions=list(config.user_instructions),
         extra_sections=[tool_bundle.instructions],
     )
-    yield WorkerAgentBundle(
-        tools=tool_bundle.tools,
-        instructions=instructions,
-        session_title_state=tool_bundle.session_title_state,
-    )
+    try:
+        yield WorkerAgentBundle(
+            tools=tool_bundle.tools,
+            instructions=instructions,
+            session_title_state=tool_bundle.session_title_state,
+        )
+    finally:
+        await tool_bundle.close()

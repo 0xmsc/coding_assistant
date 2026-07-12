@@ -149,6 +149,7 @@ class ProcessHandle:
     async def terminate(self) -> None:
         """Try graceful termination first, then kill if needed."""
         if not self.is_running:
+            await self._output.wait_for_finish()
             return
 
         if os.name == "posix":

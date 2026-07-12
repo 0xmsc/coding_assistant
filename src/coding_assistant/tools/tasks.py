@@ -26,9 +26,12 @@ class TaskManager:
         self._tasks: dict[int, Task] = {}
         self._next_id = 1
         self._max_finished_tasks = max_finished_tasks
+        self._closed = False
 
     def register_task(self, name: str, handle: ProcessHandle) -> int:
         """Register a new task and return its numeric identifier."""
+        if self._closed:
+            raise RuntimeError("Task manager is closed.")
         task_id = self._next_id
         self._next_id += 1
         self._tasks[task_id] = Task(id=task_id, name=name, handle=handle)
@@ -43,7 +46,7 @@ class TaskManager:
 
         number_to_remove = len(current_finished) - self._max_finished_tasks
         for task_id in current_finished[:number_to_remove]:
-            self.remove_task(task_id)
+            del self._tasks[task_id]
 
     def get_task(self, task_id: int) -> Task | None:
         """Return a tracked task by ID, if it still exists."""
@@ -53,14 +56,22 @@ class TaskManager:
         """Return all tracked tasks in insertion order."""
         return list(self._tasks.values())
 
-    def remove_task(self, task_id: int) -> None:
-        """Remove a task and terminate its process in the background."""
-        task = self._tasks.get(task_id)
+    async def remove_task(self, task_id: int) -> None:
+        """Remove a task, terminating its process before returning."""
+        task = self._tasks.pop(task_id, None)
         if task is None:
             return
 
-        asyncio.get_running_loop().create_task(task.handle.terminate())
-        del self._tasks[task_id]
+        await task.handle.terminate()
+
+    async def close(self) -> None:
+        """Terminate all tracked processes and release retained task output."""
+        if self._closed:
+            return
+        self._closed = True
+        tasks = list(self._tasks.values())
+        self._tasks.clear()
+        await asyncio.gather(*(task.handle.terminate() for task in tasks))
 
 
 class EmptyInput(BaseModel):
@@ -226,7 +237,7 @@ class TasksRemoveTaskTool(Tool):
         if task is None:
             return TextToolResult(content=f"Error: Task {validated.task_id} not found.")
 
-        self._manager.remove_task(validated.task_id)
+        await self._manager.remove_task(validated.task_id)
         return TextToolResult(content=f"Task {validated.task_id} removed from history.")
 
 

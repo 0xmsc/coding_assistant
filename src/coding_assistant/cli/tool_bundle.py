@@ -22,13 +22,19 @@ class CliToolBundle:
 
     tools: list[Tool]
     instructions: str
+    _task_manager: TaskManager
     _worker_runtime: WorkerToolRuntime
     _mcp_manager: MCPServerManager | None = None
 
     async def close(self) -> None:
-        if self._mcp_manager:
-            await self._mcp_manager.close()
-        await self._worker_runtime.close()
+        try:
+            if self._mcp_manager:
+                await self._mcp_manager.close()
+        finally:
+            try:
+                await self._worker_runtime.close()
+            finally:
+                await self._task_manager.close()
 
 
 def load_tool_instructions() -> str:
@@ -72,6 +78,7 @@ def create_cli_tool_bundle(
     return CliToolBundle(
         tools=tools,
         instructions=instructions,
+        _task_manager=task_manager,
         _worker_runtime=worker_runtime,
         _mcp_manager=mcp_manager,
     )
