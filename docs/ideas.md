@@ -23,7 +23,7 @@ their scrubbed environment.
 
 ## Reliability and correctness
 
-- [ ] **P0 — Preserve session metadata when a worker returns a title**
+- [x] **P0 — Preserve session metadata when a worker returns a title**
 
 **Why:** `RemoteWorkerRunner` returns the entire finish `_meta` object as worker
 metadata. `ManagerService.prompt()` then passes that object to
@@ -42,7 +42,7 @@ and the second reuses the selected model.
 **Likely scope:** `remote/client.py`, `manager/remote_worker.py`,
 `manager/service.py`, `manager/store.py`, and manager integration tests. Small.
 
-- [ ] **P0 — Normalize incomplete provider usage data**
+- [x] **P0 — Normalize incomplete provider usage data**
 
 **Why:** `Usage.cost` and `Usage.tokens` are typed as required values, but
 `llm/openai.py` can construct usage with a missing cost or token count. Tests

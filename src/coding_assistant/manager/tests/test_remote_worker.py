@@ -259,6 +259,60 @@ async def test_remote_worker_prompt_streams_update_and_persists_to_sqlite(tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_remote_worker_title_preserves_model_for_second_prompt(tmp_path: Path) -> None:
+    first_runtime = WorkerRuntimeConfig(
+        model="test-model",
+        tools=[],
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="first")]),
+        finish_metadata_provider=lambda: {"title": "Remote worker title"},
+    )
+    store = create_session_store(tmp_path)
+    created = store.create_session(
+        scope_id="scope-a",
+        messages=[SystemMessage(content="system")],
+        metadata={"model": "test-model"},
+    )
+
+    async with start_session_worker_server(runtime=first_runtime) as worker_server:
+        service = ManagerService(
+            store=store,
+            worker_runner=RemoteWorkerRunner(endpoint=worker_server.endpoint),
+            model_lister=_test_model_lister,
+        )
+        await service.prompt(
+            params=_scope_params(created.record.session_id, "First prompt"),
+            on_update=_ignore_update,
+        )
+    after_first_prompt = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    second_runtime = WorkerRuntimeConfig(
+        model="test-model",
+        tools=[],
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="second")]),
+    )
+    async with start_session_worker_server(runtime=second_runtime) as worker_server:
+        service = ManagerService(
+            store=store,
+            worker_runner=RemoteWorkerRunner(endpoint=worker_server.endpoint),
+            model_lister=_test_model_lister,
+        )
+        second_result = await service.prompt(
+            params=_scope_params(created.record.session_id, "Second prompt"),
+            on_update=_ignore_update,
+        )
+    loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    assert after_first_prompt.record.title == "Remote worker title"
+    assert after_first_prompt.record.metadata == {"model": "test-model"}
+    assert second_result.stop_reason == "end_turn"
+    assert loaded.record.metadata == {"model": "test-model"}
+    assert loaded.messages[-2:] == [
+        UserMessage(content="Second prompt"),
+        AssistantMessage(content="second"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_remote_worker_persists_final_message_not_streamed_delta(tmp_path: Path) -> None:
     runtime = WorkerRuntimeConfig(
         model="test-model",

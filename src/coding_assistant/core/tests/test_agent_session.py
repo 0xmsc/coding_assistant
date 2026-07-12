@@ -672,3 +672,34 @@ async def test_agent_session_usage_not_accumulated_when_completion_has_no_usage(
         assert session.state.usage.cost == 0.005
 
     await session.close()
+
+
+@pytest.mark.asyncio
+async def test_agent_session_handles_incomplete_usage() -> None:
+    streamer = ControlledStreamer(
+        [
+            StreamStep(
+                message=AssistantMessage(content="Missing cost"),
+                usage=Usage(tokens=1000, cost=None),
+            ),
+            StreamStep(
+                message=AssistantMessage(content="Missing tokens"),
+                usage=Usage(tokens=None, cost=0.02),
+            ),
+        ],
+    )
+    session = make_session(completion_streamer=streamer)
+
+    async with session.subscribe() as queue:
+        await wait_for_event(queue, StateChangedEvent)
+        assert await session.enqueue_prompt("first") is True
+        await wait_for_event(queue, RunFinishedEvent)
+
+        assert session.state.usage == Usage(tokens=1000, cost=None)
+
+        assert await session.enqueue_prompt("second") is True
+        await wait_for_event(queue, RunFinishedEvent)
+
+        assert session.state.usage == Usage(tokens=None, cost=None)
+
+    await session.close()

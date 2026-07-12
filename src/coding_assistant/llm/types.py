@@ -116,8 +116,8 @@ class StatusLevel(Enum):
 
 @dataclass(frozen=True)
 class Usage:
-    tokens: int
-    cost: float
+    tokens: int | None
+    cost: float | None
 
 
 @dataclass(frozen=True)

@@ -586,6 +586,19 @@ class TestIntegration:
         assert cast(Any, completion.usage).tokens == 110
         assert cast(Any, completion.usage).cost is None
 
+    def test_workflow_without_token_count(self) -> None:
+        """Test workflow when provider doesn't return a token count."""
+        chunks = [
+            {
+                "choices": [{"delta": {}}],
+                "usage": {"cost": 0.001},
+            },
+        ]
+
+        usage = _extract_usage(cast(Any, chunks))
+
+        assert usage == Usage(tokens=None, cost=0.001)
+
     def test_workflow_with_reasoning_and_usage(self) -> None:
         """Test workflow with reasoning content and usage."""
         chunks = [

@@ -423,7 +423,6 @@ class SessionStore:
         scope_id: str,
         session_id: str,
         title: str | None = None,
-        metadata: dict[str, Any] | None = None,
     ) -> SessionRecord:
         now = _now_iso()
         with SQLModelSession(self._engine, expire_on_commit=False) as session:
@@ -432,7 +431,6 @@ class SessionStore:
                 record = _record_from_row(session_row)
                 session_row.title = title if title is not None else record.title
                 session_row.updated_at = now
-                session_row.metadata_json = _metadata_to_json(metadata if metadata is not None else record.metadata)
                 session.flush()
                 return _record_from_row(session_row)
 

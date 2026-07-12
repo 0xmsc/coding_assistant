@@ -67,7 +67,6 @@ class RemoteRunFinished:
     stop_reason: str
     messages: list[BaseMessage]
     title: str | None = None
-    metadata: JsonObject | None = None
 
 
 RemoteClientEvent = RemoteContentDeltaEvent | RemotePromptFinishedEvent | RemotePromptFailedEvent
@@ -314,7 +313,6 @@ class RemoteSessionClient:
                 stop_reason=stop_reason,
                 messages=messages_from_jsonrpc(messages),
                 title=_finish_title(metadata),
-                metadata=dict(metadata) if isinstance(metadata, dict) else None,
             ),
         )
 

@@ -439,9 +439,15 @@ class AgentSession:
                     if isinstance(event, CompletionEvent):
                         if event.completion.usage is not None:
                             async with self._mutation_lock:
+                                previous_cost = self._usage.cost
+                                completion_cost = event.completion.usage.cost
                                 self._usage = Usage(
                                     tokens=event.completion.usage.tokens,
-                                    cost=self._usage.cost + event.completion.usage.cost,
+                                    cost=(
+                                        previous_cost + completion_cost
+                                        if previous_cost is not None and completion_cost is not None
+                                        else None
+                                    ),
                                 )
                         self._publish_event(event)
                         await self._publish_state()
