@@ -6,15 +6,17 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from coding_assistant.llm.types import TextToolResult, Tool
-from coding_assistant.tools.process import start_process, truncate_output
+from coding_assistant.tools.process import MAX_RETAINED_OUTPUT_BYTES, start_process, truncate_output
 from coding_assistant.tools.tasks import TaskManager
 
 
 class PythonExecuteInput(BaseModel):
     code: str = Field(description="The Python code to execute.")
-    timeout: int = Field(default=30, description="The timeout for execution in seconds.")
+    timeout: int = Field(default=30, gt=0, description="The timeout for execution in seconds.")
     truncate_at: int = Field(
         default=50_000,
+        gt=0,
+        le=MAX_RETAINED_OUTPUT_BYTES,
         description="Maximum number of characters to return in stdout and stderr combined.",
     )
     background: bool = Field(
@@ -74,10 +76,10 @@ class PythonExecuteTool(Tool):
             output = handle.stdout
             stdout_text = truncate_output(output, validated.truncate_at)
             if len(output) > validated.truncate_at:
-                stdout_text += f"\n\nFull output available via `tasks_get_output(task_id={task_id})`"
+                stdout_text += f"\n\nRetained output available via `tasks_get_output(task_id={task_id})`"
 
             if handle.exit_code != 0:
-                return TextToolResult(content=f"Exception (exit code {handle.exit_code}):\n\n{handle.stdout}")
+                return TextToolResult(content=f"Exception (exit code {handle.exit_code}):\n\n{stdout_text}")
             return TextToolResult(content=stdout_text)
         except Exception as exc:
             return TextToolResult(content=f"Error executing script: {exc}")
