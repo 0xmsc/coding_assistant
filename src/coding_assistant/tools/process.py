@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-from collections import deque
 from collections.abc import Sequence
 
 
@@ -30,8 +29,7 @@ class OutputBuffer:
             raise ValueError("max_bytes must be positive.")
         self._stream = stream
         self._max_bytes = max_bytes
-        self._chunks: deque[bytes] = deque()
-        self._buffered_bytes = 0
+        self._buffer = bytearray()
         self._dropped_bytes = 0
         self._read_task = asyncio.create_task(self._read_stream())
 
@@ -41,23 +39,11 @@ class OutputBuffer:
             chunk = await self._stream.read(4096)
             if not chunk:
                 break
-            self._chunks.append(chunk)
-            self._buffered_bytes += len(chunk)
-            self._discard_excess()
-
-    def _discard_excess(self) -> None:
-        """Discard the oldest bytes once the retention limit is exceeded."""
-        overflow = self._buffered_bytes - self._max_bytes
-        while overflow > 0:
-            chunk = self._chunks[0]
-            discarded = min(len(chunk), overflow)
-            if discarded == len(chunk):
-                self._chunks.popleft()
-            else:
-                self._chunks[0] = chunk[discarded:]
-            self._buffered_bytes -= discarded
-            self._dropped_bytes += discarded
-            overflow -= discarded
+            self._buffer.extend(chunk)
+            if len(self._buffer) > self._max_bytes:
+                discarded = len(self._buffer) - self._max_bytes // 2
+                del self._buffer[:discarded]
+                self._dropped_bytes += discarded
 
     @staticmethod
     def _format_output(*, content: bytes, dropped_bytes: int, remaining_bytes: int = 0) -> str:
@@ -73,29 +59,20 @@ class OutputBuffer:
     @property
     def text(self) -> str:
         """Return all retained output as decoded text."""
-        return self._format_output(content=b"".join(self._chunks), dropped_bytes=self._dropped_bytes)
+        return self._format_output(content=bytes(self._buffer), dropped_bytes=self._dropped_bytes)
 
     def consume_text(self, max_bytes: int) -> str:
         """Return one output page, leaving later bytes available for the next read."""
-        remaining = min(max_bytes, self._buffered_bytes)
-        content = bytearray()
-        while remaining > 0:
-            chunk = self._chunks[0]
-            consumed = min(len(chunk), remaining)
-            content.extend(chunk[:consumed])
-            if consumed == len(chunk):
-                self._chunks.popleft()
-            else:
-                self._chunks[0] = chunk[consumed:]
-            self._buffered_bytes -= consumed
-            remaining -= consumed
+        consumed = min(max_bytes, len(self._buffer))
+        content = bytes(self._buffer[:consumed])
+        del self._buffer[:consumed]
 
         dropped_bytes = self._dropped_bytes
         self._dropped_bytes = 0
         return self._format_output(
-            content=bytes(content),
+            content=content,
             dropped_bytes=dropped_bytes,
-            remaining_bytes=self._buffered_bytes,
+            remaining_bytes=len(self._buffer),
         )
 
     async def wait_for_finish(self, timeout: float | None = 5.0) -> None:
@@ -149,7 +126,6 @@ class ProcessHandle:
     async def terminate(self) -> None:
         """Try graceful termination first, then kill if needed."""
         if not self.is_running:
-            await self._output.wait_for_finish()
             return
 
         if os.name == "posix":

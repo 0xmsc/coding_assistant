@@ -21,12 +21,12 @@ async def test_output_buffer_bounds_and_pages_unread_output() -> None:
     third = output.consume_text(4)
 
     assert first == (
-        "[output limit reached: 6 earlier bytes discarded]\n"
-        "6789\n"
-        "[6 unread output bytes remain; call tasks_get_output again]"
+        "[output limit reached: 11 earlier bytes discarded]\n"
+        "bcde\n"
+        "[1 unread output bytes remain; call tasks_get_output again]"
     )
-    assert second == "abcd\n[2 unread output bytes remain; call tasks_get_output again]"
-    assert third == "ef"
+    assert second == "f"
+    assert third == ""
 
 
 def _process_is_running(pid: int) -> bool:

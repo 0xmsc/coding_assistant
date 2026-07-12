@@ -27,14 +27,10 @@ class CliToolBundle:
     _mcp_manager: MCPServerManager | None = None
 
     async def close(self) -> None:
-        try:
-            if self._mcp_manager:
-                await self._mcp_manager.close()
-        finally:
-            try:
-                await self._worker_runtime.close()
-            finally:
-                await self._task_manager.close()
+        await self._task_manager.close()
+        if self._mcp_manager:
+            await self._mcp_manager.close()
+        await self._worker_runtime.close()
 
 
 def load_tool_instructions() -> str:

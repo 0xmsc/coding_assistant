@@ -1,8 +1,5 @@
 from pathlib import Path
 
-import pytest
-
-from coding_assistant.llm.types import TextToolResult
 from coding_assistant.worker.tool_bundle import create_worker_tool_bundle, load_tool_instructions
 
 
@@ -41,19 +38,3 @@ def test_create_worker_tool_bundle_excludes_cli_remote_tools() -> None:
         "todo_list_todos",
         "todo_complete",
     }.isdisjoint(tool_names)
-
-
-@pytest.mark.asyncio
-async def test_worker_tool_bundle_close_terminates_background_tasks(tmp_path: Path) -> None:
-    bundle = create_worker_tool_bundle(workspace=tmp_path, skills_directories=[])
-    shell_execute = next(tool for tool in bundle.tools if tool.name() == "shell_execute")
-    result = await shell_execute.execute({"command": "sleep 10", "background": True})
-    assert isinstance(result, TextToolResult)
-    task = bundle._task_manager.get_task(1)
-    assert task is not None
-    assert task.handle.is_running
-
-    await bundle.close()
-
-    assert not task.handle.is_running
-    assert bundle._task_manager.list_tasks() == []

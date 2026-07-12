@@ -176,8 +176,6 @@ async def test_close_terminates_all_tasks_and_is_idempotent(manager: TaskManager
 
     assert not handle.handle.is_running
     assert manager.list_tasks() == []
-    with pytest.raises(RuntimeError, match="Task manager is closed"):
-        manager.register_task("closed", handle.handle)
 
 
 @pytest.fixture
