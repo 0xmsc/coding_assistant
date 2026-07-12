@@ -94,7 +94,7 @@ and `truncate_at` inputs.
 **Likely scope:** `tools/process.py`, `tools/tasks.py`, `tools/shell.py`, and
 `tools/python.py`. Medium.
 
-- [ ] **P1 — Close all subprocesses when a tool bundle shuts down**
+- [x] **P1 — Close all subprocesses when a tool bundle shuts down**
 
 **Why:** `TaskManager` has no close operation. `CliToolBundle.close()` closes
 MCP and remote connections but not shell/Python background tasks, so commands

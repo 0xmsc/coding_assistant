@@ -22,6 +22,10 @@ class WorkerToolBundle:
     tools: list[Tool]
     instructions: str
     session_title_state: SessionTitleState
+    _task_manager: TaskManager
+
+    async def close(self) -> None:
+        await self._task_manager.close()
 
 
 def load_tool_instructions() -> str:
@@ -60,4 +64,5 @@ def create_worker_tool_bundle(
         tools=tools,
         instructions=instructions,
         session_title_state=session_title_state,
+        _task_manager=task_manager,
     )

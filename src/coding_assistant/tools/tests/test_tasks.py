@@ -13,8 +13,7 @@ from coding_assistant.tools.tasks import TaskManager, create_task_tools
 async def manager() -> AsyncIterator[TaskManager]:
     task_manager = TaskManager()
     yield task_manager
-    for task in task_manager.list_tasks():
-        await task.handle.terminate()
+    await task_manager.close()
 
 
 def _get_tool(tools: list[Tool], name: str) -> Tool:
@@ -162,6 +161,23 @@ async def test_kill_task(shell_execute: Tool, tasks_kill_task: Tool, tasks_get_o
 
     status = _text(await tasks_get_output.execute({"task_id": 1}))
     assert "finished" in status
+
+
+@pytest.mark.asyncio
+async def test_close_terminates_all_tasks_and_is_idempotent(manager: TaskManager) -> None:
+    shell_execute_tool = create_shell_tools(manager=manager)[0]
+    await shell_execute_tool.execute({"command": "sleep 10", "background": True})
+    handle = manager.get_task(1)
+    assert handle is not None
+    assert handle.handle.is_running
+
+    await manager.close()
+    await manager.close()
+
+    assert not handle.handle.is_running
+    assert manager.list_tasks() == []
+    with pytest.raises(RuntimeError, match="Task manager is closed"):
+        manager.register_task("closed", handle.handle)
 
 
 @pytest.fixture
