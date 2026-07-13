@@ -13,7 +13,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request, Response
 
 from coding_assistant.core.session_updates import SessionUpdate
-from coding_assistant.manager.service import ManagerError, ManagerService, SessionBusyError
+from coding_assistant.manager.service import ManagerError, ManagerService, SessionBusyError, scope_id_from_params
 from coding_assistant.manager.store import SessionNotFoundError, StaleSessionCommitError
 from coding_assistant.manager.workspace import WorkspaceMissingError
 from coding_assistant.remote.jsonrpc import (
@@ -45,39 +45,48 @@ class ManagerServer:
 @dataclass
 class _ConnectionState:
     initialized: bool = False
-    subscribed_session_ids: set[str] = field(default_factory=set)
+    subscribed_sessions: set[tuple[str, str]] = field(default_factory=set)
 
 
 class _SessionUpdateBroker:
     def __init__(self) -> None:
-        self._subscribers: dict[str, set[ServerConnection]] = {}
+        self._subscribers: dict[tuple[str, str], set[ServerConnection]] = {}
         self._lock = asyncio.Lock()
 
-    async def subscribe(self, *, websocket: ServerConnection, session_id: str, state: _ConnectionState) -> None:
+    async def subscribe(
+        self,
+        *,
+        websocket: ServerConnection,
+        scope_id: str,
+        session_id: str,
+        state: _ConnectionState,
+    ) -> None:
+        session_key = (scope_id, session_id)
         async with self._lock:
-            self._subscribers.setdefault(session_id, set()).add(websocket)
-            state.subscribed_session_ids.add(session_id)
+            self._subscribers.setdefault(session_key, set()).add(websocket)
+            state.subscribed_sessions.add(session_key)
 
     async def unsubscribe_all(self, *, websocket: ServerConnection, state: _ConnectionState) -> None:
         async with self._lock:
-            for session_id in state.subscribed_session_ids:
-                subscribers = self._subscribers.get(session_id)
+            for session_key in state.subscribed_sessions:
+                subscribers = self._subscribers.get(session_key)
                 if subscribers is None:
                     continue
                 subscribers.discard(websocket)
                 if not subscribers:
-                    self._subscribers.pop(session_id, None)
-            state.subscribed_session_ids.clear()
+                    self._subscribers.pop(session_key, None)
+            state.subscribed_sessions.clear()
 
-    async def publish(self, *, session_id: str, update: SessionUpdate) -> None:
+    async def publish(self, *, scope_id: str, session_id: str, update: SessionUpdate) -> None:
+        session_key = (scope_id, session_id)
         async with self._lock:
-            subscribers = list(self._subscribers.get(session_id, ()))
+            subscribers = list(self._subscribers.get(session_key, ()))
         for websocket in subscribers:
             try:
                 await _send_session_update(websocket=websocket, session_id=session_id, update=update)
             except ConnectionClosed:
                 async with self._lock:
-                    self._subscribers.get(session_id, set()).discard(websocket)
+                    self._subscribers.get(session_key, set()).discard(websocket)
 
 
 def _error_code_for_exception(exc: Exception) -> int:
@@ -110,10 +119,11 @@ async def _run_prompt_request(
 ) -> None:
     session_id = "<unknown>"
     try:
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
 
         async def send_update(update: SessionUpdate) -> None:
-            await broker.publish(session_id=session_id, update=update)
+            await broker.publish(scope_id=scope_id, session_id=session_id, update=update)
 
         result = await service.prompt(params=params, on_update=send_update)
         with suppress(ConnectionClosed):
@@ -185,8 +195,9 @@ async def _handle_session_method(
         return
 
     if method == "session/load":
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
-        await broker.subscribe(websocket=websocket, session_id=session_id, state=state)
+        await broker.subscribe(websocket=websocket, scope_id=scope_id, session_id=session_id, state=state)
 
         async def send_update(update: SessionUpdate) -> None:
             await _send_session_update(websocket=websocket, session_id=session_id, update=update)
@@ -196,11 +207,12 @@ async def _handle_session_method(
         return
 
     if method == "session/upload_file":
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
-        await broker.subscribe(websocket=websocket, session_id=session_id, state=state)
+        await broker.subscribe(websocket=websocket, scope_id=scope_id, session_id=session_id, state=state)
 
         async def send_update(update: SessionUpdate) -> None:
-            await broker.publish(session_id=session_id, update=update)
+            await broker.publish(scope_id=scope_id, session_id=session_id, update=update)
 
         result = await service.upload_file(params=params, on_update=send_update)
         await websocket.send(jsonrpc_result_required(response_id, result))
@@ -211,22 +223,24 @@ async def _handle_session_method(
         return
 
     if method == "session/rename":
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
-        await broker.subscribe(websocket=websocket, session_id=session_id, state=state)
+        await broker.subscribe(websocket=websocket, scope_id=scope_id, session_id=session_id, state=state)
 
         async def send_update(update: SessionUpdate) -> None:
-            await broker.publish(session_id=session_id, update=update)
+            await broker.publish(scope_id=scope_id, session_id=session_id, update=update)
 
         result = await service.rename_session(params=params, on_update=send_update)
         await websocket.send(jsonrpc_result_required(response_id, result))
         return
 
     if method == "session/set_model":
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
-        await broker.subscribe(websocket=websocket, session_id=session_id, state=state)
+        await broker.subscribe(websocket=websocket, scope_id=scope_id, session_id=session_id, state=state)
 
         async def send_update(update: SessionUpdate) -> None:
-            await broker.publish(session_id=session_id, update=update)
+            await broker.publish(scope_id=scope_id, session_id=session_id, update=update)
 
         result = await service.set_session_model(params=params, on_update=send_update)
         await websocket.send(jsonrpc_result_required(response_id, result))
@@ -236,8 +250,9 @@ async def _handle_session_method(
         if response_id is None:
             await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "session/prompt must be a request."))
             return
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
-        await broker.subscribe(websocket=websocket, session_id=session_id, state=state)
+        await broker.subscribe(websocket=websocket, scope_id=scope_id, session_id=session_id, state=state)
         task = asyncio.create_task(
             _run_prompt_request(
                 websocket=websocket,

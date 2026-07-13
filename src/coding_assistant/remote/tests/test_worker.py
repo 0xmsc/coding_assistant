@@ -22,6 +22,7 @@ from coding_assistant.llm.types import (
     CompletionEvent,
     ContentDeltaEvent,
     FunctionCall,
+    ModelRetryEvent,
     ReasoningDeltaEvent,
     StatusEvent,
     SystemMessage,
@@ -70,6 +71,17 @@ class BlockingStreamer:
         )
 
 
+class RetryStreamer:
+    async def __call__(self, messages: Any, tools: Any, model: Any) -> AsyncIterator[object]:
+        del messages, tools, model
+        yield ContentDeltaEvent(content="abandoned")
+        yield ModelRetryEvent()
+        yield ContentDeltaEvent(content="kept")
+        yield CompletionEvent(
+            completion=Completion(message=AssistantMessage(content="kept"), usage=Usage(tokens=1, cost=0.0)),
+        )
+
+
 class EchoTool(Tool):
     def name(self) -> str:
         return "echo_tool"
@@ -98,7 +110,14 @@ def _message_payload(update: dict[str, Any]) -> dict[str, Any]:
 
 
 def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    message_ids: dict[str, str] = {}
+    raw_message_ids = [
+        message_id
+        for update in updates
+        if update.get("sessionUpdate") == "message_added"
+        and isinstance((message := update.get("message")), dict)
+        and isinstance((message_id := message.get("id")), str)
+    ]
+    message_ids = {message_id: f"message-{index}" for index, message_id in enumerate(raw_message_ids)}
     result: list[dict[str, Any]] = []
     for update in updates:
         update_type = update.get("sessionUpdate")
@@ -107,7 +126,6 @@ def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
             assert isinstance(message, dict)
             message_id = message.get("id")
             assert isinstance(message_id, str)
-            message_ids[message_id] = f"message-{len(message_ids)}"
             result.append(
                 {
                     "sessionUpdate": "message_added",
@@ -177,6 +195,40 @@ async def _open_acp_session(websocket: ClientConnection) -> str:
     session_id = session_response["result"]["sessionId"]
     assert isinstance(session_id, str)
     return session_id
+
+
+@pytest.mark.asyncio
+async def test_worker_keeps_connection_open_after_invalid_prompt() -> None:
+    session = make_agent_session(
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="Done")]),
+    )
+    try:
+        async with start_worker_server(session=session) as worker_server:
+            async with connect(worker_server.endpoint) as websocket:
+                session_id = await _open_acp_session(websocket)
+                await websocket.send(jsonrpc_request(3, "session/prompt", {"prompt": [text_block("Missing id")]}))
+                invalid = parse_jsonrpc_message(await websocket.recv())
+
+                await websocket.send(
+                    jsonrpc_request(
+                        4,
+                        "session/prompt",
+                        {
+                            "sessionId": session_id,
+                            "prompt": [text_block("Valid")],
+                        },
+                    ),
+                )
+                response: dict[str, Any] | None = None
+                while response is None:
+                    payload = parse_jsonrpc_message(await websocket.recv())
+                    if payload.get("id") == 4:
+                        response = payload
+
+        assert invalid["error"]["code"] == -32602
+        assert response["result"] == {"stopReason": "end_turn"}
+    finally:
+        await session.close()
 
 
 @pytest.mark.asyncio
@@ -430,6 +482,49 @@ async def test_worker_server_rejects_busy_acp_prompt_turn() -> None:
 
 
 @pytest.mark.asyncio
+async def test_worker_uses_a_new_message_id_for_a_retried_stream() -> None:
+    session = make_agent_session(completion_streamer=RetryStreamer())
+    try:
+        async with start_worker_server(session=session) as worker_server:
+            async with connect(worker_server.endpoint) as websocket:
+                session_id = await _open_acp_session(websocket)
+                await websocket.send(
+                    jsonrpc_request(
+                        3,
+                        "session/prompt",
+                        {
+                            "sessionId": session_id,
+                            "prompt": [text_block("Retry")],
+                        },
+                    ),
+                )
+
+                updates: list[dict[str, Any]] = []
+                response: dict[str, Any] | None = None
+                while response is None:
+                    payload = parse_jsonrpc_message(await websocket.recv())
+                    if payload.get("method") == "session/update":
+                        updates.append(payload["params"]["update"])
+                    else:
+                        response = payload
+
+        message_updates = [
+            update for update in updates if update.get("sessionUpdate") in {"message_delta", "message_added"}
+        ]
+        first_delta, second_delta, completed = message_updates
+        first_id = first_delta["messageId"]
+        second_id = second_delta["messageId"]
+        assert first_delta["appendText"] == "abandoned"
+        assert second_delta["appendText"] == "kept"
+        assert first_id != second_id
+        assert completed["message"]["id"] == second_id
+        assert completed["message"]["content"] == "kept"
+        assert response["result"] == {"stopReason": "end_turn"}
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
 async def test_worker_server_streams_tool_messages_before_final_answer() -> None:
     session = make_agent_session(
         completion_streamer=ScriptedStreamer(
@@ -509,11 +604,15 @@ async def test_worker_server_streams_tool_messages_before_final_answer() -> None
                 },
             },
             {
+                "sessionUpdate": "message_delta",
+                "messageId": "message-2",
+                "appendText": "Done",
+            },
+            {
                 "sessionUpdate": "message_added",
                 "messageId": "message-2",
-                "message": {"role": "assistant", "content": ""},
+                "message": {"role": "assistant", "content": "Done"},
             },
-            {"sessionUpdate": "message_delta", "messageId": "message-2", "appendText": "Done"},
         ]
         assert finished["method"] == "_session/run_finished"
         assert finished["params"] == {

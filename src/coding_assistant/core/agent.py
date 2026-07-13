@@ -16,6 +16,7 @@ from coding_assistant.llm.types import (
     BaseMessage,
     CompletionEvent,
     ContentDeltaEvent,
+    ModelRetryEvent,
     ReasoningDeltaEvent,
     StatusEvent,
     Tool,
@@ -43,7 +44,13 @@ async def run_agent_event_stream(
     tools: Sequence[Tool],
     streamer: Any = openai_stream_completion,
 ) -> AsyncIterator[
-    ContentDeltaEvent | ReasoningDeltaEvent | StatusEvent | CompletionEvent | AwaitingUser | AwaitingToolCalls
+    ContentDeltaEvent
+    | ReasoningDeltaEvent
+    | ModelRetryEvent
+    | StatusEvent
+    | CompletionEvent
+    | AwaitingUser
+    | AwaitingToolCalls
 ]:
     """Yield streamed LLM events and end with a terminal boundary object."""
     current_history = list(history)

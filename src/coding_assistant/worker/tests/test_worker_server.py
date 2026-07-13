@@ -85,7 +85,14 @@ def _message_payload(update: dict[str, Any]) -> dict[str, Any]:
 
 
 def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    message_ids: dict[str, str] = {}
+    raw_message_ids = [
+        message_id
+        for update in updates
+        if update.get("sessionUpdate") == "message_added"
+        and isinstance((message := update.get("message")), dict)
+        and isinstance((message_id := message.get("id")), str)
+    ]
+    message_ids = {message_id: f"message-{index}" for index, message_id in enumerate(raw_message_ids)}
     result: list[dict[str, Any]] = []
     for update in updates:
         update_type = update.get("sessionUpdate")
@@ -94,7 +101,6 @@ def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
             assert isinstance(message, dict)
             message_id = message.get("id")
             assert isinstance(message_id, str)
-            message_ids[message_id] = f"message-{len(message_ids)}"
             result.append(
                 {
                     "sessionUpdate": "message_added",
@@ -320,11 +326,15 @@ async def test_worker_streams_tool_messages_before_final_answer(tmp_path: Path) 
             },
         },
         {
+            "sessionUpdate": "message_delta",
+            "messageId": "message-2",
+            "appendText": "done",
+        },
+        {
             "sessionUpdate": "message_added",
             "messageId": "message-2",
-            "message": {"role": "assistant", "content": ""},
+            "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "message_delta", "messageId": "message-2", "appendText": "done"},
     ]
     assert finished is not None
     assert finished["params"]["stopReason"] == "end_turn"

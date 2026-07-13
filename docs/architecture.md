@@ -130,6 +130,11 @@ notifications and a completed-turn `_session/run_finished` notification.
 Persistence is still caller-specific: the manager persists completed worker
 runs, while CLI-owned local remote callers may ignore them.
 
+Assistant streaming uses one message id per model attempt. Deltas create a
+provisional draft, and the complete assistant message finalizes that same id.
+An internal retry starts a new id without adding retry/reset/status concepts to
+the wire protocol.
+
 Private `_session/*` methods are manager/worker control methods. Browser-facing
 or application-facing code should use the public session methods documented in
 `docs/rpc.md`.

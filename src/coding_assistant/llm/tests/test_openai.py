@@ -18,9 +18,8 @@ from coding_assistant.llm.types import (
     CompletionEvent,
     ContentDeltaEvent,
     FunctionCall,
+    ModelRetryEvent,
     ReasoningDeltaEvent,
-    StatusEvent,
-    StatusLevel,
     ToolCall,
     Usage,
     UserMessage,
@@ -901,10 +900,7 @@ class TestOpenAIComplete:
         monkeypatch.setattr("asyncio.sleep", mocked_sleep)
 
         events = await collect_events(messages=[UserMessage(content="hi")], model="gpt-4o", tools=[])
-        assert events[0] == StatusEvent(
-            message="Retrying LLM request (attempt 1/5) due to Timeout",
-            level=StatusLevel.WARNING,
-        )
+        assert events[0] == ModelRetryEvent()
         assert isinstance(events[-1], CompletionEvent)
         assert events[-1].completion.message.content == "Recovered"
         assert call_count == 2

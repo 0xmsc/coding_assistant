@@ -43,6 +43,10 @@ class ParagraphBuffer:
             return None
         return remaining.rstrip("\r\n")
 
+    def clear(self) -> None:
+        """Discard content buffered for an abandoned stream attempt."""
+        self._buffer = ""
+
 
 class DeltaRenderer:
     """Render streamed assistant text as markdown paragraphs."""
@@ -60,6 +64,9 @@ class DeltaRenderer:
         """Flush any remaining buffered content at the end of a turn."""
         if flushed := self._buffer.flush():
             self._print_markdown(flushed)
+
+    def clear(self) -> None:
+        self._buffer.clear()
 
     def _print_markdown(self, content: str) -> None:
         rich_print()
@@ -88,6 +95,12 @@ class StreamRenderer:
         """Flush any buffered content or reasoning output."""
         self._content_renderer.finish()
         self._reasoning_renderer.finish()
+        self._active_stream = None
+
+    def retry(self) -> None:
+        """Discard buffered output from an abandoned model attempt."""
+        self._content_renderer.clear()
+        self._reasoning_renderer.clear()
         self._active_stream = None
 
     def _switch_stream(self, stream: Literal["content", "reasoning"]) -> None:

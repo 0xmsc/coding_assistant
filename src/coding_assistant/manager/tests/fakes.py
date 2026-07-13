@@ -10,8 +10,9 @@ from coding_assistant.core.session_updates import (
     MessageDeltaUpdate,
     SessionUpdate,
 )
-from coding_assistant.llm.types import AssistantMessage
+from coding_assistant.llm.types import AssistantMessage, UserMessage
 from coding_assistant.manager.service import WorkerPrompt, WorkerRunFinished
+from coding_assistant.remote.jsonrpc import prompt_content_from_acp
 
 
 @dataclass
@@ -34,14 +35,14 @@ class FakeWorkerRunner:
         if self.started is not None:
             self.started.set()
         message_id = f"msg_{uuid4().hex}"
-        await on_update(MessageAddedUpdate(message_id=message_id, message=AssistantMessage(content="")))
         await on_update(MessageDeltaUpdate(message_id=message_id, append_text=self.response_text))
+        assistant_message = AssistantMessage(content=self.response_text)
+        await on_update(MessageAddedUpdate(message_id=message_id, message=assistant_message))
         if self.release is not None:
             await self.release.wait()
-        del prompt
         return WorkerRunFinished(
             stop_reason="end_turn",
-            messages=[AssistantMessage(content=self.response_text)],
+            messages=[UserMessage(content=prompt_content_from_acp(prompt.prompt)), assistant_message],
         )
 
     async def cancel(self, *, session_id: str) -> None:

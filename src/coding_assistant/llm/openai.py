@@ -21,9 +21,9 @@ from coding_assistant.llm.types import (
     CompletionEvent,
     ContentDeltaEvent,
     FunctionCall,
+    ModelRetryEvent,
     ReasoningDeltaEvent,
     StatusEvent,
-    StatusLevel,
     ToolCall,
     ToolDefinition,
     Usage,
@@ -300,7 +300,7 @@ async def stream_completion(
     messages: Sequence[BaseMessage],
     tools: Sequence[ToolDefinition],
     model: str,
-) -> AsyncIterator[ContentDeltaEvent | ReasoningDeltaEvent | StatusEvent | CompletionEvent]:
+) -> AsyncIterator[ContentDeltaEvent | ReasoningDeltaEvent | ModelRetryEvent | StatusEvent | CompletionEvent]:
     """Retry transient HTTP failures before surfacing the completion error."""
     model, reasoning_effort = _parse_model_and_reasoning(model)
 
@@ -314,8 +314,5 @@ async def stream_completion(
             if attempt == max_retries - 1:
                 raise
             logger.warning(f"Retry {attempt + 1}/{max_retries} due to {e} for model {model}")
-            yield StatusEvent(
-                message=f"Retrying LLM request (attempt {attempt + 1}/{max_retries}) due to {e}",
-                level=StatusLevel.WARNING,
-            )
+            yield ModelRetryEvent()
             await asyncio.sleep(0.5 + attempt)

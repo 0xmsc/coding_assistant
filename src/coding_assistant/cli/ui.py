@@ -52,7 +52,7 @@ from coding_assistant.core.session_updates import (
     session_updates_from_agent_event,
 )
 from coding_assistant.infra.paths import get_app_cache_dir
-from coding_assistant.llm.types import SystemMessage
+from coding_assistant.llm.types import ModelRetryEvent, SystemMessage
 from coding_assistant.remote.registry import register_remote_instance
 from coding_assistant.remote.server import start_worker_server
 
@@ -302,6 +302,9 @@ async def _run_output(
         try:
             while True:
                 event = await queue.get()
+                if isinstance(event, ModelRetryEvent):
+                    renderer.retry()
+                    continue
                 for update in session_updates_from_agent_event(event):
                     _render_session_update(
                         update=update,

@@ -141,6 +141,11 @@ class ReasoningDeltaEvent:
 
 
 @dataclass(frozen=True)
+class ModelRetryEvent:
+    """Internal boundary between streaming completion attempts."""
+
+
+@dataclass(frozen=True)
 class StatusEvent:
     """One non-content status update from the LLM layer."""
 

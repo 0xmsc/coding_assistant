@@ -25,6 +25,7 @@ class WorkerSnapshot:
     running: bool = False
     last_update: str = ""
     last_content: str = ""
+    last_message_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -118,15 +119,18 @@ class _WorkerManager:
         snapshot = self._snapshot_for_worker(worker_id)
         previous_running = snapshot.running
         previous_last_content = snapshot.last_content
+        previous_last_message_id = snapshot.last_message_id
         previous_last_update = snapshot.last_update
         snapshot.running = True
         snapshot.last_content = ""
+        snapshot.last_message_id = None
         snapshot.last_update = f"Prompt submitted: {_format_prompt_preview(prompt)}"
         response_error = await connection.prompt(prompt)
         if response_error is not None:
             if response_error == "This remote connection already has an active prompt turn.":
                 snapshot.running = previous_running
                 snapshot.last_content = previous_last_content
+                snapshot.last_message_id = previous_last_message_id
                 snapshot.last_update = previous_last_update
             else:
                 snapshot.running = False
@@ -177,6 +181,9 @@ class _WorkerManager:
 
         if isinstance(message, RemoteContentDeltaEvent):
             snapshot.running = True
+            if snapshot.last_message_id != message.message_id:
+                snapshot.last_content = ""
+                snapshot.last_message_id = message.message_id
             snapshot.last_content = (snapshot.last_content + message.content).strip()
             snapshot.last_update = snapshot.last_content
             return
@@ -185,6 +192,7 @@ class _WorkerManager:
             snapshot.running = False
             if message.stop_reason == "cancelled":
                 snapshot.last_content = ""
+                snapshot.last_message_id = None
                 snapshot.last_update = "Run cancelled."
                 await self._push_meaningful_event(
                     WorkerMeaningfulEvent(worker_id=worker_id, endpoint=snapshot.endpoint, kind="cancelled"),
@@ -205,6 +213,7 @@ class _WorkerManager:
         if isinstance(message, RemotePromptFailedEvent):
             snapshot.running = False
             snapshot.last_content = ""
+            snapshot.last_message_id = None
             snapshot.last_update = f"Run failed: {message.message}"
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(
