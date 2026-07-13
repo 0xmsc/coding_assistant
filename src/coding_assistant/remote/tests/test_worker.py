@@ -13,7 +13,6 @@ from coding_assistant.cli.ui import _run_output
 from coding_assistant.core.agent_session import (
     AgentSession,
     PromptStartedEvent,
-    ToolCallsEvent,
 )
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -322,7 +321,7 @@ async def test__run_output_prints_tool_calls_without_extra_spacing() -> None:
         try:
             await asyncio.sleep(0)
             session._publish_event(ContentDeltaEvent(content="Can you read README.md?"))
-            session._publish_event(ToolCallsEvent(message=tool_call_message))
+            session._publish_event(CompletionEvent(completion=Completion(message=tool_call_message)))
             await asyncio.sleep(0)
         finally:
             task.cancel()

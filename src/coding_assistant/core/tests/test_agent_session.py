@@ -15,11 +15,8 @@ from coding_assistant.core.agent_session import (
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
-    StateChangedEvent,
-    ToolCallsEvent,
-    ToolCallUpdateEvent,
-    ToolMessageEvent,
 )
+from coding_assistant.core.tool_calls import ToolMessageProduced
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -175,9 +172,6 @@ async def test_agent_session_runs_prompt_and_updates_history() -> None:
     )
 
     async with session.subscribe() as queue:
-        initial_state = await wait_for_event(queue, StateChangedEvent)
-        assert isinstance(initial_state, StateChangedEvent)
-
         assert await session.enqueue_prompt("Hi") is True
         finished_event = await wait_for_event(queue, RunFinishedEvent)
 
@@ -205,7 +199,6 @@ async def test_agent_session_enqueue_prompt_if_idle_rejects_busy_session() -> No
     )
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("first") is True
         await asyncio.wait_for(first_started.wait(), timeout=1)
 
@@ -235,7 +228,6 @@ async def test_agent_session_queues_prompts_fifo_while_run_is_in_flight() -> Non
     session = make_session(completion_streamer=streamer)
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("first") is True
         await asyncio.wait_for(first_started.wait(), timeout=1)
         assert await session.enqueue_prompt("second") is True
@@ -281,7 +273,6 @@ async def test_agent_session_starts_queued_prompt_only_after_current_run_finishe
     session = make_session(completion_streamer=streamer)
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("first") is True
         await wait_for_matching_event(
             queue,
@@ -339,9 +330,8 @@ async def test_agent_session_inserts_steering_prompt_into_active_run_after_tool_
     )
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("first") is True
-        await wait_for_event(queue, ToolCallsEvent)
+        await wait_for_event(queue, CompletionEvent)
         await asyncio.wait_for(tool_started.wait(), timeout=1)
 
         assert await session.enqueue_steering_prompt("steer now") is True
@@ -395,7 +385,6 @@ async def test_agent_session_cancel_current_run_publishes_cancellation_and_resto
     session = make_session(completion_streamer=streamer)
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("Do the task") is True
         await asyncio.wait_for(started.wait(), timeout=1)
 
@@ -405,17 +394,9 @@ async def test_agent_session_cancel_current_run_publishes_cancellation_and_resto
         assert session.state.running is False
         assert session.state.paused is False
         assert len(session.state.pending_prompts) == 0
-        state_event = await wait_for_matching_event(
-            queue,
-            lambda event: isinstance(event, StateChangedEvent) and not event.state.running,
-        )
 
     await session.close()
     assert isinstance(cancelled_event, RunCancelledEvent)
-    assert isinstance(state_event, StateChangedEvent)
-    assert state_event.state.running is False
-    assert state_event.state.paused is False
-    assert len(state_event.state.pending_prompts) == 0
     assert session.history == [
         *make_system_history(),
         UserMessage(content="Do the task"),
@@ -443,17 +424,12 @@ async def test_agent_session_cancel_with_pause_queue_keeps_pending_prompt_stoppe
     session = make_session(completion_streamer=streamer)
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("abandoned prompt") is True
         await asyncio.wait_for(started.wait(), timeout=1)
         assert await session.enqueue_prompt("queued prompt") is True
 
         await session.cancel_current_run(pause_queue=True)
         await wait_for_event(queue, RunCancelledEvent)
-        paused_state_event = await wait_for_matching_event(
-            queue,
-            lambda event: isinstance(event, StateChangedEvent) and event.state.paused,
-        )
         assert session.state.running is False
         assert session.state.paused is True
         assert session.state.pending_prompts == ("queued prompt",)
@@ -462,18 +438,10 @@ async def test_agent_session_cancel_with_pause_queue_keeps_pending_prompt_stoppe
         assert second_started.is_set() is False
 
         assert await session.resume() is True
-        resumed_state_event = await wait_for_matching_event(
-            queue,
-            lambda event: isinstance(event, StateChangedEvent) and not event.state.paused and event.state.running,
-        )
         await asyncio.wait_for(second_started.wait(), timeout=1)
         finished_event = await wait_for_event(queue, RunFinishedEvent)
 
     await session.close()
-    assert isinstance(paused_state_event, StateChangedEvent)
-    assert paused_state_event.state.paused is True
-    assert isinstance(resumed_state_event, StateChangedEvent)
-    assert resumed_state_event.state.paused is False
     assert isinstance(finished_event, RunFinishedEvent)
     assert finished_event.summary == "Resumed result"
     assert streamer.prompts == ["abandoned prompt", "queued prompt"]
@@ -512,16 +480,15 @@ async def test_agent_session_cancel_during_tool_execution_preserves_completed_an
     )
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("Use tools") is True
-        await wait_for_event(queue, ToolCallsEvent)
+        await wait_for_event(queue, CompletionEvent)
         await asyncio.wait_for(slow_started.wait(), timeout=1)
 
         await session.cancel_current_run()
         tool_messages: list[ToolMessage] = []
         while True:
             event = await queue.get()
-            if isinstance(event, ToolMessageEvent):
+            if isinstance(event, ToolMessageProduced):
                 tool_messages.append(event.message)
             if isinstance(event, RunCancelledEvent):
                 cancelled_event = event
@@ -551,7 +518,7 @@ async def test_agent_session_cancel_during_tool_execution_preserves_completed_an
 
 
 @pytest.mark.asyncio
-async def test_agent_session_emits_tool_call_and_finish_events() -> None:
+async def test_agent_session_emits_tool_completion_and_finish_events() -> None:
     streamer = ControlledStreamer(
         [
             StreamStep(
@@ -573,28 +540,14 @@ async def test_agent_session_emits_tool_call_and_finish_events() -> None:
     session = make_session(completion_streamer=streamer, tools=[EchoTool()])
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("Use the tool") is True
 
-        tool_event = await wait_for_event(queue, ToolCallsEvent)
-        tool_started_event = await wait_for_matching_event(
-            queue,
-            lambda event: isinstance(event, ToolCallUpdateEvent) and event.event.status == "in_progress",
-        )
-        tool_completed_event = await wait_for_matching_event(
-            queue,
-            lambda event: isinstance(event, ToolCallUpdateEvent) and event.event.status == "completed",
-        )
+        tool_event = await wait_for_event(queue, CompletionEvent)
         finished_event = await wait_for_event(queue, RunFinishedEvent)
 
     await session.close()
-    assert isinstance(tool_event, ToolCallsEvent)
-    assert tool_event.message.tool_calls[0].function.name == "echo_tool"
-    assert isinstance(tool_started_event, ToolCallUpdateEvent)
-    assert tool_started_event.event.tool_call_id == "call-1"
-    assert tool_started_event.event.arguments == {"text": "hello"}
-    assert isinstance(tool_completed_event, ToolCallUpdateEvent)
-    assert tool_completed_event.event.arguments == {"text": "hello"}
+    assert isinstance(tool_event, CompletionEvent)
+    assert tool_event.completion.message.tool_calls[0].function.name == "echo_tool"
     assert isinstance(finished_event, RunFinishedEvent)
     assert finished_event.summary == "Done"
 
@@ -605,7 +558,6 @@ async def test_agent_session_publishes_run_failed_event(caplog: pytest.LogCaptur
     session = make_session(completion_streamer=FailingStreamer())
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("Hi") is True
         failed_event = await wait_for_event(queue, RunFailedEvent)
         assert session.state.running is False
@@ -614,7 +566,7 @@ async def test_agent_session_publishes_run_failed_event(caplog: pytest.LogCaptur
     await session.close()
     assert isinstance(failed_event, RunFailedEvent)
     assert failed_event.error == "boom"
-    assert "Agent session run failed for source local." in caplog.text
+    assert "Agent session run failed." in caplog.text
     assert "boom" in caplog.text
     assert "Traceback" in caplog.text
 
@@ -637,7 +589,6 @@ async def test_agent_session_accumulates_usage_from_completion_event() -> None:
     session = make_session(completion_streamer=streamer)
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("first") is True
         await wait_for_event(queue, RunFinishedEvent)
 
@@ -673,7 +624,6 @@ async def test_agent_session_usage_not_accumulated_when_completion_has_no_usage(
     session = make_session(completion_streamer=streamer)
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("first") is True
         await wait_for_event(queue, RunFinishedEvent)
         assert session.state.usage is not None
@@ -707,7 +657,6 @@ async def test_agent_session_handles_incomplete_usage() -> None:
     session = make_session(completion_streamer=streamer)
 
     async with session.subscribe() as queue:
-        await wait_for_event(queue, StateChangedEvent)
         assert await session.enqueue_prompt("first") is True
         await wait_for_event(queue, RunFinishedEvent)
 

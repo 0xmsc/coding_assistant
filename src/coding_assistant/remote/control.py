@@ -12,13 +12,13 @@ from coding_assistant.core.agent_session import (
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
-    ToolMessageEvent,
 )
 from coding_assistant.core.session_updates import (
     MessageAddedUpdate,
     MessageDeltaUpdate,
     SessionUpdate,
 )
+from coding_assistant.core.tool_calls import ToolMessageProduced
 from coding_assistant.llm.types import BaseMessage, CompletionEvent, ContentDeltaEvent, ModelRetryEvent
 from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_PARAMS,
@@ -61,7 +61,6 @@ class _RemoteControlState:
     initialized: bool = False
     session_opened: bool = False
     active_prompt_request_id: int | str | None = None
-    active_prompt_source: str | None = None
     assistant_message_id: str | None = None
 
 
@@ -152,10 +151,6 @@ class RemoteAgentController:
         async with controlled_session.session.subscribe() as queue:
             while True:
                 event = await queue.get()
-                source = getattr(event, "source", None)
-                active_source = self._state.active_prompt_source
-                if source is not None and active_source is not None and source != active_source:
-                    continue
                 current_session = self._controlled_session
                 if current_session is None:
                     return
@@ -222,7 +217,6 @@ class RemoteAgentController:
         if request_id is None:
             return
         self._state.active_prompt_request_id = None
-        self._state.active_prompt_source = None
         self._state.assistant_message_id = None
 
         if not isinstance(event, RunFailedEvent):
@@ -257,7 +251,7 @@ class RemoteAgentController:
             message_id = self._state.assistant_message_id or f"msg_{uuid4().hex}"
             self._state.assistant_message_id = None
             return [MessageAddedUpdate(message_id=message_id, message=event.completion.message)]
-        if isinstance(event, ToolMessageEvent):
+        if isinstance(event, ToolMessageProduced):
             return [MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=event.message)]
         return []
 
@@ -342,14 +336,11 @@ class RemoteAgentController:
             await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, str(exc)))
             return
 
-        prompt_source = f"remote:{controlled_session.session_id}:{response_id}:{uuid4().hex}"
         self._state.active_prompt_request_id = response_id
-        self._state.active_prompt_source = prompt_source
         self._state.assistant_message_id = None
-        accepted = await controlled_session.session.enqueue_prompt_if_idle(prompt_content, source=prompt_source)
+        accepted = await controlled_session.session.enqueue_prompt_if_idle(prompt_content)
         if not accepted:
             self._state.active_prompt_request_id = None
-            self._state.active_prompt_source = None
             await websocket.send(jsonrpc_error(response_id, ERROR_SERVER, self._busy_message))
 
     async def _handle_cancel(
