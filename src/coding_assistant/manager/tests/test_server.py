@@ -36,7 +36,7 @@ from coding_assistant.remote.jsonrpc import (
     prompt_content_from_acp,
     text_block,
 )
-from coding_assistant.remote.client import RemoteClientEvent, RemoteSessionClient
+from coding_assistant.remote.client import RemoteSessionClient
 
 
 IMAGE_BLOCK: dict[str, Any] = {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}
@@ -188,14 +188,6 @@ async def _set_model(
     return response
 
 
-async def _ignore_remote_event(event: RemoteClientEvent) -> None:
-    del event
-
-
-async def _ignore_disconnect(endpoint: str) -> None:
-    del endpoint
-
-
 async def _test_model_lister() -> list[str]:
     return ["test-model", "alternate-model"]
 
@@ -263,8 +255,6 @@ async def test_remote_session_client_sends_manager_auth_token(tmp_path: Path) ->
         client = await RemoteSessionClient.connect(
             endpoint=endpoint,
             auth_token="secret-token",
-            on_event=_ignore_remote_event,
-            on_disconnect=_ignore_disconnect,
         )
         try:
             await client.initialize()

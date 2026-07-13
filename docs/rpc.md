@@ -44,7 +44,7 @@ The application backend owns browser authentication. The manager owns canonical
 session state and worker lifecycle. Each active prompt runs in a temporary
 worker container with the session's managed workspace mounted at `/workspace`
 and session attachments mounted read-only at `/attachments`. Worker processes
-are one-shot and exit after sending `_session/run_finished`.
+are one-shot and exit after returning the completed `session/prompt` result.
 
 The CLI path remains direct:
 
@@ -281,7 +281,7 @@ turn.
 1. The manager starts a worker from history version `N`.
 2. The worker creates an in-memory `AgentSession`.
 3. The worker streams live `session/update` notifications.
-4. The worker sends `_session/run_finished` with `baseVersion: N`.
+4. The worker returns the completed `session/prompt` result with `baseVersion: N`.
 5. The manager atomically verifies `sessions.version == N`.
 6. The manager inserts committed messages and updates the session to version
    `N + 1`.
@@ -739,7 +739,7 @@ Response on cancellation:
 Only one active prompt may run per session. Different sessions may run
 concurrently. For each active prompt, the manager starts a temporary worker
 container. The worker receives the session history, runs tools inside
-`/workspace`, sends `_session/run_finished`, and exits normally.
+`/workspace`, returns the completed prompt result, and exits normally.
 
 Prompt blocks follow ACP-compatible content shapes where practical:
 
@@ -1101,7 +1101,7 @@ Manager-to-worker traffic uses the same JSON-RPC protocol family as external
 remote traffic. This is not a second protocol mode: the CLI-owned local remote
 endpoint and manager-controlled remote workers/subagents should share envelope
 parsing, request/response/error handling, content blocks, `session/update`
-serialization, and normalized run-finished payloads.
+serialization, and completed prompt results.
 
 Private methods use the `_session/*` prefix only where the public session
 methods do not define the manager/worker operation, such as starting a worker
@@ -1120,19 +1120,19 @@ Request params:
 | `messages` | array | yes | Model-visible committed history from SQLite. |
 | `workspace` | string | yes | Worker workspace path, normally `/workspace`. |
 
-### _session/run_finished
+### Worker `session/prompt` result
 
-Sent by the worker when a prompt turn finishes and should become durable.
+The worker's response to `session/prompt` contains the completed turn that the
+manager may commit. Streaming remains in `session/update` notifications sent
+before this response.
 
-Notification params:
+Result fields:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `sessionId` | string | yes | Session id. |
 | `baseVersion` | integer | yes | History version used to start the run. |
 | `messages` | array | yes | Newly committed model-visible messages. |
 | `stopReason` | string | yes | `end_turn` or `cancelled`. |
-| `usage` | object | no | Usage metadata. |
 | `_meta` | object | no | Implementation metadata such as title updates. |
 
 Workers may include `_meta.title` to request a persisted session title update.
@@ -1149,7 +1149,7 @@ Use honest module names:
 - `remote/jsonrpc.py` for generic JSON-RPC helpers.
 - `remote/protocol.py` for the custom `coding-assistant` remote protocol.
 
-Do not put manager session paths, scope metadata, worker run-finished payloads,
+Do not put manager session paths, scope metadata, worker prompt-result payloads,
 or private `_session/*` methods into a module named as if it were pure ACP.
 
 ## Current Limitations
@@ -1174,7 +1174,7 @@ Required coverage:
 - Transcript replay order.
 - Prompt streaming through `session/update`.
 - Tool call and tool call update shapes.
-- Versioned run-finished success and stale run-finished rejection.
+- Versioned prompt-result success and stale prompt-result rejection.
 - Worker crash before run completion does not advance SQLite history.
 - Concurrent prompts on different sessions.
 - Rejection of a second active prompt for one session.

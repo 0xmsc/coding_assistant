@@ -30,7 +30,7 @@ clients. The terminal UI itself is not a JSON-RPC client.
 - `jsonrpc.py` contains the custom ACP-inspired JSON-RPC helpers and common payload
   validation.
 - `control.py` contains the shared remote-control implementation for
-  JSON-RPC-driven `AgentSession` prompt, cancel, update, and run-finished
+  JSON-RPC-driven `AgentSession` prompt, cancel, update, and prompt-result
   behavior.
 - `protocol.py` converts between core messages/session updates and JSON-RPC
   payloads.
@@ -50,8 +50,8 @@ RPC.
 
 `coding_assistant.worker` owns the worker-side remote runtime. A worker receives
 manager-provided session state, creates one `AgentSession`, streams
-`session/update` notifications, and sends `_session/run_finished` notifications
-for the new messages produced by the active turn. Workers do not persist
+`session/update` notifications, and returns the new messages in the completed
+`session/prompt` response. Workers do not persist
 canonical history.
 
 ## Modes
@@ -82,9 +82,8 @@ remote client
 
 This endpoint wraps one already-created `AgentSession` with the shared
 remote-control implementation. It emits the same provisional `session/update`
-and completed-turn `_session/run_finished` notifications as managed workers,
-but local callers may ignore run-finished notifications. It is useful for
-CLI-owned remote access and tests. It is not the web manager.
+notifications and completed `session/prompt` results as managed workers. It is
+useful for CLI-owned remote access and tests. It is not the web manager.
 
 ### Managed Web Sessions
 
@@ -126,9 +125,10 @@ should use core dataclasses such as `BaseMessage` and `SessionUpdate` rather
 than passing raw protocol dictionaries around.
 
 Every remote-controlled `AgentSession` emits provisional `session/update`
-notifications and a completed-turn `_session/run_finished` notification.
-Persistence is still caller-specific: the manager persists completed worker
-runs, while CLI-owned local remote callers may ignore them.
+notifications while `session/prompt` is pending. Its correlated JSON-RPC
+response carries the completed turn. Persistence is still caller-specific: the
+manager persists completed worker runs, while CLI-owned local remote callers do
+not.
 
 Assistant streaming uses one message id per model attempt. Deltas create a
 provisional draft, and the complete assistant message finalizes that same id.

@@ -194,7 +194,7 @@ async def test_worker_starts_session_from_manager_state(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_prompt_streams_update_and_emits_run_finished(tmp_path: Path) -> None:
+async def test_worker_prompt_streams_updates_and_returns_result(tmp_path: Path) -> None:
     runtime = WorkerRuntimeConfig(
         model="test-model",
         tools=[],
@@ -218,7 +218,6 @@ async def test_worker_prompt_streams_update_and_emits_run_finished(tmp_path: Pat
                     updates.append(payload)
                 else:
                     response = payload
-            finished = parse_jsonrpc_message(await websocket.recv())
             await server.wait_finished()
 
     assert any(
@@ -226,10 +225,7 @@ async def test_worker_prompt_streams_update_and_emits_run_finished(tmp_path: Pat
         and update["params"]["update"]["appendText"] == "hello"
         for update in updates
     )
-    assert response["result"] == {"stopReason": "end_turn"}
-    assert finished["method"] == "_session/run_finished"
-    assert finished["params"] == {
-        "sessionId": session_id,
+    assert response["result"] == {
         "baseVersion": 7,
         "messages": messages_to_jsonrpc([UserMessage(content="Do it"), AssistantMessage(content="hello")]),
         "stopReason": "end_turn",
@@ -238,7 +234,7 @@ async def test_worker_prompt_streams_update_and_emits_run_finished(tmp_path: Pat
 
 
 @pytest.mark.asyncio
-async def test_worker_cancel_produces_cancelled_run_finished(tmp_path: Path) -> None:
+async def test_worker_cancel_returns_cancelled_result(tmp_path: Path) -> None:
     streamer = BlockingStreamer()
     runtime = WorkerRuntimeConfig(model="test-model", tools=[], completion_streamer=streamer)
 
@@ -254,12 +250,13 @@ async def test_worker_cancel_produces_cancelled_run_finished(tmp_path: Path) -> 
             await websocket.send(jsonrpc_request(4, "session/cancel", {"sessionId": session_id}))
             cancel_response = parse_jsonrpc_message(await websocket.recv())
             prompt_response = parse_jsonrpc_message(await websocket.recv())
-            finished = parse_jsonrpc_message(await websocket.recv())
 
     assert cancel_response["result"] is None
-    assert prompt_response["result"] == {"stopReason": "cancelled"}
-    assert finished["method"] == "_session/run_finished"
-    assert finished["params"]["stopReason"] == "cancelled"
+    assert prompt_response["result"] == {
+        "baseVersion": 7,
+        "messages": messages_to_jsonrpc([UserMessage(content="Do it")]),
+        "stopReason": "cancelled",
+    }
 
 
 @pytest.mark.asyncio
@@ -292,12 +289,12 @@ async def test_worker_streams_tool_messages_before_final_answer(tmp_path: Path) 
             )
 
             messages: list[dict[str, Any]] = []
-            finished: dict[str, Any] | None = None
-            while finished is None:
+            response: dict[str, Any] | None = None
+            while response is None:
                 payload = parse_jsonrpc_message(await websocket.recv())
                 messages.append(payload)
-                if payload.get("method") == "_session/run_finished":
-                    finished = payload
+                if payload.get("id") == 3:
+                    response = payload
 
     updates = [message["params"]["update"] for message in messages if message.get("method") == "session/update"]
     assert _normalized_updates(updates) == [
@@ -336,8 +333,8 @@ async def test_worker_streams_tool_messages_before_final_answer(tmp_path: Path) 
             "message": {"role": "assistant", "content": "done"},
         },
     ]
-    assert finished is not None
-    assert finished["params"]["stopReason"] == "end_turn"
+    assert response is not None
+    assert response["result"]["stopReason"] == "end_turn"
 
 
 @pytest.mark.asyncio

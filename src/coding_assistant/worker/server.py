@@ -126,7 +126,7 @@ async def start_session_worker_server(
             busy_message="Session already has an active prompt.",
             unopened_message="_session/start must be called first.",
             finish_metadata_provider=runtime.finish_metadata_provider,
-            on_run_finished=mark_finished,
+            on_prompt_finished=mark_finished,
         )
         sender_task: asyncio.Task[None] | None = None
 

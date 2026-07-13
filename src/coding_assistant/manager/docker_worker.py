@@ -13,7 +13,7 @@ from time import monotonic
 from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.manager.remote_worker import RemoteWorkerRunner
 from coding_assistant.manager.service import WorkerPrompt, WorkerRunFinished
-from coding_assistant.remote.client import RemoteClientEvent, RemoteSessionClient
+from coding_assistant.remote.client import RemoteSessionClient
 
 
 logger = logging.getLogger(__name__)
@@ -179,8 +179,6 @@ class DockerWorkerRunner:
             try:
                 client = await RemoteSessionClient.connect(
                     endpoint=endpoint,
-                    on_event=_ignore_remote_event,
-                    on_disconnect=_ignore_disconnect,
                 )
                 try:
                     await client.initialize()
@@ -276,14 +274,6 @@ def _docker_run_args(
     if config.skills_directories:
         args.extend(["--skills-directories", *config.skills_directories])
     return args
-
-
-async def _ignore_remote_event(event: RemoteClientEvent) -> None:
-    del event
-
-
-async def _ignore_disconnect(endpoint: str) -> None:
-    del endpoint
 
 
 async def _run_command(args: Sequence[str]) -> DockerCommandResult:
