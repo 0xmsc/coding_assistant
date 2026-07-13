@@ -23,6 +23,7 @@ from coding_assistant.llm.types import (
     BaseMessage,
     CompletionEvent,
     ContentDeltaEvent,
+    ModelRetryEvent,
     ReasoningDeltaEvent,
     StatusEvent,
     Tool,
@@ -114,6 +115,7 @@ class RunFailedEvent:
 AgentSessionEvent = (
     ContentDeltaEvent
     | ReasoningDeltaEvent
+    | ModelRetryEvent
     | StatusEvent
     | CompletionEvent
     | StateChangedEvent

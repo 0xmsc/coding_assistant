@@ -29,7 +29,13 @@ from coding_assistant.manager.service import (
 )
 from coding_assistant.manager.tests.fakes import FakeWorkerRunner
 from coding_assistant.manager.tests.store_helpers import create_session_store
-from coding_assistant.remote.jsonrpc import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
+from coding_assistant.remote.jsonrpc import (
+    ACP_PROTOCOL_VERSION,
+    jsonrpc_request,
+    parse_jsonrpc_message,
+    prompt_content_from_acp,
+    text_block,
+)
 from coding_assistant.remote.client import RemoteClientEvent, RemoteSessionClient
 
 
@@ -71,7 +77,14 @@ def _attachment_payload(update: dict[str, Any]) -> dict[str, Any]:
 
 
 def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    message_ids: dict[str, str] = {}
+    raw_message_ids = [
+        message_id
+        for update in updates
+        if update.get("sessionUpdate") == "message_added"
+        and isinstance((message := update.get("message")), dict)
+        and isinstance((message_id := message.get("id")), str)
+    ]
+    message_ids = {message_id: f"message-{index}" for index, message_id in enumerate(raw_message_ids)}
     result: list[dict[str, Any]] = []
     for update in updates:
         update_type = update.get("sessionUpdate")
@@ -80,7 +93,6 @@ def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
             assert isinstance(message, dict)
             message_id = message.get("id")
             assert isinstance(message_id, str)
-            message_ids[message_id] = f"message-{len(message_ids)}"
             result.append(
                 {
                     "sessionUpdate": "message_added",
@@ -320,6 +332,35 @@ async def test_manager_creates_and_lists_sessions_by_scope(tmp_path: Path) -> No
     assert [session["sessionId"] for session in sessions] == [session_id]
     assert sessions[0]["_meta"]["version"] == 0
     assert "model" not in sessions[0]["_meta"]
+
+
+@pytest.mark.asyncio
+async def test_manager_does_not_publish_updates_across_scopes(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as owner, connect(endpoint) as other_scope:
+            await _initialize(owner)
+            await _initialize(other_scope)
+            session_id = await _new_session(owner, scope_id="scope-a")
+
+            await other_scope.send(
+                jsonrpc_request(2, "session/load", _scope_params("scope-b", sessionId=session_id)),
+            )
+            rejected = parse_jsonrpc_message(await other_scope.recv())
+            assert rejected["error"]["code"] == -32602
+
+            await owner.send(
+                jsonrpc_request(
+                    3,
+                    "session/rename",
+                    _scope_params("scope-a", sessionId=session_id, title="Private title"),
+                ),
+            )
+            response, updates = await _recv_response_with_updates(owner)
+
+            assert response["result"]["title"] == "Private title"
+            assert any(_update(message).get("sessionUpdate") == "session_updated" for message in updates)
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(other_scope.recv(), timeout=0.05)
 
 
 @pytest.mark.asyncio
@@ -974,11 +1015,15 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
             "message": {"role": "user", "content": "Do it"},
         },
         {
+            "sessionUpdate": "message_delta",
+            "messageId": "message-1",
+            "appendText": "done",
+        },
+        {
             "sessionUpdate": "message_added",
             "messageId": "message-1",
-            "message": {"role": "assistant", "content": ""},
+            "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "message_delta", "messageId": "message-1", "appendText": "done"},
     ]
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     replay_payloads = [_update(message) for message in replay]
@@ -995,7 +1040,7 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "history_complete", "version": 2},
+        {"sessionUpdate": "history_complete", "version": 1},
     ]
     assert load_response["result"]["_meta"]["model"] == "alternate-model"
     assert worker.prompts is not None
@@ -1049,11 +1094,15 @@ async def test_manager_stores_session_worker_env_privately_and_injects_session_s
             "message": {"role": "user", "content": "Do it"},
         },
         {
+            "sessionUpdate": "message_delta",
+            "messageId": "message-1",
+            "appendText": "done",
+        },
+        {
             "sessionUpdate": "message_added",
             "messageId": "message-1",
-            "message": {"role": "assistant", "content": ""},
+            "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "message_delta", "messageId": "message-1", "appendText": "done"},
     ]
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     replay_payloads = [_update(message) for message in replay]
@@ -1070,7 +1119,7 @@ async def test_manager_stores_session_worker_env_privately_and_injects_session_s
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "history_complete", "version": 2},
+        {"sessionUpdate": "history_complete", "version": 1},
     ]
     assert "capabilities" not in load_response["result"]["_meta"]
     assert "skills" not in load_response["result"]["_meta"]
@@ -1172,11 +1221,15 @@ async def test_manager_uses_prompt_worker_env_for_one_run(tmp_path: Path) -> Non
             "message": {"role": "user", "content": "Do it"},
         },
         {
+            "sessionUpdate": "message_delta",
+            "messageId": "message-1",
+            "appendText": "done",
+        },
+        {
             "sessionUpdate": "message_added",
             "messageId": "message-1",
-            "message": {"role": "assistant", "content": ""},
+            "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "message_delta", "messageId": "message-1", "appendText": "done"},
     ]
     assert response["result"] == {"stopReason": "end_turn"}
     assert second_response["result"] == {"stopReason": "end_turn"}
@@ -1319,14 +1372,14 @@ async def test_manager_rejects_model_change_during_active_prompt(tmp_path: Path)
                     _scope_params("scope-a", sessionId=session_id, model="alternate-model"),
                 ),
             )
-            busy_response = parse_jsonrpc_message(await websocket.recv())
+            busy_response = await _recv_response(websocket)
             release.set()
             first_response = await _recv_response(websocket)
 
     first_payloads = [_update(message) for message in first_updates]
     first_message_payloads = [update for update in first_payloads if update.get("sessionUpdate") != "run_updated"]
     assert _message_payload(first_message_payloads[0]) == {"role": "user", "content": "first"}
-    assert first_message_payloads[2]["appendText"] == "fake response"
+    assert first_message_payloads[1]["appendText"] == "fake response"
     assert busy_response["error"]["code"] == -32000
     assert busy_response["error"]["message"] == "Cannot change model while session has an active prompt."
     assert first_response["result"] == {"stopReason": "end_turn"}
@@ -1440,11 +1493,15 @@ async def test_manager_prompt_streams_update_and_persists_messages(tmp_path: Pat
             "message": {"role": "user", "content": "Do it"},
         },
         {
+            "sessionUpdate": "message_delta",
+            "messageId": "message-1",
+            "appendText": "done",
+        },
+        {
             "sessionUpdate": "message_added",
             "messageId": "message-1",
-            "message": {"role": "assistant", "content": ""},
+            "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "message_delta", "messageId": "message-1", "appendText": "done"},
     ]
     assert response["result"] == {"stopReason": "end_turn"}
     replay_payloads = [_update(message) for message in replay_messages]
@@ -1461,9 +1518,9 @@ async def test_manager_prompt_streams_update_and_persists_messages(tmp_path: Pat
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "history_complete", "version": 2},
+        {"sessionUpdate": "history_complete", "version": 1},
     ]
-    assert load_response["result"]["_meta"]["version"] == 2
+    assert load_response["result"]["_meta"]["version"] == 1
 
 
 @pytest.mark.asyncio
@@ -1512,7 +1569,7 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
             await second.send(jsonrpc_request(6, "session/load", _scope_params("scope-a", sessionId=session_id)))
             final_load_response, final_replay = await _recv_response_with_updates(second)
 
-    assert load_response["result"]["_meta"]["version"] == 1
+    assert load_response["result"]["_meta"]["version"] == 0
     replay_payloads = [_update(message) for message in replay]
     assert any(
         update.get("sessionUpdate") == "run_updated"
@@ -1521,7 +1578,7 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
         for update in replay_payloads
     )
     assert completed_run["stopReason"] == "end_turn"
-    assert final_load_response["result"]["_meta"]["version"] == 2
+    assert final_load_response["result"]["_meta"]["version"] == 1
     final_payloads = [_update(message) for message in final_replay]
     assert {
         tuple(item.get("message", {}).items())
@@ -1542,31 +1599,33 @@ async def test_manager_persists_live_tool_messages(tmp_path: Path) -> None:
             prompt: WorkerPrompt,
             on_update: Callable[[SessionUpdate], Awaitable[None]],
         ) -> WorkerRunFinished:
-            del prompt
-            message_id = "msg_worker"
-            await on_update(MessageAddedUpdate(message_id=message_id, message=AssistantMessage(content="")))
-            await on_update(MessageDeltaUpdate(message_id=message_id, append_text="done"))
             tool_call = ToolCall(
                 id="call-1",
                 function=FunctionCall(name="load_image", arguments='{"path": "/attachments/att_1-meal.png"}'),
             )
-            await on_update(
-                MessageAddedUpdate(message_id="tool_calls", message=AssistantMessage(tool_calls=[tool_call]))
+            tool_call_message = AssistantMessage(tool_calls=[tool_call])
+            tool_message = ToolMessage(
+                tool_call_id="call-1",
+                name="load_image",
+                content=[
+                    {"type": "text", "text": "loaded image"},
+                    IMAGE_BLOCK,
+                ],
             )
-            await on_update(
-                MessageAddedUpdate(
-                    message_id="tool_result",
-                    message=ToolMessage(
-                        tool_call_id="call-1",
-                        name="load_image",
-                        content=[
-                            {"type": "text", "text": "loaded image"},
-                            IMAGE_BLOCK,
-                        ],
-                    ),
-                )
+            final_message = AssistantMessage(content="done")
+            await on_update(MessageAddedUpdate(message_id="tool_calls", message=tool_call_message))
+            await on_update(MessageAddedUpdate(message_id="tool_result", message=tool_message))
+            await on_update(MessageDeltaUpdate(message_id="msg_worker", append_text="done"))
+            await on_update(MessageAddedUpdate(message_id="msg_worker", message=final_message))
+            return WorkerRunFinished(
+                stop_reason="end_turn",
+                messages=[
+                    UserMessage(content=prompt_content_from_acp(prompt.prompt)),
+                    tool_call_message,
+                    tool_message,
+                    final_message,
+                ],
             )
-            return WorkerRunFinished(stop_reason="end_turn", messages=[AssistantMessage(content="done")])
 
         async def cancel(self, *, session_id: str) -> None:
             del session_id
@@ -1597,12 +1656,6 @@ async def test_manager_persists_live_tool_messages(tmp_path: Path) -> None:
         {
             "sessionUpdate": "message_added",
             "messageId": "message-1",
-            "message": {"role": "assistant", "content": ""},
-        },
-        {"sessionUpdate": "message_delta", "messageId": "message-1", "appendText": "done"},
-        {
-            "sessionUpdate": "message_added",
-            "messageId": "message-2",
             "message": {
                 "role": "assistant",
                 "tool_calls": [
@@ -1616,7 +1669,7 @@ async def test_manager_persists_live_tool_messages(tmp_path: Path) -> None:
         },
         {
             "sessionUpdate": "message_added",
-            "messageId": "message-3",
+            "messageId": "message-2",
             "message": {
                 "role": "tool",
                 "name": "load_image",
@@ -1626,6 +1679,12 @@ async def test_manager_persists_live_tool_messages(tmp_path: Path) -> None:
                     IMAGE_BLOCK,
                 ],
             },
+        },
+        {"sessionUpdate": "message_delta", "messageId": "message-3", "appendText": "done"},
+        {
+            "sessionUpdate": "message_added",
+            "messageId": "message-3",
+            "message": {"role": "assistant", "content": "done"},
         },
     ]
     assert response["result"] == {"stopReason": "end_turn"}
@@ -1722,14 +1781,14 @@ async def test_manager_rejects_second_active_prompt_for_same_session(tmp_path: P
                     _scope_params("scope-a", sessionId=session_id, prompt=[text_block("second")]),
                 ),
             )
-            busy_response = parse_jsonrpc_message(await websocket.recv())
+            busy_response = await _recv_response(websocket)
             release.set()
             first_response = await _recv_response(websocket)
 
     first_payloads = [_update(message) for message in first_updates]
     first_message_payloads = [update for update in first_payloads if update.get("sessionUpdate") != "run_updated"]
     assert _message_payload(first_message_payloads[0]) == {"role": "user", "content": "first"}
-    assert first_message_payloads[2]["appendText"] == "fake response"
+    assert first_message_payloads[1]["appendText"] == "fake response"
     assert busy_response["error"]["message"] == "Session already has an active prompt."
     assert first_response["result"] == {"stopReason": "end_turn"}
 

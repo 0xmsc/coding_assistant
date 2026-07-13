@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from websockets.asyncio.server import ServerConnection
 
-from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, ToolCallsEvent, ToolMessageEvent
+from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, ToolMessageEvent
 from coding_assistant.core.session_updates import (
     MessageAddedUpdate,
     MessageDeltaUpdate,
@@ -14,7 +14,7 @@ from coding_assistant.core.session_updates import (
     prompt_result_from_update,
     session_updates_from_agent_event,
 )
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, ContentDeltaEvent
+from coding_assistant.llm.types import BaseMessage, CompletionEvent, ContentDeltaEvent, ModelRetryEvent
 from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
@@ -183,28 +183,29 @@ class RemoteAgentController:
 
         try:
             params = params_from_payload(payload)
+            if method == "initialize":
+                await self._handle_initialize(websocket=websocket, response_id=response_id, params=params)
+                return
+            if not self._state.initialized:
+                await websocket.send(
+                    jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "initialize must be called first."),
+                )
+                return
+            if method == "session/new":
+                await self._handle_session_new(websocket=websocket, response_id=response_id)
+                return
+            if method == "session/prompt":
+                await self._handle_prompt(websocket=websocket, response_id=response_id, params=params)
+                return
+            if method == "session/cancel":
+                await self._handle_cancel(websocket=websocket, response_id=response_id, params=params)
+                return
+            if on_unhandled is not None and await on_unhandled(method, response_id, params):
+                return
+            await websocket.send(jsonrpc_error(response_id, ERROR_METHOD_NOT_FOUND, f"Unsupported method: {method}"))
         except ValueError as exc:
-            await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, str(exc)))
-            return
-
-        if method == "initialize":
-            await self._handle_initialize(websocket=websocket, response_id=response_id, params=params)
-            return
-        if not self._state.initialized:
-            await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "initialize must be called first."))
-            return
-        if method == "session/new":
-            await self._handle_session_new(websocket=websocket, response_id=response_id)
-            return
-        if method == "session/prompt":
-            await self._handle_prompt(websocket=websocket, response_id=response_id, params=params)
-            return
-        if method == "session/cancel":
-            await self._handle_cancel(websocket=websocket, response_id=response_id, params=params)
-            return
-        if on_unhandled is not None and await on_unhandled(method, response_id, params):
-            return
-        await websocket.send(jsonrpc_error(response_id, ERROR_METHOD_NOT_FOUND, f"Unsupported method: {method}"))
+            if response_id is not None:
+                await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, str(exc)))
 
     async def _handle_session_update(
         self,
@@ -261,24 +262,21 @@ class RemoteAgentController:
     def _session_updates_from_agent_event(self, event: AgentSessionEvent) -> list[SessionUpdate]:
         if isinstance(event, ContentDeltaEvent):
             return self._append_assistant_text(event.content)
-        if isinstance(event, ToolCallsEvent):
-            return [MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=event.message)]
+        if isinstance(event, ModelRetryEvent):
+            self._state.assistant_message_id = None
+            return []
+        if isinstance(event, CompletionEvent):
+            message_id = self._state.assistant_message_id or f"msg_{uuid4().hex}"
+            self._state.assistant_message_id = None
+            return [MessageAddedUpdate(message_id=message_id, message=event.completion.message)]
         if isinstance(event, ToolMessageEvent):
             return [MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=event.message)]
         return session_updates_from_agent_event(event)
 
     def _append_assistant_text(self, content: str) -> list[SessionUpdate]:
-        updates: list[SessionUpdate] = []
         if self._state.assistant_message_id is None:
             self._state.assistant_message_id = f"msg_{uuid4().hex}"
-            updates.append(
-                MessageAddedUpdate(
-                    message_id=self._state.assistant_message_id,
-                    message=AssistantMessage(content=""),
-                )
-            )
-        updates.append(MessageDeltaUpdate(message_id=self._state.assistant_message_id, append_text=content))
-        return updates
+        return [MessageDeltaUpdate(message_id=self._state.assistant_message_id, append_text=content)]
 
     async def _handle_initialize(
         self,
@@ -341,7 +339,7 @@ class RemoteAgentController:
             await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "Unknown sessionId."))
             return
         prompt_blocks = params.get("prompt")
-        if not isinstance(prompt_blocks, list):
+        if not isinstance(prompt_blocks, list) or not all(isinstance(block, dict) for block in prompt_blocks):
             await websocket.send(
                 jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "session/prompt requires a prompt array."),
             )
@@ -375,8 +373,12 @@ class RemoteAgentController:
     ) -> None:
         controlled_session = self._controlled_session
         if controlled_session is None or not self._state.session_opened:
+            if response_id is not None:
+                await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_REQUEST, self._unopened_message))
             return
         if session_id_from_params(params) != controlled_session.session_id:
+            if response_id is not None:
+                await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "Unknown sessionId."))
             return
         await controlled_session.session.cancel_current_run()
         if response_id is not None:

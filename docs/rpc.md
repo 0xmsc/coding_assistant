@@ -1028,7 +1028,8 @@ Attachment added:
 }
 ```
 
-Assistant text delta for an existing message:
+Assistant text delta. The first delta for an unknown `messageId` creates a
+provisional assistant draft on the client:
 
 ```json
 {
@@ -1074,16 +1075,23 @@ Supported `sessionUpdate` values:
 | Value | Description |
 | --- | --- |
 | `history_reset` | Clear local transcript before replay. |
-| `message_added` | Add a canonical message. |
-| `message_delta` | Append streamed text to an existing assistant message. |
+| `message_added` | Add a complete message, or finalize a provisional draft with the same id. |
+| `message_delta` | Append streamed text to a provisional assistant draft, creating it when its id is first seen. |
 | `attachment_added` | Add an attachment metadata record linked to a message. |
 | `session_updated` | Replace or merge session metadata such as title, model, updated time, and version. |
 | `history_complete` | Replay is complete and includes the durable session version. |
 
-Live streamed assistant message updates are provisional until the worker
-commits the completed turn and the manager persists it. Tool calls and tool
-results are represented as canonical assistant/tool messages; clients that want
-tool cards or image previews derive those UI elements from message content.
+Each model attempt uses one message id. Its deltas arrive first, followed by a
+complete `message_added` with the same id. The complete message replaces the
+draft and includes any tool calls. If the model layer retries, the next attempt
+uses a new message id; seeing that new provisional id supersedes the older
+unfinished draft. There is no retry, reset, or status update in the wire
+protocol.
+
+Live message updates are provisional until the worker commits the completed
+turn and the manager persists it atomically. Tool calls and tool results are
+represented as assistant/tool messages; clients that want tool cards or image
+previews derive those UI elements from message content.
 The manager sends `session_updated` after persisted session metadata changes,
 including rename, model changes, uploads, and prompt commits.
 

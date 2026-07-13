@@ -47,6 +47,7 @@ def _finish_title(metadata: object) -> str | None:
 
 @dataclass(frozen=True)
 class RemoteContentDeltaEvent:
+    message_id: str
     content: str
 
 
@@ -103,6 +104,7 @@ class RemoteSessionClient:
         self._session_id: str | None = None
         self._active_prompt: _ActivePrompt | None = None
         self._fatal_error: str | None = None
+        self._streamed_message_ids: set[str] = set()
         self._receive_task = asyncio.create_task(self._receive_loop())
 
     @classmethod
@@ -318,13 +320,21 @@ class RemoteSessionClient:
 
     async def _publish_session_update(self, update: SessionUpdate) -> None:
         if isinstance(update, MessageDeltaUpdate):
-            await self._on_event(RemoteContentDeltaEvent(content=update.append_text))
+            self._streamed_message_ids.add(update.message_id)
+            await self._on_event(
+                RemoteContentDeltaEvent(message_id=update.message_id, content=update.append_text),
+            )
             return
 
         if isinstance(update, MessageAddedUpdate) and update.message.role == "assistant":
+            if update.message_id in self._streamed_message_ids:
+                self._streamed_message_ids.remove(update.message_id)
+                return
             content = content_text(update.message.content)
             if content:
-                await self._on_event(RemoteContentDeltaEvent(content=content))
+                await self._on_event(
+                    RemoteContentDeltaEvent(message_id=update.message_id, content=content),
+                )
 
     async def _handle_response(self, payload: JsonObject) -> None:
         response_id = payload.get("id")
@@ -359,6 +369,7 @@ class RemoteSessionClient:
             else:
                 await self._on_event(RemotePromptFailedEvent(message=message))
             self._active_prompt = None
+            self._streamed_message_ids.clear()
             return
 
         result = payload.get("result", {})
@@ -371,3 +382,4 @@ class RemoteSessionClient:
             active_prompt.submission_future.set_result(None)
         await self._on_event(RemotePromptFinishedEvent(stop_reason=stop_reason))
         self._active_prompt = None
+        self._streamed_message_ids.clear()

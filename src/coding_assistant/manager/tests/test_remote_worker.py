@@ -129,7 +129,14 @@ def _message_payload(update: dict[str, Any]) -> dict[str, Any]:
 
 
 def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    message_ids: dict[str, str] = {}
+    raw_message_ids = [
+        message_id
+        for update in updates
+        if update.get("sessionUpdate") == "message_added"
+        and isinstance((message := update.get("message")), dict)
+        and isinstance((message_id := message.get("id")), str)
+    ]
+    message_ids = {message_id: f"message-{index}" for index, message_id in enumerate(raw_message_ids)}
     result: list[dict[str, Any]] = []
     for update in updates:
         update_type = update.get("sessionUpdate")
@@ -138,7 +145,6 @@ def _normalized_updates(updates: list[dict[str, Any]]) -> list[dict[str, Any]]:
             assert isinstance(message, dict)
             message_id = message.get("id")
             assert isinstance(message_id, str)
-            message_ids[message_id] = f"message-{len(message_ids)}"
             result.append(
                 {
                     "sessionUpdate": "message_added",
@@ -245,11 +251,11 @@ async def test_remote_worker_prompt_streams_update_and_persists_to_sqlite(tmp_pa
     assert [update["status"] for update in run_updates] == ["running", "completed"]
     assert [update.message for update in message_updates if isinstance(update, MessageAddedUpdate)] == [
         UserMessage(content="Do it"),
-        AssistantMessage(content=""),
+        AssistantMessage(content="hello"),
     ]
-    assert message_updates[-1] == MessageDeltaUpdate(message_id=_message_id(message_updates[1]), append_text="hello")
+    assert message_updates[1] == MessageDeltaUpdate(message_id=_message_id(message_updates[2]), append_text="hello")
     assert session_update["title"] == "Remote worker title"
-    assert loaded.record.version == 2
+    assert loaded.record.version == 1
     assert loaded.record.title == "Remote worker title"
     assert loaded.messages == [
         SystemMessage(content="system"),
@@ -340,8 +346,12 @@ async def test_remote_worker_persists_final_message_not_streamed_delta(tmp_path:
 
     message_updates = [update for update in updates if not isinstance(update, (RunUpdatedUpdate, SessionUpdatedUpdate))]
     assert result.stop_reason == "end_turn"
-    assert message_updates[-1] == MessageDeltaUpdate(
-        message_id=_message_id(message_updates[1]), append_text="draft answer"
+    assert message_updates[1] == MessageDeltaUpdate(
+        message_id=_message_id(message_updates[2]), append_text="draft answer"
+    )
+    assert message_updates[2] == MessageAddedUpdate(
+        message_id=_message_id(message_updates[2]),
+        message=AssistantMessage(content="final answer"),
     )
     assert loaded.messages == [
         SystemMessage(content="system"),
@@ -388,7 +398,7 @@ async def test_remote_worker_two_sequential_prompts_advance_history_once(tmp_pat
 
     assert first.stop_reason == "end_turn"
     assert second.stop_reason == "end_turn"
-    assert loaded.record.version == 4
+    assert loaded.record.version == 2
     assert [message.role for message in loaded.messages] == ["system", "user", "assistant", "user", "assistant"]
     assert [getattr(message, "content", None) for message in loaded.messages] == [
         "system",
@@ -444,9 +454,9 @@ async def test_remote_worker_streams_tool_messages_before_final_answer_without_d
         UserMessage(content="Use tool"),
         AssistantMessage(tool_calls=[tool_call]),
         ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
-        AssistantMessage(content=""),
+        AssistantMessage(content="done"),
     ]
-    assert message_updates[-1] == MessageDeltaUpdate(message_id=_message_id(message_updates[3]), append_text="done")
+    assert message_updates[3] == MessageDeltaUpdate(message_id=_message_id(message_updates[4]), append_text="done")
     assert loaded.messages == [
         SystemMessage(content="system"),
         UserMessage(content="Use tool"),
@@ -552,11 +562,15 @@ async def test_manager_server_uses_remote_worker_and_replays_persisted_history(t
             "message": {"role": "user", "content": "server prompt"},
         },
         {
+            "sessionUpdate": "message_delta",
+            "messageId": "message-1",
+            "appendText": "server answer",
+        },
+        {
             "sessionUpdate": "message_added",
             "messageId": "message-1",
-            "message": {"role": "assistant", "content": ""},
+            "message": {"role": "assistant", "content": "server answer"},
         },
-        {"sessionUpdate": "message_delta", "messageId": "message-1", "appendText": "server answer"},
     ]
     assert prompt_response["result"] == {"stopReason": "end_turn"}
     replay_payloads = [_update(message) for message in replay]
@@ -573,9 +587,9 @@ async def test_manager_server_uses_remote_worker_and_replays_persisted_history(t
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "server answer"},
         },
-        {"sessionUpdate": "history_complete", "version": 2},
+        {"sessionUpdate": "history_complete", "version": 1},
     ]
-    assert load_response["result"]["_meta"]["version"] == 2
+    assert load_response["result"]["_meta"]["version"] == 1
 
 
 @pytest.mark.asyncio
@@ -607,7 +621,7 @@ async def test_remote_worker_smoke_uses_fake_openai_adapter(
             loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert result.stop_reason == "end_turn"
-    assert loaded.record.version == 2
+    assert loaded.record.version == 1
     assert [getattr(message, "content", None) for message in loaded.messages] == [
         "system",
         "container smoke",

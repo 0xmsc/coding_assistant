@@ -16,6 +16,7 @@ from coding_assistant.llm.types import (
     Completion,
     CompletionEvent,
     ContentDeltaEvent,
+    ModelRetryEvent,
     SystemMessage,
     Usage,
     UserMessage,
@@ -50,6 +51,17 @@ class ControlledStreamer:
         if step.release_event is not None:
             await step.release_event.wait()
         yield CompletionEvent(completion=Completion(message=step.message, usage=Usage(tokens=10, cost=0.0)))
+
+
+class RetryingStreamer:
+    async def __call__(self, messages: Any, tools: Any, model: Any) -> AsyncIterator[object]:
+        del messages, tools, model
+        yield ContentDeltaEvent(content="abandoned")
+        yield ModelRetryEvent()
+        yield ContentDeltaEvent(content="kept")
+        yield CompletionEvent(
+            completion=Completion(message=AssistantMessage(content="kept"), usage=Usage(tokens=10, cost=0.0)),
+        )
 
 
 def make_system_history() -> list[SystemMessage]:
@@ -95,6 +107,22 @@ async def test_worker_runtime_connects_prompts_and_waits_for_completion() -> Non
         wait_result = await asyncio.wait_for(worker_runtime.wait(worker_id), timeout=1)
         assert wait_result == f"Remote {worker_id} finished:\nFinished the delegated task"
 
+    await worker_runtime.close()
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_replaces_abandoned_retry_content() -> None:
+    session = make_agent_session(completion_streamer=RetryingStreamer())
+    worker_runtime = WorkerToolRuntime()
+
+    async with start_worker_server(session=session) as worker_server:
+        await worker_runtime.connect(worker_server.endpoint)
+        await worker_runtime.prompt(1, "Please retry.")
+
+        result = await asyncio.wait_for(worker_runtime.wait(1), timeout=1)
+
+    assert result == "Remote 1 finished:\nkept"
     await worker_runtime.close()
     await session.close()
 

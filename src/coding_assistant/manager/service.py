@@ -20,7 +20,6 @@ from coding_assistant.core.session_updates import (
     HistoryCompleteUpdate,
     HistoryResetUpdate,
     MessageAddedUpdate,
-    MessageDeltaUpdate,
     RunUpdatedUpdate,
     SessionUpdate,
     SessionAttachment,
@@ -28,8 +27,8 @@ from coding_assistant.core.session_updates import (
     content_text,
 )
 from coding_assistant.llm.openai import list_models as list_provider_models
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, UserMessage
-from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore, StoredMessage
+from coding_assistant.llm.types import BaseMessage, UserMessage
+from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
 from coding_assistant.remote.jsonrpc import JsonObject, prompt_content_from_acp, session_id_from_params
 from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
@@ -124,7 +123,7 @@ class WorkerRunner(Protocol):
     async def cancel(self, *, session_id: str) -> None: ...
 
 
-def _scope_id_from_params(params: JsonObject) -> str:
+def scope_id_from_params(params: JsonObject) -> str:
     metadata = params.get("_meta")
     if not isinstance(metadata, dict):
         raise ManagerError("Request params must include _meta.scopeId.")
@@ -489,18 +488,6 @@ def _run_updated(run: PromptRunRecord) -> RunUpdatedUpdate:
     return RunUpdatedUpdate(run=_run_metadata(run))
 
 
-def _single_stored_update(stored_message: StoredMessage) -> MessageAddedUpdate:
-    return MessageAddedUpdate(
-        message_id=_stored_message_update_id(stored_message.message_id),
-        message=stored_message.message,
-        created_at=stored_message.created_at,
-    )
-
-
-def _is_assistant_text_message(message: BaseMessage) -> bool:
-    return isinstance(message, AssistantMessage) and not message.tool_calls
-
-
 class ManagerService:
     def __init__(
         self,
@@ -529,14 +516,14 @@ class ManagerService:
         }
 
     def list_sessions(self, *, params: JsonObject) -> JsonObject:
-        scope_id = _scope_id_from_params(params)
+        scope_id = scope_id_from_params(params)
         return {
             "sessions": [_record_metadata(record) for record in self._store.list_sessions(scope_id=scope_id)],
             "nextCursor": None,
         }
 
     def new_session(self, *, params: JsonObject) -> JsonObject:
-        scope_id = _scope_id_from_params(params)
+        scope_id = scope_id_from_params(params)
         worker_env = _worker_env_from_params(params)
         skills = _skill_bundles_from_params(params)
         reservation = self._store.reserve_session_workspace()
@@ -560,7 +547,7 @@ class ManagerService:
         params: JsonObject,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
     ) -> JsonObject:
-        scope_id = _scope_id_from_params(params)
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         title = params.get("title")
         if title is None:
@@ -575,7 +562,7 @@ class ManagerService:
         return _record_metadata(record)
 
     async def delete_session(self, *, params: JsonObject) -> None:
-        scope_id = _scope_id_from_params(params)
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         async with self._active_lock:
             if session_id in self._active_runs:
@@ -588,7 +575,7 @@ class ManagerService:
         params: JsonObject,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
     ) -> JsonObject:
-        scope_id = _scope_id_from_params(params)
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         model = _model_param(params)
         self._store.load_session(scope_id=scope_id, session_id=session_id)
@@ -611,7 +598,7 @@ class ManagerService:
     async def load_session(
         self, *, params: JsonObject, on_update: Callable[[SessionUpdate], Awaitable[None]]
     ) -> JsonObject:
-        scope_id = _scope_id_from_params(params)
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         await on_update(HistoryResetUpdate())
@@ -629,7 +616,7 @@ class ManagerService:
         params: JsonObject,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
     ) -> JsonObject:
-        scope_id = _scope_id_from_params(params)
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
 
         async with self._active_lock:
@@ -658,7 +645,7 @@ class ManagerService:
         return {"attachment": attachment.to_json(), "session": _record_metadata(updated.record)}
 
     async def download_attachment(self, *, params: JsonObject) -> JsonObject:
-        scope_id = _scope_id_from_params(params)
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         attachment_id = params.get("attachmentId")
         if not isinstance(attachment_id, str) or not attachment_id:
@@ -689,7 +676,7 @@ class ManagerService:
         params: JsonObject,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
     ) -> PromptResult:
-        scope_id = _scope_id_from_params(params)
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         prompt_blocks = params.get("prompt")
         if not isinstance(prompt_blocks, list) or not all(isinstance(block, dict) for block in prompt_blocks):
@@ -703,37 +690,17 @@ class ManagerService:
 
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         model = _model_from_record(session.record)
-        persisted_messages: list[StoredMessage] = []
-
-        async def forward_worker_update(update: SessionUpdate) -> None:
-            if isinstance(update, MessageAddedUpdate):
-                if _is_assistant_text_message(update.message):
-                    await on_update(update)
-                    return
-                stored = self._store.append_messages(
-                    scope_id=scope_id,
-                    session_id=session_id,
-                    messages=[update.message],
-                )[0]
-                persisted_messages.append(stored)
-                await on_update(_single_stored_update(stored))
-                return
-            if isinstance(update, MessageDeltaUpdate):
-                await on_update(update)
-                return
-            await on_update(update)
 
         run = await self._start_prompt_run(session_id)
         try:
             await on_update(_run_updated(run))
             if content_text(prompt_content) is not None:
-                stored_prompt = self._store.append_messages(
-                    scope_id=scope_id,
-                    session_id=session_id,
-                    messages=[UserMessage(content=prompt_content)],
+                await on_update(
+                    MessageAddedUpdate(
+                        message_id=_new_message_update_id(),
+                        message=UserMessage(content=prompt_content),
+                    ),
                 )
-                persisted_messages.extend(stored_prompt)
-                await on_update(_single_stored_update(stored_prompt[0]))
             worker_result = await self._worker_runner.run_prompt(
                 prompt=WorkerPrompt(
                     session_id=session_id,
@@ -745,20 +712,17 @@ class ManagerService:
                     prompt=prompt_blocks,
                     worker_env={**session.worker_env, **prompt_worker_env},
                 ),
-                on_update=forward_worker_update,
+                on_update=on_update,
             )
-            self._persist_final_worker_messages(
+            self._store.commit_messages(
                 scope_id=scope_id,
                 session_id=session_id,
-                final_messages=worker_result.messages,
-                persisted_messages=persisted_messages,
-            )
-            status = "cancelled" if worker_result.stop_reason == "cancelled" else "completed"
-            updated_record = self._store.apply_prompt_result(
-                scope_id=scope_id,
-                session_id=session_id,
+                base_version=session.record.version,
+                messages=worker_result.messages,
                 title=worker_result.title,
             )
+            status = "cancelled" if worker_result.stop_reason == "cancelled" else "completed"
+            updated_record = self._store.load_session(scope_id=scope_id, session_id=session_id).record
             finished_run = await self._finish_prompt_run(
                 run,
                 status=status,
@@ -777,7 +741,7 @@ class ManagerService:
             raise
 
     async def cancel(self, *, params: JsonObject) -> None:
-        scope_id = _scope_id_from_params(params)
+        scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         self._store.load_session(scope_id=scope_id, session_id=session_id)
         await self._worker_runner.cancel(session_id=session_id)
@@ -822,39 +786,6 @@ class ManagerService:
             if self._active_runs.get(run.session_id) == run:
                 self._active_runs.pop(run.session_id, None)
         return finished_run
-
-    def _persist_final_worker_messages(
-        self,
-        *,
-        scope_id: str,
-        session_id: str,
-        final_messages: list[BaseMessage],
-        persisted_messages: list[StoredMessage],
-    ) -> None:
-        remaining_persisted = list(persisted_messages)
-        messages_to_append: list[BaseMessage] = []
-        for message in final_messages:
-            if remaining_persisted and remaining_persisted[0].message == message:
-                remaining_persisted.pop(0)
-                continue
-            if remaining_persisted and _is_assistant_text_message(remaining_persisted[0].message):
-                if _is_assistant_text_message(message):
-                    stored = remaining_persisted.pop(0)
-                    self._store.replace_message(
-                        scope_id=scope_id,
-                        session_id=session_id,
-                        message_id=stored.message_id,
-                        message=message,
-                    )
-                    continue
-            messages_to_append.append(message)
-
-        if messages_to_append:
-            self._store.append_messages(
-                scope_id=scope_id,
-                session_id=session_id,
-                messages=messages_to_append,
-            )
 
     def _initial_messages(self, *, skills_root: Path) -> list[BaseMessage]:
         instructions = build_worker_instructions(
