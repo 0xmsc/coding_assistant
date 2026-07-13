@@ -43,11 +43,11 @@ from coding_assistant.core.agent_session import (
     RunCancelledEvent,
     RunFailedEvent,
     RunFinishedEvent,
-    ToolCallsEvent,
 )
 from coding_assistant.infra.paths import get_app_cache_dir
 from coding_assistant.llm.types import (
     ContentDeltaEvent,
+    CompletionEvent,
     ModelRetryEvent,
     ReasoningDeltaEvent,
     StatusEvent,
@@ -330,13 +330,14 @@ def _render_agent_event(
         renderer.finish()
         print_active_prompt(event.content)
         return
-    if isinstance(event, ToolCallsEvent):
-        message_id = id(event.message)
+    if isinstance(event, CompletionEvent) and event.completion.message.tool_calls:
+        message = event.completion.message
+        message_id = id(message)
         if message_id in printed_tool_call_messages:
             return
         printed_tool_call_messages.add(message_id)
         renderer.finish()
-        print_tool_calls(event.message)
+        print_tool_calls(message)
         return
     if isinstance(event, (RunFinishedEvent, RunCancelledEvent)):
         renderer.finish()
