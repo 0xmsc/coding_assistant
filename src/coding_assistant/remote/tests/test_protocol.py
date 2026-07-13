@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from coding_assistant.core.agent_session import RunFinishedEvent
 from coding_assistant.core.session_updates import (
     AttachmentAddedUpdate,
     HistoryCompleteUpdate,
@@ -9,8 +8,6 @@ from coding_assistant.core.session_updates import (
     MessageDeltaUpdate,
     SessionAttachment,
     SessionUpdatedUpdate,
-    prompt_result_from_update,
-    session_updates_from_agent_event,
 )
 from coding_assistant.llm.types import AssistantMessage, UserMessage
 from coding_assistant.remote.protocol import (
@@ -101,15 +98,3 @@ def test_session_updates_convert_to_jsonrpc_payloads_and_parse_back() -> None:
 
 def test_unknown_session_update_shape_is_ignored() -> None:
     assert session_update_from_jsonrpc_update({"sessionUpdate": "unknown"}) is None
-
-
-def test_run_finished_update_converts_to_prompt_result() -> None:
-    updates = session_updates_from_agent_event(RunFinishedEvent(summary="done", source="remote:test"))
-
-    assert len(updates) == 1
-    result = prompt_result_from_update(updates[0])
-
-    assert result is not None
-    assert result.source == "remote:test"
-    assert result.stop_reason == "end_turn"
-    assert result.error is None

@@ -8,12 +8,11 @@ The interactive CLI does not use this protocol for its own terminal UI. It
 creates and drives `AgentSession` directly, and currently exposes a local
 single-session remote endpoint as an additional endpoint for other clients.
 
-The web chat integration should not introduce a separate remote mode or event
-model. CLI rendering, the CLI-owned local remote endpoint, the web manager,
-remote workers/subagents, and persistence should share the same internal
-session update and committed-message models. JSON-RPC is the single remote
-transport serialization for components that cross a process or container
-boundary.
+The web chat integration should not introduce a separate remote mode. The core
+and CLI use `AgentSessionEvent` for in-process runtime events. Remote endpoints,
+the web manager, workers/subagents, and persistence use `SessionUpdate` for the
+smaller set of updates that cross a process boundary. JSON-RPC is their single
+transport serialization.
 
 The minimum Chat WebUI contract is:
 
@@ -51,7 +50,7 @@ The CLI path remains direct:
 ```text
 terminal UI
   -> AgentSession
-  -> shared session update model
+  -> AgentSession events
   -> CLI renderer
 ```
 

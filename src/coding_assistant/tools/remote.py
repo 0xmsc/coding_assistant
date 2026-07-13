@@ -7,11 +7,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from coding_assistant.core.session_updates import MessageAddedUpdate, MessageDeltaUpdate, SessionUpdate, content_text
 from coding_assistant.llm.types import AssistantMessage, BaseMessage, TextToolResult, Tool
-from coding_assistant.remote.client import (
-    RemoteContentDeltaEvent,
-    RemoteSessionClient,
-)
+from coding_assistant.remote.client import RemoteSessionClient
 from coding_assistant.remote.registry import discover_remote_instances
 
 
@@ -94,7 +92,7 @@ class _WorkerManager:
         try:
             connection = await RemoteSessionClient.connect(
                 endpoint=endpoint,
-                on_event=lambda message: self._handle_content_delta(worker_id, message),
+                on_update=lambda update: self._handle_update(worker_id, update),
                 on_disconnect=lambda disconnected_endpoint: self._handle_disconnect(worker_id, disconnected_endpoint),
             )
             await connection.initialize()
@@ -226,14 +224,25 @@ class _WorkerManager:
             if self._prompt_tasks.get(worker_id) is asyncio.current_task():
                 self._prompt_tasks.pop(worker_id, None)
 
-    async def _handle_content_delta(self, worker_id: int, message: RemoteContentDeltaEvent) -> None:
+    async def _handle_update(self, worker_id: int, update: SessionUpdate) -> None:
         snapshot = self._snapshot_for_worker(worker_id)
-        snapshot.running = True
-        if snapshot.last_message_id != message.message_id:
-            snapshot.last_content = ""
-            snapshot.last_message_id = message.message_id
-        snapshot.last_content += message.content
-        snapshot.last_update = snapshot.last_content.strip()
+        if isinstance(update, MessageDeltaUpdate):
+            snapshot.running = True
+            if snapshot.last_message_id != update.message_id:
+                snapshot.last_content = ""
+                snapshot.last_message_id = update.message_id
+            snapshot.last_content += update.append_text
+            snapshot.last_update = snapshot.last_content.strip()
+            return
+
+        if not isinstance(update, MessageAddedUpdate) or update.message.role != "assistant":
+            return
+        content = content_text(update.message.content)
+        if content is not None:
+            snapshot.running = True
+            snapshot.last_message_id = update.message_id
+            snapshot.last_content = content
+            snapshot.last_update = content.strip()
 
     async def _handle_disconnect(self, worker_id: int, endpoint: str) -> None:
         was_connected = worker_id in self._connections

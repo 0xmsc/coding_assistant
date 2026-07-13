@@ -9,10 +9,11 @@ share the same core types instead of inventing separate event or history models.
 `coding_assistant.core` owns the agent runtime.
 
 - `AgentSession` owns the in-memory transcript, prompt queue, steering prompts,
-  cancellation, and the active agent run loop.
-- `run_agent_event_stream` drives model streaming and tool-call boundaries.
-- `session_updates` defines runtime update dataclasses and manager/remote
-  history events without owning any client presentation model.
+  cancellation, model streaming, tool execution, and the active agent run loop.
+- `AgentSessionEvent` describes in-process runtime events consumed directly by
+  the CLI and remote controller.
+- `session_updates` defines only the committed and provisional updates that
+  cross the manager/remote boundary.
 - `history` and `llm.types` define the message and completion data structures
   shared by local and remote callers.
 
@@ -21,7 +22,7 @@ executed by `AgentSession` and the core agent loop, not by the manager or the
 JSON-RPC transport.
 
 `coding_assistant.cli` owns the interactive terminal application. It builds an
-agent, creates an `AgentSession` directly, renders session updates in the
+agent, creates an `AgentSession` directly, renders its runtime events in the
 terminal, and may expose a local single-session remote endpoint for other
 clients. The terminal UI itself is not a JSON-RPC client.
 
@@ -63,7 +64,7 @@ terminal UI
   -> cli
   -> AgentSession
   -> tools / model
-  -> shared session updates
+  -> AgentSession events
   -> terminal renderer
 ```
 
@@ -77,7 +78,7 @@ separate persistence layer.
 remote client
   -> remote/server.py
   -> existing AgentSession
-  -> shared session updates
+  -> projected session updates
 ```
 
 This endpoint wraps one already-created `AgentSession` with the shared
@@ -121,8 +122,8 @@ The project uses a custom JSON-RPC protocol based on ACP shapes. It is not a
 complete ACP implementation. See `docs/rpc.md` for method details.
 
 JSON-RPC is only the process/container boundary. Inside the application, code
-should use core dataclasses such as `BaseMessage` and `SessionUpdate` rather
-than passing raw protocol dictionaries around.
+should use core dataclasses such as `BaseMessage`, `AgentSessionEvent`, and
+`SessionUpdate` rather than passing raw protocol dictionaries around.
 
 Every remote-controlled `AgentSession` emits provisional `session/update`
 notifications while `session/prompt` is pending. Its correlated JSON-RPC

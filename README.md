@@ -1,6 +1,6 @@
 # Coding Assistant
 
-Coding Assistant is a Python-based CLI for coding workflows. It combines a boundary-based agent loop, built-in local tools, and optional external MCP servers.
+Coding Assistant is a Python-based CLI for coding workflows. It combines a streaming agent loop, built-in local tools, and optional external MCP servers.
 
 ## Key Features
 

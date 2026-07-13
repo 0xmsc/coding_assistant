@@ -29,7 +29,7 @@ class RemoteWorkerRunner:
     ) -> WorkerRunFinished:
         client = await RemoteSessionClient.connect(
             endpoint=self._endpoint,
-            on_session_update=on_update,
+            on_update=on_update,
         )
         await self._register_client(session_id=prompt.session_id, client=client)
         try:
