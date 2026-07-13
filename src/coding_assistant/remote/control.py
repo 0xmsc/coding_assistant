@@ -6,13 +6,18 @@ from uuid import uuid4
 
 from websockets.asyncio.server import ServerConnection
 
-from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, ToolMessageEvent
+from coding_assistant.core.agent_session import (
+    AgentSession,
+    AgentSessionEvent,
+    RunCancelledEvent,
+    RunFailedEvent,
+    RunFinishedEvent,
+    ToolMessageEvent,
+)
 from coding_assistant.core.session_updates import (
     MessageAddedUpdate,
     MessageDeltaUpdate,
     SessionUpdate,
-    prompt_result_from_update,
-    session_updates_from_agent_event,
 )
 from coding_assistant.llm.types import BaseMessage, CompletionEvent, ContentDeltaEvent, ModelRetryEvent
 from coding_assistant.remote.jsonrpc import (
@@ -151,15 +156,20 @@ class RemoteAgentController:
                 active_source = self._state.active_prompt_source
                 if source is not None and active_source is not None and source != active_source:
                     continue
-                for update in self._session_updates_from_agent_event(event):
-                    current_session = self._controlled_session
-                    if current_session is None:
-                        return
-                    await self._handle_session_update(
+                current_session = self._controlled_session
+                if current_session is None:
+                    return
+                for update in self._wire_updates_from_agent_event(event):
+                    await _send_session_update(
+                        websocket=websocket,
+                        session_id=current_session.session_id,
+                        update=update,
+                    )
+                if isinstance(event, (RunFinishedEvent, RunCancelledEvent, RunFailedEvent)):
+                    await self._finish_prompt(
                         websocket=websocket,
                         controlled_session=current_session,
-                        update=update,
-                        source=source,
+                        event=event,
                     )
 
     async def handle_jsonrpc_message(
@@ -201,28 +211,13 @@ class RemoteAgentController:
             if response_id is not None:
                 await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, str(exc)))
 
-    async def _handle_session_update(
+    async def _finish_prompt(
         self,
         *,
         websocket: ServerConnection,
         controlled_session: RemoteControlledSession,
-        update: SessionUpdate,
-        source: str | None,
+        event: RunFinishedEvent | RunCancelledEvent | RunFailedEvent,
     ) -> None:
-        active_source = self._state.active_prompt_source
-        if active_source is None:
-            return
-
-        update_source = source if source is not None else getattr(update, "source", None)
-        if update_source is not None and update_source != active_source:
-            return
-
-        await _send_session_update(websocket=websocket, session_id=controlled_session.session_id, update=update)
-
-        result = prompt_result_from_update(update)
-        if result is None:
-            return
-
         request_id = self._state.active_prompt_request_id
         if request_id is None:
             return
@@ -230,11 +225,12 @@ class RemoteAgentController:
         self._state.active_prompt_source = None
         self._state.assistant_message_id = None
 
-        if result.stop_reason is not None:
+        if not isinstance(event, RunFailedEvent):
+            stop_reason = "cancelled" if isinstance(event, RunCancelledEvent) else "end_turn"
             response = _prompt_result(
                 base_version=controlled_session.base_version,
                 messages=controlled_session.session.history[controlled_session.base_message_count :],
-                stop_reason=result.stop_reason,
+                stop_reason=stop_reason,
                 metadata=self._finish_metadata_provider() if self._finish_metadata_provider else None,
             )
             self._controlled_session = RemoteControlledSession(
@@ -249,9 +245,9 @@ class RemoteAgentController:
             if self._on_prompt_finished is not None:
                 await self._on_prompt_finished()
         else:
-            await websocket.send(jsonrpc_error(request_id, ERROR_SERVER, result.error or "Run failed."))
+            await websocket.send(jsonrpc_error(request_id, ERROR_SERVER, event.error))
 
-    def _session_updates_from_agent_event(self, event: AgentSessionEvent) -> list[SessionUpdate]:
+    def _wire_updates_from_agent_event(self, event: AgentSessionEvent) -> list[SessionUpdate]:
         if isinstance(event, ContentDeltaEvent):
             return self._append_assistant_text(event.content)
         if isinstance(event, ModelRetryEvent):
@@ -263,7 +259,7 @@ class RemoteAgentController:
             return [MessageAddedUpdate(message_id=message_id, message=event.completion.message)]
         if isinstance(event, ToolMessageEvent):
             return [MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=event.message)]
-        return session_updates_from_agent_event(event)
+        return []
 
     def _append_assistant_text(self, content: str) -> list[SessionUpdate]:
         if self._state.assistant_message_id is None:

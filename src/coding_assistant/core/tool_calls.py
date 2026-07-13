@@ -7,12 +7,12 @@ from dataclasses import dataclass
 from json import JSONDecodeError
 from typing import Any, Literal
 
-from coding_assistant.core.boundaries import AwaitingToolCalls
 from coding_assistant.core.builtin_tools import CompactConversationTool, RedirectToolCallTool
 from coding_assistant.core.history import compact_history
 from coding_assistant.infra.trace import trace_enabled, trace_json
 from coding_assistant.llm.types import (
     BaseMessage,
+    AssistantMessage,
     CompactConversationResult,
     MessageContent,
     TextToolResult,
@@ -180,15 +180,15 @@ def _apply_tool_result(
 
 async def stream_tool_call_execution(
     *,
-    boundary: AwaitingToolCalls,
+    history: Sequence[BaseMessage],
+    message: AssistantMessage,
     tools: Sequence[Tool],
 ) -> AsyncIterator[ToolCallLifecycleEvent | ToolMessageProduced | ToolCallExecutionCompleted]:
     """Yield lifecycle updates while executing one tool-call boundary."""
-    current_history = list(boundary.history)
-    all_tools = build_tools(tools=tools)
-    tools_by_name = {tool.name(): tool for tool in all_tools}
+    current_history = list(history)
+    tools_by_name = {tool.name(): tool for tool in tools}
 
-    for index, tool_call in enumerate(boundary.message.tool_calls):
+    for index, tool_call in enumerate(message.tool_calls):
         tool_name = tool_call.function.name
         arguments, parse_error = _parse_tool_call_arguments(tool_call)
 
@@ -228,13 +228,13 @@ async def stream_tool_call_execution(
                 arguments=arguments,
             )
         except asyncio.CancelledError as exc:
-            for event, message in _append_cancelled_tool_messages(
+            for event, cancelled_message in _append_cancelled_tool_messages(
                 current_history,
-                tool_calls=boundary.message.tool_calls,
+                tool_calls=message.tool_calls,
                 cancelled_at_index=index,
             ):
                 yield event
-                yield ToolMessageProduced(message=message)
+                yield ToolMessageProduced(message=cancelled_message)
             raise ToolExecutionCancelled(history=current_history) from exc
         except Exception as exc:
             error = f"Error executing tool: {exc}"

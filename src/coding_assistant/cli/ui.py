@@ -38,21 +38,21 @@ from coding_assistant.cli.output import (
 from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.core.agent_session import (
     AgentSession,
-)
-from coding_assistant.core.session_updates import (
-    AgentMessageChunkUpdate,
-    PromptStartedUpdate,
-    ReasoningMessageChunkUpdate,
-    RunCancelledUpdate,
-    RunFailedUpdate,
-    RunFinishedUpdate,
-    SessionUpdate,
-    StatusUpdate,
-    ToolCallStartedUpdate,
-    session_updates_from_agent_event,
+    AgentSessionEvent,
+    PromptStartedEvent,
+    RunCancelledEvent,
+    RunFailedEvent,
+    RunFinishedEvent,
+    ToolCallsEvent,
 )
 from coding_assistant.infra.paths import get_app_cache_dir
-from coding_assistant.llm.types import ModelRetryEvent, SystemMessage
+from coding_assistant.llm.types import (
+    ContentDeltaEvent,
+    ModelRetryEvent,
+    ReasoningDeltaEvent,
+    StatusEvent,
+    SystemMessage,
+)
 from coding_assistant.remote.registry import register_remote_instance
 from coding_assistant.remote.server import start_worker_server
 
@@ -305,49 +305,48 @@ async def _run_output(
                 if isinstance(event, ModelRetryEvent):
                     renderer.retry()
                     continue
-                for update in session_updates_from_agent_event(event):
-                    _render_session_update(
-                        update=update,
-                        renderer=renderer,
-                        printed_tool_call_messages=printed_tool_call_messages,
-                    )
+                _render_agent_event(
+                    event=event,
+                    renderer=renderer,
+                    printed_tool_call_messages=printed_tool_call_messages,
+                )
         finally:
             renderer.finish()
 
 
-def _render_session_update(
+def _render_agent_event(
     *,
-    update: SessionUpdate,
+    event: AgentSessionEvent,
     renderer: StreamRenderer,
     printed_tool_call_messages: set[int],
 ) -> None:
-    if isinstance(update, AgentMessageChunkUpdate):
-        renderer.on_content_delta(update.content)
+    if isinstance(event, ContentDeltaEvent):
+        renderer.on_content_delta(event.content)
         return
-    if isinstance(update, ReasoningMessageChunkUpdate):
-        renderer.on_reasoning_delta(update.content)
+    if isinstance(event, ReasoningDeltaEvent):
+        renderer.on_reasoning_delta(event.content)
         return
-    if isinstance(update, PromptStartedUpdate):
+    if isinstance(event, PromptStartedEvent):
         renderer.finish()
-        print_active_prompt(update.prompt)
+        print_active_prompt(event.content)
         return
-    if isinstance(update, ToolCallStartedUpdate) and update.message is not None:
-        message_id = id(update.message)
+    if isinstance(event, ToolCallsEvent):
+        message_id = id(event.message)
         if message_id in printed_tool_call_messages:
             return
         printed_tool_call_messages.add(message_id)
         renderer.finish()
-        print_tool_calls(update.message)
+        print_tool_calls(event.message)
         return
-    if isinstance(update, (RunFinishedUpdate, RunCancelledUpdate)):
+    if isinstance(event, (RunFinishedEvent, RunCancelledEvent)):
         renderer.finish()
         return
-    if isinstance(update, RunFailedUpdate):
+    if isinstance(event, RunFailedEvent):
         renderer.finish()
-        rich_print(f"[bold red]Run failed:[/bold red] {update.error}")
+        rich_print(f"[bold red]Run failed:[/bold red] {event.error}")
         return
-    if isinstance(update, StatusUpdate):
-        print_info_message(update.content)
+    if isinstance(event, StatusEvent):
+        print_info_message(event.message)
 
 
 @dataclass

@@ -8,13 +8,12 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppres
 from dataclasses import dataclass
 from typing import Any
 
-from coding_assistant.core.agent import run_agent_event_stream
-from coding_assistant.core.boundaries import AwaitingToolCalls, AwaitingUser
 from coding_assistant.core.tool_calls import (
     ToolCallExecutionCompleted,
     ToolCallLifecycleEvent,
     ToolExecutionCancelled,
     ToolMessageProduced,
+    build_tools,
     stream_tool_call_execution,
 )
 from coding_assistant.llm.openai import stream_completion as openai_stream_completion
@@ -139,7 +138,7 @@ class _QueuedPrompt:
 
 @dataclass(frozen=True)
 class _RunResult:
-    """Result of a single agent run, returned by `_run_until_boundary`."""
+    """Result of a single queued prompt run."""
 
     history: list[BaseMessage] | None  # Updated transcript, or None on fatal error
     source: str  # Origin of the prompt that triggered this run
@@ -178,7 +177,7 @@ class AgentSession:
     ) -> None:
         self._history = list(history)
         self._model = model
-        self._tools = list(tools)
+        self._tools = build_tools(tools=tools)
         self._completion_streamer = completion_streamer
         # Two queues with different roles:
         # - _pending_prompts: main FIFO queue when session is idle.
@@ -380,7 +379,7 @@ class AgentSession:
                     # Start running the next prompt
                     prompt = self._pending_prompts.popleft()
                     current_history = [*self._history, UserMessage(content=prompt.content)]
-                    run_task = asyncio.create_task(self._run_until_boundary(current_history, source=prompt.source))
+                    run_task = asyncio.create_task(self._run_prompt(current_history, source=prompt.source))
                     self._current_run_task = run_task
 
                 self._publish_event(PromptStartedEvent(content=prompt.content, source=prompt.source))
@@ -408,15 +407,8 @@ class AgentSession:
                     self._publish_event(RunFinishedEvent(summary=result.summary, source=result.source))
                 await self._publish_state()
 
-    async def _run_until_boundary(self, history: list[BaseMessage], *, source: str) -> _RunResult:
-        """Run the agent from the given history until the next user boundary.
-
-        The agent stream is consumed until it yields either:
-        - AwaitingUser: the assistant has produced a message and is waiting for user input.
-        - AwaitingToolCalls: the assistant has requested tool calls; these are executed.
-
-        After handling tool calls, the loop continues until the next boundary.
-        Steering prompts are injected at each boundary if available.
+    async def _run_prompt(self, history: list[BaseMessage], *, source: str) -> _RunResult:
+        """Run model and tool turns until the agent needs another user prompt.
 
         Args:
             history: The starting conversation history (includes the initial user prompt).
@@ -426,19 +418,18 @@ class AgentSession:
             A `_RunResult` capturing the final history, outcome, and optional error.
         """
         current_history = list(history)
+        streamer = self._completion_streamer or openai_stream_completion
         try:
             while True:
-                boundary: AwaitingUser | AwaitingToolCalls | None = None
-                async for event in run_agent_event_stream(
-                    history=current_history,
-                    model=self._model,
-                    tools=self._tools,
-                    streamer=self._completion_streamer or openai_stream_completion,
-                ):
-                    if isinstance(event, (AwaitingUser, AwaitingToolCalls)):
-                        boundary = event
-                        continue
+                completion_message: AssistantMessage | None = None
+                async for event in streamer(current_history, self._tools, self._model):
+                    if not isinstance(
+                        event,
+                        (ContentDeltaEvent, ReasoningDeltaEvent, ModelRetryEvent, StatusEvent, CompletionEvent),
+                    ):
+                        raise TypeError(f"Completion streamer yielded unsupported event: {type(event).__name__}.")
                     if isinstance(event, CompletionEvent):
+                        completion_message = event.completion.message
                         if event.completion.usage is not None:
                             async with self._mutation_lock:
                                 cost = event.completion.usage.cost
@@ -455,14 +446,16 @@ class AgentSession:
                         continue
                     self._publish_event(event)
 
-                if boundary is None:
-                    raise RuntimeError("run_agent_event_stream stopped without yielding a boundary.")
+                if completion_message is None:
+                    raise RuntimeError("Completion streamer stopped without yielding a completion.")
+                current_history.append(completion_message)
 
-                if isinstance(boundary, AwaitingToolCalls):
-                    self._publish_event(ToolCallsEvent(message=boundary.message, source=source))
+                if completion_message.tool_calls:
+                    self._publish_event(ToolCallsEvent(message=completion_message, source=source))
                     completed_history: list[BaseMessage] | None = None
                     async for item in stream_tool_call_execution(
-                        boundary=boundary,
+                        history=current_history,
+                        message=completion_message,
                         tools=self._tools,
                     ):
                         if isinstance(item, ToolCallLifecycleEvent):
@@ -488,14 +481,13 @@ class AgentSession:
 
                 steering_prompt = await self._pop_next_steering_prompt()
                 if steering_prompt is not None:
-                    current_history = [*boundary.history, UserMessage(content=steering_prompt.content)]
+                    current_history.append(UserMessage(content=steering_prompt.content))
                     self._publish_event(
                         PromptStartedEvent(content=steering_prompt.content, source=steering_prompt.source),
                     )
                     await self._publish_state()
                     continue
 
-                current_history = list(boundary.history)
                 return _RunResult(
                     history=current_history,
                     source=source,

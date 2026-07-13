@@ -10,10 +10,7 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
 from coding_assistant.core.session_updates import (
-    MessageAddedUpdate,
-    MessageDeltaUpdate,
     SessionUpdate,
-    content_text,
 )
 from coding_assistant.llm.types import BaseMessage
 from coding_assistant.remote.jsonrpc import (
@@ -46,12 +43,6 @@ def _finish_title(metadata: object) -> str | None:
 
 
 @dataclass(frozen=True)
-class RemoteContentDeltaEvent:
-    message_id: str
-    content: str
-
-
-@dataclass(frozen=True)
 class RemotePromptResult:
     stop_reason: str
     base_version: int
@@ -67,21 +58,18 @@ class RemoteSessionClient:
         *,
         endpoint: str,
         websocket: ClientConnection,
-        on_event: Callable[[RemoteContentDeltaEvent], Awaitable[None]] | None = None,
+        on_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
         on_disconnect: Callable[[str], Awaitable[None]] | None = None,
-        on_session_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
     ) -> None:
         self.endpoint = endpoint
         self._websocket = websocket
-        self._on_event = on_event
+        self._on_update = on_update
         self._on_disconnect = on_disconnect
-        self._on_session_update = on_session_update
         self._send_lock = asyncio.Lock()
         self._next_request_id = 1
         self._pending_requests: dict[int, asyncio.Future[JsonObject]] = {}
         self._session_id: str | None = None
         self._fatal_error: str | None = None
-        self._streamed_message_ids: set[str] = set()
         self._receive_task = asyncio.create_task(self._receive_loop())
 
     @classmethod
@@ -89,9 +77,8 @@ class RemoteSessionClient:
         cls,
         *,
         endpoint: str,
-        on_event: Callable[[RemoteContentDeltaEvent], Awaitable[None]] | None = None,
+        on_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
         on_disconnect: Callable[[str], Awaitable[None]] | None = None,
-        on_session_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
         auth_token: str | None = None,
     ) -> RemoteSessionClient:
         headers = {"Authorization": f"Bearer {auth_token}"} if auth_token is not None else None
@@ -99,9 +86,8 @@ class RemoteSessionClient:
         return cls(
             endpoint=endpoint,
             websocket=websocket,
-            on_event=on_event,
+            on_update=on_update,
             on_disconnect=on_disconnect,
-            on_session_update=on_session_update,
         )
 
     async def initialize(self) -> None:
@@ -167,7 +153,6 @@ class RemoteSessionClient:
             or not all(isinstance(message, dict) for message in messages)
         ):
             raise RuntimeError("session/prompt response did not include a completed prompt result.")
-        self._streamed_message_ids.clear()
         return RemotePromptResult(
             stop_reason=stop_reason,
             base_version=base_version,
@@ -254,29 +239,8 @@ class RemoteSessionClient:
         session_update = session_update_from_jsonrpc_update(update)
         if session_update is None:
             return
-        if self._on_session_update is not None:
-            await self._on_session_update(session_update)
-        await self._publish_session_update(session_update)
-
-    async def _publish_session_update(self, update: SessionUpdate) -> None:
-        if self._on_event is None:
-            return
-        if isinstance(update, MessageDeltaUpdate):
-            self._streamed_message_ids.add(update.message_id)
-            await self._on_event(
-                RemoteContentDeltaEvent(message_id=update.message_id, content=update.append_text),
-            )
-            return
-
-        if isinstance(update, MessageAddedUpdate) and update.message.role == "assistant":
-            if update.message_id in self._streamed_message_ids:
-                self._streamed_message_ids.remove(update.message_id)
-                return
-            content = content_text(update.message.content)
-            if content:
-                await self._on_event(
-                    RemoteContentDeltaEvent(message_id=update.message_id, content=content),
-                )
+        if self._on_update is not None:
+            await self._on_update(session_update)
 
     async def _handle_response(self, payload: JsonObject) -> None:
         response_id = payload.get("id")
