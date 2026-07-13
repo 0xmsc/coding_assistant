@@ -5,12 +5,7 @@ from collections.abc import Awaitable, Callable
 
 from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.manager.service import WorkerPrompt, WorkerRunFinished
-from coding_assistant.remote.client import (
-    RemoteClientEvent,
-    RemotePromptFailedEvent,
-    RemoteRunFinished,
-    RemoteSessionClient,
-)
+from coding_assistant.remote.client import RemoteSessionClient
 from coding_assistant.remote.protocol import messages_to_jsonrpc
 
 
@@ -32,37 +27,9 @@ class RemoteWorkerRunner:
         prompt: WorkerPrompt,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
     ) -> WorkerRunFinished:
-        finish_future: asyncio.Future[RemoteRunFinished] = asyncio.get_running_loop().create_future()
-
-        async def handle_event(event: RemoteClientEvent) -> None:
-            if isinstance(event, RemotePromptFailedEvent) and not finish_future.done():
-                finish_future.set_exception(RemoteWorkerError(event.message))
-
-        async def handle_disconnect(endpoint: str) -> None:
-            if not finish_future.done():
-                finish_future.set_exception(RemoteWorkerError(f"Remote worker {endpoint} disconnected."))
-
-        async def handle_run_finished(finished: RemoteRunFinished) -> None:
-            if finished.session_id != prompt.session_id:
-                return
-            if finished.base_version != prompt.base_version:
-                if not finish_future.done():
-                    finish_future.set_exception(
-                        RemoteWorkerError(
-                            f"Worker finish for {prompt.session_id} used base version "
-                            f"{finished.base_version}, not {prompt.base_version}.",
-                        ),
-                    )
-                return
-            if not finish_future.done():
-                finish_future.set_result(finished)
-
         client = await RemoteSessionClient.connect(
             endpoint=self._endpoint,
-            on_event=handle_event,
-            on_disconnect=handle_disconnect,
             on_session_update=on_update,
-            on_run_finished=handle_run_finished,
         )
         await self._register_client(session_id=prompt.session_id, client=client)
         try:
@@ -75,11 +42,15 @@ class RemoteWorkerRunner:
                     "workspace": prompt.workspace,
                 },
             )
-            prompt_error = await client.prompt_blocks(prompt.prompt, session_id=prompt.session_id)
-            if prompt_error is not None:
-                raise RemoteWorkerError(prompt_error)
-
-            finished = await finish_future
+            try:
+                finished = await client.prompt_blocks(prompt.prompt, session_id=prompt.session_id)
+            except RuntimeError as exc:
+                raise RemoteWorkerError(str(exc)) from exc
+            if finished.base_version != prompt.base_version:
+                raise RemoteWorkerError(
+                    f"Worker finish for {prompt.session_id} used base version "
+                    f"{finished.base_version}, not {prompt.base_version}.",
+                )
             return WorkerRunFinished(
                 stop_reason=finished.stop_reason,
                 messages=finished.messages,

@@ -226,7 +226,11 @@ async def test_worker_keeps_connection_open_after_invalid_prompt() -> None:
                         response = payload
 
         assert invalid["error"]["code"] == -32602
-        assert response["result"] == {"stopReason": "end_turn"}
+        assert response["result"] == {
+            "baseVersion": 0,
+            "messages": messages_to_jsonrpc([UserMessage(content="Valid"), AssistantMessage(content="Done")]),
+            "stopReason": "end_turn",
+        }
     finally:
         await session.close()
 
@@ -425,21 +429,17 @@ async def test_worker_server_completes_acp_prompt_turn() -> None:
                         updates.append(payload)
                     else:
                         response = payload
-                finished = parse_jsonrpc_message(await websocket.recv())
 
         assert response == {
             "jsonrpc": "2.0",
             "id": 3,
-            "result": {"stopReason": "end_turn"},
-        }
-        assert finished["method"] == "_session/run_finished"
-        assert finished["params"] == {
-            "sessionId": session_id,
-            "baseVersion": 0,
-            "messages": messages_to_jsonrpc(
-                [UserMessage(content="Do the task"), AssistantMessage(content="Hello from the worker")]
-            ),
-            "stopReason": "end_turn",
+            "result": {
+                "baseVersion": 0,
+                "messages": messages_to_jsonrpc(
+                    [UserMessage(content="Do the task"), AssistantMessage(content="Hello from the worker")]
+                ),
+                "stopReason": "end_turn",
+            },
         }
         assert any(
             update["params"]["update"]["sessionUpdate"] == "message_delta"
@@ -519,7 +519,11 @@ async def test_worker_uses_a_new_message_id_for_a_retried_stream() -> None:
         assert first_id != second_id
         assert completed["message"]["id"] == second_id
         assert completed["message"]["content"] == "kept"
-        assert response["result"] == {"stopReason": "end_turn"}
+        assert response["result"] == {
+            "baseVersion": 0,
+            "messages": messages_to_jsonrpc([UserMessage(content="Retry"), AssistantMessage(content="kept")]),
+            "stopReason": "end_turn",
+        }
     finally:
         await session.close()
 
@@ -570,12 +574,29 @@ async def test_worker_server_streams_tool_messages_before_final_answer() -> None
                         updates.append(payload)
                     else:
                         response = payload
-                finished = parse_jsonrpc_message(await websocket.recv())
 
         assert response == {
             "jsonrpc": "2.0",
             "id": 3,
-            "result": {"stopReason": "end_turn"},
+            "result": {
+                "baseVersion": 0,
+                "messages": messages_to_jsonrpc(
+                    [
+                        UserMessage(content="Use the tool"),
+                        AssistantMessage(
+                            tool_calls=[
+                                ToolCall(
+                                    id="call-1",
+                                    function=FunctionCall(name="echo_tool", arguments='{"text": "hello"}'),
+                                )
+                            ]
+                        ),
+                        ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
+                        AssistantMessage(content="Done"),
+                    ]
+                ),
+                "stopReason": "end_turn",
+            },
         }
         update_payloads = [update["params"]["update"] for update in updates]
         assert _normalized_updates(update_payloads) == [
@@ -614,25 +635,5 @@ async def test_worker_server_streams_tool_messages_before_final_answer() -> None
                 "message": {"role": "assistant", "content": "Done"},
             },
         ]
-        assert finished["method"] == "_session/run_finished"
-        assert finished["params"] == {
-            "sessionId": session_id,
-            "baseVersion": 0,
-            "messages": messages_to_jsonrpc(
-                [
-                    UserMessage(content="Use the tool"),
-                    AssistantMessage(
-                        tool_calls=[
-                            ToolCall(
-                                id="call-1", function=FunctionCall(name="echo_tool", arguments='{"text": "hello"}')
-                            )
-                        ]
-                    ),
-                    ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:hello"),
-                    AssistantMessage(content="Done"),
-                ]
-            ),
-            "stopReason": "end_turn",
-        }
     finally:
         await session.close()

@@ -23,7 +23,6 @@ from coding_assistant.remote.jsonrpc import (
     JsonObject,
     initialize_response,
     jsonrpc_error,
-    jsonrpc_notification,
     jsonrpc_result,
     params_from_payload,
     prompt_content_from_acp,
@@ -35,7 +34,7 @@ from coding_assistant.remote.protocol import messages_to_jsonrpc, session_update
 
 UnhandledMethod = Callable[[str, int | str | None, JsonObject], Awaitable[bool]]
 FinishMetadataProvider = Callable[[], JsonObject | None]
-RunFinishedCallback = Callable[[], Awaitable[None]]
+PromptFinishedCallback = Callable[[], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -61,26 +60,21 @@ class _RemoteControlState:
     assistant_message_id: str | None = None
 
 
-def _run_finished_notification(
+def _prompt_result(
     *,
-    session_id: str,
     base_version: int,
     messages: list[BaseMessage],
     stop_reason: str,
     metadata: JsonObject | None = None,
-) -> str:
-    params: JsonObject = {
-        "sessionId": session_id,
+) -> JsonObject:
+    result: JsonObject = {
         "baseVersion": base_version,
         "messages": messages_to_jsonrpc(messages),
         "stopReason": stop_reason,
     }
     if metadata:
-        params["_meta"] = metadata
-    return jsonrpc_notification(
-        "_session/run_finished",
-        params,
-    )
+        result["_meta"] = metadata
+    return result
 
 
 async def _send_session_update(
@@ -107,7 +101,7 @@ class RemoteAgentController:
         busy_message: str = "Session is busy.",
         unopened_message: str = "Session must be opened first.",
         finish_metadata_provider: FinishMetadataProvider | None = None,
-        on_run_finished: RunFinishedCallback | None = None,
+        on_prompt_finished: PromptFinishedCallback | None = None,
     ) -> None:
         self._agent_info = agent_info
         self._controlled_session = controlled_session
@@ -115,7 +109,7 @@ class RemoteAgentController:
         self._busy_message = busy_message
         self._unopened_message = unopened_message
         self._finish_metadata_provider = finish_metadata_provider
-        self._on_run_finished = on_run_finished
+        self._on_prompt_finished = on_prompt_finished
         self._state = _RemoteControlState()
 
     @property
@@ -232,32 +226,30 @@ class RemoteAgentController:
         request_id = self._state.active_prompt_request_id
         if request_id is None:
             return
+        self._state.active_prompt_request_id = None
+        self._state.active_prompt_source = None
+        self._state.assistant_message_id = None
 
         if result.stop_reason is not None:
-            await websocket.send(jsonrpc_result(request_id, {"stopReason": result.stop_reason}))
-            await websocket.send(
-                _run_finished_notification(
-                    session_id=controlled_session.session_id,
-                    base_version=controlled_session.base_version,
-                    messages=controlled_session.session.history[controlled_session.base_message_count :],
-                    stop_reason=result.stop_reason,
-                    metadata=self._finish_metadata_provider() if self._finish_metadata_provider else None,
-                ),
+            response = _prompt_result(
+                base_version=controlled_session.base_version,
+                messages=controlled_session.session.history[controlled_session.base_message_count :],
+                stop_reason=result.stop_reason,
+                metadata=self._finish_metadata_provider() if self._finish_metadata_provider else None,
             )
-            if self._on_run_finished is not None:
-                await self._on_run_finished()
             self._controlled_session = RemoteControlledSession(
                 session_id=controlled_session.session_id,
                 session=controlled_session.session,
                 base_version=controlled_session.base_version + 1,
                 base_message_count=len(controlled_session.session.history),
             )
+            await websocket.send(
+                jsonrpc_result(request_id, response),
+            )
+            if self._on_prompt_finished is not None:
+                await self._on_prompt_finished()
         else:
             await websocket.send(jsonrpc_error(request_id, ERROR_SERVER, result.error or "Run failed."))
-
-        self._state.active_prompt_request_id = None
-        self._state.active_prompt_source = None
-        self._state.assistant_message_id = None
 
     def _session_updates_from_agent_event(self, event: AgentSessionEvent) -> list[SessionUpdate]:
         if isinstance(event, ContentDeltaEvent):

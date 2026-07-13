@@ -9,10 +9,7 @@ from pydantic import BaseModel, Field
 
 from coding_assistant.llm.types import TextToolResult, Tool
 from coding_assistant.remote.client import (
-    RemoteClientEvent,
     RemoteContentDeltaEvent,
-    RemotePromptFailedEvent,
-    RemotePromptFinishedEvent,
     RemoteSessionClient,
 )
 from coding_assistant.remote.registry import discover_remote_instances
@@ -41,6 +38,7 @@ class _WorkerManager:
 
     def __init__(self) -> None:
         self._connections: dict[int, RemoteSessionClient] = {}
+        self._prompt_tasks: dict[int, asyncio.Task[None]] = {}
         self._snapshots: dict[int, WorkerSnapshot] = {}
         self._worker_queues: dict[int, asyncio.Queue[WorkerMeaningfulEvent]] = {}
         self._worker_ids_by_endpoint: dict[str, int] = {}
@@ -88,7 +86,7 @@ class _WorkerManager:
         try:
             connection = await RemoteSessionClient.connect(
                 endpoint=endpoint,
-                on_event=lambda message: self._handle_message(worker_id, message),
+                on_event=lambda message: self._handle_content_delta(worker_id, message),
                 on_disconnect=lambda disconnected_endpoint: self._handle_disconnect(worker_id, disconnected_endpoint),
             )
             await connection.initialize()
@@ -117,24 +115,14 @@ class _WorkerManager:
             return f"Remote {worker_id} is not connected."
 
         snapshot = self._snapshot_for_worker(worker_id)
-        previous_running = snapshot.running
-        previous_last_content = snapshot.last_content
-        previous_last_message_id = snapshot.last_message_id
-        previous_last_update = snapshot.last_update
+        if snapshot.running:
+            return f"Remote {worker_id} rejected the prompt: This remote connection already has an active prompt turn."
+
         snapshot.running = True
         snapshot.last_content = ""
         snapshot.last_message_id = None
         snapshot.last_update = f"Prompt submitted: {_format_prompt_preview(prompt)}"
-        response_error = await connection.prompt(prompt)
-        if response_error is not None:
-            if response_error == "This remote connection already has an active prompt turn.":
-                snapshot.running = previous_running
-                snapshot.last_content = previous_last_content
-                snapshot.last_message_id = previous_last_message_id
-                snapshot.last_update = previous_last_update
-            else:
-                snapshot.running = False
-            return f"Remote {worker_id} rejected the prompt: {response_error}"
+        self._prompt_tasks[worker_id] = asyncio.create_task(self._run_prompt(worker_id, connection, prompt))
         return f"Prompt submitted to remote {worker_id}.\n{prompt}"
 
     async def cancel(self, worker_id: int) -> str:
@@ -175,22 +163,17 @@ class _WorkerManager:
     async def close(self) -> None:
         for connection in list(self._connections.values()):
             await connection.close()
+        if self._prompt_tasks:
+            await asyncio.gather(*self._prompt_tasks.values(), return_exceptions=True)
 
-    async def _handle_message(self, worker_id: int, message: RemoteClientEvent) -> None:
-        snapshot = self._snapshot_for_worker(worker_id)
-
-        if isinstance(message, RemoteContentDeltaEvent):
-            snapshot.running = True
-            if snapshot.last_message_id != message.message_id:
-                snapshot.last_content = ""
-                snapshot.last_message_id = message.message_id
-            snapshot.last_content = (snapshot.last_content + message.content).strip()
-            snapshot.last_update = snapshot.last_content
-            return
-
-        if isinstance(message, RemotePromptFinishedEvent):
+    async def _run_prompt(self, worker_id: int, connection: RemoteSessionClient, prompt: str) -> None:
+        try:
+            result = await connection.prompt(prompt)
+            snapshot = self._snapshots.get(worker_id)
+            if snapshot is None:
+                return
             snapshot.running = False
-            if message.stop_reason == "cancelled":
+            if result.stop_reason == "cancelled":
                 snapshot.last_content = ""
                 snapshot.last_message_id = None
                 snapshot.last_update = "Run cancelled."
@@ -208,22 +191,34 @@ class _WorkerManager:
                     summary=summary,
                 ),
             )
-            return
-
-        if isinstance(message, RemotePromptFailedEvent):
+        except Exception as exc:
+            snapshot = self._snapshots.get(worker_id)
+            if snapshot is None:
+                return
             snapshot.running = False
             snapshot.last_content = ""
             snapshot.last_message_id = None
-            snapshot.last_update = f"Run failed: {message.message}"
+            snapshot.last_update = f"Run failed: {exc}"
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(
                     worker_id=worker_id,
                     endpoint=snapshot.endpoint,
                     kind="failed",
-                    summary=message.message,
+                    summary=str(exc),
                 ),
             )
-            return
+        finally:
+            if self._prompt_tasks.get(worker_id) is asyncio.current_task():
+                self._prompt_tasks.pop(worker_id, None)
+
+    async def _handle_content_delta(self, worker_id: int, message: RemoteContentDeltaEvent) -> None:
+        snapshot = self._snapshot_for_worker(worker_id)
+        snapshot.running = True
+        if snapshot.last_message_id != message.message_id:
+            snapshot.last_content = ""
+            snapshot.last_message_id = message.message_id
+        snapshot.last_content = (snapshot.last_content + message.content).strip()
+        snapshot.last_update = snapshot.last_content
 
     async def _handle_disconnect(self, worker_id: int, endpoint: str) -> None:
         was_connected = worker_id in self._connections
