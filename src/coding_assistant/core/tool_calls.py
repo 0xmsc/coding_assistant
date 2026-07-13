@@ -150,20 +150,20 @@ def _append_cancelled_tool_messages(
     *,
     tool_calls: Sequence[ToolCall],
     cancelled_at_index: int,
-) -> list[ToolCallLifecycleEvent]:
-    events: list[ToolCallLifecycleEvent] = []
+) -> list[tuple[ToolCallLifecycleEvent, ToolMessage]]:
+    results: list[tuple[ToolCallLifecycleEvent, ToolMessage]] = []
     for index, tool_call in enumerate(tool_calls[cancelled_at_index:], start=cancelled_at_index):
         arguments, _ = _parse_tool_call_arguments(tool_call)
         content = TOOL_CANCELLED_MESSAGE if index == cancelled_at_index else TOOL_NOT_STARTED_MESSAGE
-        events.append(
+        results.append(
             _append_failed_tool_call(
                 history,
                 tool_call=tool_call,
                 content=content,
                 arguments=arguments,
-            )[0],
+            ),
         )
-    return events
+    return results
 
 
 def _apply_tool_result(
@@ -228,12 +228,13 @@ async def stream_tool_call_execution(
                 arguments=arguments,
             )
         except asyncio.CancelledError as exc:
-            for event in _append_cancelled_tool_messages(
+            for event, message in _append_cancelled_tool_messages(
                 current_history,
                 tool_calls=boundary.message.tool_calls,
                 cancelled_at_index=index,
             ):
                 yield event
+                yield ToolMessageProduced(message=message)
             raise ToolExecutionCancelled(history=current_history) from exc
         except Exception as exc:
             error = f"Error executing tool: {exc}"

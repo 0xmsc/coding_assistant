@@ -18,6 +18,7 @@ from coding_assistant.core.agent_session import (
     StateChangedEvent,
     ToolCallsEvent,
     ToolCallUpdateEvent,
+    ToolMessageEvent,
 )
 from coding_assistant.llm.types import (
     AssistantMessage,
@@ -517,10 +518,25 @@ async def test_agent_session_cancel_during_tool_execution_preserves_completed_an
         await asyncio.wait_for(slow_started.wait(), timeout=1)
 
         await session.cancel_current_run()
-        cancelled_event = await wait_for_event(queue, RunCancelledEvent)
+        tool_messages: list[ToolMessage] = []
+        while True:
+            event = await queue.get()
+            if isinstance(event, ToolMessageEvent):
+                tool_messages.append(event.message)
+            if isinstance(event, RunCancelledEvent):
+                cancelled_event = event
+                break
 
     await session.close()
     assert isinstance(cancelled_event, RunCancelledEvent)
+    assert tool_messages == [
+        ToolMessage(tool_call_id="call-1", name="echo_tool", content="echo:done"),
+        ToolMessage(
+            tool_call_id="call-2",
+            name="slow_tool",
+            content="Tool execution cancelled by user before completion.",
+        ),
+    ]
     assert session.history == [
         *make_system_history(),
         UserMessage(content="Use tools"),
