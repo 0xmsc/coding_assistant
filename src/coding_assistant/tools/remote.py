@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from coding_assistant.llm.types import TextToolResult, Tool
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, TextToolResult, Tool
 from coding_assistant.remote.client import (
     RemoteContentDeltaEvent,
     RemoteSessionClient,
@@ -31,6 +31,13 @@ class WorkerMeaningfulEvent:
     endpoint: str
     kind: Literal["finished", "cancelled", "failed", "disconnected"]
     summary: str = ""
+
+
+def _latest_assistant_summary(messages: list[BaseMessage]) -> str:
+    for message in reversed(messages):
+        if isinstance(message, AssistantMessage) and message.content:
+            return message.content.strip()
+    return ""
 
 
 class _WorkerManager:
@@ -83,6 +90,7 @@ class _WorkerManager:
         self._connecting_worker_ids.add(worker_id)
         self._snapshots[worker_id] = WorkerSnapshot(worker_id=worker_id, endpoint=endpoint)
         self._worker_queues[worker_id] = asyncio.Queue()
+        connection: RemoteSessionClient | None = None
         try:
             connection = await RemoteSessionClient.connect(
                 endpoint=endpoint,
@@ -92,6 +100,8 @@ class _WorkerManager:
             await connection.initialize()
             await connection.new_session({"cwd": os.getcwd(), "mcpServers": []})
         except Exception as exc:
+            if connection is not None:
+                await connection.close()
             self._connecting_worker_ids.discard(worker_id)
             self._snapshots.pop(worker_id, None)
             self._worker_queues.pop(worker_id, None)
@@ -181,7 +191,12 @@ class _WorkerManager:
                     WorkerMeaningfulEvent(worker_id=worker_id, endpoint=snapshot.endpoint, kind="cancelled"),
                 )
                 return
-            summary = snapshot.last_content or snapshot.last_update or "Prompt finished."
+            summary = (
+                _latest_assistant_summary(result.messages)
+                or snapshot.last_content.strip()
+                or snapshot.last_update
+                or "Prompt finished."
+            )
             snapshot.last_update = summary
             await self._push_meaningful_event(
                 WorkerMeaningfulEvent(
@@ -217,8 +232,8 @@ class _WorkerManager:
         if snapshot.last_message_id != message.message_id:
             snapshot.last_content = ""
             snapshot.last_message_id = message.message_id
-        snapshot.last_content = (snapshot.last_content + message.content).strip()
-        snapshot.last_update = snapshot.last_content
+        snapshot.last_content += message.content
+        snapshot.last_update = snapshot.last_content.strip()
 
     async def _handle_disconnect(self, worker_id: int, endpoint: str) -> None:
         was_connected = worker_id in self._connections

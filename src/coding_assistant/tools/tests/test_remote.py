@@ -64,6 +64,42 @@ class RetryingStreamer:
         )
 
 
+class DifferingFinalStreamer:
+    async def __call__(self, messages: Any, tools: Any, model: Any) -> AsyncIterator[object]:
+        del messages, tools, model
+        yield ContentDeltaEvent(content="draft answer")
+        yield CompletionEvent(
+            completion=Completion(message=AssistantMessage(content="final answer"), usage=Usage(tokens=10, cost=0.0)),
+        )
+
+
+class BlockingChunkStreamer:
+    def __init__(self, *, streamed: asyncio.Event, release: asyncio.Event) -> None:
+        self._streamed = streamed
+        self._release = release
+
+    async def __call__(self, messages: Any, tools: Any, model: Any) -> AsyncIterator[object]:
+        del messages, tools, model
+        yield ContentDeltaEvent(content="Hello ")
+        yield ContentDeltaEvent(content="world")
+        self._streamed.set()
+        await self._release.wait()
+        yield CompletionEvent(
+            completion=Completion(message=AssistantMessage(content="Hello world"), usage=Usage(tokens=10, cost=0.0)),
+        )
+
+
+class FailingRemoteClient:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def initialize(self) -> None:
+        raise RuntimeError("initialization failed")
+
+    async def close(self) -> None:
+        self.closed = True
+
+
 def make_system_history() -> list[SystemMessage]:
     return [SystemMessage(content="# Instructions\n\nTest instructions")]
 
@@ -125,6 +161,61 @@ async def test_worker_runtime_replaces_abandoned_retry_content() -> None:
     assert result == "Remote 1 finished:\nkept"
     await worker_runtime.close()
     await session.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_uses_final_message_for_summary() -> None:
+    session = make_agent_session(completion_streamer=DifferingFinalStreamer())
+    worker_runtime = WorkerToolRuntime()
+
+    async with start_worker_server(session=session) as worker_server:
+        await worker_runtime.connect(worker_server.endpoint)
+        await worker_runtime.prompt(1, "Please finish.")
+
+        result = await asyncio.wait_for(worker_runtime.wait(1), timeout=1)
+
+    assert result == "Remote 1 finished:\nfinal answer"
+    await worker_runtime.close()
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_preserves_whitespace_between_streamed_chunks() -> None:
+    streamed = asyncio.Event()
+    release = asyncio.Event()
+    session = make_agent_session(completion_streamer=BlockingChunkStreamer(streamed=streamed, release=release))
+    worker_runtime = WorkerToolRuntime()
+
+    async with start_worker_server(session=session) as worker_server:
+        await worker_runtime.connect(worker_server.endpoint)
+        await worker_runtime.prompt(1, "Please finish.")
+        await asyncio.wait_for(streamed.wait(), timeout=1)
+        await asyncio.wait_for(_wait_for_worker_update(worker_runtime, "Hello world"), timeout=1)
+
+        release.set()
+        await asyncio.wait_for(worker_runtime.wait(1), timeout=1)
+
+    await worker_runtime.close()
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_runtime_closes_connection_when_initialization_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FailingRemoteClient()
+
+    async def connect(**kwargs: Any) -> FailingRemoteClient:
+        del kwargs
+        return client
+
+    monkeypatch.setattr("coding_assistant.tools.remote.RemoteSessionClient.connect", connect)
+    worker_runtime = WorkerToolRuntime()
+
+    result = await worker_runtime.connect("ws://remote.test")
+
+    assert result == "Failed to connect to remote ws://remote.test: initialization failed"
+    assert client.closed is True
 
 
 @pytest.mark.asyncio
@@ -394,4 +485,9 @@ def test_worker_runtime_discovers_other_registered_remotes(monkeypatch: pytest.M
 
 async def _wait_for_session_to_idle(session: AgentSession) -> None:
     while session.state.running or session.state.pending_prompts:
+        await asyncio.sleep(0)
+
+
+async def _wait_for_worker_update(runtime: WorkerToolRuntime, expected: str) -> None:
+    while expected not in runtime.format_connected_workers():
         await asyncio.sleep(0)
