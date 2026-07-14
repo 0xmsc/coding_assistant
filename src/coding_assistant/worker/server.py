@@ -11,7 +11,12 @@ from websockets.exceptions import ConnectionClosed
 
 from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, CompletionStreamer
 from coding_assistant.llm.types import BaseMessage, Tool
-from coding_assistant.remote.control import completed_run_result, send_session_update, session_updates_from_agent_event
+from coding_assistant.remote.control import (
+    completed_run_result,
+    send_session_update,
+    session_updates_from_agent_event,
+    wait_for_session_events,
+)
 from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
@@ -96,8 +101,11 @@ async def _publish_session_events(
 ) -> None:
     while True:
         event = await queue.get()
-        for update in session_updates_from_agent_event(event):
-            await send_session_update(websocket=websocket, session_id=session_id, update=update)
+        try:
+            for update in session_updates_from_agent_event(event):
+                await send_session_update(websocket=websocket, session_id=session_id, update=update)
+        finally:
+            queue.task_done()
 
 
 async def _execute_run(
@@ -121,6 +129,7 @@ async def _execute_run(
             if scheduled_run is None:
                 raise RuntimeError("Worker session closed before its run could start.")
             outcome = await scheduled_run.completion
+            await wait_for_session_events(queue=queue, publisher_task=sender_task)
             if outcome.stop_reason == "failed":
                 await websocket.send(jsonrpc_error(response_id, ERROR_SERVER, outcome.error or "Worker run failed."))
                 return
@@ -136,8 +145,7 @@ async def _execute_run(
     finally:
         if sender_task is not None:
             sender_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await sender_task
+            await asyncio.gather(sender_task, return_exceptions=True)
         await session.close()
         finished.set()
 
