@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from websockets.asyncio.client import ClientConnection, connect
 
+from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -24,7 +25,7 @@ from coding_assistant.llm.types import (
 )
 from coding_assistant.remote.jsonrpc import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
 from coding_assistant.remote.protocol import messages_to_jsonrpc
-from coding_assistant.worker.server import WorkerRuntimeConfig, start_session_worker_server
+from coding_assistant.worker.server import WorkerRuntimeConfig, _execute_run, start_session_worker_server
 
 
 class ScriptedStreamer:
@@ -55,6 +56,20 @@ class BlockingStreamer:
         yield CompletionEvent(
             completion=Completion(message=AssistantMessage(content="done"), usage=Usage(tokens=1, cost=0.0)),
         )
+
+
+class BlockingUpdateSocket:
+    def __init__(self) -> None:
+        self.sent: list[dict[str, Any]] = []
+        self.update_started = asyncio.Event()
+        self.release_update = asyncio.Event()
+
+    async def send(self, message: str) -> None:
+        payload = parse_jsonrpc_message(message)
+        if payload.get("method") == "session/update" and not self.update_started.is_set():
+            self.update_started.set()
+            await self.release_update.wait()
+        self.sent.append(payload)
 
 
 class EchoTool(Tool):
@@ -211,6 +226,45 @@ async def test_worker_prompt_streams_updates_and_returns_result(tmp_path: Path) 
         "stopReason": "end_turn",
         "_meta": {"title": "Worker title"},
     }
+
+
+@pytest.mark.asyncio
+async def test_worker_sends_all_session_updates_before_run_result() -> None:
+    streamer = ScriptedStreamer([AssistantMessage(content="hello")])
+    runtime = WorkerRuntimeConfig(model="test-model", tools=[], completion_streamer=streamer)
+    session = AgentSession(
+        history=[SystemMessage(content="system")],
+        model=runtime.model,
+        tools=runtime.tools,
+        completion_streamer=streamer,
+    )
+    websocket: Any = BlockingUpdateSocket()
+    execute_task = asyncio.create_task(
+        _execute_run(
+            websocket=websocket,
+            response_id=2,
+            session_id="sess_test",
+            base_version=7,
+            prompt="Do it",
+            session=session,
+            runtime=runtime,
+            finished=asyncio.Event(),
+        ),
+    )
+
+    await asyncio.wait_for(websocket.update_started.wait(), timeout=1)
+    await asyncio.sleep(0)
+    assert not any(message.get("id") == 2 for message in websocket.sent)
+
+    websocket.release_update.set()
+    await asyncio.wait_for(execute_task, timeout=1)
+
+    result_index = next(index for index, message in enumerate(websocket.sent) if message.get("id") == 2)
+    assert all(message.get("method") == "session/update" for message in websocket.sent[:result_index])
+    assert any(
+        message.get("params", {}).get("update", {}).get("sessionUpdate") == "message_added"
+        for message in websocket.sent[:result_index]
+    )
 
 
 @pytest.mark.asyncio

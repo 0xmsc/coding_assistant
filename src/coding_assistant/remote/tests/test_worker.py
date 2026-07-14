@@ -36,6 +36,7 @@ from coding_assistant.llm.types import (
 )
 from coding_assistant.remote.jsonrpc import ACP_PROTOCOL_VERSION, jsonrpc_request, parse_jsonrpc_message, text_block
 from coding_assistant.remote.protocol import messages_to_jsonrpc
+from coding_assistant.remote.control import RemoteAgentController, RemoteAgentInfo
 from coding_assistant.remote.server import start_worker_server
 
 
@@ -70,6 +71,23 @@ class BlockingStreamer:
                 usage=Usage(tokens=10, cost=0.0),
             ),
         )
+
+
+class BlockingUpdateSocket:
+    def __init__(self) -> None:
+        self.sent: list[dict[str, Any]] = []
+        self.update_started = asyncio.Event()
+        self.release_update = asyncio.Event()
+        self.prompt_response_sent = asyncio.Event()
+
+    async def send(self, message: str) -> None:
+        payload = parse_jsonrpc_message(message)
+        if payload.get("method") == "session/update" and not self.update_started.is_set():
+            self.update_started.set()
+            await self.release_update.wait()
+        self.sent.append(payload)
+        if payload.get("id") == 3:
+            self.prompt_response_sent.set()
 
 
 class RetryStreamer:
@@ -455,6 +473,56 @@ async def test_worker_server_completes_acp_prompt_turn() -> None:
             for update in updates
         )
     finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_live_remote_sends_all_session_updates_before_prompt_response() -> None:
+    session = make_agent_session(
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="Hello from the worker")]),
+    )
+    websocket: Any = BlockingUpdateSocket()
+    controller = RemoteAgentController(
+        agent_info=RemoteAgentInfo(name="test", title="Test"),
+        session_id="sess_test",
+        session=session,
+    )
+    publisher_task = asyncio.create_task(controller.publish_session_events(websocket=websocket))
+    try:
+        await controller.handle_jsonrpc_message(
+            websocket=websocket,
+            payload={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1}},
+        )
+        await controller.handle_jsonrpc_message(
+            websocket=websocket,
+            payload={"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {}},
+        )
+        await controller.handle_jsonrpc_message(
+            websocket=websocket,
+            payload={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "session/prompt",
+                "params": {"sessionId": "sess_test", "prompt": [text_block("Do the task")]},
+            },
+        )
+
+        await asyncio.wait_for(websocket.update_started.wait(), timeout=1)
+        await asyncio.sleep(0)
+        assert not websocket.prompt_response_sent.is_set()
+
+        websocket.release_update.set()
+        await asyncio.wait_for(websocket.prompt_response_sent.wait(), timeout=1)
+
+        result_index = next(index for index, message in enumerate(websocket.sent) if message.get("id") == 3)
+        assert any(
+            message.get("params", {}).get("update", {}).get("sessionUpdate") == "message_added"
+            for message in websocket.sent[:result_index]
+        )
+    finally:
+        publisher_task.cancel()
+        await asyncio.gather(publisher_task, return_exceptions=True)
+        await controller.close()
         await session.close()
 
 

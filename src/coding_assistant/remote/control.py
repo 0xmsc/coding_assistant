@@ -80,6 +80,28 @@ async def send_session_update(
         await websocket.send(notification)
 
 
+async def wait_for_session_events(
+    *,
+    queue: asyncio.Queue[AgentSessionEvent],
+    publisher_task: asyncio.Task[None],
+) -> None:
+    """Wait until queued events are sent, or propagate publisher failure."""
+    drain_task = asyncio.create_task(queue.join())
+    try:
+        done, _ = await asyncio.wait(
+            {drain_task, publisher_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if publisher_task in done:
+            await publisher_task
+            raise RuntimeError("Session event publisher stopped before queued events were sent.")
+        await drain_task
+    finally:
+        if not drain_task.done():
+            drain_task.cancel()
+        await asyncio.gather(drain_task, return_exceptions=True)
+
+
 class RemoteAgentController:
     """Expose one existing live AgentSession over JSON-RPC."""
 
@@ -98,6 +120,9 @@ class RemoteAgentController:
         self._base_version = 0
         self._state = _RemoteControlState()
         self._response_tasks: set[asyncio.Task[None]] = set()
+        self._publisher_ready = asyncio.Event()
+        self._publisher_queue: asyncio.Queue[AgentSessionEvent] | None = None
+        self._publisher_task: asyncio.Task[None] | None = None
 
     async def close(self) -> None:
         for task in list(self._response_tasks):
@@ -108,10 +133,18 @@ class RemoteAgentController:
 
     async def publish_session_events(self, *, websocket: ServerConnection) -> None:
         async with self._session.subscribe() as queue:
+            publisher_task = asyncio.current_task()
+            assert publisher_task is not None
+            self._publisher_queue = queue
+            self._publisher_task = publisher_task
+            self._publisher_ready.set()
             while True:
                 event = await queue.get()
-                for update in session_updates_from_agent_event(event):
-                    await send_session_update(websocket=websocket, session_id=self._session_id, update=update)
+                try:
+                    for update in session_updates_from_agent_event(event):
+                        await send_session_update(websocket=websocket, session_id=self._session_id, update=update)
+                finally:
+                    queue.task_done()
 
     async def handle_jsonrpc_message(self, *, websocket: ServerConnection, payload: JsonObject) -> None:
         response_id = response_id_from_payload(payload)
@@ -236,6 +269,13 @@ class RemoteAgentController:
     ) -> None:
         outcome = await scheduled_run.completion
         try:
+            await self._publisher_ready.wait()
+            assert self._publisher_queue is not None
+            assert self._publisher_task is not None
+            await wait_for_session_events(
+                queue=self._publisher_queue,
+                publisher_task=self._publisher_task,
+            )
             if outcome.stop_reason == "failed":
                 await websocket.send(jsonrpc_error(response_id, ERROR_SERVER, outcome.error or "Run failed."))
                 return
