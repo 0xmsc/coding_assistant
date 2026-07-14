@@ -169,8 +169,8 @@ class SkillsReadTool(Tool):
             )
 
 
-def create_skill_tools(*, skills_directories: Sequence[Path]) -> tuple[list[Tool], list[Skill]]:
-    """Create skill-inspection tools for the configured skill directories."""
+def load_skills(*, skills_directories: Sequence[Path]) -> list[Skill]:
+    """Load configured skills and reject duplicate names."""
     skills: list[Skill] = []
     for directory in skills_directories:
         skills.extend(load_skills_from_directory(directory))
@@ -185,8 +185,22 @@ def create_skill_tools(*, skills_directories: Sequence[Path]) -> tuple[list[Tool
             )
         skills_by_name[skill.name] = skill
 
-    tools: list[Tool] = [
+    return list(skills_by_name.values())
+
+
+def format_instructions_with_skills(*, instructions: str, skills: list[Skill]) -> str:
+    """Append the available-skills section to a tool instruction document."""
+    skill_instructions = format_skills_instructions(skills)
+    if not skill_instructions:
+        return instructions
+    return f"{instructions}\n\n{skill_instructions}"
+
+
+def create_skill_tools(*, skills: Sequence[Skill]) -> list[Tool]:
+    """Create skill-inspection tools for already loaded skills."""
+    skills_by_name = {skill.name: skill for skill in skills}
+
+    return [
         SkillsListResourcesTool(skills_by_name=skills_by_name),
         SkillsReadTool(skills_by_name=skills_by_name),
     ]
-    return tools, list(skills_by_name.values())

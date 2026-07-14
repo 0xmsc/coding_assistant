@@ -8,6 +8,7 @@ from coding_assistant.tools.skills import (
     Skill,
     create_skill_tools,
     format_skills_instructions,
+    load_skills,
     load_skills_from_directory,
     parse_skill_file,
 )
@@ -80,7 +81,8 @@ def test_create_skill_tools(tmp_path: Any) -> None:
     (cli_skills_dir / "my_cli_skill").mkdir()
     (cli_skills_dir / "my_cli_skill" / "SKILL.md").write_text("---\nname: my_cli_skill\ndescription: CLI skill\n---\n")
 
-    tools, skills = create_skill_tools(skills_directories=[cli_skills_dir])
+    skills = load_skills(skills_directories=[cli_skills_dir])
+    tools = create_skill_tools(skills=skills)
     instr = format_skills_instructions(skills)
 
     assert "my_cli_skill" in instr
@@ -90,7 +92,8 @@ def test_create_skill_tools(tmp_path: Any) -> None:
 
 
 def test_create_skill_tools_without_configured_skills() -> None:
-    tools, skills = create_skill_tools(skills_directories=[])
+    skills = load_skills(skills_directories=[])
+    tools = create_skill_tools(skills=skills)
 
     assert {tool.name() for tool in tools} == {"skills_list_resources", "skills_read"}
     assert skills == []
@@ -108,7 +111,7 @@ def test_create_skill_tools_raises_on_duplicate_skill_names(tmp_path: Any) -> No
     (second_root / "example" / "SKILL.md").write_text("---\nname: example\ndescription: Second\n---\n")
 
     with pytest.raises(RuntimeError, match="Duplicate skill name 'example'"):
-        create_skill_tools(skills_directories=[first_root, second_root])
+        load_skills(skills_directories=[first_root, second_root])
 
 
 @pytest.mark.asyncio
@@ -118,7 +121,7 @@ async def test_skills_tools(tmp_path: Any) -> None:
     (skill_dir / "SKILL.md").write_text("---\nname: myskill\ndescription: desc\n---\ncontent")
     (skill_dir / "script.py").write_text("print(1)")
 
-    tools, _ = create_skill_tools(skills_directories=[tmp_path])
+    tools = create_skill_tools(skills=load_skills(skills_directories=[tmp_path]))
     list_tool = next(tool for tool in tools if tool.name() == "skills_list_resources")
     read_tool = next(tool for tool in tools if tool.name() == "skills_read")
 

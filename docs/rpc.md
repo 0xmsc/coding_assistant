@@ -281,19 +281,25 @@ turn.
 1. The manager starts a worker from history version `N`.
 2. The worker creates an in-memory `AgentSession`.
 3. The worker streams live `session/update` notifications.
-4. The worker returns the completed `_worker/run` result with `baseVersion: N`.
-5. The manager atomically verifies `sessions.version == N`.
+4. The worker returns the completed `_worker/run` result.
+5. The manager atomically verifies `sessions.version == N` using the version it
+   loaded before starting the worker.
 6. The manager inserts committed messages and updates the session to version
    `N + 1`.
 
 Stale run completions are rejected. If a worker crashes before completion,
-SQLite history is not advanced.
+SQLite history is not advanced. Before returning the prompt error, the manager
+replays canonical history to subscribed clients so provisional messages from
+the failed run are removed.
 
 ## Connection Lifecycle
 
 Clients must call `initialize` before session methods. After initialization,
 clients can list sessions, create a session, or load a session with history
 replay.
+
+The private one-shot worker endpoint is not a public session client and does
+not use this initialization handshake.
 
 ```json
 {
@@ -824,7 +830,8 @@ Workers do not receive attachment bytes automatically. For images, use the
 worker `load_image(path)` tool with the returned `attachment.path` before
 reasoning from the image. For PDFs, extract text in the workspace with
 `pdftotext`, then inspect the extracted text. Text-like attachments can be read
-with shell or Python from their `/attachments/...` path.
+with shell commands or Python scripts run through the shell from their
+`/attachments/...` path.
 
 ### session/download_attachment
 
@@ -1139,9 +1146,7 @@ Request params:
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `sessionId` | string | yes | Session id. |
-| `baseVersion` | integer | yes | History version used to start the worker session. |
 | `messages` | array | yes | Model-visible committed history from SQLite. |
-| `workspace` | string | yes | Worker workspace path, normally `/workspace`. |
 | `prompt` | array | yes | ACP-shaped content blocks for the run's initial prompt. |
 
 ### `_worker/run` result
@@ -1154,7 +1159,6 @@ Result fields:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `baseVersion` | integer | yes | History version used to start the run. |
 | `messages` | array | yes | Newly committed model-visible messages. |
 | `stopReason` | string | yes | `end_turn` or `cancelled`. |
 | `_meta` | object | no | Implementation metadata such as title updates. |
@@ -1163,8 +1167,8 @@ Workers may include `_meta.title` to request a persisted session title update.
 The manager stores the title with the commit and emits `session_updated` to
 clients.
 
-The manager rejects commits when `baseVersion` does not match the current
-SQLite session version.
+The manager rejects commits when the version it loaded before starting the
+worker no longer matches the current SQLite session version.
 
 ## Module Naming
 

@@ -137,10 +137,7 @@ class _RunResult:
     """Result of a single queued prompt run."""
 
     history: list[BaseMessage] | None  # Updated transcript, or None on fatal error
-    messages: list[BaseMessage]
-    summary: str = ""  # Short text summarizing the outcome
-    cancelled: bool = False  # True if the run was cancelled
-    error: str | None = None  # Error message if the run failed
+    outcome: RunOutcome
 
 
 class AgentSession:
@@ -395,32 +392,22 @@ class AgentSession:
                             self._current_run_task = None
                             self._current_scheduled_run = None
                         # On cancellation or error, move steering prompts back to main queue
-                        if result is not None and (result.cancelled or result.error is not None):
+                        if result is not None and result.outcome.stop_reason != "end_turn":
                             self._drain_steering_prompts_to_front_of_queue()
 
-                if result is not None and result.history is not None:
+                if result is None:
+                    continue
+                if result.history is not None:
                     self._history = result.history
 
-                if result is not None and result.cancelled:
-                    outcome = RunOutcome(stop_reason="cancelled", messages=result.messages)
-                    self._resolve_run(prompt.scheduled_run, outcome)
+                outcome = result.outcome
+                self._resolve_run(prompt.scheduled_run, outcome)
+                if outcome.stop_reason == "cancelled":
                     self._publish_event(RunCancelledEvent())
-                elif result is not None and result.error is not None:
-                    outcome = RunOutcome(
-                        stop_reason="failed",
-                        messages=result.messages,
-                        error=result.error,
-                    )
-                    self._resolve_run(prompt.scheduled_run, outcome)
-                    self._publish_event(RunFailedEvent(error=result.error))
-                elif result is not None and result.history is not None:
-                    outcome = RunOutcome(
-                        stop_reason="end_turn",
-                        messages=result.messages,
-                        summary=result.summary,
-                    )
-                    self._resolve_run(prompt.scheduled_run, outcome)
-                    self._publish_event(RunFinishedEvent(summary=result.summary))
+                elif outcome.stop_reason == "failed":
+                    self._publish_event(RunFailedEvent(error=outcome.error or "Run failed."))
+                else:
+                    self._publish_event(RunFinishedEvent(summary=outcome.summary))
 
     async def _run_prompt(self, history: list[BaseMessage]) -> _RunResult:
         """Run model and tool turns until the agent needs another user prompt.
@@ -515,16 +502,28 @@ class AgentSession:
 
                 return _RunResult(
                     history=current_history,
-                    messages=run_messages,
-                    summary=_get_latest_assistant_summary(current_history),
+                    outcome=RunOutcome(
+                        stop_reason="end_turn",
+                        messages=run_messages,
+                        summary=_get_latest_assistant_summary(current_history),
+                    ),
                 )
         except ToolExecutionCancelled as exc:
-            return _RunResult(history=exc.history, messages=run_messages, cancelled=True)
+            return _RunResult(
+                history=exc.history,
+                outcome=RunOutcome(stop_reason="cancelled", messages=run_messages),
+            )
         except asyncio.CancelledError:
-            return _RunResult(history=current_history, messages=run_messages, cancelled=True)
+            return _RunResult(
+                history=current_history,
+                outcome=RunOutcome(stop_reason="cancelled", messages=run_messages),
+            )
         except Exception as exc:
             logger.exception("Agent session run failed.")
-            return _RunResult(history=None, messages=[], error=str(exc))
+            return _RunResult(
+                history=None,
+                outcome=RunOutcome(stop_reason="failed", messages=[], error=str(exc)),
+            )
 
     async def _pop_next_steering_prompt(self) -> _QueuedPrompt | None:
         """Remove and return the next steering prompt, if any.

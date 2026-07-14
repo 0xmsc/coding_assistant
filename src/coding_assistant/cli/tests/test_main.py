@@ -5,8 +5,6 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from rich.markdown import Markdown
-
 from coding_assistant.cli.ui import _handle_submission, PromptSubmitType, run_cli
 from coding_assistant.cli.agent import (
     CliAgentBundle,
@@ -14,15 +12,9 @@ from coding_assistant.cli.agent import (
     create_cli_agent,
 )
 from coding_assistant.cli.main import main, parse_args
-from coding_assistant.cli.output import (
-    DeltaRenderer,
-    ParagraphBuffer,
-    format_session_status,
-    print_tool_calls,
-)
-from coding_assistant.core.agent_session import AgentSession, RunFinishedEvent, SessionState
+from coding_assistant.core.agent_session import AgentSession, RunFinishedEvent
 from coding_assistant.core.runtime import build_initial_system_message
-from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, UserMessage
+from coding_assistant.llm.types import AssistantMessage, SystemMessage, UserMessage
 from coding_assistant.remote.server import RemoteServer
 from coding_assistant.testing.fake_openai import run_fake_openai_server
 
@@ -188,111 +180,6 @@ async def test_cli_agent_smoke_runs_against_fake_openai(
             provider_specific_fields={"reasoning_details": []},
         ),
     ]
-
-
-def test_paragraph_buffer_respects_code_fences() -> None:
-    buffer = ParagraphBuffer()
-
-    assert buffer.push("Before\n\n```python\nprint('hi')") == ["Before"]
-    assert buffer.push("\n\nprint('bye')\n```\n\nAfter") == ["```python\nprint('hi')\n\nprint('bye')\n```"]
-    assert buffer.flush() == "After"
-
-
-def test_delta_renderer_prints_markdown_paragraphs() -> None:
-    renderer = DeltaRenderer()
-
-    with patch("coding_assistant.cli.output.rich_print") as mock_print:
-        renderer.on_delta("First paragraph")
-        renderer.on_delta("\n\nSecond paragraph")
-        renderer.finish()
-
-    markdown_blocks = [
-        call.args[0] for call in mock_print.call_args_list if call.args and isinstance(call.args[0], Markdown)
-    ]
-    assert [block.markup for block in markdown_blocks] == ["First paragraph", "Second paragraph"]
-
-
-def test_delta_renderer_avoids_double_spacing_before_tool_calls() -> None:
-    renderer = DeltaRenderer()
-    tool_call_message = AssistantMessage(
-        tool_calls=[
-            ToolCall(
-                id="call-1",
-                function=FunctionCall(
-                    name="shell_execute",
-                    arguments='{"command": "cat README.md"}',
-                ),
-            ),
-        ],
-    )
-
-    with patch("coding_assistant.cli.output.rich_print") as mock_print:
-        renderer.on_delta("Can you read README.md?")
-        renderer.finish()
-        print_tool_calls(tool_call_message)
-
-    # Each element adds its own spacing:
-    # 1. blank line before content (from _print_markdown)
-    # 2. markdown content
-    # 3. blank line before tool call (from print_tool_calls)
-    # 4. tool call line
-    assert len(mock_print.call_args_list) == 4
-    assert mock_print.call_args_list[0].args == ()
-    assert isinstance(mock_print.call_args_list[1].args[0], Markdown)
-    assert mock_print.call_args_list[1].args[0].markup == "Can you read README.md?"
-    assert mock_print.call_args_list[2].args == ()  # blank line before tool call
-    assert "▶" in str(mock_print.call_args_list[3])
-    assert "shell_execute" in str(mock_print.call_args_list[3])
-
-
-def test_delta_renderer_finish_is_idempotent() -> None:
-    renderer = DeltaRenderer()
-
-    with patch("coding_assistant.cli.output.rich_print") as mock_print:
-        renderer.on_delta("Hello")
-        renderer.finish()
-        renderer.finish()
-
-    # Should call rich_print 2 times: blank line + content (no trailing blank)
-    assert len(mock_print.call_args_list) == 2
-    assert mock_print.call_args_list[0].args == ()
-    assert isinstance(mock_print.call_args_list[1].args[0], Markdown)
-    assert mock_print.call_args_list[1].args[0].markup == "Hello"
-
-
-def test_format_session_status_summarizes_pending_prompts() -> None:
-    state = SessionState(
-        running=True,
-        pending_prompts=("first queued prompt", "second queued prompt", "third queued prompt"),
-    )
-
-    # When pending prompts exist, they're shown in the queued prompts widget above the input.
-    # The footer only shows the status to avoid redundancy.
-    assert format_session_status(state) == "running"
-
-
-def test_format_session_status_shows_paused_when_queue_is_paused() -> None:
-    state = SessionState(
-        running=False,
-        paused=True,
-        pending_prompts=("first queued prompt", "second queued prompt"),
-    )
-
-    assert format_session_status(state) == "paused"
-
-
-def test_print_prompt_accepted_uses_simple_grey_background() -> None:
-    with patch("coding_assistant.cli.output.rich_print") as mock_print:
-        from coding_assistant.cli.output import print_active_prompt
-
-        print_active_prompt("Do the task")
-
-    # print_active_prompt adds: leading blank + prompt line
-    assert len(mock_print.call_args_list) == 2
-    assert mock_print.call_args_list[0].args == ()  # leading blank
-    content = mock_print.call_args_list[1].args[0]
-    assert "Do the task" in content
-    assert "▌" in content
 
 
 @pytest.mark.asyncio

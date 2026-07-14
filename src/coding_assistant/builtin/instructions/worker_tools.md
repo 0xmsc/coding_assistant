@@ -11,10 +11,8 @@
 
 ## Python
 
-- You have access to a Python interpreter via `python_execute`.
-- `python_execute` can run multi-line scripts.
-- Prefer Python over Shell for readability.
-- Add comments to your scripts to explain your logic.
+- Run Python through `shell_execute`, for example with `uv run -q script.py` or
+  a shell heredoc passed to `uv run -q -`.
 
 ## Filesystem
 

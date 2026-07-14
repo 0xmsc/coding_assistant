@@ -8,7 +8,7 @@ Commonly used with MCP-backed search or fetch tools:
 
 1. **Call**: `redirect_tool_call(tool_name="mcp_call", tool_args={"server": "my-server", "tool": "search", "arguments": {"query": "..."}}, output_file="search_raw.json")`
 2. **Discover first**: Use `mcp_list_tools(server="my-server")` to find the actual MCP tool name and argument schema.
-3. **Analysis**: Use `python_execute` to parse the JSON and extract specific URLs or snippets.
+3. **Analysis**: Use `shell_execute` with `uv run` to parse the JSON and extract specific URLs or snippets.
     ```python
     import json
     with open("search_raw.json") as f:
@@ -26,7 +26,7 @@ When analyzing production logs or large test outputs, prefer standard shell redi
 
 ## Advantages of Redirection vs redirect_tool_call
 
-- **Direct File Writing**: Preferred for `shell_execute` (using `>`) and `python_execute` (using `open().write()`). This is the most efficient way to handle large outputs as it never touches the tool-calling interface's memory or stdout buffering.
+- **Direct File Writing**: Prefer shell redirection from `shell_execute`. This is the most efficient way to handle large outputs because it avoids the tool-call output buffer.
 - **redirect_tool_call**: Primarily intended for outputs returned through tools like `mcp_call` that produce structured or text data but lack their own file-output parameters.
 
 ## Infinite Recursion Warning

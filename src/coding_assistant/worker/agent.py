@@ -8,7 +8,7 @@ from pathlib import Path
 from coding_assistant.core.instructions import get_instructions
 from coding_assistant.llm.types import Tool
 from coding_assistant.tools.session_title import SessionTitleState
-from coding_assistant.worker.tool_bundle import create_worker_tool_bundle
+from coding_assistant.worker.tool_bundle import create_worker_tool_bundle, load_worker_tool_context
 
 
 @dataclass(slots=True)
@@ -40,15 +40,11 @@ def _skills_directories(config: WorkerAgentConfig) -> list[Path]:
 
 def build_worker_instructions(*, config: WorkerAgentConfig) -> str:
     """Resolve the worker system instructions without starting an agent session."""
-    tool_bundle = create_worker_tool_bundle(
-        workspace=config.working_directory,
-        skills_directories=_skills_directories(config),
-        process_env=config.process_env,
-    )
+    _, tool_instructions = load_worker_tool_context(skills_directories=_skills_directories(config))
     return get_instructions(
         working_directory=config.working_directory,
         user_instructions=list(config.user_instructions),
-        extra_sections=[tool_bundle.instructions],
+        extra_sections=[tool_instructions],
     )
 
 

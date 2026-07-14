@@ -9,10 +9,9 @@ from coding_assistant.llm.types import Tool
 from coding_assistant.tools.filesystem import create_filesystem_tools
 from coding_assistant.tools.mcp_manager import MCPServerConfig, MCPServerManager
 from coding_assistant.tools.mcp_tools import create_mcp_tools
-from coding_assistant.tools.python import create_python_tools
 from coding_assistant.tools.remote import WorkerToolRuntime
 from coding_assistant.tools.shell import create_shell_tools
-from coding_assistant.tools.skills import create_skill_tools, format_skills_instructions
+from coding_assistant.tools.skills import create_skill_tools, format_instructions_with_skills, load_skills
 from coding_assistant.tools.tasks import TaskManager, create_task_tools
 
 
@@ -48,15 +47,12 @@ def create_cli_tool_bundle(
     task_manager = TaskManager()
     worker_runtime = WorkerToolRuntime()
 
-    skill_tools, skills = create_skill_tools(skills_directories=[get_builtin_skills_dir(), *skills_directories])
-    instructions = load_tool_instructions()
-    skill_instructions = format_skills_instructions(skills)
-    if skill_instructions:
-        instructions = f"{instructions}\n\n{skill_instructions}"
+    skills = load_skills(skills_directories=[get_builtin_skills_dir(), *skills_directories])
+    skill_tools = create_skill_tools(skills=skills)
+    instructions = format_instructions_with_skills(instructions=load_tool_instructions(), skills=skills)
 
     tools: list[Tool] = [
         *create_shell_tools(manager=task_manager),
-        *create_python_tools(manager=task_manager),
         *create_filesystem_tools(),
         *create_task_tools(manager=task_manager),
         *skill_tools,

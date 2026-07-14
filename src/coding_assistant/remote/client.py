@@ -44,7 +44,6 @@ def _finish_title(metadata: object) -> str | None:
 @dataclass(frozen=True)
 class RemoteRunResult:
     stop_reason: str
-    base_version: int
     messages: list[BaseMessage]
     title: str | None = None
 
@@ -263,18 +262,15 @@ class WorkerClient(_JsonRpcClient):
 
 def _run_result_from_jsonrpc(result: JsonObject, *, method: str) -> RemoteRunResult:
     stop_reason = result.get("stopReason")
-    base_version = result.get("baseVersion")
     messages = result.get("messages")
     if (
         not isinstance(stop_reason, str)
-        or not isinstance(base_version, int)
         or not isinstance(messages, list)
         or not all(isinstance(message, dict) for message in messages)
     ):
         raise RuntimeError(f"{method} response did not include a completed run result.")
     return RemoteRunResult(
         stop_reason=stop_reason,
-        base_version=base_version,
         messages=messages_from_jsonrpc(messages),
         title=_finish_title(result.get("_meta")),
     )
