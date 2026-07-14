@@ -15,7 +15,7 @@ description: Guidelines for multi-stage tool orchestration and handling large da
 ### 1. The Pipelining Pattern
 When a tool's output is the input for another tool:
 1.  **Redirect**: Call the first tool using `redirect_tool_call`.
-2.  **Process**: Call the second tool (for example, `shell_execute`) and pass the file path created in step 1 as an argument.
+2.  **Process**: Call the second tool (for example, `python_execute` or `shell_execute`) and pass the file path created in step 1 as an argument.
 3.  **Refine**: Read only the final processed result into the conversation.
 
 ### 2. The Context Buffer Pattern
@@ -39,7 +39,7 @@ When the user requests a result that is too large for markdown (e.g., a 5MB JSON
 - The output is raw data (JSON, CSV) that needs further processing by another tool.
 - You are chaining an MCP tool into a local processing tool.
 
-**Note**: For `shell_execute`, use shell redirection instead of `redirect_tool_call` for maximum efficiency.
+**Note**: For `shell_execute` or `python_execute`, use internal file writing instead of `redirect_tool_call` for maximum efficiency.
 
 ## References
 - [Detailed Orchestration Patterns](references/patterns.md)

@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from typing import Literal
 
 
 DEFAULT_PROCESS_ENV_KEYS = {
@@ -179,6 +181,53 @@ async def start_process(
         await process.stdin.wait_closed()
 
     return ProcessHandle(process=process, output=output)
+
+
+@dataclass(frozen=True)
+class ManagedProcessResult:
+    """Result of executing a subprocess tracked by the background task manager."""
+
+    task_id: int
+    status: Literal["background", "timeout", "finished"]
+    output: str = ""
+    exit_code: int | None = None
+    truncated: bool = False
+
+
+async def execute_managed_process(
+    *,
+    args: Sequence[str],
+    task_name: str,
+    register_task: Callable[[str, ProcessHandle], int],
+    timeout: int,
+    truncate_at: int,
+    background: bool,
+    stdin_input: str | None = None,
+    env: dict[str, str] | None = None,
+) -> ManagedProcessResult:
+    """Execute and track a subprocess with shared timeout and cancellation behavior."""
+    handle = await start_process(args=args, stdin_input=stdin_input, env=env)
+    task_id = register_task(task_name, handle)
+
+    if background:
+        return ManagedProcessResult(task_id=task_id, status="background")
+
+    try:
+        finished = await handle.wait(timeout=timeout)
+    except asyncio.CancelledError:
+        await handle.terminate()
+        raise
+    if not finished:
+        return ManagedProcessResult(task_id=task_id, status="timeout")
+
+    output = handle.stdout
+    return ManagedProcessResult(
+        task_id=task_id,
+        status="finished",
+        output=truncate_output(output, truncate_at),
+        exit_code=handle.exit_code,
+        truncated=len(output) > truncate_at,
+    )
 
 
 def truncate_output(result: str, truncate_at: int) -> str:
