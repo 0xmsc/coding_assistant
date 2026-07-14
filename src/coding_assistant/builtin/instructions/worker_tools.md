@@ -11,8 +11,8 @@
 
 ## Python
 
-- Run Python through `shell_execute`, for example with `uv run -q script.py` or
-  a shell heredoc passed to `uv run -q -`.
+- Use `python_execute` to run Python code without shell quoting.
+- `python_execute` supports multi-line scripts and PEP 723 inline dependencies.
 
 ## Filesystem
 

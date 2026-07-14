@@ -16,6 +16,8 @@ async def test_create_cli_tool_bundle_includes_remote_tools() -> None:
         assert {
             "skills_list_resources",
             "skills_read",
+            "shell_execute",
+            "python_execute",
             "remote_connect",
             "remotes_discover",
             "remotes_list",
