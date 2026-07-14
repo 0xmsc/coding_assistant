@@ -75,7 +75,7 @@ This protocol also has `coding-assistant` extensions:
 - Manager-owned SQLite persistence.
 - Session-scoped injected skills plus session-scoped and prompt-scoped private
   worker environment.
-- Private manager/worker `_session/*` methods.
+- Private manager/worker `_worker/*` methods.
 - Per-active-prompt worker containers.
 
 Do not treat this document as a promise of complete ACP compatibility.
@@ -191,9 +191,10 @@ Example forwarded request:
 }
 ```
 
-The manager requires `params._meta.scopeId` for scoped methods and uses it
-for `session/list`, `session/new`, `session/load`, `session/rename`,
-`session/prompt`, and `session/cancel`.
+The manager requires `params._meta.scopeId` for all `session/*` methods:
+`session/list`, `session/new`, `session/load`, `session/upload_file`,
+`session/download_attachment`, `session/rename`, `session/set_model`,
+`session/prompt`, `session/cancel`, and `session/delete`.
 
 ## Managed Workspaces
 
@@ -319,9 +320,6 @@ replay.
     "protocolVersion": 1,
     "agentCapabilities": {
       "loadSession": true,
-      "sessionCapabilities": {
-        "list": {}
-      },
       "promptCapabilities": {
         "image": true,
         "embeddedContext": true
@@ -357,7 +355,6 @@ Response result:
 | --- | --- | --- |
 | `protocolVersion` | integer | Negotiated protocol version. |
 | `agentCapabilities.loadSession` | boolean | Advertise `true` when `session/load` is supported. |
-| `agentCapabilities.sessionCapabilities.list` | object | Present when `session/list` is supported. |
 | `agentCapabilities.promptCapabilities.image` | boolean | Image prompt blocks are accepted. |
 | `agentCapabilities.promptCapabilities.embeddedContext` | boolean | Embedded resource prompt blocks are accepted. |
 | `agentInfo` | object | Agent name, title, and version. |
@@ -414,8 +411,7 @@ Request:
   "params": {
     "_meta": {
       "scopeId": "tenant:abc123"
-    },
-    "cursor": "opaque-page-token"
+    }
   }
 }
 ```
@@ -425,7 +421,6 @@ Parameters:
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `_meta.scopeId` | string | yes | Trusted opaque scope injected by the application backend. |
-| `cursor` | string | no | Opaque pagination cursor from a previous response. |
 
 Response:
 
@@ -441,15 +436,17 @@ Response:
         "updatedAt": "2026-06-03T10:15:00Z",
         "_meta": {
           "version": 1,
-          "model": "gpt-5.1-codex-mini",
-          "messageCount": 12
+          "model": "gpt-5.1-codex-mini"
         }
       }
     ],
-    "nextCursor": "next-page-token"
+    "nextCursor": null
   }
 }
 ```
+
+The current implementation returns every session in the scope and does not
+paginate results. `nextCursor` is always `null`.
 
 Session metadata must not expose arbitrary host workspace paths.
 
@@ -1069,6 +1066,30 @@ Session metadata update:
 }
 ```
 
+Run status update:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "sess_abc123",
+    "update": {
+      "sessionUpdate": "run_updated",
+      "run": {
+        "runId": "run_abc123",
+        "sessionId": "sess_abc123",
+        "status": "completed",
+        "startedAt": "2026-06-23T19:34:00Z",
+        "updatedAt": "2026-06-23T19:35:00Z",
+        "endedAt": "2026-06-23T19:35:00Z",
+        "stopReason": "end_turn"
+      }
+    }
+  }
+}
+```
+
 Supported `sessionUpdate` values:
 
 | Value | Description |
@@ -1078,6 +1099,7 @@ Supported `sessionUpdate` values:
 | `message_delta` | Append streamed text to a provisional assistant draft, creating it when its id is first seen. |
 | `attachment_added` | Add an attachment metadata record linked to a message. |
 | `session_updated` | Replace or merge session metadata such as title, model, updated time, and version. |
+| `run_updated` | Report an active or finished prompt run and its status. |
 | `history_complete` | Replay is complete and includes the durable session version. |
 
 Each model attempt uses one message id. Its deltas arrive first, followed by a
@@ -1093,6 +1115,9 @@ represented as assistant/tool messages; clients that want tool cards or image
 previews derive those UI elements from message content.
 The manager sends `session_updated` after persisted session metadata changes,
 including rename, model changes, uploads, and prompt commits.
+It sends `run_updated` when a prompt starts, completes, is cancelled, or fails.
+The run status is `running`, `completed`, `cancelled`, or `failed`; terminal
+updates may also include `endedAt`, `stopReason`, or `error`.
 
 ## Internal Worker Methods
 
@@ -1149,13 +1174,13 @@ Use honest module names:
 - `remote/protocol.py` for the custom `coding-assistant` remote protocol.
 
 Do not put manager session paths, scope metadata, worker prompt-result payloads,
-or private `_session/*` methods into a module named as if it were pure ACP.
+or private `_worker/*` methods into a module named as if it were pure ACP.
 
 ## Current Limitations
 
 - The current CLI-owned remote endpoint is local-only and single-session.
 - No permission request round trip before tools execute.
-- No model or configuration methods.
+- The CLI-owned live endpoint has no model or configuration methods.
 - No prompt queueing or steering through the remote protocol.
 - Workspace seeding/import is not part of v1.
 

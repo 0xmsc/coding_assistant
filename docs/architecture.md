@@ -149,7 +149,7 @@ use the public session methods documented in `docs/rpc.md`.
 Keep the architecture simple:
 
 - Put agent execution behavior in `core`.
-- Put terminal behavior in `app`.
+- Put terminal behavior in `cli`.
 - Put JSON-RPC framing and conversion in `remote`.
 - Put durable managed-session state in `manager`.
 - Put one-session worker execution in `worker`.
