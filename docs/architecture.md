@@ -10,8 +10,12 @@ share the same core types instead of inventing separate event or history models.
 
 - `AgentSession` owns the in-memory transcript, prompt queue, steering prompts,
   cancellation, model streaming, tool execution, and the active agent run loop.
+- Enqueuing a prompt returns a `ScheduledRun`. Its `RunOutcome` is the
+  authoritative completion signal for that run; steering prompts become part
+  of the active run rather than creating transport-level prompt identities.
 - `AgentSessionEvent` describes in-process runtime events consumed directly by
-  the CLI and remote controller.
+  the CLI and remote controller. Events are observational and are not used to
+  correlate RPC responses.
 - `session_updates` defines only the committed and provisional updates that
   cross the manager/remote boundary.
 - `history` and `llm.types` define the message and completion data structures
@@ -30,13 +34,12 @@ clients. The terminal UI itself is not a JSON-RPC client.
 
 - `jsonrpc.py` contains the custom ACP-inspired JSON-RPC helpers and common payload
   validation.
-- `control.py` contains the shared remote-control implementation for
-  JSON-RPC-driven `AgentSession` prompt, cancel, update, and prompt-result
-  behavior.
+- `control.py` exposes an existing live `AgentSession` and contains the shared
+  run-result and event-to-update serializers.
 - `protocol.py` converts between core messages/session updates and JSON-RPC
   payloads.
-- `client.py` contains `RemoteSessionClient`, the single client abstraction for
-  talking to a live remote session endpoint.
+- `client.py` exposes separate `RemoteSessionClient` and `WorkerClient` APIs on
+  top of shared JSON-RPC connection machinery.
 - `server.py` contains the local single-session endpoint used around an
   existing `AgentSession`.
 
@@ -51,9 +54,8 @@ RPC.
 
 `coding_assistant.worker` owns the worker-side remote runtime. A worker receives
 manager-provided session state, creates one `AgentSession`, streams
-`session/update` notifications, and returns the new messages in the completed
-`session/prompt` response. Workers do not persist
-canonical history.
+`session/update` notifications, and returns the new messages from one private
+`_worker/run` request. Workers do not persist canonical history.
 
 ## Modes
 
@@ -81,10 +83,12 @@ remote client
   -> projected session updates
 ```
 
-This endpoint wraps one already-created `AgentSession` with the shared
-remote-control implementation. It emits the same provisional `session/update`
-notifications and completed `session/prompt` results as managed workers. It is
-useful for CLI-owned remote access and tests. It is not the web manager.
+This endpoint wraps one already-created `AgentSession`. A connected client
+observes all projected session events, including activity initiated by the CLI
+or another local source. A `session/prompt` response awaits the exact
+`ScheduledRun` created for that request, so observation never changes request
+ownership. It is useful for CLI-owned remote access and tests. It is not the
+web manager.
 
 ### Managed Web Sessions
 
@@ -125,20 +129,20 @@ JSON-RPC is only the process/container boundary. Inside the application, code
 should use core dataclasses such as `BaseMessage`, `AgentSessionEvent`, and
 `SessionUpdate` rather than passing raw protocol dictionaries around.
 
-Every remote-controlled `AgentSession` emits provisional `session/update`
-notifications while `session/prompt` is pending. Its correlated JSON-RPC
-response carries the completed turn. Persistence is still caller-specific: the
-manager persists completed worker runs, while CLI-owned local remote callers do
-not.
+Every remotely observed `AgentSession` emits provisional `session/update`
+notifications independently of whether this connection submitted a prompt.
+Live `session/prompt` and private `_worker/run` responses carry completed run
+results. Persistence is still caller-specific: the manager persists completed
+worker runs, while CLI-owned local remote callers do not.
 
 Assistant streaming uses one message id per model attempt. Deltas create a
 provisional draft, and the complete assistant message finalizes that same id.
 An internal retry starts a new id without adding retry/reset/status concepts to
 the wire protocol.
 
-Private `_session/*` methods are manager/worker control methods. Browser-facing
-or application-facing code should use the public session methods documented in
-`docs/rpc.md`.
+Private `_worker/*` methods are manager/worker operations. They deliberately do
+not emulate a live session. Browser-facing or application-facing code should
+use the public session methods documented in `docs/rpc.md`.
 
 ## Direction
 

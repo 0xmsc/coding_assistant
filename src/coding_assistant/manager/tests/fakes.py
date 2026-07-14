@@ -11,7 +11,7 @@ from coding_assistant.core.session_updates import (
     SessionUpdate,
 )
 from coding_assistant.llm.types import AssistantMessage, UserMessage
-from coding_assistant.manager.service import WorkerPrompt, WorkerRunFinished
+from coding_assistant.manager.service import WorkerPrompt, WorkerRunResult
 from coding_assistant.remote.jsonrpc import prompt_content_from_acp
 
 
@@ -28,7 +28,7 @@ class FakeWorkerRunner:
         *,
         prompt: WorkerPrompt,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
-    ) -> WorkerRunFinished:
+    ) -> WorkerRunResult:
         if self.prompts is None:
             self.prompts = []
         self.prompts.append(prompt)
@@ -40,7 +40,7 @@ class FakeWorkerRunner:
         await on_update(MessageAddedUpdate(message_id=message_id, message=assistant_message))
         if self.release is not None:
             await self.release.wait()
-        return WorkerRunFinished(
+        return WorkerRunResult(
             stop_reason="end_turn",
             messages=[UserMessage(content=prompt_content_from_acp(prompt.prompt)), assistant_message],
         )

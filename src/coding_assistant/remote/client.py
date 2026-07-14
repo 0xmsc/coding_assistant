@@ -5,13 +5,12 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
+from typing import Self
 
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
-from coding_assistant.core.session_updates import (
-    SessionUpdate,
-)
+from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.llm.types import BaseMessage
 from coding_assistant.remote.jsonrpc import (
     ACP_PROTOCOL_VERSION,
@@ -43,15 +42,15 @@ def _finish_title(metadata: object) -> str | None:
 
 
 @dataclass(frozen=True)
-class RemotePromptResult:
+class RemoteRunResult:
     stop_reason: str
     base_version: int
     messages: list[BaseMessage]
     title: str | None = None
 
 
-class RemoteSessionClient:
-    """One live JSON-RPC connection to a remote agent session endpoint."""
+class _JsonRpcClient:
+    """Shared JSON-RPC connection, request correlation, and update decoding."""
 
     def __init__(
         self,
@@ -68,7 +67,6 @@ class RemoteSessionClient:
         self._send_lock = asyncio.Lock()
         self._next_request_id = 1
         self._pending_requests: dict[int, asyncio.Future[JsonObject]] = {}
-        self._session_id: str | None = None
         self._fatal_error: str | None = None
         self._receive_task = asyncio.create_task(self._receive_loop())
 
@@ -80,7 +78,7 @@ class RemoteSessionClient:
         on_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
         on_disconnect: Callable[[str], Awaitable[None]] | None = None,
         auth_token: str | None = None,
-    ) -> RemoteSessionClient:
+    ) -> Self:
         headers = {"Authorization": f"Bearer {auth_token}"} if auth_token is not None else None
         websocket = await connect(endpoint, additional_headers=headers, max_size=WEBSOCKET_MAX_SIZE)
         return cls(
@@ -104,80 +102,19 @@ class RemoteSessionClient:
             },
         )
 
-    async def new_session(self, params: JsonObject | None = None) -> str:
-        result = await self._request(
-            "session/new",
-            params or {},
-        )
-        session_id = result.get("sessionId")
-        if not isinstance(session_id, str):
-            raise RuntimeError("session/new response did not include a sessionId.")
-        self._session_id = session_id
-        return session_id
-
-    async def start_session(self, params: JsonObject) -> str:
-        result = await self._request("_session/start", params)
-        session_id = result.get("sessionId")
-        if not isinstance(session_id, str):
-            raise RuntimeError("_session/start response did not include a sessionId.")
-        self._session_id = session_id
-        return session_id
-
-    async def prompt(self, prompt: str, *, session_id: str | None = None) -> RemotePromptResult:
-        return await self.prompt_blocks([text_block(prompt)], session_id=session_id)
-
-    async def prompt_blocks(
-        self,
-        prompt: list[JsonObject],
-        *,
-        session_id: str | None = None,
-    ) -> RemotePromptResult:
-        target_session_id = session_id or self._session_id
-        if target_session_id is None:
-            raise RuntimeError("Remote session is not initialized.")
-
-        result = await self._request(
-            "session/prompt",
-            {
-                "sessionId": target_session_id,
-                "prompt": prompt,
-            },
-        )
-        stop_reason = result.get("stopReason")
-        base_version = result.get("baseVersion")
-        messages = result.get("messages")
-        if (
-            not isinstance(stop_reason, str)
-            or not isinstance(base_version, int)
-            or not isinstance(messages, list)
-            or not all(isinstance(message, dict) for message in messages)
-        ):
-            raise RuntimeError("session/prompt response did not include a completed prompt result.")
-        return RemotePromptResult(
-            stop_reason=stop_reason,
-            base_version=base_version,
-            messages=messages_from_jsonrpc(messages),
-            title=_finish_title(result.get("_meta")),
-        )
-
-    async def cancel(self, *, session_id: str | None = None) -> None:
-        target_session_id = session_id or self._session_id
-        if target_session_id is None:
-            raise RuntimeError("Remote session is not initialized.")
-        async with self._send_lock:
-            await self._websocket.send(
-                jsonrpc_notification(
-                    "session/cancel",
-                    {
-                        "sessionId": target_session_id,
-                    },
-                ),
-            )
-
     async def close(self) -> None:
         await self._websocket.close()
         with suppress(asyncio.CancelledError):
             await self._receive_task
+
+    async def _cancel_session(self, session_id: str) -> None:
+        async with self._send_lock:
+            await self._websocket.send(
+                jsonrpc_notification(
+                    "session/cancel",
+                    {"sessionId": session_id},
+                ),
+            )
 
     def _next_id(self) -> int:
         request_id = self._next_request_id
@@ -225,21 +162,16 @@ class RemoteSessionClient:
                 await self._on_disconnect(self.endpoint)
 
     async def _handle_notification(self, payload: JsonObject) -> None:
-        method = payload.get("method")
-        if method != "session/update":
+        if payload.get("method") != "session/update":
             return
-
         params = payload.get("params", {})
         if not isinstance(params, dict):
             return
         update = params.get("update", {})
         if not isinstance(update, dict):
             return
-
         session_update = session_update_from_jsonrpc_update(update)
-        if session_update is None:
-            return
-        if self._on_update is not None:
+        if session_update is not None and self._on_update is not None:
             await self._on_update(session_update)
 
     async def _handle_response(self, payload: JsonObject) -> None:
@@ -255,11 +187,94 @@ class RemoteSessionClient:
             return
         if not isinstance(response_id, int):
             return
+        response_future = self._pending_requests.pop(response_id, None)
+        if response_future is None:
+            return
+        if isinstance(error, dict):
+            response_future.set_exception(RuntimeError(str(error.get("message", "Unknown remote protocol error."))))
+        else:
+            response_future.set_result(payload.get("result", {}))
 
-        response_future = self._pending_requests.pop(response_id) if response_id in self._pending_requests else None
-        if response_future is not None:
-            if isinstance(error, dict):
-                message = error.get("message", "Unknown remote protocol error.")
-                response_future.set_exception(RuntimeError(str(message)))
-            else:
-                response_future.set_result(payload.get("result", {}))
+
+class RemoteSessionClient(_JsonRpcClient):
+    """Client for observing and controlling one existing live session."""
+
+    def __init__(
+        self,
+        *,
+        endpoint: str,
+        websocket: ClientConnection,
+        on_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
+        on_disconnect: Callable[[str], Awaitable[None]] | None = None,
+    ) -> None:
+        super().__init__(
+            endpoint=endpoint,
+            websocket=websocket,
+            on_update=on_update,
+            on_disconnect=on_disconnect,
+        )
+        self._session_id: str | None = None
+
+    async def new_session(self, params: JsonObject | None = None) -> str:
+        result = await self._request("session/new", params or {})
+        session_id = result.get("sessionId")
+        if not isinstance(session_id, str):
+            raise RuntimeError("session/new response did not include a sessionId.")
+        self._session_id = session_id
+        return session_id
+
+    async def prompt(self, prompt: str, *, session_id: str | None = None) -> RemoteRunResult:
+        return await self.prompt_blocks([text_block(prompt)], session_id=session_id)
+
+    async def prompt_blocks(
+        self,
+        prompt: list[JsonObject],
+        *,
+        session_id: str | None = None,
+    ) -> RemoteRunResult:
+        target_session_id = session_id or self._session_id
+        if target_session_id is None:
+            raise RuntimeError("Remote session is not initialized.")
+        result = await self._request(
+            "session/prompt",
+            {"sessionId": target_session_id, "prompt": prompt},
+        )
+        return _run_result_from_jsonrpc(result, method="session/prompt")
+
+    async def cancel(self, *, session_id: str | None = None) -> None:
+        target_session_id = session_id or self._session_id
+        if target_session_id is None:
+            raise RuntimeError("Remote session is not initialized.")
+        await self._cancel_session(target_session_id)
+
+
+class WorkerClient(_JsonRpcClient):
+    """Client for one manager-owned, one-shot worker run."""
+
+    async def run(self, params: JsonObject) -> RemoteRunResult:
+        if not isinstance(params.get("sessionId"), str):
+            raise ValueError("_worker/run params must include sessionId.")
+        result = await self._request("_worker/run", params)
+        return _run_result_from_jsonrpc(result, method="_worker/run")
+
+    async def cancel(self, *, session_id: str) -> None:
+        await self._cancel_session(session_id)
+
+
+def _run_result_from_jsonrpc(result: JsonObject, *, method: str) -> RemoteRunResult:
+    stop_reason = result.get("stopReason")
+    base_version = result.get("baseVersion")
+    messages = result.get("messages")
+    if (
+        not isinstance(stop_reason, str)
+        or not isinstance(base_version, int)
+        or not isinstance(messages, list)
+        or not all(isinstance(message, dict) for message in messages)
+    ):
+        raise RuntimeError(f"{method} response did not include a completed run result.")
+    return RemoteRunResult(
+        stop_reason=stop_reason,
+        base_version=base_version,
+        messages=messages_from_jsonrpc(messages),
+        title=_finish_title(result.get("_meta")),
+    )

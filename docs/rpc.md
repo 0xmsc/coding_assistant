@@ -43,7 +43,7 @@ The application backend owns browser authentication. The manager owns canonical
 session state and worker lifecycle. Each active prompt runs in a temporary
 worker container with the session's managed workspace mounted at `/workspace`
 and session attachments mounted read-only at `/attachments`. Worker processes
-are one-shot and exit after returning the completed `session/prompt` result.
+are one-shot and exit after returning the completed `_worker/run` result.
 
 The CLI path remains direct:
 
@@ -280,7 +280,7 @@ turn.
 1. The manager starts a worker from history version `N`.
 2. The worker creates an in-memory `AgentSession`.
 3. The worker streams live `session/update` notifications.
-4. The worker returns the completed `session/prompt` result with `baseVersion: N`.
+4. The worker returns the completed `_worker/run` result with `baseVersion: N`.
 5. The manager atomically verifies `sessions.version == N`.
 6. The manager inserts committed messages and updates the session to version
    `N + 1`.
@@ -738,7 +738,7 @@ Response on cancellation:
 Only one active prompt may run per session. Different sessions may run
 concurrently. For each active prompt, the manager starts a temporary worker
 container. The worker receives the session history, runs tools inside
-`/workspace`, returns the completed prompt result, and exits normally.
+`/workspace`, returns the completed run result, and exits normally.
 
 Prompt blocks follow ACP-compatible content shapes where practical:
 
@@ -1096,19 +1096,18 @@ including rename, model changes, uploads, and prompt commits.
 
 ## Internal Worker Methods
 
-Manager-to-worker traffic uses the same JSON-RPC protocol family as external
-remote traffic. This is not a second protocol mode: the CLI-owned local remote
-endpoint and manager-controlled remote workers/subagents should share envelope
-parsing, request/response/error handling, content blocks, `session/update`
-serialization, and completed prompt results.
+Manager-to-worker traffic uses the same JSON-RPC framing and message/update
+serialization as external remote traffic, but it has a smaller lifecycle. A
+live endpoint exposes an existing session through `session/new`,
+`session/prompt`, and `session/cancel`. A one-shot worker accepts exactly one
+private `_worker/run` request and then exits. The two paths do not share a
+controller state machine.
 
-Private methods use the `_session/*` prefix only where the public session
-methods do not define the manager/worker operation, such as starting a worker
-from manager-owned state and completed-turn result semantics.
+### _worker/run
 
-### _session/start
-
-Starts a worker session from manager-owned state.
+Creates a worker session from manager-owned state, executes one run, and
+returns its completed result. The request remains pending while provisional
+`session/update` notifications stream on the same connection.
 
 Request params:
 
@@ -1118,10 +1117,11 @@ Request params:
 | `baseVersion` | integer | yes | History version used to start the worker session. |
 | `messages` | array | yes | Model-visible committed history from SQLite. |
 | `workspace` | string | yes | Worker workspace path, normally `/workspace`. |
+| `prompt` | array | yes | ACP-shaped content blocks for the run's initial prompt. |
 
-### Worker `session/prompt` result
+### `_worker/run` result
 
-The worker's response to `session/prompt` contains the completed turn that the
+The worker's response to `_worker/run` contains the completed run that the
 manager may commit. Streaming remains in `session/update` notifications sent
 before this response.
 

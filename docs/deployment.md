@@ -105,7 +105,7 @@ Workers run from `CODING_ASSISTANT_WORKER_IMAGE` and join
 session workspace is mounted at `/workspace`. Session attachments are mounted
 read-only at `/attachments`.
 
-Worker processes are one-shot. After returning the completed `session/prompt`
+Worker processes are one-shot. After returning the completed `_worker/run`
 result, the worker server exits normally and Docker removes the temporary
 container.
 

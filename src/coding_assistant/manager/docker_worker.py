@@ -12,7 +12,7 @@ from time import monotonic
 
 from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.manager.remote_worker import RemoteWorkerRunner
-from coding_assistant.manager.service import WorkerPrompt, WorkerRunFinished
+from coding_assistant.manager.service import WorkerPrompt, WorkerRunResult
 from coding_assistant.remote.client import RemoteSessionClient
 
 
@@ -65,7 +65,7 @@ class DockerWorkerRunner:
         *,
         prompt: WorkerPrompt,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
-    ) -> WorkerRunFinished:
+    ) -> WorkerRunResult:
         container_name = _container_name(prefix=self._config.container_prefix, session_id=prompt.session_id)
         endpoint = f"ws://{container_name}:{self._config.worker_port}"
         runner = RemoteWorkerRunner(endpoint=endpoint)
