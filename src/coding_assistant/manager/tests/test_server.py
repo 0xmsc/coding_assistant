@@ -1384,7 +1384,8 @@ async def test_manager_logs_prompt_request_errors(tmp_path: Path, caplog: pytest
             prompt: WorkerPrompt,
             on_update: Callable[[SessionUpdate], Awaitable[None]],
         ) -> WorkerRunResult:
-            del prompt, on_update
+            del prompt
+            await on_update(MessageDeltaUpdate(message_id="msg_partial", append_text="partial response"))
             raise RuntimeError("provider returned JSON instead of event-stream")
 
         async def cancel(self, *, session_id: str) -> None:
@@ -1413,11 +1414,25 @@ async def test_manager_logs_prompt_request_errors(tmp_path: Path, caplog: pytest
         for update in updates
     )
     assert any(
+        _update(update).get("sessionUpdate") == "message_delta"
+        and _update(update).get("appendText") == "partial response"
+        for update in updates
+    )
+    assert any(
         _update(update).get("sessionUpdate") == "run_updated"
         and isinstance(_update(update).get("run"), dict)
         and _update(update)["run"].get("status") == "failed"
         for update in updates
     )
+    update_payloads = [_update(update) for update in updates]
+    reset_index = next(
+        index for index, update in enumerate(update_payloads) if update.get("sessionUpdate") == "history_reset"
+    )
+    assert _normalized_updates(update_payloads[reset_index:]) == [
+        {"sessionUpdate": "history_reset"},
+        {"sessionUpdate": "message_added", "messageId": "message-0", "message": {"role": "system"}},
+        {"sessionUpdate": "history_complete", "version": 0},
+    ]
     assert response["error"]["message"] == "provider returned JSON instead of event-stream"
     assert f"Manager prompt request failed for session {session_id}." in caplog.text
     assert "provider returned JSON instead of event-stream" in caplog.text
