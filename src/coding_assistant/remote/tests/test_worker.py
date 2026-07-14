@@ -12,6 +12,8 @@ from websockets.asyncio.client import ClientConnection, connect
 from coding_assistant.cli.ui import _run_output
 from coding_assistant.core.agent_session import (
     AgentSession,
+    AssistantMessageCompletedEvent,
+    AssistantMessageDeltaEvent,
     PromptStartedEvent,
 )
 from coding_assistant.llm.types import (
@@ -248,7 +250,7 @@ async def test__run_output_renders_system_message_and_streamed_content() -> None
         task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:
             await asyncio.sleep(0)
-            assert await session.enqueue_prompt("Hi") is True
+            assert await session.enqueue_prompt("Hi") is not None
 
             while session.state.running or session.state.pending_prompts:
                 await asyncio.sleep(0)
@@ -320,8 +322,15 @@ async def test__run_output_prints_tool_calls_without_extra_spacing() -> None:
         task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:
             await asyncio.sleep(0)
-            session._publish_event(ContentDeltaEvent(content="Can you read README.md?"))
-            session._publish_event(CompletionEvent(completion=Completion(message=tool_call_message)))
+            session._publish_event(
+                AssistantMessageDeltaEvent(message_id="message-1", content="Can you read README.md?"),
+            )
+            session._publish_event(
+                AssistantMessageCompletedEvent(
+                    message_id="message-1",
+                    completion=Completion(message=tool_call_message),
+                ),
+            )
             await asyncio.sleep(0)
         finally:
             task.cancel()
@@ -382,7 +391,7 @@ async def test__run_output_prints_reasoning_deltas_before_content() -> None:
         try:
             await asyncio.sleep(0)
             session._publish_event(ReasoningDeltaEvent(content="Thinking"))
-            session._publish_event(ContentDeltaEvent(content="Answer"))
+            session._publish_event(AssistantMessageDeltaEvent(message_id="message-1", content="Answer"))
             await asyncio.sleep(0)
         finally:
             task.cancel()
@@ -455,7 +464,7 @@ async def test_worker_server_rejects_busy_acp_prompt_turn() -> None:
     session = make_agent_session(completion_streamer=streamer)
 
     try:
-        assert await session.enqueue_prompt("Already busy") is True
+        assert await session.enqueue_prompt("Already busy") is not None
         await asyncio.wait_for(streamer.started.wait(), timeout=1)
 
         async with start_worker_server(session=session) as worker_server:

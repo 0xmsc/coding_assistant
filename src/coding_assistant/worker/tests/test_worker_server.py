@@ -140,57 +140,39 @@ async def _initialize(websocket: ClientConnection) -> None:
     assert response["result"]["protocolVersion"] == ACP_PROTOCOL_VERSION
 
 
-async def _start_session(
-    websocket: ClientConnection,
+def _run_params(
     *,
     workspace: str,
     messages: list[BaseMessage] | None = None,
-    request_id: int = 2,
-) -> str:
-    await websocket.send(
-        jsonrpc_request(
-            request_id,
-            "_session/start",
-            {
-                "sessionId": "sess_test",
-                "baseVersion": 7,
-                "messages": messages_to_jsonrpc(messages or [SystemMessage(content="system")]),
-                "workspace": workspace,
-                "config": {"model": "test-model"},
-            },
-        ),
-    )
-    response = parse_jsonrpc_message(await websocket.recv())
-    session_id = response["result"]["sessionId"]
-    assert isinstance(session_id, str)
-    return session_id
+    prompt: str = "Do it",
+) -> dict[str, Any]:
+    return {
+        "sessionId": "sess_test",
+        "baseVersion": 7,
+        "messages": messages_to_jsonrpc(messages or [SystemMessage(content="system")]),
+        "workspace": workspace,
+        "prompt": [text_block(prompt)],
+    }
 
 
 @pytest.mark.asyncio
-async def test_worker_starts_session_from_manager_state(tmp_path: Path) -> None:
-    runtime = WorkerRuntimeConfig(model="test-model", tools=[], completion_streamer=ScriptedStreamer([]))
+async def test_worker_accepts_exactly_one_run(tmp_path: Path) -> None:
+    streamer = BlockingStreamer()
+    runtime = WorkerRuntimeConfig(model="test-model", tools=[], completion_streamer=streamer)
 
     async with start_session_worker_server(runtime=runtime) as server:
-        async with connect(server.endpoint) as websocket:
+        async with connect(server.endpoint) as websocket, connect(server.endpoint) as second_websocket:
             await _initialize(websocket)
-            session_id = await _start_session(websocket, workspace=str(tmp_path))
-
+            await _initialize(second_websocket)
             await websocket.send(
-                jsonrpc_request(
-                    3,
-                    "_session/start",
-                    {
-                        "sessionId": "sess_other",
-                        "baseVersion": 0,
-                        "messages": [],
-                        "workspace": str(tmp_path),
-                    },
-                ),
+                jsonrpc_request(2, "_worker/run", _run_params(workspace=str(tmp_path))),
             )
-            second_start = parse_jsonrpc_message(await websocket.recv())
+            await asyncio.wait_for(streamer.started.wait(), timeout=1)
+            await second_websocket.send(jsonrpc_request(2, "_worker/run", _run_params(workspace=str(tmp_path))))
+            second_run = parse_jsonrpc_message(await second_websocket.recv())
+            streamer.release.set()
 
-    assert session_id == "sess_test"
-    assert second_start["error"]["message"] == "Worker session is already started."
+    assert second_run["error"]["message"] == "Worker already has a run."
 
 
 @pytest.mark.asyncio
@@ -205,10 +187,8 @@ async def test_worker_prompt_streams_updates_and_returns_result(tmp_path: Path) 
     async with start_session_worker_server(runtime=runtime) as server:
         async with connect(server.endpoint) as websocket:
             await _initialize(websocket)
-            session_id = await _start_session(websocket, workspace=str(tmp_path))
-
             await websocket.send(
-                jsonrpc_request(3, "session/prompt", {"sessionId": session_id, "prompt": [text_block("Do it")]}),
+                jsonrpc_request(2, "_worker/run", _run_params(workspace=str(tmp_path))),
             )
             updates: list[dict[str, Any]] = []
             response: dict[str, Any] | None = None
@@ -241,13 +221,11 @@ async def test_worker_cancel_returns_cancelled_result(tmp_path: Path) -> None:
     async with start_session_worker_server(runtime=runtime) as server:
         async with connect(server.endpoint) as websocket:
             await _initialize(websocket)
-            session_id = await _start_session(websocket, workspace=str(tmp_path))
-
             await websocket.send(
-                jsonrpc_request(3, "session/prompt", {"sessionId": session_id, "prompt": [text_block("Do it")]}),
+                jsonrpc_request(2, "_worker/run", _run_params(workspace=str(tmp_path))),
             )
             await asyncio.wait_for(streamer.started.wait(), timeout=1)
-            await websocket.send(jsonrpc_request(4, "session/cancel", {"sessionId": session_id}))
+            await websocket.send(jsonrpc_request(3, "session/cancel", {"sessionId": "sess_test"}))
             cancel_response = parse_jsonrpc_message(await websocket.recv())
             prompt_response = parse_jsonrpc_message(await websocket.recv())
 
@@ -282,10 +260,8 @@ async def test_worker_streams_tool_messages_before_final_answer(tmp_path: Path) 
     async with start_session_worker_server(runtime=runtime) as server:
         async with connect(server.endpoint) as websocket:
             await _initialize(websocket)
-            session_id = await _start_session(websocket, workspace=str(tmp_path))
-
             await websocket.send(
-                jsonrpc_request(3, "session/prompt", {"sessionId": session_id, "prompt": [text_block("Use tool")]}),
+                jsonrpc_request(2, "_worker/run", _run_params(workspace=str(tmp_path), prompt="Use tool")),
             )
 
             messages: list[dict[str, Any]] = []
@@ -293,7 +269,7 @@ async def test_worker_streams_tool_messages_before_final_answer(tmp_path: Path) 
             while response is None:
                 payload = parse_jsonrpc_message(await websocket.recv())
                 messages.append(payload)
-                if payload.get("id") == 3:
+                if payload.get("id") == 2:
                     response = payload
 
     updates = [message["params"]["update"] for message in messages if message.get("method") == "session/update"]
@@ -338,21 +314,27 @@ async def test_worker_streams_tool_messages_before_final_answer(tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-async def test_worker_rejects_prompt_before_start_and_wrong_session_id(tmp_path: Path) -> None:
+async def test_worker_requires_initialize_and_valid_run_params(tmp_path: Path) -> None:
     runtime = WorkerRuntimeConfig(model="test-model", tools=[], completion_streamer=ScriptedStreamer([]))
 
     async with start_session_worker_server(runtime=runtime) as server:
         async with connect(server.endpoint) as websocket:
-            await _initialize(websocket)
             await websocket.send(
-                jsonrpc_request(2, "session/prompt", {"sessionId": "sess_test", "prompt": [text_block("bad")]}),
+                jsonrpc_request(1, "_worker/run", _run_params(workspace=str(tmp_path))),
             )
-            before_start = parse_jsonrpc_message(await websocket.recv())
-            await _start_session(websocket, workspace=str(tmp_path), request_id=3)
+            before_initialize = parse_jsonrpc_message(await websocket.recv())
             await websocket.send(
-                jsonrpc_request(4, "session/prompt", {"sessionId": "sess_other", "prompt": [text_block("bad")]}),
+                jsonrpc_request(
+                    2,
+                    "initialize",
+                    {"protocolVersion": ACP_PROTOCOL_VERSION},
+                ),
             )
-            wrong_session = parse_jsonrpc_message(await websocket.recv())
+            parse_jsonrpc_message(await websocket.recv())
+            invalid_params = _run_params(workspace=str(tmp_path))
+            del invalid_params["prompt"]
+            await websocket.send(jsonrpc_request(3, "_worker/run", invalid_params))
+            invalid_run = parse_jsonrpc_message(await websocket.recv())
 
-    assert before_start["error"]["message"] == "_session/start must be called first."
-    assert wrong_session["error"]["message"] == "Unknown sessionId."
+    assert before_initialize["error"]["message"] == "initialize must be called first."
+    assert invalid_run["error"]["message"] == "_worker/run requires a prompt array."

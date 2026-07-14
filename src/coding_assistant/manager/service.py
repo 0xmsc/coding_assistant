@@ -94,7 +94,7 @@ class WorkerPrompt:
 
 
 @dataclass(frozen=True)
-class WorkerRunFinished:
+class WorkerRunResult:
     stop_reason: str
     messages: list[BaseMessage] = field(default_factory=list)
     title: str | None = None
@@ -118,7 +118,7 @@ class WorkerRunner(Protocol):
         *,
         prompt: WorkerPrompt,
         on_update: Callable[[SessionUpdate], Awaitable[None]],
-    ) -> WorkerRunFinished: ...
+    ) -> WorkerRunResult: ...
 
     async def cancel(self, *, session_id: str) -> None: ...
 

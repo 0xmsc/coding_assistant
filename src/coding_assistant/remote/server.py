@@ -10,7 +10,7 @@ from websockets.asyncio.server import ServerConnection
 
 from coding_assistant.core.agent_session import AgentSession
 from coding_assistant.remote.jsonrpc import ERROR_SERVER, JsonObject, jsonrpc_error
-from coding_assistant.remote.control import RemoteAgentController, RemoteAgentInfo, RemoteControlledSession
+from coding_assistant.remote.control import RemoteAgentController, RemoteAgentInfo
 from coding_assistant.remote.websocket_server import receive_jsonrpc_messages, serve_jsonrpc_websocket
 
 
@@ -45,12 +45,8 @@ async def start_worker_server(
 
         controller = RemoteAgentController(
             agent_info=RemoteAgentInfo(name="coding-assistant", title="Coding Assistant"),
-            controlled_session=RemoteControlledSession(
-                session_id=session_id,
-                session=session,
-                base_message_count=len(session.history),
-            ),
-            supports_session_new=True,
+            session_id=session_id,
+            session=session,
             busy_message="Session is busy. Wait for the current turn or cancel it.",
         )
         sender_task = asyncio.create_task(controller.publish_session_events(websocket=websocket))
@@ -64,6 +60,7 @@ async def start_worker_server(
             sender_task.cancel()
             with suppress(asyncio.CancelledError):
                 await sender_task
+            await controller.close()
             async with connection_lock:
                 if active_connection is websocket:
                     active_connection = None

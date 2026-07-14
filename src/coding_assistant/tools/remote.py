@@ -17,7 +17,6 @@ from coding_assistant.remote.registry import discover_remote_instances
 class WorkerSnapshot:
     worker_id: int
     endpoint: str
-    running: bool = False
     last_update: str = ""
     last_content: str = ""
     last_message_id: str | None = None
@@ -59,7 +58,7 @@ class _WorkerManager:
         for worker_id, snapshot in sorted(self._snapshots.items()):
             if worker_id not in self._connections:
                 continue
-            status = "running" if snapshot.running else "connected"
+            status = "running" if not self._worker_is_idle(worker_id) else "connected"
             suffix = f" -> {snapshot.last_update}" if snapshot.last_update else ""
             lines.append(f"- remote {worker_id} at {snapshot.endpoint} [{status}]{suffix}")
         return "\n".join(lines)
@@ -123,10 +122,9 @@ class _WorkerManager:
             return f"Remote {worker_id} is not connected."
 
         snapshot = self._snapshot_for_worker(worker_id)
-        if snapshot.running:
+        if not self._worker_is_idle(worker_id):
             return f"Remote {worker_id} rejected the prompt: This remote connection already has an active prompt turn."
 
-        snapshot.running = True
         snapshot.last_content = ""
         snapshot.last_message_id = None
         snapshot.last_update = f"Prompt submitted: {_format_prompt_preview(prompt)}"
@@ -180,7 +178,6 @@ class _WorkerManager:
             snapshot = self._snapshots.get(worker_id)
             if snapshot is None:
                 return
-            snapshot.running = False
             if result.stop_reason == "cancelled":
                 snapshot.last_content = ""
                 snapshot.last_message_id = None
@@ -208,7 +205,6 @@ class _WorkerManager:
             snapshot = self._snapshots.get(worker_id)
             if snapshot is None:
                 return
-            snapshot.running = False
             snapshot.last_content = ""
             snapshot.last_message_id = None
             snapshot.last_update = f"Run failed: {exc}"
@@ -227,7 +223,6 @@ class _WorkerManager:
     async def _handle_update(self, worker_id: int, update: SessionUpdate) -> None:
         snapshot = self._snapshot_for_worker(worker_id)
         if isinstance(update, MessageDeltaUpdate):
-            snapshot.running = True
             if snapshot.last_message_id != update.message_id:
                 snapshot.last_content = ""
                 snapshot.last_message_id = update.message_id
@@ -239,7 +234,6 @@ class _WorkerManager:
             return
         content = content_text(update.message.content)
         if content is not None:
-            snapshot.running = True
             snapshot.last_message_id = update.message_id
             snapshot.last_content = content
             snapshot.last_update = content.strip()
@@ -284,10 +278,8 @@ class _WorkerManager:
         return snapshot
 
     def _worker_is_idle(self, worker_id: int) -> bool:
-        snapshot = self._snapshots.get(worker_id)
-        if snapshot is None:
-            return True
-        return not snapshot.running
+        task = self._prompt_tasks.get(worker_id)
+        return task is None or task.done()
 
 
 class WorkerToolRuntime:

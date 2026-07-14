@@ -24,7 +24,7 @@ from coding_assistant.manager.service import (
     ManagerError,
     ManagerService,
     WorkerPrompt,
-    WorkerRunFinished,
+    WorkerRunResult,
     WorkerRunner,
 )
 from coding_assistant.manager.tests.fakes import FakeWorkerRunner
@@ -1383,7 +1383,7 @@ async def test_manager_logs_prompt_request_errors(tmp_path: Path, caplog: pytest
             *,
             prompt: WorkerPrompt,
             on_update: Callable[[SessionUpdate], Awaitable[None]],
-        ) -> WorkerRunFinished:
+        ) -> WorkerRunResult:
             del prompt, on_update
             raise RuntimeError("provider returned JSON instead of event-stream")
 
@@ -1588,7 +1588,7 @@ async def test_manager_persists_live_tool_messages(tmp_path: Path) -> None:
             *,
             prompt: WorkerPrompt,
             on_update: Callable[[SessionUpdate], Awaitable[None]],
-        ) -> WorkerRunFinished:
+        ) -> WorkerRunResult:
             tool_call = ToolCall(
                 id="call-1",
                 function=FunctionCall(name="load_image", arguments='{"path": "/attachments/att_1-meal.png"}'),
@@ -1607,7 +1607,7 @@ async def test_manager_persists_live_tool_messages(tmp_path: Path) -> None:
             await on_update(MessageAddedUpdate(message_id="tool_result", message=tool_message))
             await on_update(MessageDeltaUpdate(message_id="msg_worker", append_text="done"))
             await on_update(MessageAddedUpdate(message_id="msg_worker", message=final_message))
-            return WorkerRunFinished(
+            return WorkerRunResult(
                 stop_reason="end_turn",
                 messages=[
                     UserMessage(content=prompt_content_from_acp(prompt.prompt)),

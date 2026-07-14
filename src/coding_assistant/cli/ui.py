@@ -39,6 +39,8 @@ from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.core.agent_session import (
     AgentSession,
     AgentSessionEvent,
+    AssistantMessageCompletedEvent,
+    AssistantMessageDeltaEvent,
     PromptStartedEvent,
     RunCancelledEvent,
     RunFailedEvent,
@@ -46,8 +48,6 @@ from coding_assistant.core.agent_session import (
 )
 from coding_assistant.infra.paths import get_app_cache_dir
 from coding_assistant.llm.types import (
-    ContentDeltaEvent,
-    CompletionEvent,
     ModelRetryEvent,
     ReasoningDeltaEvent,
     StatusEvent,
@@ -320,7 +320,7 @@ def _render_agent_event(
     renderer: StreamRenderer,
     printed_tool_call_messages: set[int],
 ) -> None:
-    if isinstance(event, ContentDeltaEvent):
+    if isinstance(event, AssistantMessageDeltaEvent):
         renderer.on_content_delta(event.content)
         return
     if isinstance(event, ReasoningDeltaEvent):
@@ -330,7 +330,7 @@ def _render_agent_event(
         renderer.finish()
         print_active_prompt(event.content)
         return
-    if isinstance(event, CompletionEvent) and event.completion.message.tool_calls:
+    if isinstance(event, AssistantMessageCompletedEvent) and event.completion.message.tool_calls:
         message = event.completion.message
         message_id = id(message)
         if message_id in printed_tool_call_messages:

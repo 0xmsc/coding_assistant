@@ -262,6 +262,33 @@ async def test_worker_runtime_rejects_prompt_while_worker_is_busy() -> None:
 
 
 @pytest.mark.asyncio
+async def test_observed_local_run_does_not_claim_the_remote_connections_prompt_slot() -> None:
+    streamer = ControlledStreamer(
+        [
+            StreamStep(message=AssistantMessage(content="Local result")),
+            StreamStep(message=AssistantMessage(content="Remote result")),
+        ],
+    )
+    session = make_agent_session(completion_streamer=streamer)
+    worker_runtime = WorkerToolRuntime()
+
+    async with start_worker_server(session=session) as worker_server:
+        await worker_runtime.connect(worker_server.endpoint)
+
+        local_run = await session.enqueue_prompt("local")
+        assert local_run is not None
+        await asyncio.wait_for(local_run.completion, timeout=1)
+        await asyncio.wait_for(_wait_for_worker_update(worker_runtime, "Local result"), timeout=1)
+
+        prompt_result = await worker_runtime.prompt(1, "remote")
+        assert prompt_result == "Prompt submitted to remote 1.\nremote"
+        assert await asyncio.wait_for(worker_runtime.wait(1), timeout=1) == "Remote 1 finished:\nRemote result"
+
+    await worker_runtime.close()
+    await session.close()
+
+
+@pytest.mark.asyncio
 async def test_worker_runtime_can_cancel_current_run() -> None:
     first_started = asyncio.Event()
     never_release = asyncio.Event()
