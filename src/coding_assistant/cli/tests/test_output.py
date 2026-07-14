@@ -89,6 +89,13 @@ class TestParagraphBuffer:
         paragraphs = buffer.push(content)
         assert paragraphs == ["First line\nSecond line"]
 
+    def test_respects_code_fences(self) -> None:
+        buffer = ParagraphBuffer()
+
+        assert buffer.push("Before\n\n```python\nprint('hi')") == ["Before"]
+        assert buffer.push("\n\nprint('bye')\n```\n\nAfter") == ["```python\nprint('hi')\n\nprint('bye')\n```"]
+        assert buffer.flush() == "After"
+
 
 # =============================================================================
 # DeltaRenderer Tests
@@ -171,6 +178,17 @@ class TestDeltaRenderer:
         assert mock_print.call_args_list[0].args == ()
         assert mock_print.call_args_list[1].kwargs == {}
         assert mock_print.call_args_list[1].args[0].style == "dim"
+
+    def test_finish_is_idempotent(self) -> None:
+        renderer = DeltaRenderer()
+
+        with patch("coding_assistant.cli.output.rich_print") as mock_print:
+            renderer.on_delta("Hello")
+            renderer.finish()
+            renderer.finish()
+
+        markdown_calls = [call for call in mock_print.call_args_list if call.args and hasattr(call.args[0], "markup")]
+        assert [call.args[0].markup for call in markdown_calls] == ["Hello"]
 
 
 class TestStreamRenderer:
@@ -363,13 +381,31 @@ class TestOutputIntegration:
         """Tool calls should print in simple one-liner format."""
         tool_call = ToolCall(
             id="1",
-            function=FunctionCall(name="python_execute", arguments='{"code": "print(1)"}'),
+            function=FunctionCall(name="shell_execute", arguments='{"command": "uv run script.py"}'),
         )
         message = AssistantMessage(tool_calls=[tool_call])
         output = _capture_output(lambda: print_tool_calls(message))
-        assert "python_execute" in output
-        assert "code" in output
+        assert "shell_execute" in output
+        assert "command" in output
         assert "▶" in output
+
+    def test_renderer_avoids_double_spacing_before_tool_calls(self) -> None:
+        renderer = DeltaRenderer()
+        message = AssistantMessage(
+            tool_calls=[
+                ToolCall(
+                    id="call-1",
+                    function=FunctionCall(name="shell_execute", arguments='{"command": "cat README.md"}'),
+                ),
+            ],
+        )
+
+        with patch("coding_assistant.cli.output.rich_print") as mock_print:
+            renderer.on_delta("Can you read README.md?")
+            renderer.finish()
+            print_tool_calls(message)
+
+        assert len(mock_print.call_args_list) == 4
 
 
 # =============================================================================

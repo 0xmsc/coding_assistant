@@ -37,7 +37,7 @@ def _latest_assistant_summary(messages: list[BaseMessage]) -> str:
     return ""
 
 
-class _WorkerManager:
+class WorkerToolRuntime:
     """Track active supervisor-side connections to other workers."""
 
     def __init__(self) -> None:
@@ -49,6 +49,7 @@ class _WorkerManager:
         self._connecting_worker_ids: set[int] = set()
         self._next_worker_id = 1
         self._any_queue: asyncio.Queue[WorkerMeaningfulEvent] = asyncio.Queue()
+        self.tools = _create_worker_tools(runtime=self)
 
     def format_connected_workers(self) -> str:
         if not self._connections:
@@ -280,41 +281,6 @@ class _WorkerManager:
     def _worker_is_idle(self, worker_id: int) -> bool:
         task = self._prompt_tasks.get(worker_id)
         return task is None or task.done()
-
-
-class WorkerToolRuntime:
-    """Remote-tool runtime that hides connection management for remote sessions."""
-
-    def __init__(self) -> None:
-        self._manager = _WorkerManager()
-        self.tools = _create_worker_tools(runtime=self)
-
-    def format_connected_workers(self) -> str:
-        return self._manager.format_connected_workers()
-
-    async def connect(self, endpoint: str) -> str:
-        return await self._manager.connect(endpoint)
-
-    def discover(self) -> str:
-        return self._manager.discover()
-
-    async def disconnect(self, worker_id: int) -> str:
-        return await self._manager.disconnect(worker_id)
-
-    async def prompt(self, worker_id: int, prompt: str) -> str:
-        return await self._manager.prompt(worker_id, prompt)
-
-    async def cancel(self, worker_id: int) -> str:
-        return await self._manager.cancel(worker_id)
-
-    async def wait(self, worker_id: int) -> str:
-        return await self._manager.wait(worker_id)
-
-    async def wait_any(self) -> str:
-        return await self._manager.wait_any()
-
-    async def close(self) -> None:
-        await self._manager.close()
 
 
 def _format_prompt_preview(content: str | list[dict[str, Any]]) -> str:

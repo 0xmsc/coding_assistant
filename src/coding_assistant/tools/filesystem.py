@@ -4,7 +4,6 @@ import difflib
 from pathlib import Path
 from typing import Any
 
-import aiofiles
 from pydantic import BaseModel, Field
 
 from coding_assistant.llm.types import TextToolResult, Tool
@@ -70,8 +69,7 @@ async def write_file(path: Path, content: str) -> str:
     """Overwrite or create a file with the given content."""
     expanded_path = path.expanduser()
     expanded_path.parent.mkdir(parents=True, exist_ok=True)
-    async with aiofiles.open(expanded_path, "w", encoding="utf-8") as file_handle:
-        await file_handle.write(content)
+    expanded_path.write_text(content, encoding="utf-8")
 
     return f"Successfully wrote file {expanded_path}"
 
@@ -79,8 +77,7 @@ async def write_file(path: Path, content: str) -> str:
 async def edit_file(path: Path, old_text: str, new_text: str, replace_all: bool = False) -> str:
     """Apply one validated text replacement to a file and return a clear diff summary."""
     expanded_path = path.expanduser()
-    async with aiofiles.open(expanded_path, "r", encoding="utf-8") as file_handle:
-        original = await file_handle.read()
+    original = expanded_path.read_text(encoding="utf-8")
 
     count = original.count(old_text)
     if count == 0:
@@ -91,8 +88,7 @@ async def edit_file(path: Path, old_text: str, new_text: str, replace_all: bool 
     replace_count = -1 if replace_all else 1
     updated = original.replace(old_text, new_text, replace_count)
 
-    async with aiofiles.open(expanded_path, "w", encoding="utf-8") as file_handle:
-        await file_handle.write(updated)
+    expanded_path.write_text(updated, encoding="utf-8")
 
     # Generate summary
     summary = _format_edit_summary(expanded_path, old_text, new_text, replace_all, count)

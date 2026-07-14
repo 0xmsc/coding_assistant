@@ -8,10 +8,9 @@ from coding_assistant.infra.paths import get_builtin_instructions_dir, get_built
 from coding_assistant.llm.types import Tool
 from coding_assistant.tools.filesystem import create_filesystem_tools
 from coding_assistant.tools.load_image import create_load_image_tools
-from coding_assistant.tools.python import create_python_tools
 from coding_assistant.tools.session_title import SessionTitleState, create_session_title_tools
 from coding_assistant.tools.shell import create_shell_tools
-from coding_assistant.tools.skills import create_skill_tools, format_skills_instructions
+from coding_assistant.tools.skills import Skill, create_skill_tools, format_instructions_with_skills, load_skills
 from coding_assistant.tools.tasks import TaskManager, create_task_tools
 
 
@@ -33,6 +32,13 @@ def load_tool_instructions() -> str:
     return (get_builtin_instructions_dir() / "worker_tools.md").read_text(encoding="utf-8").strip()
 
 
+def load_worker_tool_context(*, skills_directories: Sequence[Path]) -> tuple[list[Skill], str]:
+    """Load worker skills and the instruction text that describes them."""
+    skills = load_skills(skills_directories=[get_builtin_skills_dir(), *skills_directories])
+    instructions = format_instructions_with_skills(instructions=load_tool_instructions(), skills=skills)
+    return skills, instructions
+
+
 def create_worker_tool_bundle(
     *,
     workspace: Path,
@@ -44,15 +50,11 @@ def create_worker_tool_bundle(
     session_title_state = SessionTitleState()
     tool_process_env = process_env or {}
 
-    skill_tools, skills = create_skill_tools(skills_directories=[get_builtin_skills_dir(), *skills_directories])
-    instructions = load_tool_instructions()
-    skill_instructions = format_skills_instructions(skills)
-    if skill_instructions:
-        instructions = f"{instructions}\n\n{skill_instructions}"
+    skills, instructions = load_worker_tool_context(skills_directories=skills_directories)
+    skill_tools = create_skill_tools(skills=skills)
 
     tools: list[Tool] = [
         *create_shell_tools(manager=task_manager, process_env=tool_process_env),
-        *create_python_tools(manager=task_manager, process_env=tool_process_env),
         *create_filesystem_tools(),
         *create_load_image_tools(workspace=workspace),
         *create_session_title_tools(state=session_title_state),

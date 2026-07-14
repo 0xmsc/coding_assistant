@@ -19,7 +19,6 @@ def test_create_worker_tool_bundle_excludes_cli_remote_tools() -> None:
         "skills_list_resources",
         "skills_read",
         "shell_execute",
-        "python_execute",
         "filesystem_write_file",
         "filesystem_edit_file",
         "load_image",

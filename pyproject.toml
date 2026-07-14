@@ -8,7 +8,6 @@ license = "MIT"
 authors = []
 dependencies = [
     "rich",
-    "requests",
     "pydantic",
     "debugpy",
     "prompt-toolkit",
@@ -17,7 +16,6 @@ dependencies = [
     "json5",
     "httpx",
     "httpx-sse",
-    "aiofiles",
     "python-frontmatter",
     "Pillow",
     "websockets",
@@ -34,8 +32,6 @@ dev = [
     "pytest-timeout",
     "mypy",
     "ruff",
-    "types-requests",
-    "types-aiofiles",
     "pytest-cov",
 ]
 

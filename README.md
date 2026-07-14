@@ -4,7 +4,7 @@ Coding Assistant is a Python-based CLI for coding workflows. It combines a strea
 
 ## Key Features
 
-- Built-in local shell, Python, filesystem, TODO, and background-task tools.
+- Built-in local shell, filesystem, TODO, and background-task tools.
 - Support for external MCP servers over stdio or SSE.
 - Prompt-toolkit powered interactive CLI.
 - Bundled default instructions and skills, plus optional extra skill directories.
@@ -113,7 +113,6 @@ coding-assistant \
 The default CLI includes these local tools:
 
 - `shell_execute` for running shell commands.
-- `python_execute` for running Python snippets.
 - `filesystem_write_file` and `filesystem_edit_file` for targeted file changes.
 - `tasks_list_tasks`, `tasks_get_status`, `tasks_get_output`, `tasks_kill_task`, and `tasks_remove_task` for background task management.
 
@@ -159,7 +158,7 @@ See [docs/sandboxing.md](docs/sandboxing.md) for a minimal `bubblewrap` example.
 
 ## Shell And Python Tool Behavior
 
-The built-in `shell_execute` and `python_execute` tools:
+The built-in `shell_execute` tool:
 
 - support multi-line scripts,
 - merge stderr into stdout,
@@ -167,6 +166,8 @@ The built-in `shell_execute` and `python_execute` tools:
 - support `truncate_at` to limit output size,
 - support `timeout` with a default of 30 seconds,
 - can hand long-running work off to the background task manager.
+
+Python scripts can be run through `shell_execute` with `uv run`.
 
 Interactive terminal programs such as `git rebase -i` are not supported.
 

@@ -4,7 +4,6 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
-from pathlib import Path
 
 from websockets.asyncio.server import ServerConnection
 from websockets.exceptions import ConnectionClosed
@@ -23,7 +22,6 @@ from coding_assistant.remote.jsonrpc import (
     ERROR_METHOD_NOT_FOUND,
     ERROR_SERVER,
     JsonObject,
-    initialize_response,
     jsonrpc_error,
     jsonrpc_result,
     params_from_payload,
@@ -54,27 +52,9 @@ class WorkerRuntimeConfig:
 
 @dataclass
 class _WorkerConnectionState:
-    initialized: bool = False
     session_id: str | None = None
     session: AgentSession | None = None
     run_task: asyncio.Task[None] | None = None
-
-
-def _base_version_from_params(params: JsonObject) -> int:
-    base_version = params.get("baseVersion")
-    if not isinstance(base_version, int):
-        raise ValueError("_worker/run requires integer baseVersion.")
-    return base_version
-
-
-def _workspace_from_params(params: JsonObject) -> Path:
-    workspace = params.get("workspace")
-    if not isinstance(workspace, str) or not workspace:
-        raise ValueError("_worker/run requires workspace.")
-    path = Path(workspace)
-    if not path.is_dir():
-        raise ValueError(f"Workspace does not exist: {workspace}")
-    return path
 
 
 def _messages_from_params(params: JsonObject) -> list[BaseMessage]:
@@ -113,7 +93,6 @@ async def _execute_run(
     websocket: ServerConnection,
     response_id: int | str,
     session_id: str,
-    base_version: int,
     prompt: str | list[JsonObject],
     session: AgentSession,
     runtime: WorkerRuntimeConfig,
@@ -137,7 +116,7 @@ async def _execute_run(
             await websocket.send(
                 jsonrpc_result(
                     response_id,
-                    completed_run_result(base_version=base_version, outcome=outcome, metadata=metadata),
+                    completed_run_result(outcome=outcome, metadata=metadata),
                 ),
             )
     except ConnectionClosed:
@@ -148,35 +127,6 @@ async def _execute_run(
             await asyncio.gather(sender_task, return_exceptions=True)
         await session.close()
         finished.set()
-
-
-async def _handle_initialize(
-    *,
-    websocket: ServerConnection,
-    response_id: int | str | None,
-    params: JsonObject,
-    state: _WorkerConnectionState,
-) -> None:
-    if response_id is None:
-        await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "initialize must be a request."))
-        return
-    protocol_version = params.get("protocolVersion")
-    if not isinstance(protocol_version, int):
-        await websocket.send(
-            jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "initialize requires an integer protocolVersion."),
-        )
-        return
-    state.initialized = True
-    await websocket.send(
-        jsonrpc_result(
-            response_id,
-            initialize_response(
-                requested_protocol_version=protocol_version,
-                agent_name="coding-assistant-worker",
-                agent_title="Coding Assistant Worker",
-            ),
-        ),
-    )
 
 
 async def _handle_run(
@@ -194,8 +144,6 @@ async def _handle_run(
         return
     try:
         session_id = session_id_from_params(params)
-        base_version = _base_version_from_params(params)
-        _workspace_from_params(params)
         messages = _messages_from_params(params)
         prompt = _prompt_from_params(params)
     except ValueError as exc:
@@ -218,7 +166,6 @@ async def _handle_run(
             websocket=websocket,
             response_id=response_id,
             session_id=session_id,
-            base_version=base_version,
             prompt=prompt,
             session=session,
             runtime=runtime,
@@ -277,19 +224,6 @@ async def start_session_worker_server(
                 return
             try:
                 params = params_from_payload(payload)
-                if method == "initialize":
-                    await _handle_initialize(
-                        websocket=websocket,
-                        response_id=response_id,
-                        params=params,
-                        state=state,
-                    )
-                    return
-                if not state.initialized:
-                    await websocket.send(
-                        jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "initialize must be called first."),
-                    )
-                    return
                 if method == "_worker/run":
                     await _handle_run(
                         websocket=websocket,

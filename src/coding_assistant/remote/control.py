@@ -47,12 +47,18 @@ class _RemoteControlState:
     session_opened: bool = False
 
 
-def completed_run_result(*, base_version: int, outcome: RunOutcome, metadata: JsonObject | None = None) -> JsonObject:
+def completed_run_result(
+    *,
+    outcome: RunOutcome,
+    base_version: int | None = None,
+    metadata: JsonObject | None = None,
+) -> JsonObject:
     result: JsonObject = {
-        "baseVersion": base_version,
         "messages": messages_to_jsonrpc(outcome.messages),
         "stopReason": outcome.stop_reason,
     }
+    if base_version is not None:
+        result["baseVersion"] = base_version
     if metadata:
         result["_meta"] = metadata
     return result

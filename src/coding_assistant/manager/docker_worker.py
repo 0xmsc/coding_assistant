@@ -13,7 +13,7 @@ from time import monotonic
 from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.manager.remote_worker import RemoteWorkerRunner
 from coding_assistant.manager.service import WorkerPrompt, WorkerRunResult
-from coding_assistant.remote.client import RemoteSessionClient
+from coding_assistant.remote.client import WorkerClient
 
 
 logger = logging.getLogger(__name__)
@@ -177,13 +177,10 @@ class DockerWorkerRunner:
         last_error = "worker did not respond"
         while monotonic() < deadline:
             try:
-                client = await RemoteSessionClient.connect(
+                client = await WorkerClient.connect(
                     endpoint=endpoint,
                 )
-                try:
-                    await client.initialize()
-                finally:
-                    await client.close()
+                await client.close()
                 return
             except Exception as exc:
                 last_error = str(exc)

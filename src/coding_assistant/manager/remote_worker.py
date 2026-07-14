@@ -33,24 +33,16 @@ class RemoteWorkerRunner:
         )
         await self._register_client(session_id=prompt.session_id, client=client)
         try:
-            await client.initialize()
             try:
                 finished = await client.run(
                     {
                         "sessionId": prompt.session_id,
-                        "baseVersion": prompt.base_version,
                         "messages": messages_to_jsonrpc(prompt.history),
-                        "workspace": prompt.workspace,
                         "prompt": prompt.prompt,
                     },
                 )
             except RuntimeError as exc:
                 raise RemoteWorkerError(str(exc)) from exc
-            if finished.base_version != prompt.base_version:
-                raise RemoteWorkerError(
-                    f"Worker finish for {prompt.session_id} used base version "
-                    f"{finished.base_version}, not {prompt.base_version}.",
-                )
             return WorkerRunResult(
                 stop_reason=finished.stop_reason,
                 messages=finished.messages,
