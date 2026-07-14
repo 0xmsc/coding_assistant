@@ -738,6 +738,11 @@ class ManagerService:
                 error=str(exc),
             )
             await on_update(_run_updated(failed_run))
+            canonical_session = self._store.load_session(scope_id=scope_id, session_id=session_id)
+            await on_update(HistoryResetUpdate())
+            for update in _history_updates(canonical_session):
+                await on_update(update)
+            await on_update(HistoryCompleteUpdate(version=canonical_session.record.version))
             raise
 
     async def cancel(self, *, params: JsonObject) -> None:
