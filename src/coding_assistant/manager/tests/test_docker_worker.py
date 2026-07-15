@@ -116,9 +116,17 @@ def _scope_params(session_id: str | None = None, **params: Any) -> dict[str, Any
     return result
 
 
+async def _receive_response(websocket: ClientConnection, *, request_id: int) -> dict[str, Any]:
+    while True:
+        message = parse_jsonrpc_message(await websocket.recv())
+        if message.get("id") == request_id:
+            assert "result" in message, message
+            return message
+
+
 async def _new_session(websocket: ClientConnection, *, request_id: int) -> str:
     await websocket.send(jsonrpc_request(request_id, "session/new", _scope_params()))
-    response = parse_jsonrpc_message(await websocket.recv())
+    response = await _receive_response(websocket, request_id=request_id)
     session_id = response["result"]["sessionId"]
     assert isinstance(session_id, str)
     return session_id
@@ -132,11 +140,7 @@ async def _prompt_session(websocket: ClientConnection, *, request_id: int, sessi
             _scope_params(session_id, prompt=[text_block("read smoke.txt")]),
         ),
     )
-    while True:
-        message = parse_jsonrpc_message(await websocket.recv())
-        if message.get("id") == request_id:
-            assert "result" in message, message
-            return message
+    return await _receive_response(websocket, request_id=request_id)
 
 
 async def _load_session(websocket: ClientConnection, *, request_id: int, session_id: str) -> list[str]:
@@ -443,11 +447,11 @@ async def test_docker_manager_runs_two_sessions_with_shell_tool_calls(tmp_path: 
                 await websocket.send(
                     jsonrpc_request(4, "session/set_model", _scope_params(first_session_id, model="fake-model"))
                 )
-                first_set_model = parse_jsonrpc_message(await websocket.recv())
+                first_set_model = await _receive_response(websocket, request_id=4)
                 await websocket.send(
                     jsonrpc_request(5, "session/set_model", _scope_params(second_session_id, model="fake-model"))
                 )
-                second_set_model = parse_jsonrpc_message(await websocket.recv())
+                second_set_model = await _receive_response(websocket, request_id=5)
                 (tmp_path / "sessions" / first_session_id / "workspace" / "smoke.txt").write_text(
                     "alpha from first workspace",
                     encoding="utf-8",
