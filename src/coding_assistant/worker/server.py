@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from websockets.asyncio.server import ServerConnection
 from websockets.exceptions import ConnectionClosed
 
-from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, CompletionStreamer
-from coding_assistant.llm.types import BaseMessage, Tool
+from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, CompletionStreamer, RunOutcome
+from coding_assistant.llm.types import BaseMessage, Tool, UserMessage
 from coding_assistant.remote.control import (
     completed_run_result,
     send_session_update,
@@ -55,6 +55,8 @@ class _WorkerConnectionState:
     session_id: str | None = None
     session: AgentSession | None = None
     run_task: asyncio.Task[None] | None = None
+    cancel_requested_session_id: str | None = None
+    run_ready: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 def _messages_from_params(params: JsonObject) -> list[BaseMessage]:
@@ -95,6 +97,7 @@ async def _execute_run(
     session_id: str,
     prompt: str | list[JsonObject],
     session: AgentSession,
+    state: _WorkerConnectionState,
     runtime: WorkerRuntimeConfig,
     finished: asyncio.Event,
 ) -> None:
@@ -107,7 +110,19 @@ async def _execute_run(
             scheduled_run = await session.enqueue_prompt(prompt)
             if scheduled_run is None:
                 raise RuntimeError("Worker session closed before its run could start.")
-            outcome = await scheduled_run.completion
+            state.run_ready.set()
+            if state.cancel_requested_session_id == session_id:
+                pending_prompt = await session.pop_last_queued_prompt()
+                if pending_prompt is not None:
+                    outcome = RunOutcome(
+                        stop_reason="cancelled",
+                        messages=[UserMessage(content=pending_prompt)],
+                    )
+                else:
+                    await session.cancel_current_run()
+                    outcome = await scheduled_run.completion
+            else:
+                outcome = await scheduled_run.completion
             await wait_for_session_events(queue=queue, publisher_task=sender_task)
             if outcome.stop_reason == "failed":
                 await websocket.send(jsonrpc_error(response_id, ERROR_SERVER, outcome.error or "Worker run failed."))
@@ -122,6 +137,7 @@ async def _execute_run(
     except ConnectionClosed:
         return
     finally:
+        state.run_ready.set()
         if sender_task is not None:
             sender_task.cancel()
             await asyncio.gather(sender_task, return_exceptions=True)
@@ -140,7 +156,6 @@ async def _handle_run(
     claim_run: Callable[[], Awaitable[bool]],
 ) -> None:
     if response_id is None:
-        await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "_worker/run must be a request."))
         return
     try:
         session_id = session_id_from_params(params)
@@ -168,6 +183,7 @@ async def _handle_run(
             session_id=session_id,
             prompt=prompt,
             session=session,
+            state=state,
             runtime=runtime,
             finished=finished,
         ),
@@ -181,14 +197,18 @@ async def _handle_cancel(
     params: JsonObject,
     state: _WorkerConnectionState,
 ) -> None:
+    session_id = session_id_from_params(params)
     if state.session is None or state.session_id is None:
+        state.cancel_requested_session_id = session_id
         if response_id is not None:
-            await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "_worker/run must be called first."))
+            await websocket.send(jsonrpc_result(response_id, None))
         return
-    if session_id_from_params(params) != state.session_id:
+    if session_id != state.session_id:
         if response_id is not None:
             await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "Unknown sessionId."))
         return
+    state.cancel_requested_session_id = session_id
+    await state.run_ready.wait()
     await state.session.cancel_current_run()
     if response_id is not None:
         await websocket.send(jsonrpc_result(response_id, None))
@@ -225,6 +245,8 @@ async def start_session_worker_server(
             try:
                 params = params_from_payload(payload)
                 if method == "_worker/run":
+                    if response_id is None:
+                        return
                     await _handle_run(
                         websocket=websocket,
                         response_id=response_id,
@@ -243,9 +265,10 @@ async def start_session_worker_server(
                         state=state,
                     )
                     return
-                await websocket.send(
-                    jsonrpc_error(response_id, ERROR_METHOD_NOT_FOUND, f"Unsupported method: {method}")
-                )
+                if response_id is not None:
+                    await websocket.send(
+                        jsonrpc_error(response_id, ERROR_METHOD_NOT_FOUND, f"Unsupported method: {method}")
+                    )
             except ValueError as exc:
                 if response_id is not None:
                     await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, str(exc)))

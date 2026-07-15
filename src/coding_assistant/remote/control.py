@@ -165,9 +165,10 @@ class RemoteAgentController:
                 await self._handle_initialize(websocket=websocket, response_id=response_id, params=params)
                 return
             if not self._state.initialized:
-                await websocket.send(
-                    jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "initialize must be called first."),
-                )
+                if response_id is not None:
+                    await websocket.send(
+                        jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "initialize must be called first."),
+                    )
                 return
             if method == "session/new":
                 await self._handle_session_new(websocket=websocket, response_id=response_id)
@@ -178,7 +179,10 @@ class RemoteAgentController:
             if method == "session/cancel":
                 await self._handle_cancel(websocket=websocket, response_id=response_id, params=params)
                 return
-            await websocket.send(jsonrpc_error(response_id, ERROR_METHOD_NOT_FOUND, f"Unsupported method: {method}"))
+            if response_id is not None:
+                await websocket.send(
+                    jsonrpc_error(response_id, ERROR_METHOD_NOT_FOUND, f"Unsupported method: {method}")
+                )
         except ValueError as exc:
             if response_id is not None:
                 await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, str(exc)))
@@ -191,7 +195,6 @@ class RemoteAgentController:
         params: JsonObject,
     ) -> None:
         if response_id is None:
-            await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "initialize must be a request."))
             return
         protocol_version = params.get("protocolVersion")
         if not isinstance(protocol_version, int):
@@ -199,15 +202,20 @@ class RemoteAgentController:
                 jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "initialize requires an integer protocolVersion."),
             )
             return
+        try:
+            result = initialize_response(
+                requested_protocol_version=protocol_version,
+                agent_name=self._agent_info.name,
+                agent_title=self._agent_info.title,
+            )
+        except ValueError as exc:
+            await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, str(exc)))
+            return
         self._state.initialized = True
         await websocket.send(
             jsonrpc_result(
                 response_id,
-                initialize_response(
-                    requested_protocol_version=protocol_version,
-                    agent_name=self._agent_info.name,
-                    agent_title=self._agent_info.title,
-                ),
+                result,
             ),
         )
 
@@ -218,7 +226,6 @@ class RemoteAgentController:
         response_id: int | str | None,
     ) -> None:
         if response_id is None:
-            await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "session/new must be a request."))
             return
         self._state.session_opened = True
         await websocket.send(jsonrpc_result(response_id, {"sessionId": self._session_id}))
@@ -231,7 +238,6 @@ class RemoteAgentController:
         params: JsonObject,
     ) -> None:
         if response_id is None:
-            await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "session/prompt must be a request."))
             return
         if not self._state.session_opened:
             await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "Session must be opened first."))

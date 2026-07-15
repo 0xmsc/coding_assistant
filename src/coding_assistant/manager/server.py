@@ -25,7 +25,6 @@ from coding_assistant.remote.jsonrpc import (
     initialize_response,
     jsonrpc_error,
     jsonrpc_result,
-    jsonrpc_result_required,
     params_from_payload,
     response_id_from_payload,
     session_id_from_params,
@@ -142,7 +141,6 @@ async def _handle_initialize(
     params: JsonObject,
 ) -> None:
     if response_id is None:
-        await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "initialize must be a request."))
         return
     protocol_version = params.get("protocolVersion")
     if not isinstance(protocol_version, int):
@@ -150,22 +148,27 @@ async def _handle_initialize(
             jsonrpc_error(response_id, ERROR_INVALID_PARAMS, "initialize requires an integer protocolVersion."),
         )
         return
+    try:
+        result = initialize_response(
+            requested_protocol_version=protocol_version,
+            agent_name="coding-assistant",
+            agent_title="Coding Assistant",
+            capabilities={
+                "loadSession": True,
+                "promptCapabilities": {
+                    "image": True,
+                    "embeddedContext": True,
+                },
+            },
+        )
+    except ValueError as exc:
+        await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_PARAMS, str(exc)))
+        return
     state.initialized = True
     await websocket.send(
         jsonrpc_result(
             response_id,
-            initialize_response(
-                requested_protocol_version=protocol_version,
-                agent_name="coding-assistant",
-                agent_title="Coding Assistant",
-                capabilities={
-                    "loadSession": True,
-                    "promptCapabilities": {
-                        "image": True,
-                        "embeddedContext": True,
-                    },
-                },
-            ),
+            result,
         ),
     )
 
@@ -181,13 +184,18 @@ async def _handle_session_method(
     params: JsonObject,
     state: _ConnectionState,
 ) -> None:
+    if response_id is None and method != "session/cancel":
+        return
+
     if method == "session/list":
-        await websocket.send(jsonrpc_result_required(response_id, service.list_sessions(params=params)))
+        assert response_id is not None
+        await websocket.send(jsonrpc_result(response_id, service.list_sessions(params=params)))
         return
 
     if method == "session/new":
+        assert response_id is not None
         await websocket.send(
-            jsonrpc_result_required(
+            jsonrpc_result(
                 response_id,
                 service.new_session(params=params),
             ),
@@ -195,6 +203,7 @@ async def _handle_session_method(
         return
 
     if method == "session/load":
+        assert response_id is not None
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         await broker.subscribe(websocket=websocket, scope_id=scope_id, session_id=session_id, state=state)
@@ -203,10 +212,11 @@ async def _handle_session_method(
             await _send_session_update(websocket=websocket, session_id=session_id, update=update)
 
         result = await service.load_session(params=params, on_update=send_update)
-        await websocket.send(jsonrpc_result_required(response_id, result))
+        await websocket.send(jsonrpc_result(response_id, result))
         return
 
     if method == "session/upload_file":
+        assert response_id is not None
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         await broker.subscribe(websocket=websocket, scope_id=scope_id, session_id=session_id, state=state)
@@ -215,14 +225,16 @@ async def _handle_session_method(
             await broker.publish(scope_id=scope_id, session_id=session_id, update=update)
 
         result = await service.upload_file(params=params, on_update=send_update)
-        await websocket.send(jsonrpc_result_required(response_id, result))
+        await websocket.send(jsonrpc_result(response_id, result))
         return
 
     if method == "session/download_attachment":
-        await websocket.send(jsonrpc_result_required(response_id, await service.download_attachment(params=params)))
+        assert response_id is not None
+        await websocket.send(jsonrpc_result(response_id, await service.download_attachment(params=params)))
         return
 
     if method == "session/rename":
+        assert response_id is not None
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         await broker.subscribe(websocket=websocket, scope_id=scope_id, session_id=session_id, state=state)
@@ -231,10 +243,11 @@ async def _handle_session_method(
             await broker.publish(scope_id=scope_id, session_id=session_id, update=update)
 
         result = await service.rename_session(params=params, on_update=send_update)
-        await websocket.send(jsonrpc_result_required(response_id, result))
+        await websocket.send(jsonrpc_result(response_id, result))
         return
 
     if method == "session/set_model":
+        assert response_id is not None
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         await broker.subscribe(websocket=websocket, scope_id=scope_id, session_id=session_id, state=state)
@@ -243,13 +256,11 @@ async def _handle_session_method(
             await broker.publish(scope_id=scope_id, session_id=session_id, update=update)
 
         result = await service.set_session_model(params=params, on_update=send_update)
-        await websocket.send(jsonrpc_result_required(response_id, result))
+        await websocket.send(jsonrpc_result(response_id, result))
         return
 
     if method == "session/prompt":
-        if response_id is None:
-            await websocket.send(jsonrpc_error(None, ERROR_INVALID_REQUEST, "session/prompt must be a request."))
-            return
+        assert response_id is not None
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         await broker.subscribe(websocket=websocket, scope_id=scope_id, session_id=session_id, state=state)
@@ -278,7 +289,10 @@ async def _handle_session_method(
             await websocket.send(jsonrpc_result(response_id, None))
         return
 
-    await websocket.send(jsonrpc_error(response_id, ERROR_METHOD_NOT_FOUND, f"Unsupported manager method: {method}"))
+    if response_id is not None:
+        await websocket.send(
+            jsonrpc_error(response_id, ERROR_METHOD_NOT_FOUND, f"Unsupported manager method: {method}")
+        )
 
 
 async def _handle_jsonrpc_message(
@@ -303,11 +317,15 @@ async def _handle_jsonrpc_message(
             return
 
         if not state.initialized:
-            await websocket.send(jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "initialize must be called first."))
+            if response_id is not None:
+                await websocket.send(
+                    jsonrpc_error(response_id, ERROR_INVALID_REQUEST, "initialize must be called first.")
+                )
             return
 
         if method == "model/list":
-            await websocket.send(jsonrpc_result_required(response_id, await service.list_models()))
+            if response_id is not None:
+                await websocket.send(jsonrpc_result(response_id, await service.list_models()))
             return
 
         await _handle_session_method(
@@ -322,7 +340,8 @@ async def _handle_jsonrpc_message(
         )
     except Exception as exc:
         logger.exception("Manager method %s failed.", method)
-        await websocket.send(jsonrpc_error(response_id, _error_code_for_exception(exc), str(exc)))
+        if response_id is not None:
+            await websocket.send(jsonrpc_error(response_id, _error_code_for_exception(exc), str(exc)))
 
 
 def _is_authorized_request(request: Request, auth_secret: str) -> bool:

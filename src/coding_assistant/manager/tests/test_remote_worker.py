@@ -496,6 +496,43 @@ async def test_remote_worker_cancel_reaches_active_worker(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_remote_worker_cancel_during_manager_update_reaches_future_worker(tmp_path: Path) -> None:
+    streamer = ScriptedStreamer([AssistantMessage(content="should not run")])
+    runtime = WorkerRuntimeConfig(model="test-model", tools=[], completion_streamer=streamer)
+    running_update_started = asyncio.Event()
+    release_running_update = asyncio.Event()
+
+    async def block_running_update(update: SessionUpdate) -> None:
+        if isinstance(update, RunUpdatedUpdate) and update.run.get("status") == "running":
+            running_update_started.set()
+            await release_running_update.wait()
+
+    async with start_session_worker_server(runtime=runtime) as worker_server:
+        service, store = _manager_service(tmp_path=tmp_path, endpoint=worker_server.endpoint)
+        created = store.create_session(
+            scope_id="scope-a",
+            messages=[SystemMessage(content="system")],
+            metadata={"model": "test-model"},
+        )
+        prompt_task = asyncio.create_task(
+            service.prompt(
+                params=_scope_params(created.record.session_id, "cancel before worker starts"),
+                on_update=block_running_update,
+            ),
+        )
+        await asyncio.wait_for(running_update_started.wait(), timeout=1)
+
+        await service.cancel(params={"_meta": {"scopeId": "scope-a"}, "sessionId": created.record.session_id})
+        release_running_update.set()
+        result = await asyncio.wait_for(prompt_task, timeout=1)
+        loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
+
+    assert result.stop_reason == "cancelled"
+    assert [message.role for message in loaded.messages] == ["system", "user"]
+    assert len(streamer.script) == 1
+
+
+@pytest.mark.asyncio
 async def test_manager_server_uses_remote_worker_and_replays_persisted_history(tmp_path: Path) -> None:
     runtime = WorkerRuntimeConfig(
         model="test-model",

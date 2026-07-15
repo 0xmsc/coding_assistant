@@ -153,6 +153,8 @@ Notifications:
 ```
 
 Notifications have no `id` and must not receive responses.
+Client-to-server notifications are only supported for `session/cancel`;
+notification forms of request-only methods are ignored without side effects.
 
 ## Error Codes
 
@@ -346,6 +348,8 @@ not use this initialization handshake.
 ### initialize
 
 Negotiates protocol version and returns manager capabilities.
+The server supports protocol version 1 and rejects a client maximum below 1
+without marking the connection initialized.
 
 Parameters:
 

@@ -31,6 +31,7 @@ from coding_assistant.manager.tests.fakes import FakeWorkerRunner
 from coding_assistant.manager.tests.store_helpers import create_session_store
 from coding_assistant.remote.jsonrpc import (
     ACP_PROTOCOL_VERSION,
+    jsonrpc_notification,
     jsonrpc_request,
     parse_jsonrpc_message,
     prompt_content_from_acp,
@@ -274,6 +275,33 @@ async def test_manager_requires_initialize_before_session_methods(tmp_path: Path
 
     assert response["error"]["code"] == -32600
     assert response["error"]["message"] == "initialize must be called first."
+
+
+@pytest.mark.asyncio
+async def test_manager_rejects_incompatible_protocol_version_without_initializing(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await websocket.send(jsonrpc_request(1, "initialize", {"protocolVersion": 0}))
+            initialize_error = parse_jsonrpc_message(await websocket.recv())
+            await websocket.send(jsonrpc_request(2, "session/list", _scope_params("scope-a")))
+            session_error = parse_jsonrpc_message(await websocket.recv())
+
+    assert initialize_error["error"]["code"] == -32602
+    assert "No compatible protocol version" in initialize_error["error"]["message"]
+    assert session_error["error"]["message"] == "initialize must be called first."
+
+
+@pytest.mark.asyncio
+async def test_manager_ignores_request_only_notification_without_side_effects(tmp_path: Path) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            await websocket.send(jsonrpc_notification("session/new", _scope_params("scope-a")))
+            await websocket.send(jsonrpc_request(2, "session/list", _scope_params("scope-a")))
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["id"] == 2
+    assert response["result"]["sessions"] == []
 
 
 @pytest.mark.asyncio

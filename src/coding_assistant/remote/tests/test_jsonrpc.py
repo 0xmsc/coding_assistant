@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from coding_assistant.remote.jsonrpc import (
-    ERROR_INVALID_REQUEST,
     ACP_PROTOCOL_VERSION,
     initialize_response,
-    jsonrpc_result_required,
     params_from_payload,
     response_id_from_payload,
     session_id_from_params,
@@ -38,13 +34,6 @@ def test_session_id_from_params_requires_non_empty_string() -> None:
         session_id_from_params({})
 
 
-def test_jsonrpc_result_required_rejects_notifications() -> None:
-    payload = json.loads(jsonrpc_result_required(None, {"ok": True}))
-
-    assert payload["error"]["code"] == ERROR_INVALID_REQUEST
-    assert payload["error"]["message"] == "Method must be a request."
-
-
 def test_initialize_response_negotiates_protocol_and_capabilities() -> None:
     result = initialize_response(
         requested_protocol_version=ACP_PROTOCOL_VERSION + 10,
@@ -56,3 +45,13 @@ def test_initialize_response_negotiates_protocol_and_capabilities() -> None:
     assert result["protocolVersion"] == ACP_PROTOCOL_VERSION
     assert result["agentCapabilities"] == {"loadSession": True}
     assert result["agentInfo"]["name"] == "coding-assistant"
+
+
+@pytest.mark.parametrize("requested_version", [0, -1, True])
+def test_initialize_response_rejects_incompatible_protocol_versions(requested_version: int) -> None:
+    with pytest.raises(ValueError, match="No compatible protocol version"):
+        initialize_response(
+            requested_protocol_version=requested_version,
+            agent_name="coding-assistant",
+            agent_title="Coding Assistant",
+        )
