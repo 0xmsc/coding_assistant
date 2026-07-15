@@ -15,6 +15,8 @@ from coding_assistant.llm.types import BaseMessage
 from coding_assistant.remote.jsonrpc import (
     ACP_PROTOCOL_VERSION,
     JsonObject,
+    STOP_REASON_CANCELLED,
+    STOP_REASON_END_TURN,
     jsonrpc_notification,
     jsonrpc_request,
     parse_jsonrpc_message,
@@ -264,7 +266,7 @@ def _run_result_from_jsonrpc(result: JsonObject, *, method: str) -> RemoteRunRes
     stop_reason = result.get("stopReason")
     messages = result.get("messages")
     if (
-        not isinstance(stop_reason, str)
+        stop_reason not in {STOP_REASON_END_TURN, STOP_REASON_CANCELLED}
         or not isinstance(messages, list)
         or not all(isinstance(message, dict) for message in messages)
     ):

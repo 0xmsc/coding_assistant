@@ -98,12 +98,6 @@ def jsonrpc_error(message_id: int | str | None, code: int, message: str) -> str:
     )
 
 
-def jsonrpc_result_required(message_id: int | str | None, result: JsonObject) -> str:
-    if message_id is None:
-        return jsonrpc_error(None, ERROR_INVALID_REQUEST, "Method must be a request.")
-    return jsonrpc_result(message_id, result)
-
-
 def text_block(text: str) -> JsonObject:
     return {"type": "text", "text": text}
 
@@ -134,6 +128,8 @@ def initialize_response(
     agent_title: str,
     capabilities: JsonObject | None = None,
 ) -> JsonObject:
+    if isinstance(requested_protocol_version, bool) or requested_protocol_version < ACP_PROTOCOL_VERSION:
+        raise ValueError(f"No compatible protocol version; version {ACP_PROTOCOL_VERSION} or newer is required.")
     result = initialize_result(
         agent_name=agent_name,
         agent_title=agent_title,

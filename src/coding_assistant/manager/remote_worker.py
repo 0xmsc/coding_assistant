@@ -34,6 +34,8 @@ class RemoteWorkerRunner:
         await self._register_client(session_id=prompt.session_id, client=client)
         try:
             try:
+                if prompt.cancel_requested.is_set():
+                    await client.cancel(session_id=prompt.session_id)
                 finished = await client.run(
                     {
                         "sessionId": prompt.session_id,

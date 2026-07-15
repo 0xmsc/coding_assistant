@@ -91,6 +91,7 @@ class WorkerPrompt:
     attachments: str
     prompt: list[JsonObject]
     worker_env: dict[str, str] = field(default_factory=dict)
+    cancel_requested: asyncio.Event = field(default_factory=asyncio.Event, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -507,6 +508,7 @@ class ManagerService:
         self._user_instructions = tuple(user_instructions)
         self._model_cache: tuple[float, list[str]] | None = None
         self._active_runs: dict[str, PromptRunRecord] = {}
+        self._cancel_events: dict[str, asyncio.Event] = {}
         self._active_lock = asyncio.Lock()
 
     async def list_models(self) -> JsonObject:
@@ -691,7 +693,7 @@ class ManagerService:
         session = self._store.load_session(scope_id=scope_id, session_id=session_id)
         model = _model_from_record(session.record)
 
-        run = await self._start_prompt_run(session_id)
+        run, cancel_requested = await self._start_prompt_run(session_id)
         try:
             await on_update(_run_updated(run))
             if content_text(prompt_content) is not None:
@@ -711,6 +713,7 @@ class ManagerService:
                     attachments=str(session.attachments),
                     prompt=prompt_blocks,
                     worker_env={**session.worker_env, **prompt_worker_env},
+                    cancel_requested=cancel_requested,
                 ),
                 on_update=on_update,
             )
@@ -749,13 +752,18 @@ class ManagerService:
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         self._store.load_session(scope_id=scope_id, session_id=session_id)
+        async with self._active_lock:
+            cancel_requested = self._cancel_events.get(session_id)
+            if cancel_requested is None:
+                return
+            cancel_requested.set()
         await self._worker_runner.cancel(session_id=session_id)
 
     async def _active_run(self, session_id: str) -> PromptRunRecord | None:
         async with self._active_lock:
             return self._active_runs.get(session_id)
 
-    async def _start_prompt_run(self, session_id: str) -> PromptRunRecord:
+    async def _start_prompt_run(self, session_id: str) -> tuple[PromptRunRecord, asyncio.Event]:
         now = _now_iso()
         run = PromptRunRecord(
             run_id=_new_run_id(),
@@ -764,11 +772,13 @@ class ManagerService:
             started_at=now,
             updated_at=now,
         )
+        cancel_requested = asyncio.Event()
         async with self._active_lock:
             if session_id in self._active_runs:
                 raise SessionBusyError("Session already has an active prompt.")
             self._active_runs[session_id] = run
-        return run
+            self._cancel_events[session_id] = cancel_requested
+        return run, cancel_requested
 
     async def _finish_prompt_run(
         self,
@@ -790,6 +800,7 @@ class ManagerService:
         async with self._active_lock:
             if self._active_runs.get(run.session_id) == run:
                 self._active_runs.pop(run.session_id, None)
+                self._cancel_events.pop(run.session_id, None)
         return finished_run
 
     def _initial_messages(self, *, skills_root: Path) -> list[BaseMessage]:

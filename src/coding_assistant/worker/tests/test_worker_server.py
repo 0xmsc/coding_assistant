@@ -23,9 +23,14 @@ from coding_assistant.llm.types import (
     UserMessage,
     Usage,
 )
-from coding_assistant.remote.jsonrpc import jsonrpc_request, parse_jsonrpc_message, text_block
+from coding_assistant.remote.jsonrpc import jsonrpc_notification, jsonrpc_request, parse_jsonrpc_message, text_block
 from coding_assistant.remote.protocol import messages_to_jsonrpc
-from coding_assistant.worker.server import WorkerRuntimeConfig, _execute_run, start_session_worker_server
+from coding_assistant.worker.server import (
+    WorkerRuntimeConfig,
+    _execute_run,
+    _WorkerConnectionState,
+    start_session_worker_server,
+)
 
 
 class ScriptedStreamer:
@@ -223,6 +228,7 @@ async def test_worker_sends_all_session_updates_before_run_result() -> None:
             session_id="sess_test",
             prompt="Do it",
             session=session,
+            state=_WorkerConnectionState(session_id="sess_test", session=session),
             runtime=runtime,
             finished=asyncio.Event(),
         ),
@@ -352,3 +358,24 @@ async def test_worker_requires_valid_run_params() -> None:
             invalid_run = parse_jsonrpc_message(await websocket.recv())
 
     assert invalid_run["error"]["message"] == "_worker/run requires a prompt array."
+
+
+@pytest.mark.asyncio
+async def test_worker_ignores_run_notification_without_claiming_run() -> None:
+    runtime = WorkerRuntimeConfig(
+        model="test-model",
+        tools=[],
+        completion_streamer=ScriptedStreamer([AssistantMessage(content="done")]),
+    )
+
+    async with start_session_worker_server(runtime=runtime) as server:
+        async with connect(server.endpoint) as websocket:
+            await websocket.send(jsonrpc_notification("_worker/run", _run_params()))
+            await websocket.send(jsonrpc_request(1, "_worker/run", _run_params()))
+            response: dict[str, Any] | None = None
+            while response is None:
+                payload = parse_jsonrpc_message(await websocket.recv())
+                if payload.get("id") == 1:
+                    response = payload
+
+    assert response["result"]["stopReason"] == "end_turn"
