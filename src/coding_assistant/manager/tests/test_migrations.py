@@ -34,9 +34,6 @@ def test_alembic_upgrade_creates_manager_schema(tmp_path: Path) -> None:
         assert {column["name"] for column in inspector.get_columns("session_messages")} == {
             "id",
             "session_id",
-            "stream_id",
-            "run_id",
-            "complete",
             "role",
             "payload_json",
             "created_at",
@@ -87,12 +84,10 @@ def test_alembic_upgrade_preserves_existing_messages_and_attachments(tmp_path: P
     run_migrations(database_path)
 
     with engine.connect() as connection:
-        message = connection.execute(
-            text("SELECT session_id, role, stream_id, run_id, complete FROM session_messages")
-        ).one()
+        message = connection.execute(text("SELECT session_id, role FROM session_messages")).one()
         attachment = connection.execute(text("SELECT attachment_id, message_id FROM session_attachments")).one()
         foreign_key_errors = connection.execute(text("PRAGMA foreign_key_check")).all()
 
-    assert tuple(message) == ("sess_1", "user", None, None, 1)
+    assert tuple(message) == ("sess_1", "user")
     assert tuple(attachment) == ("att_1", 1)
     assert foreign_key_errors == []

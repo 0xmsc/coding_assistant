@@ -363,10 +363,6 @@ def _pdf_text_output_path(attachment: SessionAttachment) -> str:
     return f"extracted/{attachment.attachment_id}-{stem}.txt"
 
 
-def _new_message_update_id() -> str:
-    return f"msg_{uuid4().hex}"
-
-
 def _new_run_id() -> str:
     return f"run_{uuid4().hex}"
 
@@ -387,18 +383,9 @@ def _history_updates(session: LoadedSession) -> list[SessionUpdate]:
         )
 
     for record in session.message_records:
-        message_id = record.stream_id or _stored_message_update_id(record.message_id)
-        if not record.complete and isinstance(record.message, AssistantMessage) and record.message.content:
-            updates.append(
-                MessageDeltaUpdate(
-                    message_id=message_id,
-                    append_text=record.message.content,
-                )
-            )
-            continue
         updates.append(
             MessageAddedUpdate(
-                message_id=message_id,
+                message_id=_stored_message_update_id(record.message_id),
                 message=record.message,
                 created_at=record.created_at,
             )
@@ -513,7 +500,6 @@ class ManagerService:
         self._active_runs: dict[str, PromptRunRecord] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
-        self._store.discard_interrupted_runs()
 
     async def list_models(self) -> JsonObject:
         models = await self._available_models()
@@ -699,44 +685,73 @@ class ManagerService:
             model = _model_from_record(session.record)
             run, cancel_requested = self._start_prompt_run(session_id)
 
+        stored_message_ids: dict[str, int] = {}
+        draft_message_ids: set[str] = set()
+
         async def publish_worker_update(update: SessionUpdate) -> None:
             async with lock:
                 if self._active_runs.get(session_id) != run:
                     raise RuntimeError(f"Session {session_id} is no longer owned by run {run.run_id}.")
                 if isinstance(update, MessageAddedUpdate):
-                    self._store.upsert_run_message(
-                        scope_id=scope_id,
-                        session_id=session_id,
-                        run_id=run.run_id,
-                        stream_id=update.message_id,
-                        message=update.message,
-                    )
+                    message_id = stored_message_ids.get(update.message_id)
+                    if message_id is None:
+                        stored = self._store.append_messages(
+                            scope_id=scope_id,
+                            session_id=session_id,
+                            messages=[update.message],
+                        )[0]
+                        message_id = stored.message_id
+                        stored_message_ids[update.message_id] = message_id
+                    else:
+                        self._store.replace_message(
+                            scope_id=scope_id,
+                            session_id=session_id,
+                            message_id=message_id,
+                            message=update.message,
+                        )
+                    draft_message_ids.discard(update.message_id)
+                    update = replace(update, message_id=_stored_message_update_id(message_id))
                 elif isinstance(update, MessageDeltaUpdate):
-                    self._store.append_run_message_text(
-                        scope_id=scope_id,
-                        session_id=session_id,
-                        run_id=run.run_id,
-                        stream_id=update.message_id,
-                        append_text=update.append_text,
-                    )
+                    message_id = stored_message_ids.get(update.message_id)
+                    if message_id is None:
+                        for draft_message_id in draft_message_ids:
+                            self._store.delete_message(
+                                scope_id=scope_id,
+                                session_id=session_id,
+                                message_id=stored_message_ids.pop(draft_message_id),
+                            )
+                        draft_message_ids.clear()
+                        stored = self._store.append_messages(
+                            scope_id=scope_id,
+                            session_id=session_id,
+                            messages=[AssistantMessage(content=update.append_text)],
+                        )[0]
+                        message_id = stored.message_id
+                        stored_message_ids[update.message_id] = message_id
+                    else:
+                        self._store.append_message_text(
+                            scope_id=scope_id,
+                            session_id=session_id,
+                            message_id=message_id,
+                            append_text=update.append_text,
+                        )
+                    draft_message_ids.add(update.message_id)
+                    update = replace(update, message_id=_stored_message_update_id(message_id))
                 await on_update(update)
 
         try:
             async with lock:
                 await on_update(_run_updated(run))
                 if content_text(prompt_content) is not None:
-                    user_message_id = _new_message_update_id()
                     user_message = UserMessage(content=prompt_content)
-                    self._store.upsert_run_message(
+                    stored_user_message = self._store.append_messages(
                         scope_id=scope_id,
                         session_id=session_id,
-                        run_id=run.run_id,
-                        stream_id=user_message_id,
-                        message=user_message,
-                    )
+                        messages=[user_message],
+                    )[0]
                     await on_update(
                         MessageAddedUpdate(
-                            message_id=user_message_id,
+                            message_id=_stored_message_update_id(stored_user_message.message_id),
                             message=user_message,
                         )
                     )
@@ -755,13 +770,14 @@ class ManagerService:
             )
             status = "cancelled" if worker_result.stop_reason == "cancelled" else "completed"
             async with lock:
-                updated_record = self._store.finish_run(
-                    scope_id=scope_id,
-                    session_id=session_id,
-                    run_id=run.run_id,
-                    messages=worker_result.messages,
-                    title=worker_result.title,
-                )
+                if worker_result.title is None:
+                    updated_record = self._store.load_session(scope_id=scope_id, session_id=session_id).record
+                else:
+                    updated_record = self._store.rename_session(
+                        scope_id=scope_id,
+                        session_id=session_id,
+                        title=worker_result.title,
+                    )
                 finished_run = self._finish_prompt_run(
                     run,
                     status=status,
@@ -772,18 +788,12 @@ class ManagerService:
             return PromptResult(stop_reason=worker_result.stop_reason)
         except Exception as exc:
             async with lock:
-                self._store.discard_run(scope_id=scope_id, session_id=session_id, run_id=run.run_id)
                 failed_run = self._finish_prompt_run(
                     run,
                     status="failed",
                     error=str(exc),
                 )
                 await on_update(_run_updated(failed_run))
-                canonical_session = self._store.load_session(scope_id=scope_id, session_id=session_id)
-                await on_update(HistoryResetUpdate())
-                for update in _history_updates(canonical_session):
-                    await on_update(update)
-                await on_update(HistoryCompleteUpdate())
             raise
 
     async def cancel(self, *, params: JsonObject) -> None:
