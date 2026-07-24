@@ -47,7 +47,6 @@ class RemoteWorkerRunner:
                 raise RemoteWorkerError(str(exc)) from exc
             return WorkerRunResult(
                 stop_reason=finished.stop_reason,
-                messages=finished.messages,
                 title=finished.title,
             )
         finally:

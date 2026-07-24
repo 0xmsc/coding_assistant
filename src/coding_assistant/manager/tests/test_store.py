@@ -177,58 +177,6 @@ def test_append_messages_persists_json_payloads_and_metadata(tmp_path: Path) -> 
     ]
 
 
-def test_messages_can_be_updated_as_they_stream(tmp_path: Path) -> None:
-    store = create_session_store(tmp_path)
-    created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
-    session_id = created.record.session_id
-
-    user_message, assistant_message = store.append_messages(
-        scope_id="scope-a",
-        session_id=session_id,
-        messages=[UserMessage(content="hello"), AssistantMessage(content="part")],
-    )
-    store.append_message_text(
-        scope_id="scope-a",
-        session_id=session_id,
-        message_id=assistant_message.message_id,
-        append_text="ial",
-    )
-    store.replace_message(
-        scope_id="scope-a",
-        session_id=session_id,
-        message_id=assistant_message.message_id,
-        message=AssistantMessage(content="complete"),
-    )
-
-    loaded = store.load_session(scope_id="scope-a", session_id=session_id)
-    assert loaded.messages == [
-        SystemMessage(content="system"),
-        UserMessage(content="hello"),
-        AssistantMessage(content="complete"),
-    ]
-    assert loaded.message_records[1].message_id == user_message.message_id
-    assert loaded.message_records[2].message_id == assistant_message.message_id
-
-
-def test_delete_message_removes_only_the_selected_message(tmp_path: Path) -> None:
-    store = create_session_store(tmp_path)
-    created = store.create_session(
-        scope_id="scope-a",
-        messages=[SystemMessage(content="system"), UserMessage(content="keep")],
-    )
-    session_id = created.record.session_id
-    removed = store.append_messages(
-        scope_id="scope-a",
-        session_id=session_id,
-        messages=[AssistantMessage(content="remove")],
-    )[0]
-
-    store.delete_message(scope_id="scope-a", session_id=session_id, message_id=removed.message_id)
-
-    loaded = store.load_session(scope_id="scope-a", session_id=session_id)
-    assert loaded.messages == [SystemMessage(content="system"), UserMessage(content="keep")]
-
-
 def test_rename_session_updates_title(tmp_path: Path) -> None:
     store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])

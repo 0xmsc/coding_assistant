@@ -50,6 +50,12 @@ class RemoteRunResult:
     title: str | None = None
 
 
+@dataclass(frozen=True)
+class WorkerCompletion:
+    stop_reason: str
+    title: str | None = None
+
+
 class _JsonRpcClient:
     """Shared JSON-RPC connection, request correlation, and update decoding."""
 
@@ -252,11 +258,17 @@ class RemoteSessionClient(_JsonRpcClient):
 class WorkerClient(_JsonRpcClient):
     """Client for one manager-owned, one-shot worker run."""
 
-    async def run(self, params: JsonObject) -> RemoteRunResult:
+    async def run(self, params: JsonObject) -> WorkerCompletion:
         if not isinstance(params.get("sessionId"), str):
             raise ValueError("_worker/run params must include sessionId.")
         result = await self._request("_worker/run", params)
-        return _run_result_from_jsonrpc(result, method="_worker/run")
+        stop_reason = result.get("stopReason")
+        if stop_reason not in {STOP_REASON_END_TURN, STOP_REASON_CANCELLED}:
+            raise RuntimeError("_worker/run response did not include a stop reason.")
+        return WorkerCompletion(
+            stop_reason=stop_reason,
+            title=_finish_title(result.get("_meta")),
+        )
 
     async def cancel(self, *, session_id: str) -> None:
         await self._cancel_session(session_id)

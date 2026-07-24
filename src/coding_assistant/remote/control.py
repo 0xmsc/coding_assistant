@@ -61,6 +61,17 @@ def completed_run_result(
     return result
 
 
+def worker_run_result(
+    *,
+    outcome: RunOutcome,
+    metadata: JsonObject | None = None,
+) -> JsonObject:
+    result: JsonObject = {"stopReason": outcome.stop_reason}
+    if metadata:
+        result["_meta"] = metadata
+    return result
+
+
 def session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUpdate]:
     """Project one core runtime event to transport-safe session updates."""
     if isinstance(event, AssistantMessageDeltaEvent):
