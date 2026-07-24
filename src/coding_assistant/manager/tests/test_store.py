@@ -14,7 +14,7 @@ from coding_assistant.llm.types import (
     UserMessage,
 )
 from coding_assistant.core.session_updates import SessionAttachment
-from coding_assistant.manager.store import SessionNotFoundError, StaleSessionCommitError
+from coding_assistant.manager.store import SessionNotFoundError
 from coding_assistant.manager.tests.store_helpers import create_session_store
 from coding_assistant.manager.workspace import WorkspaceMissingError, WorkspacePaths
 
@@ -61,10 +61,9 @@ def test_commit_messages_persists_attachments_separately(tmp_path: Path) -> None
     store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
 
-    store.commit_messages(
+    store.append_messages(
         scope_id="scope-a",
         session_id=created.record.session_id,
-        base_version=0,
         messages=[UserMessage(content="hello")],
         attachments=[
             SessionAttachment(
@@ -99,17 +98,15 @@ def test_attachment_ids_can_repeat_across_sessions(tmp_path: Path) -> None:
         sha256="abc",
     )
 
-    store.commit_messages(
+    store.append_messages(
         scope_id="scope-a",
         session_id=first.record.session_id,
-        base_version=0,
         messages=[UserMessage(content="first file")],
         attachments=[attachment],
     )
-    store.commit_messages(
+    store.append_messages(
         scope_id="scope-a",
         session_id=second.record.session_id,
-        base_version=0,
         messages=[UserMessage(content="second file")],
         attachments=[attachment],
     )
@@ -152,15 +149,14 @@ def test_load_session_rejects_cross_scope_access(tmp_path: Path) -> None:
         store.load_session(scope_id="scope-b", session_id=created.record.session_id)
 
 
-def test_commit_messages_appends_json_payloads_and_increments_version(tmp_path: Path) -> None:
+def test_append_messages_persists_json_payloads_and_metadata(tmp_path: Path) -> None:
     store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
     tool_call = ToolCall(id="call-1", function=FunctionCall(name="echo_tool", arguments='{"text": "hi"}'))
 
-    new_version = store.commit_messages(
+    store.append_messages(
         scope_id="scope-a",
         session_id=created.record.session_id,
-        base_version=0,
         title="Updated title",
         metadata={"messageCount": 4},
         messages=[
@@ -171,8 +167,6 @@ def test_commit_messages_appends_json_payloads_and_increments_version(tmp_path: 
     )
     loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
-    assert new_version == 1
-    assert loaded.record.version == 1
     assert loaded.record.title == "Updated title"
     assert loaded.record.metadata == {"messageCount": 4}
     assert loaded.messages == [
@@ -183,31 +177,72 @@ def test_commit_messages_appends_json_payloads_and_increments_version(tmp_path: 
     ]
 
 
-def test_commit_messages_rejects_stale_base_version(tmp_path: Path) -> None:
+def test_run_messages_are_replayable_before_the_run_finishes(tmp_path: Path) -> None:
     store = create_session_store(tmp_path)
-    created = store.create_session(scope_id="scope-a", messages=[])
+    created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+    session_id = created.record.session_id
 
-    store.commit_messages(
+    store.upsert_run_message(
         scope_id="scope-a",
-        session_id=created.record.session_id,
-        base_version=0,
-        messages=[UserMessage(content="first")],
+        session_id=session_id,
+        run_id="run-1",
+        stream_id="user-1",
+        message=UserMessage(content="hello"),
+    )
+    store.append_run_message_text(
+        scope_id="scope-a",
+        session_id=session_id,
+        run_id="run-1",
+        stream_id="assistant-1",
+        append_text="partial",
     )
 
-    with pytest.raises(StaleSessionCommitError):
-        store.commit_messages(
-            scope_id="scope-a",
-            session_id=created.record.session_id,
-            base_version=0,
-            messages=[UserMessage(content="stale")],
-        )
+    running = store.load_session(scope_id="scope-a", session_id=session_id)
+    assert running.messages == [SystemMessage(content="system")]
+    assert [record.message for record in running.message_records] == [
+        SystemMessage(content="system"),
+        UserMessage(content="hello"),
+        AssistantMessage(content="partial"),
+    ]
+    assert [record.stream_id for record in running.message_records] == [None, "user-1", "assistant-1"]
+    assert [record.complete for record in running.message_records] == [True, True, False]
 
-    loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
-    assert loaded.record.version == 1
-    assert loaded.messages == [UserMessage(content="first")]
+    store.finish_run(
+        scope_id="scope-a",
+        session_id=session_id,
+        run_id="run-1",
+        messages=[UserMessage(content="hello"), AssistantMessage(content="complete")],
+    )
+
+    finished = store.load_session(scope_id="scope-a", session_id=session_id)
+    assert finished.messages == [
+        SystemMessage(content="system"),
+        UserMessage(content="hello"),
+        AssistantMessage(content="complete"),
+    ]
+    assert all(record.stream_id is None and record.complete for record in finished.message_records)
 
 
-def test_rename_session_updates_title_without_changing_version(tmp_path: Path) -> None:
+def test_discard_interrupted_runs_removes_only_temporary_messages(tmp_path: Path) -> None:
+    store = create_session_store(tmp_path)
+    created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+    session_id = created.record.session_id
+    store.append_run_message_text(
+        scope_id="scope-a",
+        session_id=session_id,
+        run_id="run-1",
+        stream_id="assistant-1",
+        append_text="partial",
+    )
+
+    store.discard_interrupted_runs()
+
+    loaded = store.load_session(scope_id="scope-a", session_id=session_id)
+    assert loaded.messages == [SystemMessage(content="system")]
+    assert [record.message for record in loaded.message_records] == [SystemMessage(content="system")]
+
+
+def test_rename_session_updates_title(tmp_path: Path) -> None:
     store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
 
@@ -215,9 +250,7 @@ def test_rename_session_updates_title_without_changing_version(tmp_path: Path) -
     cleared = store.rename_session(scope_id="scope-a", session_id=created.record.session_id, title=None)
 
     assert renamed.title == "Renamed"
-    assert renamed.version == 0
     assert cleared.title is None
-    assert cleared.version == 0
     assert store.load_session(scope_id="scope-a", session_id=created.record.session_id).messages == [
         SystemMessage(content="system"),
     ]
@@ -231,7 +264,7 @@ def test_rename_session_rejects_cross_scope_access(tmp_path: Path) -> None:
         store.rename_session(scope_id="scope-b", session_id=created.record.session_id, title="Bad")
 
 
-def test_update_session_metadata_merges_without_changing_version(tmp_path: Path) -> None:
+def test_update_session_metadata_merges_values(tmp_path: Path) -> None:
     store = create_session_store(tmp_path)
     created = store.create_session(
         scope_id="scope-a",
@@ -246,7 +279,7 @@ def test_update_session_metadata_merges_without_changing_version(tmp_path: Path)
     )
     loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
-    assert updated.version == 0
+    assert updated.metadata == {"model": "alternate-model", "messageCount": 1}
     assert loaded.record.metadata == {"model": "alternate-model", "messageCount": 1}
     assert loaded.messages == [SystemMessage(content="system")]
 

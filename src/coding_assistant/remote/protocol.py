@@ -42,10 +42,7 @@ def session_update_to_jsonrpc_update(update: SessionUpdate) -> JsonObject | None
         return {"sessionUpdate": "history_reset"}
 
     if isinstance(update, HistoryCompleteUpdate):
-        return {
-            "sessionUpdate": "history_complete",
-            "version": update.version,
-        }
+        return {"sessionUpdate": "history_complete"}
 
     if isinstance(update, MessageAddedUpdate):
         return {
@@ -112,8 +109,7 @@ def session_update_from_jsonrpc_update(update: JsonObject) -> SessionUpdate | No
         return HistoryResetUpdate()
 
     if update_type == "history_complete":
-        version = update.get("version")
-        return HistoryCompleteUpdate(version=version if isinstance(version, int) else 0)
+        return HistoryCompleteUpdate()
 
     if update_type == "message_added":
         message = update.get("message")

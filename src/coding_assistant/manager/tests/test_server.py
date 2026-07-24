@@ -348,7 +348,7 @@ async def test_manager_creates_and_lists_sessions_by_scope(tmp_path: Path) -> No
 
     sessions = response["result"]["sessions"]
     assert [session["sessionId"] for session in sessions] == [session_id]
-    assert sessions[0]["_meta"]["version"] == 0
+    assert sessions[0]["_meta"] == {}
     assert "model" not in sessions[0]["_meta"]
 
 
@@ -424,7 +424,7 @@ async def test_manager_load_replays_persisted_transcript(tmp_path: Path) -> None
 
     assert _update(reset) == {"sessionUpdate": "history_reset"}
     assert _message_payload(_update(system_message))["role"] == "system"
-    assert _update(complete) == {"sessionUpdate": "history_complete", "version": 0}
+    assert _update(complete) == {"sessionUpdate": "history_complete"}
     assert response["result"]["sessionId"] == session_id
 
 
@@ -486,14 +486,13 @@ async def test_manager_upload_file_writes_attachment_and_replays_upload_message(
     assert "Attached file `Meal-Photo.PNG`" in upload_message_payload["content"]
     assert _attachment_payload(_update(update)) == attachment
     assert _update(session_update)["sessionUpdate"] == "session_updated"
-    assert _update(session_update)["session"]["_meta"]["version"] == 1
     assert _update(reset) == {"sessionUpdate": "history_reset"}
     assert _message_payload(_update(system_replay))["role"] == "system"
     assert _message_payload(_update(message_replay)) == upload_message_payload
     assert _attachment_payload(_update(attachment_replay)) == attachment
-    assert _update(complete) == {"sessionUpdate": "history_complete", "version": 1}
-    assert upload_response["result"]["session"]["_meta"]["version"] == 1
-    assert load_response["result"]["_meta"]["version"] == 1
+    assert _update(complete) == {"sessionUpdate": "history_complete"}
+    assert upload_response["result"]["session"]["_meta"] == {}
+    assert load_response["result"]["_meta"] == {}
     assert download_response["result"]["attachment"] == attachment
     assert download_response["result"]["encoding"] == "base64"
     assert base64.b64decode(download_response["result"]["data"]) == b"\x89PNG\r\n\x1a\nimage"
@@ -794,10 +793,9 @@ async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None
         id="call-1",
         function=FunctionCall(name="shell_execute", arguments='{"command": "cat smoke.txt"}'),
     )
-    store.commit_messages(
+    store.append_messages(
         scope_id="scope-a",
         session_id=created.record.session_id,
-        base_version=0,
         messages=[
             UserMessage(content="Read smoke.txt"),
             AssistantMessage(tool_calls=[tool_call]),
@@ -853,7 +851,7 @@ async def test_manager_load_replays_persisted_tool_calls(tmp_path: Path) -> None
             "messageId": "message-4",
             "message": {"role": "assistant", "content": "Done"},
         },
-        {"sessionUpdate": "history_complete", "version": 1},
+        {"sessionUpdate": "history_complete"},
     ]
     assert response["result"]["sessionId"] == created.record.session_id
 
@@ -871,10 +869,9 @@ async def test_manager_load_replays_load_image_tool_message_content(tmp_path: Pa
         id="call-1",
         function=FunctionCall(name="load_image", arguments='{"path": "/attachments/att_1-meal.png"}'),
     )
-    store.commit_messages(
+    store.append_messages(
         scope_id="scope-a",
         session_id=created.record.session_id,
-        base_version=0,
         messages=[
             UserMessage(content="What is in this image?"),
             AssistantMessage(tool_calls=[tool_call]),
@@ -934,7 +931,7 @@ async def test_manager_load_replays_load_image_tool_message_content(tmp_path: Pa
                 ],
             },
         },
-        {"sessionUpdate": "history_complete", "version": 1},
+        {"sessionUpdate": "history_complete"},
     ]
     assert response["result"]["sessionId"] == created.record.session_id
 
@@ -1058,7 +1055,7 @@ async def test_manager_sets_session_model_and_uses_it_for_prompt(tmp_path: Path)
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "history_complete", "version": 1},
+        {"sessionUpdate": "history_complete"},
     ]
     assert load_response["result"]["_meta"]["model"] == "alternate-model"
     assert worker.prompts is not None
@@ -1137,7 +1134,7 @@ async def test_manager_stores_session_worker_env_privately_and_injects_session_s
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "history_complete", "version": 1},
+        {"sessionUpdate": "history_complete"},
     ]
     assert "capabilities" not in load_response["result"]["_meta"]
     assert "skills" not in load_response["result"]["_meta"]
@@ -1459,7 +1456,7 @@ async def test_manager_logs_prompt_request_errors(tmp_path: Path, caplog: pytest
     assert _normalized_updates(update_payloads[reset_index:]) == [
         {"sessionUpdate": "history_reset"},
         {"sessionUpdate": "message_added", "messageId": "message-0", "message": {"role": "system"}},
-        {"sessionUpdate": "history_complete", "version": 0},
+        {"sessionUpdate": "history_complete"},
     ]
     assert response["error"]["message"] == "provider returned JSON instead of event-stream"
     assert f"Manager prompt request failed for session {session_id}." in caplog.text
@@ -1515,7 +1512,7 @@ async def test_manager_prompt_streams_update_and_persists_messages(tmp_path: Pat
 
             await websocket.send(jsonrpc_request(5, "session/load", _scope_params("scope-a", sessionId=session_id)))
             replay_messages = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
-            load_response = parse_jsonrpc_message(await websocket.recv())
+            parse_jsonrpc_message(await websocket.recv())
 
     live_payloads = [_update(message) for message in live_updates]
     live_message_payloads = [update for update in live_payloads if update.get("sessionUpdate") != "run_updated"]
@@ -1551,15 +1548,35 @@ async def test_manager_prompt_streams_update_and_persists_messages(tmp_path: Pat
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "done"},
         },
-        {"sessionUpdate": "history_complete", "version": 1},
+        {"sessionUpdate": "history_complete"},
     ]
-    assert load_response["result"]["_meta"]["version"] == 1
 
 
 @pytest.mark.asyncio
 async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path: Path) -> None:
-    release = asyncio.Event()
-    worker = FakeWorkerRunner(response_text="done", release=release)
+    class PausingWorker:
+        def __init__(self) -> None:
+            self.release = asyncio.Event()
+
+        async def run_prompt(
+            self,
+            *,
+            prompt: WorkerPrompt,
+            on_update: Callable[[SessionUpdate], Awaitable[None]],
+        ) -> WorkerRunResult:
+            await on_update(MessageDeltaUpdate(message_id="msg_worker", append_text="done"))
+            await self.release.wait()
+            assistant_message = AssistantMessage(content="done")
+            await on_update(MessageAddedUpdate(message_id="msg_worker", message=assistant_message))
+            return WorkerRunResult(
+                stop_reason="end_turn",
+                messages=[UserMessage(content=prompt_content_from_acp(prompt.prompt)), assistant_message],
+            )
+
+        async def cancel(self, *, session_id: str) -> None:
+            del session_id
+
+    worker = PausingWorker()
 
     async with _manager_endpoint(tmp_path=tmp_path, worker=worker) as endpoint:
         async with connect(endpoint) as first:
@@ -1588,7 +1605,7 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
             await _initialize(second)
             await second.send(jsonrpc_request(5, "session/load", _scope_params("scope-a", sessionId=session_id)))
             load_response, replay = await _recv_response_with_updates(second)
-            release.set()
+            worker.release.set()
 
             completed_run: dict[str, Any] | None = None
             while completed_run is None:
@@ -1602,16 +1619,28 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
             await second.send(jsonrpc_request(6, "session/load", _scope_params("scope-a", sessionId=session_id)))
             final_load_response, final_replay = await _recv_response_with_updates(second)
 
-    assert load_response["result"]["_meta"]["version"] == 0
     replay_payloads = [_update(message) for message in replay]
+    assert {
+        tuple(item.get("message", {}).items())
+        for item in _normalized_updates(replay_payloads)
+        if item.get("sessionUpdate") == "message_added"
+    } >= {
+        tuple({"role": "user", "content": "Do it"}.items()),
+    }
+    assert any(
+        update.get("sessionUpdate") == "message_delta"
+        and update.get("messageId") == "msg_worker"
+        and update.get("appendText") == "done"
+        for update in replay_payloads
+    )
     assert any(
         update.get("sessionUpdate") == "run_updated"
         and isinstance(update.get("run"), dict)
         and update["run"].get("status") == "running"
         for update in replay_payloads
     )
+    assert load_response["result"]["sessionId"] == session_id
     assert completed_run["stopReason"] == "end_turn"
-    assert final_load_response["result"]["_meta"]["version"] == 1
     final_payloads = [_update(message) for message in final_replay]
     assert {
         tuple(item.get("message", {}).items())

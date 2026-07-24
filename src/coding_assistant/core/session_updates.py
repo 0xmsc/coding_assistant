@@ -63,7 +63,7 @@ class HistoryResetUpdate:
 
 @dataclass(frozen=True)
 class HistoryCompleteUpdate:
-    version: int
+    pass
 
 
 @dataclass(frozen=True)

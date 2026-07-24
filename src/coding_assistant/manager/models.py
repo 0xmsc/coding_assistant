@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from sqlalchemy import Column, ForeignKey, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
 
@@ -13,7 +13,6 @@ class ManagerSession(SQLModel, table=True):
     session_id: str = Field(sa_column=Column(String, primary_key=True))
     scope_id: str = Field(sa_column=Column(String, nullable=False))
     title: str | None = Field(default=None, sa_column=Column(String, nullable=True))
-    version: int = Field(default=0, sa_column=Column(Integer, nullable=False, server_default=text("0")))
     created_at: str = Field(sa_column=Column(String, nullable=False))
     updated_at: str = Field(sa_column=Column(String, nullable=False))
     metadata_json: str = Field(default="{}", sa_column=Column(String, nullable=False, server_default=text("'{}'")))
@@ -22,13 +21,19 @@ class ManagerSession(SQLModel, table=True):
 
 class SessionMessageRow(SQLModel, table=True):
     __tablename__: ClassVar[str] = "session_messages"
-    __table_args__: ClassVar[Any] = (Index("idx_session_messages_session", "session_id", "id"),)
+    __table_args__: ClassVar[Any] = (
+        UniqueConstraint("session_id", "stream_id", name="uq_session_messages_stream_id"),
+        Index("idx_session_messages_session", "session_id", "id"),
+        Index("idx_session_messages_run", "session_id", "run_id"),
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     session_id: str = Field(
         sa_column=Column(String, ForeignKey("sessions.session_id", ondelete="CASCADE"), nullable=False),
     )
-    version: int = Field(sa_column=Column(Integer, nullable=False))
+    stream_id: str | None = Field(default=None, sa_column=Column(String, nullable=True))
+    run_id: str | None = Field(default=None, sa_column=Column(String, nullable=True))
+    complete: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default=text("1")))
     role: str = Field(sa_column=Column(String, nullable=False))
     payload_json: str = Field(sa_column=Column(String, nullable=False))
     created_at: str = Field(sa_column=Column(String, nullable=False))

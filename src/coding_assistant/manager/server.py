@@ -14,7 +14,7 @@ from websockets.http11 import Request, Response
 
 from coding_assistant.core.session_updates import SessionUpdate
 from coding_assistant.manager.service import ManagerError, ManagerService, SessionBusyError, scope_id_from_params
-from coding_assistant.manager.store import SessionNotFoundError, StaleSessionCommitError
+from coding_assistant.manager.store import SessionNotFoundError
 from coding_assistant.manager.workspace import WorkspaceMissingError
 from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_PARAMS,
@@ -89,7 +89,7 @@ class _SessionUpdateBroker:
 
 
 def _error_code_for_exception(exc: Exception) -> int:
-    if isinstance(exc, (SessionBusyError, StaleSessionCommitError)):
+    if isinstance(exc, SessionBusyError):
         return ERROR_SERVER
     if isinstance(exc, (ValueError, ManagerError, SessionNotFoundError, WorkspaceMissingError)):
         return ERROR_INVALID_PARAMS

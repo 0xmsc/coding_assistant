@@ -50,15 +50,12 @@ class _RemoteControlState:
 def completed_run_result(
     *,
     outcome: RunOutcome,
-    base_version: int | None = None,
     metadata: JsonObject | None = None,
 ) -> JsonObject:
     result: JsonObject = {
         "messages": messages_to_jsonrpc(outcome.messages),
         "stopReason": outcome.stop_reason,
     }
-    if base_version is not None:
-        result["baseVersion"] = base_version
     if metadata:
         result["_meta"] = metadata
     return result
@@ -123,7 +120,6 @@ class RemoteAgentController:
         self._session_id = session_id
         self._session = session
         self._busy_message = busy_message
-        self._base_version = 0
         self._state = _RemoteControlState()
         self._response_tasks: set[asyncio.Task[None]] = set()
         self._publisher_ready = asyncio.Event()
@@ -291,11 +287,7 @@ class RemoteAgentController:
             if outcome.stop_reason == "failed":
                 await websocket.send(jsonrpc_error(response_id, ERROR_SERVER, outcome.error or "Run failed."))
                 return
-            base_version = self._base_version
-            self._base_version += 1
-            await websocket.send(
-                jsonrpc_result(response_id, completed_run_result(base_version=base_version, outcome=outcome))
-            )
+            await websocket.send(jsonrpc_result(response_id, completed_run_result(outcome=outcome)))
         except ConnectionClosed:
             return
 

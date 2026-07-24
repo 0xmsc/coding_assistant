@@ -68,10 +68,7 @@ def test_session_updates_convert_to_jsonrpc_payloads_and_parse_back() -> None:
             "createdAt": "now",
         },
     }
-    assert session_update_to_jsonrpc_update(HistoryCompleteUpdate(version=3)) == {
-        "sessionUpdate": "history_complete",
-        "version": 3,
-    }
+    assert session_update_to_jsonrpc_update(HistoryCompleteUpdate()) == {"sessionUpdate": "history_complete"}
     assert session_update_to_jsonrpc_update(
         SessionUpdatedUpdate(session={"sessionId": "sess_1", "title": "Updated"})
     ) == {

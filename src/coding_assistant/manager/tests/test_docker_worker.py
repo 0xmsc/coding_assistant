@@ -512,7 +512,6 @@ async def test_docker_worker_runner_reports_real_container_start_failure(tmp_pat
     runner = DockerWorkerRunner(config=config)
     prompt = WorkerPrompt(
         session_id=session_id,
-        base_version=0,
         history=[],
         model="test-model",
         workspace=str(tmp_path),
