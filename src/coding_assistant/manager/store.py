@@ -51,12 +51,15 @@ class StoredAttachment:
 @dataclass(frozen=True)
 class LoadedSession:
     record: SessionRecord
-    messages: list[BaseMessage]
     message_records: list[StoredMessage]
     attachment_records: list[StoredAttachment]
     workspace: Path
     attachments: Path
     worker_env: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def messages(self) -> list[BaseMessage]:
+        return [record.message for record in self.message_records]
 
 
 @dataclass(frozen=True)
@@ -218,7 +221,6 @@ class SessionStore:
         )
         return LoadedSession(
             record=record,
-            messages=list(messages),
             message_records=message_records,
             attachment_records=[],
             workspace=workspace,
@@ -256,11 +258,9 @@ class SessionStore:
             worker_env = _worker_env_from_json(session_row.worker_env_json)
         paths = self.workspaces.require_for_session(session_id)
         message_records = [_message_record_from_row(row) for row in message_rows]
-        messages = [record.message for record in message_records]
         attachment_records = [_attachment_record_from_row(row) for row in attachment_rows]
         return LoadedSession(
             record=record,
-            messages=messages,
             message_records=message_records,
             attachment_records=attachment_records,
             workspace=paths.workspace,

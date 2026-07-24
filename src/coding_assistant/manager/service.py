@@ -112,6 +112,13 @@ class PromptRunRecord:
     error: str | None = None
 
 
+@dataclass
+class ActivePrompt:
+    run: PromptRunRecord
+    cancel_requested: asyncio.Event
+    draft: MessageDeltaUpdate | None = None
+
+
 class WorkerRunner(Protocol):
     async def run_prompt(
         self,
@@ -427,17 +434,6 @@ def _model_param(params: JsonObject) -> str:
     return model.strip()
 
 
-def _session_metadata(session: LoadedSession) -> JsonObject:
-    payload: JsonObject = {
-        "sessionId": session.record.session_id,
-        "updatedAt": session.record.updated_at,
-        "_meta": dict(session.record.metadata),
-    }
-    if session.record.title is not None:
-        payload["title"] = session.record.title
-    return payload
-
-
 def _record_metadata(record: SessionRecord) -> JsonObject:
     payload: JsonObject = {
         "sessionId": record.session_id,
@@ -496,9 +492,7 @@ class ManagerService:
         self._worker_workspace = worker_workspace
         self._user_instructions = tuple(user_instructions)
         self._model_cache: tuple[float, list[str]] | None = None
-        self._active_runs: dict[str, PromptRunRecord] = {}
-        self._active_drafts: dict[str, MessageDeltaUpdate] = {}
-        self._cancel_events: dict[str, asyncio.Event] = {}
+        self._active_prompts: dict[str, ActivePrompt] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
 
     async def list_models(self) -> JsonObject:
@@ -596,14 +590,13 @@ class ManagerService:
             await on_update(HistoryResetUpdate())
             for update in _history_updates(session):
                 await on_update(update)
-            draft = self._active_drafts.get(session_id)
-            if draft is not None:
-                await on_update(draft)
-            active_run = self._active_runs.get(session_id)
-            if active_run is not None:
-                await on_update(_run_updated(active_run))
+            active_prompt = self._active_prompts.get(session_id)
+            if active_prompt is not None:
+                if active_prompt.draft is not None:
+                    await on_update(active_prompt.draft)
+                await on_update(_run_updated(active_prompt.run))
             await on_update(HistoryCompleteUpdate())
-            return _session_metadata(session)
+            return _record_metadata(session.record)
 
     async def upload_file(
         self,
@@ -686,11 +679,12 @@ class ManagerService:
             self._require_idle_session(session_id)
             session = self._store.load_session(scope_id=scope_id, session_id=session_id)
             model = _model_from_record(session.record)
-            run, cancel_requested = self._start_prompt_run(session_id)
+            active_prompt = self._start_prompt_run(session_id)
+            run = active_prompt.run
 
         async def publish_worker_update(update: SessionUpdate) -> None:
             async with lock:
-                if self._active_runs.get(session_id) != run:
+                if self._active_prompts.get(session_id) is not active_prompt:
                     raise RuntimeError(f"Session {session_id} is no longer owned by run {run.run_id}.")
                 if isinstance(update, MessageAddedUpdate):
                     self._store.append_messages(
@@ -698,15 +692,14 @@ class ManagerService:
                         session_id=session_id,
                         messages=[update.message],
                     )
-                    draft = self._active_drafts.get(session_id)
-                    if draft is not None and draft.message_id == update.message_id:
-                        self._active_drafts.pop(session_id, None)
+                    if active_prompt.draft is not None and active_prompt.draft.message_id == update.message_id:
+                        active_prompt.draft = None
                 elif isinstance(update, MessageDeltaUpdate):
-                    draft = self._active_drafts.get(session_id)
+                    draft = active_prompt.draft
                     if draft is None or draft.message_id != update.message_id:
-                        self._active_drafts[session_id] = update
+                        active_prompt.draft = update
                     else:
-                        self._active_drafts[session_id] = replace(
+                        active_prompt.draft = replace(
                             draft,
                             append_text=f"{draft.append_text}{update.append_text}",
                         )
@@ -737,7 +730,7 @@ class ManagerService:
                     attachments=str(session.attachments),
                     prompt=prompt_blocks,
                     worker_env={**session.worker_env, **prompt_worker_env},
-                    cancel_requested=cancel_requested,
+                    cancel_requested=active_prompt.cancel_requested,
                 ),
                 on_update=publish_worker_update,
             )
@@ -752,7 +745,7 @@ class ManagerService:
                         title=worker_result.title,
                     )
                 finished_run = self._finish_prompt_run(
-                    run,
+                    active_prompt,
                     status=status,
                     stop_reason=worker_result.stop_reason,
                 )
@@ -762,7 +755,7 @@ class ManagerService:
         except Exception as exc:
             async with lock:
                 failed_run = self._finish_prompt_run(
-                    run,
+                    active_prompt,
                     status="failed",
                     error=str(exc),
                 )
@@ -773,20 +766,20 @@ class ManagerService:
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         self._store.load_session(scope_id=scope_id, session_id=session_id)
-        cancel_requested = self._cancel_events.get(session_id)
-        if cancel_requested is None:
+        active_prompt = self._active_prompts.get(session_id)
+        if active_prompt is None:
             return
-        cancel_requested.set()
+        active_prompt.cancel_requested.set()
         await self._worker_runner.cancel(session_id=session_id)
 
     def _session_lock(self, session_id: str) -> asyncio.Lock:
         return self._session_locks.setdefault(session_id, asyncio.Lock())
 
     def _require_idle_session(self, session_id: str, message: str = "Session already has an active prompt.") -> None:
-        if session_id in self._active_runs:
+        if session_id in self._active_prompts:
             raise SessionBusyError(message)
 
-    def _start_prompt_run(self, session_id: str) -> tuple[PromptRunRecord, asyncio.Event]:
+    def _start_prompt_run(self, session_id: str) -> ActivePrompt:
         now = _now_iso()
         run = PromptRunRecord(
             run_id=_new_run_id(),
@@ -795,19 +788,19 @@ class ManagerService:
             started_at=now,
             updated_at=now,
         )
-        cancel_requested = asyncio.Event()
-        self._active_runs[session_id] = run
-        self._cancel_events[session_id] = cancel_requested
-        return run, cancel_requested
+        active_prompt = ActivePrompt(run=run, cancel_requested=asyncio.Event())
+        self._active_prompts[session_id] = active_prompt
+        return active_prompt
 
     def _finish_prompt_run(
         self,
-        run: PromptRunRecord,
+        active_prompt: ActivePrompt,
         *,
         status: str,
         stop_reason: str | None = None,
         error: str | None = None,
     ) -> PromptRunRecord:
+        run = active_prompt.run
         now = _now_iso()
         finished_run = replace(
             run,
@@ -817,10 +810,8 @@ class ManagerService:
             stop_reason=stop_reason,
             error=error,
         )
-        if self._active_runs.get(run.session_id) == run:
-            self._active_runs.pop(run.session_id, None)
-            self._active_drafts.pop(run.session_id, None)
-            self._cancel_events.pop(run.session_id, None)
+        if self._active_prompts.get(run.session_id) is active_prompt:
+            self._active_prompts.pop(run.session_id)
         return finished_run
 
     def _initial_messages(self, *, skills_root: Path) -> list[BaseMessage]:
