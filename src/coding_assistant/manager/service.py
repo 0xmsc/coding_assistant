@@ -20,6 +20,7 @@ from coding_assistant.core.session_updates import (
     HistoryCompleteUpdate,
     HistoryResetUpdate,
     MessageAddedUpdate,
+    MessageDeltaUpdate,
     RunUpdatedUpdate,
     SessionUpdate,
     SessionAttachment,
@@ -27,7 +28,7 @@ from coding_assistant.core.session_updates import (
     content_text,
 )
 from coding_assistant.llm.openai import list_models as list_provider_models
-from coding_assistant.llm.types import BaseMessage, UserMessage
+from coding_assistant.llm.types import AssistantMessage, BaseMessage, UserMessage
 from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
 from coding_assistant.remote.jsonrpc import JsonObject, prompt_content_from_acp, session_id_from_params
 from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
@@ -84,7 +85,6 @@ class SkillBundle:
 @dataclass(frozen=True)
 class WorkerPrompt:
     session_id: str
-    base_version: int
     history: list[BaseMessage]
     model: str
     workspace: str
@@ -387,9 +387,18 @@ def _history_updates(session: LoadedSession) -> list[SessionUpdate]:
         )
 
     for record in session.message_records:
+        message_id = record.stream_id or _stored_message_update_id(record.message_id)
+        if not record.complete and isinstance(record.message, AssistantMessage) and record.message.content:
+            updates.append(
+                MessageDeltaUpdate(
+                    message_id=message_id,
+                    append_text=record.message.content,
+                )
+            )
+            continue
         updates.append(
             MessageAddedUpdate(
-                message_id=_stored_message_update_id(record.message_id),
+                message_id=message_id,
                 message=record.message,
                 created_at=record.created_at,
             )
@@ -436,10 +445,7 @@ def _session_metadata(session: LoadedSession) -> JsonObject:
     payload: JsonObject = {
         "sessionId": session.record.session_id,
         "updatedAt": session.record.updated_at,
-        "_meta": {
-            "version": session.record.version,
-            **session.record.metadata,
-        },
+        "_meta": dict(session.record.metadata),
     }
     if session.record.title is not None:
         payload["title"] = session.record.title
@@ -450,10 +456,7 @@ def _record_metadata(record: SessionRecord) -> JsonObject:
     payload: JsonObject = {
         "sessionId": record.session_id,
         "updatedAt": record.updated_at,
-        "_meta": {
-            "version": record.version,
-            **record.metadata,
-        },
+        "_meta": dict(record.metadata),
     }
     if record.title is not None:
         payload["title"] = record.title
@@ -509,7 +512,8 @@ class ManagerService:
         self._model_cache: tuple[float, list[str]] | None = None
         self._active_runs: dict[str, PromptRunRecord] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
-        self._active_lock = asyncio.Lock()
+        self._session_locks: dict[str, asyncio.Lock] = {}
+        self._store.discard_interrupted_runs()
 
     async def list_models(self) -> JsonObject:
         models = await self._available_models()
@@ -559,17 +563,20 @@ class ManagerService:
             next_title = stripped_title or None
         else:
             raise ManagerError("session/rename requires a string or null title.")
-        record = self._store.rename_session(scope_id=scope_id, session_id=session_id, title=next_title)
-        await on_update(_session_updated(record))
-        return _record_metadata(record)
+        async with self._session_lock(session_id):
+            self._require_idle_session(session_id)
+            record = self._store.rename_session(scope_id=scope_id, session_id=session_id, title=next_title)
+            await on_update(_session_updated(record))
+            return _record_metadata(record)
 
     async def delete_session(self, *, params: JsonObject) -> None:
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
-        async with self._active_lock:
-            if session_id in self._active_runs:
-                raise SessionBusyError("Cannot delete session while it has an active prompt. Cancel it first.")
-        self._store.delete_session(scope_id=scope_id, session_id=session_id)
+        async with self._session_lock(session_id):
+            self._require_idle_session(
+                session_id, "Cannot delete session while it has an active prompt. Cancel it first."
+            )
+            self._store.delete_session(scope_id=scope_id, session_id=session_id)
 
     async def set_session_model(
         self,
@@ -580,37 +587,34 @@ class ManagerService:
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         model = _model_param(params)
-        self._store.load_session(scope_id=scope_id, session_id=session_id)
-
-        async with self._active_lock:
-            if session_id in self._active_runs:
-                raise SessionBusyError("Cannot change model while session has an active prompt.")
-
         if model not in await self._available_models():
             raise ManagerError(f"Model {model} is not available.")
 
-        record = self._store.update_session_metadata(
-            scope_id=scope_id,
-            session_id=session_id,
-            metadata={MODEL_METADATA_KEY: model},
-        )
-        await on_update(_session_updated(record))
-        return _record_metadata(record)
+        async with self._session_lock(session_id):
+            self._require_idle_session(session_id, "Cannot change model while session has an active prompt.")
+            record = self._store.update_session_metadata(
+                scope_id=scope_id,
+                session_id=session_id,
+                metadata={MODEL_METADATA_KEY: model},
+            )
+            await on_update(_session_updated(record))
+            return _record_metadata(record)
 
     async def load_session(
         self, *, params: JsonObject, on_update: Callable[[SessionUpdate], Awaitable[None]]
     ) -> JsonObject:
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
-        session = self._store.load_session(scope_id=scope_id, session_id=session_id)
-        await on_update(HistoryResetUpdate())
-        for update in _history_updates(session):
-            await on_update(update)
-        active_run = await self._active_run(session_id)
-        if active_run is not None:
-            await on_update(_run_updated(active_run))
-        await on_update(HistoryCompleteUpdate(version=session.record.version))
-        return _session_metadata(session)
+        async with self._session_lock(session_id):
+            session = self._store.load_session(scope_id=scope_id, session_id=session_id)
+            await on_update(HistoryResetUpdate())
+            for update in _history_updates(session):
+                await on_update(update)
+            active_run = self._active_runs.get(session_id)
+            if active_run is not None:
+                await on_update(_run_updated(active_run))
+            await on_update(HistoryCompleteUpdate())
+            return _session_metadata(session)
 
     async def upload_file(
         self,
@@ -621,30 +625,28 @@ class ManagerService:
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
 
-        async with self._active_lock:
-            if session_id in self._active_runs:
-                raise SessionBusyError("Cannot upload a file while session has an active prompt.")
+        async with self._session_lock(session_id):
+            self._require_idle_session(session_id, "Cannot upload a file while session has an active prompt.")
             session = self._store.load_session(scope_id=scope_id, session_id=session_id)
             attachment = _write_attachment(attachments=session.attachments, params=params)
             message_text = _attachment_message(attachment)
-            self._store.commit_messages(
+            stored_messages = self._store.append_messages(
                 scope_id=scope_id,
                 session_id=session_id,
-                base_version=session.record.version,
                 messages=[UserMessage(content=message_text)],
                 attachments=[attachment],
             )
 
-        await on_update(
-            MessageAddedUpdate(
-                message_id=_new_message_update_id(),
-                message=UserMessage(content=message_text),
+            await on_update(
+                MessageAddedUpdate(
+                    message_id=_stored_message_update_id(stored_messages[0].message_id),
+                    message=UserMessage(content=message_text),
+                )
             )
-        )
-        await on_update(AttachmentAddedUpdate(attachment=attachment))
-        updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
-        await on_update(_session_updated(updated.record))
-        return {"attachment": attachment.to_json(), "session": _record_metadata(updated.record)}
+            await on_update(AttachmentAddedUpdate(attachment=attachment))
+            updated = self._store.load_session(scope_id=scope_id, session_id=session_id)
+            await on_update(_session_updated(updated.record))
+            return {"attachment": attachment.to_json(), "session": _record_metadata(updated.record)}
 
     async def download_attachment(self, *, params: JsonObject) -> JsonObject:
         scope_id = scope_id_from_params(params)
@@ -690,23 +692,57 @@ class ManagerService:
         prompt_worker_env = _worker_env_from_params(params)
         _reject_prompt_skills(params)
 
-        session = self._store.load_session(scope_id=scope_id, session_id=session_id)
-        model = _model_from_record(session.record)
+        lock = self._session_lock(session_id)
+        async with lock:
+            self._require_idle_session(session_id)
+            session = self._store.load_session(scope_id=scope_id, session_id=session_id)
+            model = _model_from_record(session.record)
+            run, cancel_requested = self._start_prompt_run(session_id)
 
-        run, cancel_requested = await self._start_prompt_run(session_id)
+        async def publish_worker_update(update: SessionUpdate) -> None:
+            async with lock:
+                if self._active_runs.get(session_id) != run:
+                    raise RuntimeError(f"Session {session_id} is no longer owned by run {run.run_id}.")
+                if isinstance(update, MessageAddedUpdate):
+                    self._store.upsert_run_message(
+                        scope_id=scope_id,
+                        session_id=session_id,
+                        run_id=run.run_id,
+                        stream_id=update.message_id,
+                        message=update.message,
+                    )
+                elif isinstance(update, MessageDeltaUpdate):
+                    self._store.append_run_message_text(
+                        scope_id=scope_id,
+                        session_id=session_id,
+                        run_id=run.run_id,
+                        stream_id=update.message_id,
+                        append_text=update.append_text,
+                    )
+                await on_update(update)
+
         try:
-            await on_update(_run_updated(run))
-            if content_text(prompt_content) is not None:
-                await on_update(
-                    MessageAddedUpdate(
-                        message_id=_new_message_update_id(),
-                        message=UserMessage(content=prompt_content),
-                    ),
-                )
+            async with lock:
+                await on_update(_run_updated(run))
+                if content_text(prompt_content) is not None:
+                    user_message_id = _new_message_update_id()
+                    user_message = UserMessage(content=prompt_content)
+                    self._store.upsert_run_message(
+                        scope_id=scope_id,
+                        session_id=session_id,
+                        run_id=run.run_id,
+                        stream_id=user_message_id,
+                        message=user_message,
+                    )
+                    await on_update(
+                        MessageAddedUpdate(
+                            message_id=user_message_id,
+                            message=user_message,
+                        )
+                    )
             worker_result = await self._worker_runner.run_prompt(
                 prompt=WorkerPrompt(
                     session_id=session_id,
-                    base_version=session.record.version,
                     history=session.messages,
                     model=model,
                     workspace=str(session.workspace),
@@ -715,55 +751,59 @@ class ManagerService:
                     worker_env={**session.worker_env, **prompt_worker_env},
                     cancel_requested=cancel_requested,
                 ),
-                on_update=on_update,
-            )
-            self._store.commit_messages(
-                scope_id=scope_id,
-                session_id=session_id,
-                base_version=session.record.version,
-                messages=worker_result.messages,
-                title=worker_result.title,
+                on_update=publish_worker_update,
             )
             status = "cancelled" if worker_result.stop_reason == "cancelled" else "completed"
-            updated_record = self._store.load_session(scope_id=scope_id, session_id=session_id).record
-            finished_run = await self._finish_prompt_run(
-                run,
-                status=status,
-                stop_reason=worker_result.stop_reason,
-            )
-            await on_update(_run_updated(finished_run))
-            await on_update(_session_updated(updated_record))
+            async with lock:
+                updated_record = self._store.finish_run(
+                    scope_id=scope_id,
+                    session_id=session_id,
+                    run_id=run.run_id,
+                    messages=worker_result.messages,
+                    title=worker_result.title,
+                )
+                finished_run = self._finish_prompt_run(
+                    run,
+                    status=status,
+                    stop_reason=worker_result.stop_reason,
+                )
+                await on_update(_run_updated(finished_run))
+                await on_update(_session_updated(updated_record))
             return PromptResult(stop_reason=worker_result.stop_reason)
         except Exception as exc:
-            failed_run = await self._finish_prompt_run(
-                run,
-                status="failed",
-                error=str(exc),
-            )
-            await on_update(_run_updated(failed_run))
-            canonical_session = self._store.load_session(scope_id=scope_id, session_id=session_id)
-            await on_update(HistoryResetUpdate())
-            for update in _history_updates(canonical_session):
-                await on_update(update)
-            await on_update(HistoryCompleteUpdate(version=canonical_session.record.version))
+            async with lock:
+                self._store.discard_run(scope_id=scope_id, session_id=session_id, run_id=run.run_id)
+                failed_run = self._finish_prompt_run(
+                    run,
+                    status="failed",
+                    error=str(exc),
+                )
+                await on_update(_run_updated(failed_run))
+                canonical_session = self._store.load_session(scope_id=scope_id, session_id=session_id)
+                await on_update(HistoryResetUpdate())
+                for update in _history_updates(canonical_session):
+                    await on_update(update)
+                await on_update(HistoryCompleteUpdate())
             raise
 
     async def cancel(self, *, params: JsonObject) -> None:
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         self._store.load_session(scope_id=scope_id, session_id=session_id)
-        async with self._active_lock:
-            cancel_requested = self._cancel_events.get(session_id)
-            if cancel_requested is None:
-                return
-            cancel_requested.set()
+        cancel_requested = self._cancel_events.get(session_id)
+        if cancel_requested is None:
+            return
+        cancel_requested.set()
         await self._worker_runner.cancel(session_id=session_id)
 
-    async def _active_run(self, session_id: str) -> PromptRunRecord | None:
-        async with self._active_lock:
-            return self._active_runs.get(session_id)
+    def _session_lock(self, session_id: str) -> asyncio.Lock:
+        return self._session_locks.setdefault(session_id, asyncio.Lock())
 
-    async def _start_prompt_run(self, session_id: str) -> tuple[PromptRunRecord, asyncio.Event]:
+    def _require_idle_session(self, session_id: str, message: str = "Session already has an active prompt.") -> None:
+        if session_id in self._active_runs:
+            raise SessionBusyError(message)
+
+    def _start_prompt_run(self, session_id: str) -> tuple[PromptRunRecord, asyncio.Event]:
         now = _now_iso()
         run = PromptRunRecord(
             run_id=_new_run_id(),
@@ -773,14 +813,11 @@ class ManagerService:
             updated_at=now,
         )
         cancel_requested = asyncio.Event()
-        async with self._active_lock:
-            if session_id in self._active_runs:
-                raise SessionBusyError("Session already has an active prompt.")
-            self._active_runs[session_id] = run
-            self._cancel_events[session_id] = cancel_requested
+        self._active_runs[session_id] = run
+        self._cancel_events[session_id] = cancel_requested
         return run, cancel_requested
 
-    async def _finish_prompt_run(
+    def _finish_prompt_run(
         self,
         run: PromptRunRecord,
         *,
@@ -797,10 +834,9 @@ class ManagerService:
             stop_reason=stop_reason,
             error=error,
         )
-        async with self._active_lock:
-            if self._active_runs.get(run.session_id) == run:
-                self._active_runs.pop(run.session_id, None)
-                self._cancel_events.pop(run.session_id, None)
+        if self._active_runs.get(run.session_id) == run:
+            self._active_runs.pop(run.session_id, None)
+            self._cancel_events.pop(run.session_id, None)
         return finished_run
 
     def _initial_messages(self, *, skills_root: Path) -> list[BaseMessage]:

@@ -255,7 +255,6 @@ async def test_remote_worker_prompt_streams_update_and_persists_to_sqlite(tmp_pa
     ]
     assert message_updates[1] == MessageDeltaUpdate(message_id=_message_id(message_updates[2]), append_text="hello")
     assert session_update["title"] == "Remote worker title"
-    assert loaded.record.version == 1
     assert loaded.record.title == "Remote worker title"
     assert loaded.messages == [
         SystemMessage(content="system"),
@@ -398,7 +397,6 @@ async def test_remote_worker_two_sequential_prompts_advance_history_once(tmp_pat
 
     assert first.stop_reason == "end_turn"
     assert second.stop_reason == "end_turn"
-    assert loaded.record.version == 2
     assert [message.role for message in loaded.messages] == ["system", "user", "assistant", "user", "assistant"]
     assert [getattr(message, "content", None) for message in loaded.messages] == [
         "system",
@@ -491,7 +489,6 @@ async def test_remote_worker_cancel_reaches_active_worker(tmp_path: Path) -> Non
         loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert result.stop_reason == "cancelled"
-    assert loaded.record.version == 1
     assert [message.role for message in loaded.messages] == ["system", "user"]
 
 
@@ -586,7 +583,7 @@ async def test_manager_server_uses_remote_worker_and_replays_persisted_history(t
                     jsonrpc_request(5, "session/load", {"_meta": {"scopeId": "scope-a"}, "sessionId": session_id}),
                 )
                 replay = [parse_jsonrpc_message(await websocket.recv()) for _ in range(5)]
-                load_response = parse_jsonrpc_message(await websocket.recv())
+                parse_jsonrpc_message(await websocket.recv())
 
     assert initialize_response["result"]["protocolVersion"] == ACP_PROTOCOL_VERSION
     assert set_model_response["result"]["_meta"]["model"] == "test-model"
@@ -624,9 +621,8 @@ async def test_manager_server_uses_remote_worker_and_replays_persisted_history(t
             "messageId": "message-2",
             "message": {"role": "assistant", "content": "server answer"},
         },
-        {"sessionUpdate": "history_complete", "version": 1},
+        {"sessionUpdate": "history_complete"},
     ]
-    assert load_response["result"]["_meta"]["version"] == 1
 
 
 @pytest.mark.asyncio
@@ -658,7 +654,6 @@ async def test_remote_worker_smoke_uses_fake_openai_adapter(
             loaded = store.load_session(scope_id="scope-a", session_id=created.record.session_id)
 
     assert result.stop_reason == "end_turn"
-    assert loaded.record.version == 1
     assert [getattr(message, "content", None) for message in loaded.messages] == [
         "system",
         "container smoke",

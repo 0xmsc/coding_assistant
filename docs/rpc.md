@@ -236,7 +236,6 @@ sessions
   session_id text primary key
   scope_id text not null
   title text null
-  version integer not null default 0
   created_at text not null
   updated_at text not null
   metadata_json text not null default '{}'
@@ -245,7 +244,9 @@ sessions
 session_messages
   id integer primary key autoincrement
   session_id text not null
-  version integer not null
+  stream_id text null
+  run_id text null
+  complete boolean not null default true
   role text not null
   payload_json text not null
   created_at text not null
@@ -269,7 +270,10 @@ session_attachments
 `session/list`, `session/load`, or other public session metadata responses.
 `session_messages` is the source of truth for LLM history and replay. Every
 message row is replayed to clients in insertion order, including system
-messages and upload messages. Session attachments are metadata rows in
+messages, active-run messages, and upload messages. `stream_id`, `run_id`, and
+`complete` identify temporary active-run rows so a reconnect can reconstruct
+the transcript without exposing those implementation details in the protocol.
+Session attachments are metadata rows in
 `session_attachments` linked to the upload message row that introduced them.
 
 Do not add a durable `session_runs` table for v1. Active runs live in manager
@@ -277,22 +281,20 @@ memory while a worker is running.
 
 ## Commit Semantics
 
-Worker stream output is provisional until the manager persists a completed
-turn.
+The manager reserves the session for one active worker and persists each
+message update before publishing it. A concurrent `session/load` therefore
+replays all output produced so far and then reports the in-memory running
+status.
 
-1. The manager starts a worker from history version `N`.
-2. The worker creates an in-memory `AgentSession`.
-3. The worker streams live `session/update` notifications.
-4. The worker returns the completed `_worker/run` result.
-5. The manager atomically verifies `sessions.version == N` using the version it
-   loaded before starting the worker.
-6. The manager inserts committed messages and updates the session to version
-   `N + 1`.
+When the worker returns its completed `_worker/run` result, the manager
+atomically replaces that run's temporary rows with the authoritative completed
+messages. If the worker fails, those temporary rows are removed and canonical
+history is replayed. If the manager restarts, it removes interrupted-run rows
+because their owning workers can no longer finish them.
 
-Stale run completions are rejected. If a worker crashes before completion,
-SQLite history is not advanced. Before returning the prompt error, the manager
-replays canonical history to subscribed clients so provisional messages from
-the failed run are removed.
+Only one manager may own a SQLite database. The manager holds an exclusive
+lock file beside the database for its full lifetime. Combined with the
+per-session active-run reservation, this makes transcript versions unnecessary.
 
 ## Connection Lifecycle
 
@@ -445,7 +447,6 @@ Response:
         "title": "Fix failing tests",
         "updatedAt": "2026-06-03T10:15:00Z",
         "_meta": {
-          "version": 1,
           "model": "gpt-5.1-codex-mini"
         }
       }
@@ -580,7 +581,6 @@ When replay is complete:
     "title": "Fix failing tests",
     "updatedAt": "2026-06-03T10:15:00Z",
     "_meta": {
-      "version": 1,
       "model": "gpt-5.1-codex-mini"
     }
   }
@@ -623,7 +623,6 @@ Response:
     "title": "Fix failing tests",
     "updatedAt": "2026-06-03T10:20:00Z",
     "_meta": {
-      "version": 1,
       "model": "gpt-5.1-codex-mini"
     }
   }
@@ -636,7 +635,7 @@ The manager fails when the session does not exist or belongs to another scope.
 
 Sets the model used for future prompts in an existing session in
 `params._meta.scopeId`. Changing the model updates session metadata but does
-not rewrite transcript history or increment the transcript version.
+not rewrite transcript history.
 
 Request:
 
@@ -666,7 +665,6 @@ Response:
     "title": "Fix failing tests",
     "updatedAt": "2026-06-03T10:25:00Z",
     "_meta": {
-      "version": 1,
       "model": "openai/gpt-5.1"
     }
   }
@@ -822,9 +820,7 @@ Response:
     "session": {
       "sessionId": "sess_abc123",
       "updatedAt": "2026-06-23T19:30:00Z",
-      "_meta": {
-        "version": 2
-      }
+      "_meta": {}
     }
   }
 }
@@ -1068,7 +1064,6 @@ Session metadata update:
         "title": "Fix failing tests",
         "updatedAt": "2026-06-23T19:35:00Z",
         "_meta": {
-          "version": 2,
           "model": "openai/gpt-5.1"
         }
       }
@@ -1109,9 +1104,9 @@ Supported `sessionUpdate` values:
 | `message_added` | Add a complete message, or finalize a provisional draft with the same id. |
 | `message_delta` | Append streamed text to a provisional assistant draft, creating it when its id is first seen. |
 | `attachment_added` | Add an attachment metadata record linked to a message. |
-| `session_updated` | Replace or merge session metadata such as title, model, updated time, and version. |
+| `session_updated` | Replace or merge session metadata such as title, model, and updated time. |
 | `run_updated` | Report an active or finished prompt run and its status. |
-| `history_complete` | Replay is complete and includes the durable session version. |
+| `history_complete` | Replay is complete. |
 
 Each model attempt uses one message id. Its deltas arrive first, followed by a
 complete `message_added` with the same id. The complete message replaces the
@@ -1120,8 +1115,8 @@ uses a new message id; seeing that new provisional id supersedes the older
 unfinished draft. There is no retry, reset, or status update in the wire
 protocol.
 
-Live message updates are provisional until the worker commits the completed
-turn and the manager persists it atomically. Tool calls and tool results are
+Live message updates are persisted as temporary run rows before the manager
+publishes them. Tool calls and tool results are
 represented as assistant/tool messages; clients that want tool cards or image
 previews derive those UI elements from message content.
 The manager sends `session_updated` after persisted session metadata changes,
@@ -1170,9 +1165,6 @@ Result fields:
 Workers may include `_meta.title` to request a persisted session title update.
 The manager stores the title with the commit and emits `session_updated` to
 clients.
-
-The manager rejects commits when the version it loaded before starting the
-worker no longer matches the current SQLite session version.
 
 ## Module Naming
 

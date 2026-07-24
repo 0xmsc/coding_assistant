@@ -46,9 +46,10 @@ clients. The terminal UI itself is not a JSON-RPC client.
 `coding_assistant.manager` owns durable web-session state and manager-facing
 RPC.
 
-- `SessionStore` persists sessions and committed messages in SQLite.
+- `SessionStore` persists sessions, completed messages, and active-run message
+  updates in SQLite.
 - `ManagerService` validates opaque scope metadata, loads canonical history,
-  calls a worker runner, and commits completed turns.
+  reserves one active worker per session, and reconciles completed turns.
 - `manager.server` adapts `ManagerService` to JSON-RPC.
 - `workspace.py` derives managed session paths from the session id.
 
@@ -112,10 +113,12 @@ The manager is the source of truth for managed web sessions.
 
 - Session ids are durable identifiers.
 - Workspace paths are derived from session ids.
-- SQLite stores committed history and session metadata.
+- SQLite stores completed history, active-run messages, and session metadata.
 - Workers hold only one active in-memory `AgentSession`.
-- A worker run result is appended by the manager after the worker completes a
-  turn.
+- The manager persists each worker message before publishing it, then replaces
+  the run's temporary rows with the completed worker result.
+- One manager owns the SQLite database through an exclusive lifetime lock, and
+  one worker may be active for each session.
 
 This avoids split durable history between manager and worker. The worker can be
 discarded and recreated from manager-provided state.
@@ -132,8 +135,8 @@ should use core dataclasses such as `BaseMessage`, `AgentSessionEvent`, and
 Every remotely observed `AgentSession` emits provisional `session/update`
 notifications independently of whether this connection submitted a prompt.
 Live `session/prompt` and private `_worker/run` responses carry completed run
-results. Persistence is still caller-specific: the manager persists completed
-worker runs, while CLI-owned local remote callers do not.
+results. Persistence is still caller-specific: the manager persists active
+updates and completed worker runs, while CLI-owned local remote callers do not.
 
 Assistant streaming uses one message id per model attempt. Deltas create a
 provisional draft, and the complete assistant message finalizes that same id.

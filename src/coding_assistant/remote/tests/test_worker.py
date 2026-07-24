@@ -246,7 +246,6 @@ async def test_worker_keeps_connection_open_after_invalid_prompt() -> None:
 
         assert invalid["error"]["code"] == -32602
         assert response["result"] == {
-            "baseVersion": 0,
             "messages": messages_to_jsonrpc([UserMessage(content="Valid"), AssistantMessage(content="Done")]),
             "stopReason": "end_turn",
         }
@@ -460,7 +459,6 @@ async def test_worker_server_completes_acp_prompt_turn() -> None:
             "jsonrpc": "2.0",
             "id": 3,
             "result": {
-                "baseVersion": 0,
                 "messages": messages_to_jsonrpc(
                     [UserMessage(content="Do the task"), AssistantMessage(content="Hello from the worker")]
                 ),
@@ -596,7 +594,6 @@ async def test_worker_uses_a_new_message_id_for_a_retried_stream() -> None:
         assert completed["message"]["id"] == second_id
         assert completed["message"]["content"] == "kept"
         assert response["result"] == {
-            "baseVersion": 0,
             "messages": messages_to_jsonrpc([UserMessage(content="Retry"), AssistantMessage(content="kept")]),
             "stopReason": "end_turn",
         }
@@ -655,7 +652,6 @@ async def test_worker_server_streams_tool_messages_before_final_answer() -> None
             "jsonrpc": "2.0",
             "id": 3,
             "result": {
-                "baseVersion": 0,
                 "messages": messages_to_jsonrpc(
                     [
                         UserMessage(content="Use the tool"),
