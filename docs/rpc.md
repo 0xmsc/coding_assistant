@@ -276,17 +276,14 @@ memory while a worker is running.
 
 ## Commit Semantics
 
-The manager reserves the session for one active worker and persists each
-message update before publishing it. Assistant deltas update the message row
-created for that stream. The manager translates worker message ids to stable
-database message ids in memory, so later deltas and reconnect replay address
-the same message without additional database state.
+The manager reserves the session for one active worker and persists every
+complete message before publishing it. Assistant deltas remain in manager
+memory until the worker emits the complete message.
 
-A concurrent `session/load` therefore replays all output produced so far and
-then reports the in-memory running status. Streamed messages remain in history
-if a worker fails; there is no turn-level rollback or final-result
-reconciliation. The worker result supplies status and metadata, not an
-authoritative replacement transcript.
+A concurrent `session/load` replays durable messages followed by the current
+in-memory draft and running status. A new model attempt replaces the previous
+draft. Terminal run status removes any unfinished draft. The worker result
+supplies status and metadata, not a transcript.
 
 Deployments must run only one manager against a SQLite database. Within that
 manager, the per-session reservation prevents concurrent workers or mutations
@@ -1112,8 +1109,8 @@ uses a new message id; seeing that new provisional id supersedes the older
 unfinished draft. There is no retry, reset, or status update in the wire
 protocol.
 
-Live message updates are inserted or updated before the manager publishes
-them. Tool calls and tool results are
+Complete live messages are inserted before the manager publishes them.
+Assistant deltas are buffered in memory for active-run replay. Tool calls and tool results are
 represented as assistant/tool messages; clients that want tool cards or image
 previews derive those UI elements from message content.
 The manager sends `session_updated` after persisted session metadata changes,
@@ -1147,20 +1144,19 @@ Request params:
 
 ### `_worker/run` result
 
-The worker's response to `_worker/run` contains the completed run that the
-manager may commit. Streaming remains in `session/update` notifications sent
-before this response.
+The worker's response to `_worker/run` reports only completion status and
+metadata. Messages are delivered through `session/update` notifications before
+this response.
 
 Result fields:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `messages` | array | yes | Newly committed model-visible messages. |
 | `stopReason` | string | yes | `end_turn` or `cancelled`. |
 | `_meta` | object | no | Implementation metadata such as title updates. |
 
 Workers may include `_meta.title` to request a persisted session title update.
-The manager stores the title with the commit and emits `session_updated` to
+The manager stores the title and emits `session_updated` to
 clients.
 
 ## Module Naming

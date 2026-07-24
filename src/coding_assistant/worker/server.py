@@ -11,10 +11,10 @@ from websockets.exceptions import ConnectionClosed
 from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, CompletionStreamer, RunOutcome
 from coding_assistant.llm.types import BaseMessage, Tool, UserMessage
 from coding_assistant.remote.control import (
-    completed_run_result,
     send_session_update,
     session_updates_from_agent_event,
     wait_for_session_events,
+    worker_run_result,
 )
 from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_PARAMS,
@@ -131,7 +131,7 @@ async def _execute_run(
             await websocket.send(
                 jsonrpc_result(
                     response_id,
-                    completed_run_result(outcome=outcome, metadata=metadata),
+                    worker_run_result(outcome=outcome, metadata=metadata),
                 ),
             )
     except ConnectionClosed:

@@ -28,7 +28,7 @@ from coding_assistant.core.session_updates import (
     content_text,
 )
 from coding_assistant.llm.openai import list_models as list_provider_models
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, UserMessage
+from coding_assistant.llm.types import BaseMessage, UserMessage
 from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
 from coding_assistant.remote.jsonrpc import JsonObject, prompt_content_from_acp, session_id_from_params
 from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
@@ -97,7 +97,6 @@ class WorkerPrompt:
 @dataclass(frozen=True)
 class WorkerRunResult:
     stop_reason: str
-    messages: list[BaseMessage] = field(default_factory=list)
     title: str | None = None
 
 
@@ -498,6 +497,7 @@ class ManagerService:
         self._user_instructions = tuple(user_instructions)
         self._model_cache: tuple[float, list[str]] | None = None
         self._active_runs: dict[str, PromptRunRecord] = {}
+        self._active_drafts: dict[str, MessageDeltaUpdate] = {}
         self._cancel_events: dict[str, asyncio.Event] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
 
@@ -596,6 +596,9 @@ class ManagerService:
             await on_update(HistoryResetUpdate())
             for update in _history_updates(session):
                 await on_update(update)
+            draft = self._active_drafts.get(session_id)
+            if draft is not None:
+                await on_update(draft)
             active_run = self._active_runs.get(session_id)
             if active_run is not None:
                 await on_update(_run_updated(active_run))
@@ -685,58 +688,28 @@ class ManagerService:
             model = _model_from_record(session.record)
             run, cancel_requested = self._start_prompt_run(session_id)
 
-        stored_message_ids: dict[str, int] = {}
-        draft_message_ids: set[str] = set()
-
         async def publish_worker_update(update: SessionUpdate) -> None:
             async with lock:
                 if self._active_runs.get(session_id) != run:
                     raise RuntimeError(f"Session {session_id} is no longer owned by run {run.run_id}.")
                 if isinstance(update, MessageAddedUpdate):
-                    message_id = stored_message_ids.get(update.message_id)
-                    if message_id is None:
-                        stored = self._store.append_messages(
-                            scope_id=scope_id,
-                            session_id=session_id,
-                            messages=[update.message],
-                        )[0]
-                        message_id = stored.message_id
-                        stored_message_ids[update.message_id] = message_id
-                    else:
-                        self._store.replace_message(
-                            scope_id=scope_id,
-                            session_id=session_id,
-                            message_id=message_id,
-                            message=update.message,
-                        )
-                    draft_message_ids.discard(update.message_id)
-                    update = replace(update, message_id=_stored_message_update_id(message_id))
+                    self._store.append_messages(
+                        scope_id=scope_id,
+                        session_id=session_id,
+                        messages=[update.message],
+                    )
+                    draft = self._active_drafts.get(session_id)
+                    if draft is not None and draft.message_id == update.message_id:
+                        self._active_drafts.pop(session_id, None)
                 elif isinstance(update, MessageDeltaUpdate):
-                    message_id = stored_message_ids.get(update.message_id)
-                    if message_id is None:
-                        for draft_message_id in draft_message_ids:
-                            self._store.delete_message(
-                                scope_id=scope_id,
-                                session_id=session_id,
-                                message_id=stored_message_ids.pop(draft_message_id),
-                            )
-                        draft_message_ids.clear()
-                        stored = self._store.append_messages(
-                            scope_id=scope_id,
-                            session_id=session_id,
-                            messages=[AssistantMessage(content=update.append_text)],
-                        )[0]
-                        message_id = stored.message_id
-                        stored_message_ids[update.message_id] = message_id
+                    draft = self._active_drafts.get(session_id)
+                    if draft is None or draft.message_id != update.message_id:
+                        self._active_drafts[session_id] = update
                     else:
-                        self._store.append_message_text(
-                            scope_id=scope_id,
-                            session_id=session_id,
-                            message_id=message_id,
-                            append_text=update.append_text,
+                        self._active_drafts[session_id] = replace(
+                            draft,
+                            append_text=f"{draft.append_text}{update.append_text}",
                         )
-                    draft_message_ids.add(update.message_id)
-                    update = replace(update, message_id=_stored_message_update_id(message_id))
                 await on_update(update)
 
         try:
@@ -846,6 +819,7 @@ class ManagerService:
         )
         if self._active_runs.get(run.session_id) == run:
             self._active_runs.pop(run.session_id, None)
+            self._active_drafts.pop(run.session_id, None)
             self._cancel_events.pop(run.session_id, None)
         return finished_run
 

@@ -20,7 +20,6 @@ from coding_assistant.llm.types import (
     TextToolResult,
     Tool,
     ToolCall,
-    UserMessage,
     Usage,
 )
 from coding_assistant.remote.jsonrpc import jsonrpc_notification, jsonrpc_request, parse_jsonrpc_message, text_block
@@ -204,7 +203,6 @@ async def test_worker_prompt_streams_updates_and_returns_result(tmp_path: Path) 
         for update in updates
     )
     assert response["result"] == {
-        "messages": messages_to_jsonrpc([UserMessage(content="Do it"), AssistantMessage(content="hello")]),
         "stopReason": "end_turn",
         "_meta": {"title": "Worker title"},
     }
@@ -265,10 +263,7 @@ async def test_worker_cancel_returns_cancelled_result(tmp_path: Path) -> None:
             prompt_response = parse_jsonrpc_message(await websocket.recv())
 
     assert cancel_response["result"] is None
-    assert prompt_response["result"] == {
-        "messages": messages_to_jsonrpc([UserMessage(content="Do it")]),
-        "stopReason": "cancelled",
-    }
+    assert prompt_response["result"] == {"stopReason": "cancelled"}
 
 
 @pytest.mark.asyncio

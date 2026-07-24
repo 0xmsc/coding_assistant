@@ -46,7 +46,7 @@ clients. The terminal UI itself is not a JSON-RPC client.
 `coding_assistant.manager` owns durable web-session state and manager-facing
 RPC.
 
-- `SessionStore` persists sessions and message updates in SQLite.
+- `SessionStore` persists sessions and complete messages in SQLite.
 - `ManagerService` validates opaque scope metadata, loads canonical history,
   and reserves one active worker per session.
 - `manager.server` adapts `ManagerService` to JSON-RPC.
@@ -54,8 +54,8 @@ RPC.
 
 `coding_assistant.worker` owns the worker-side remote runtime. A worker receives
 manager-provided session state, creates one `AgentSession`, streams
-`session/update` notifications, and returns the new messages from one private
-`_worker/run` request. Workers do not persist canonical history.
+`session/update` notifications, and returns status and metadata from one
+private `_worker/run` request. Workers do not persist canonical history.
 
 ## Modes
 
@@ -112,10 +112,10 @@ The manager is the source of truth for managed web sessions.
 
 - Session ids are durable identifiers.
 - Workspace paths are derived from session ids.
-- SQLite stores history, including messages produced by active runs, and
-  session metadata.
+- SQLite stores complete message history and session metadata.
 - Workers hold only one active in-memory `AgentSession`.
-- The manager inserts or updates each worker message before publishing it.
+- The manager persists each complete worker message before publishing it and
+  keeps the active assistant draft in memory.
 - One manager uses the SQLite database, and one worker may be active for each
   session.
 
@@ -133,9 +133,9 @@ should use core dataclasses such as `BaseMessage`, `AgentSessionEvent`, and
 
 Every remotely observed `AgentSession` emits provisional `session/update`
 notifications independently of whether this connection submitted a prompt.
-Live `session/prompt` and private `_worker/run` responses carry completed run
-results. Persistence is still caller-specific: the manager persists streamed
-updates directly, while CLI-owned local remote callers do not.
+Live `session/prompt` and private `_worker/run` responses carry run status.
+Persistence is still caller-specific: the manager persists complete messages,
+while CLI-owned local remote callers do not.
 
 Assistant streaming uses one message id per model attempt. Deltas create a
 provisional draft, and the complete assistant message finalizes that same id.

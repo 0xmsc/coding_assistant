@@ -34,7 +34,6 @@ from coding_assistant.remote.jsonrpc import (
     jsonrpc_notification,
     jsonrpc_request,
     parse_jsonrpc_message,
-    prompt_content_from_acp,
     text_block,
 )
 from coding_assistant.remote.client import RemoteSessionClient
@@ -1460,11 +1459,6 @@ async def test_manager_logs_prompt_request_errors(tmp_path: Path, caplog: pytest
             "messageId": "message-1",
             "message": {"role": "user", "content": "Do it"},
         },
-        {
-            "sessionUpdate": "message_added",
-            "messageId": "message-2",
-            "message": {"role": "assistant", "content": "partial response"},
-        },
         {"sessionUpdate": "history_complete"},
     ]
     assert response["error"]["message"] == "provider returned JSON instead of event-stream"
@@ -1573,14 +1567,12 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
             prompt: WorkerPrompt,
             on_update: Callable[[SessionUpdate], Awaitable[None]],
         ) -> WorkerRunResult:
+            del prompt
             await on_update(MessageDeltaUpdate(message_id="msg_worker", append_text="done"))
             await self.release.wait()
             assistant_message = AssistantMessage(content="done")
             await on_update(MessageAddedUpdate(message_id="msg_worker", message=assistant_message))
-            return WorkerRunResult(
-                stop_reason="end_turn",
-                messages=[UserMessage(content=prompt_content_from_acp(prompt.prompt)), assistant_message],
-            )
+            return WorkerRunResult(stop_reason="end_turn")
 
         async def cancel(self, *, session_id: str) -> None:
             del session_id
@@ -1652,10 +1644,9 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
         tuple({"role": "user", "content": "Do it"}.items()),
     }
     assert any(
-        update.get("sessionUpdate") == "message_added"
-        and isinstance(update.get("message"), dict)
-        and update["message"].get("id") == live_message_id
-        and _message_payload(update) == {"role": "assistant", "content": "done"}
+        update.get("sessionUpdate") == "message_delta"
+        and update.get("messageId") == live_message_id
+        and update.get("appendText") == "done"
         for update in replay_payloads
     )
     assert any(
@@ -1687,14 +1678,12 @@ async def test_manager_replaces_a_superseded_streaming_attempt(tmp_path: Path) -
             prompt: WorkerPrompt,
             on_update: Callable[[SessionUpdate], Awaitable[None]],
         ) -> WorkerRunResult:
+            del prompt
             await on_update(MessageDeltaUpdate(message_id="attempt-1", append_text="discarded"))
             await on_update(MessageDeltaUpdate(message_id="attempt-2", append_text="kept"))
             assistant_message = AssistantMessage(content="kept")
             await on_update(MessageAddedUpdate(message_id="attempt-2", message=assistant_message))
-            return WorkerRunResult(
-                stop_reason="end_turn",
-                messages=[UserMessage(content=prompt_content_from_acp(prompt.prompt)), assistant_message],
-            )
+            return WorkerRunResult(stop_reason="end_turn")
 
         async def cancel(self, *, session_id: str) -> None:
             del session_id
@@ -1737,6 +1726,7 @@ async def test_manager_persists_live_tool_messages(tmp_path: Path) -> None:
             prompt: WorkerPrompt,
             on_update: Callable[[SessionUpdate], Awaitable[None]],
         ) -> WorkerRunResult:
+            del prompt
             tool_call = ToolCall(
                 id="call-1",
                 function=FunctionCall(name="load_image", arguments='{"path": "/attachments/att_1-meal.png"}'),
@@ -1755,15 +1745,7 @@ async def test_manager_persists_live_tool_messages(tmp_path: Path) -> None:
             await on_update(MessageAddedUpdate(message_id="tool_result", message=tool_message))
             await on_update(MessageDeltaUpdate(message_id="msg_worker", append_text="done"))
             await on_update(MessageAddedUpdate(message_id="msg_worker", message=final_message))
-            return WorkerRunResult(
-                stop_reason="end_turn",
-                messages=[
-                    UserMessage(content=prompt_content_from_acp(prompt.prompt)),
-                    tool_call_message,
-                    tool_message,
-                    final_message,
-                ],
-            )
+            return WorkerRunResult(stop_reason="end_turn")
 
         async def cancel(self, *, session_id: str) -> None:
             del session_id

@@ -13,7 +13,7 @@ from sqlmodel import Session as SQLModelSession
 from sqlmodel import col, select
 
 from coding_assistant.core.session_updates import SessionAttachment
-from coding_assistant.llm.types import AssistantMessage, BaseMessage, message_from_dict, message_to_dict
+from coding_assistant.llm.types import BaseMessage, message_from_dict, message_to_dict
 from coding_assistant.manager.db import create_manager_engine
 from coding_assistant.manager.models import ManagerSession, SessionAttachmentRow, SessionMessageRow
 from coding_assistant.manager.workspace import WorkspacePaths
@@ -345,62 +345,6 @@ class SessionStore:
                 session_row.metadata_json = _metadata_to_json(next_metadata)
         return inserted_messages
 
-    def replace_message(
-        self,
-        *,
-        scope_id: str,
-        session_id: str,
-        message_id: int,
-        message: BaseMessage,
-    ) -> StoredMessage:
-        now = _now_iso()
-        with SQLModelSession(self._engine, expire_on_commit=False) as session:
-            with session.begin():
-                session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
-                row = self._get_message_row(session, session_id=session_id, message_id=message_id)
-                row.role = message.role
-                row.payload_json = _message_to_json(message)
-                session_row.updated_at = now
-                session.flush()
-                return _message_record_from_row(row)
-
-    def append_message_text(
-        self,
-        *,
-        scope_id: str,
-        session_id: str,
-        message_id: int,
-        append_text: str,
-    ) -> StoredMessage:
-        now = _now_iso()
-        with SQLModelSession(self._engine, expire_on_commit=False) as session:
-            with session.begin():
-                session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
-                row = self._get_message_row(session, session_id=session_id, message_id=message_id)
-                message = _message_from_json(row.payload_json)
-                if not isinstance(message, AssistantMessage):
-                    raise ValueError(f"Message {message_id} is not an assistant message.")
-                row.payload_json = _message_to_json(
-                    AssistantMessage(
-                        content=f"{message.content or ''}{append_text}",
-                        reasoning_content=message.reasoning_content,
-                        tool_calls=message.tool_calls,
-                        provider_specific_fields=message.provider_specific_fields,
-                    )
-                )
-                session_row.updated_at = now
-                session.flush()
-                return _message_record_from_row(row)
-
-    def delete_message(self, *, scope_id: str, session_id: str, message_id: int) -> None:
-        now = _now_iso()
-        with SQLModelSession(self._engine) as session:
-            with session.begin():
-                session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
-                row = self._get_message_row(session, session_id=session_id, message_id=message_id)
-                session.delete(row)
-                session_row.updated_at = now
-
     def _get_session_row(
         self,
         session: SQLModelSession,
@@ -416,23 +360,6 @@ class SessionStore:
         ).one_or_none()
         if row is None:
             raise SessionNotFoundError(f"Session {session_id} was not found.")
-        return row
-
-    def _get_message_row(
-        self,
-        session: SQLModelSession,
-        *,
-        session_id: str,
-        message_id: int,
-    ) -> SessionMessageRow:
-        row = session.exec(
-            select(SessionMessageRow).where(
-                col(SessionMessageRow.session_id) == session_id,
-                col(SessionMessageRow.id) == message_id,
-            ),
-        ).one_or_none()
-        if row is None:
-            raise ValueError(f"Message {message_id} was not found in session {session_id}.")
         return row
 
     def _insert_messages(
