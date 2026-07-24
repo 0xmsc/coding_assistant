@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import delete, func
+from sqlalchemy import func
 from sqlalchemy.engine import Engine
 from sqlmodel import Session as SQLModelSession
 from sqlmodel import col, select
@@ -36,8 +36,6 @@ class SessionRecord:
 @dataclass(frozen=True)
 class StoredMessage:
     message_id: int
-    stream_id: str | None
-    complete: bool
     message: BaseMessage
     created_at: str
 
@@ -133,8 +131,6 @@ def _message_record_from_row(row: SessionMessageRow) -> StoredMessage:
         raise ValueError("Stored message row is missing its id.")
     return StoredMessage(
         message_id=row.id,
-        stream_id=row.stream_id,
-        complete=row.complete,
         message=_message_from_json(row.payload_json),
         created_at=row.created_at,
     )
@@ -260,9 +256,7 @@ class SessionStore:
             worker_env = _worker_env_from_json(session_row.worker_env_json)
         paths = self.workspaces.require_for_session(session_id)
         message_records = [_message_record_from_row(row) for row in message_rows]
-        messages = [
-            record.message for record, row in zip(message_records, message_rows, strict=True) if row.run_id is None
-        ]
+        messages = [record.message for record in message_records]
         attachment_records = [_attachment_record_from_row(row) for row in attachment_rows]
         return LoadedSession(
             record=record,
@@ -351,148 +345,61 @@ class SessionStore:
                 session_row.metadata_json = _metadata_to_json(next_metadata)
         return inserted_messages
 
-    def upsert_run_message(
+    def replace_message(
         self,
         *,
         scope_id: str,
         session_id: str,
-        run_id: str,
-        stream_id: str,
+        message_id: int,
         message: BaseMessage,
     ) -> StoredMessage:
         now = _now_iso()
         with SQLModelSession(self._engine, expire_on_commit=False) as session:
             with session.begin():
                 session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
-                row = session.exec(
-                    select(SessionMessageRow).where(
-                        col(SessionMessageRow.session_id) == session_id,
-                        col(SessionMessageRow.stream_id) == stream_id,
-                    )
-                ).one_or_none()
-                if row is None:
-                    row = SessionMessageRow(
-                        session_id=session_id,
-                        stream_id=stream_id,
-                        run_id=run_id,
-                        complete=True,
-                        role=message.role,
-                        payload_json=_message_to_json(message),
-                        created_at=now,
-                    )
-                    session.add(row)
-                elif row.run_id != run_id:
-                    raise ValueError(f"Message {stream_id} belongs to another run.")
-                else:
-                    row.role = message.role
-                    row.complete = True
-                    row.payload_json = _message_to_json(message)
+                row = self._get_message_row(session, session_id=session_id, message_id=message_id)
+                row.role = message.role
+                row.payload_json = _message_to_json(message)
                 session_row.updated_at = now
                 session.flush()
                 return _message_record_from_row(row)
 
-    def append_run_message_text(
+    def append_message_text(
         self,
         *,
         scope_id: str,
         session_id: str,
-        run_id: str,
-        stream_id: str,
+        message_id: int,
         append_text: str,
     ) -> StoredMessage:
         now = _now_iso()
         with SQLModelSession(self._engine, expire_on_commit=False) as session:
             with session.begin():
                 session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
-                row = session.exec(
-                    select(SessionMessageRow).where(
-                        col(SessionMessageRow.session_id) == session_id,
-                        col(SessionMessageRow.stream_id) == stream_id,
+                row = self._get_message_row(session, session_id=session_id, message_id=message_id)
+                message = _message_from_json(row.payload_json)
+                if not isinstance(message, AssistantMessage):
+                    raise ValueError(f"Message {message_id} is not an assistant message.")
+                row.payload_json = _message_to_json(
+                    AssistantMessage(
+                        content=f"{message.content or ''}{append_text}",
+                        reasoning_content=message.reasoning_content,
+                        tool_calls=message.tool_calls,
+                        provider_specific_fields=message.provider_specific_fields,
                     )
-                ).one_or_none()
-                if row is None:
-                    session.exec(
-                        delete(SessionMessageRow).where(
-                            col(SessionMessageRow.session_id) == session_id,
-                            col(SessionMessageRow.run_id) == run_id,
-                            col(SessionMessageRow.complete).is_(False),
-                        )
-                    )
-                    row = SessionMessageRow(
-                        session_id=session_id,
-                        stream_id=stream_id,
-                        run_id=run_id,
-                        complete=False,
-                        role="assistant",
-                        payload_json=_message_to_json(AssistantMessage(content=append_text)),
-                        created_at=now,
-                    )
-                    session.add(row)
-                elif row.run_id != run_id:
-                    raise ValueError(f"Message {stream_id} belongs to another run.")
-                else:
-                    message = _message_from_json(row.payload_json)
-                    if not isinstance(message, AssistantMessage):
-                        raise ValueError(f"Message {stream_id} is not an assistant message.")
-                    row.payload_json = _message_to_json(
-                        AssistantMessage(
-                            content=f"{message.content or ''}{append_text}",
-                            reasoning_content=message.reasoning_content,
-                            tool_calls=message.tool_calls,
-                            provider_specific_fields=message.provider_specific_fields,
-                        )
-                    )
-                    row.complete = False
+                )
                 session_row.updated_at = now
                 session.flush()
                 return _message_record_from_row(row)
 
-    def finish_run(
-        self,
-        *,
-        scope_id: str,
-        session_id: str,
-        run_id: str,
-        messages: list[BaseMessage],
-        title: str | None = None,
-    ) -> SessionRecord:
+    def delete_message(self, *, scope_id: str, session_id: str, message_id: int) -> None:
         now = _now_iso()
-        with SQLModelSession(self._engine, expire_on_commit=False) as session:
+        with SQLModelSession(self._engine) as session:
             with session.begin():
                 session_row = self._get_session_row(session, scope_id=scope_id, session_id=session_id)
-                session.exec(
-                    delete(SessionMessageRow).where(
-                        col(SessionMessageRow.session_id) == session_id,
-                        col(SessionMessageRow.run_id) == run_id,
-                    )
-                )
-                self._insert_messages(
-                    session,
-                    session_id=session_id,
-                    messages=messages,
-                    created_at=now,
-                )
-                if title is not None:
-                    session_row.title = title
+                row = self._get_message_row(session, session_id=session_id, message_id=message_id)
+                session.delete(row)
                 session_row.updated_at = now
-                session.flush()
-                return _record_from_row(session_row)
-
-    def discard_run(self, *, scope_id: str, session_id: str, run_id: str) -> None:
-        with SQLModelSession(self._engine) as session:
-            with session.begin():
-                self._get_session_row(session, scope_id=scope_id, session_id=session_id)
-                session.exec(
-                    delete(SessionMessageRow).where(
-                        col(SessionMessageRow.session_id) == session_id,
-                        col(SessionMessageRow.run_id) == run_id,
-                    )
-                )
-
-    def discard_interrupted_runs(self) -> None:
-        with SQLModelSession(self._engine) as session:
-            with session.begin():
-                session.exec(delete(SessionMessageRow).where(col(SessionMessageRow.run_id).is_not(None)))
 
     def _get_session_row(
         self,
@@ -511,6 +418,23 @@ class SessionStore:
             raise SessionNotFoundError(f"Session {session_id} was not found.")
         return row
 
+    def _get_message_row(
+        self,
+        session: SQLModelSession,
+        *,
+        session_id: str,
+        message_id: int,
+    ) -> SessionMessageRow:
+        row = session.exec(
+            select(SessionMessageRow).where(
+                col(SessionMessageRow.session_id) == session_id,
+                col(SessionMessageRow.id) == message_id,
+            ),
+        ).one_or_none()
+        if row is None:
+            raise ValueError(f"Message {message_id} was not found in session {session_id}.")
+        return row
+
     def _insert_messages(
         self,
         session: SQLModelSession,
@@ -518,13 +442,11 @@ class SessionStore:
         session_id: str,
         messages: list[BaseMessage],
         created_at: str,
-        run_id: str | None = None,
     ) -> list[StoredMessage]:
         stored_messages: list[StoredMessage] = []
         for message in messages:
             row = SessionMessageRow(
                 session_id=session_id,
-                run_id=run_id,
                 role=message.role,
                 payload_json=_message_to_json(message),
                 created_at=created_at,
@@ -536,8 +458,6 @@ class SessionStore:
             stored_messages.append(
                 StoredMessage(
                     message_id=row.id,
-                    stream_id=row.stream_id,
-                    complete=row.complete,
                     message=message,
                     created_at=created_at,
                 )

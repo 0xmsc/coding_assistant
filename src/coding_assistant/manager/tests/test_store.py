@@ -177,69 +177,56 @@ def test_append_messages_persists_json_payloads_and_metadata(tmp_path: Path) -> 
     ]
 
 
-def test_run_messages_are_replayable_before_the_run_finishes(tmp_path: Path) -> None:
+def test_messages_can_be_updated_as_they_stream(tmp_path: Path) -> None:
     store = create_session_store(tmp_path)
     created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
     session_id = created.record.session_id
 
-    store.upsert_run_message(
+    user_message, assistant_message = store.append_messages(
         scope_id="scope-a",
         session_id=session_id,
-        run_id="run-1",
-        stream_id="user-1",
-        message=UserMessage(content="hello"),
+        messages=[UserMessage(content="hello"), AssistantMessage(content="part")],
     )
-    store.append_run_message_text(
+    store.append_message_text(
         scope_id="scope-a",
         session_id=session_id,
-        run_id="run-1",
-        stream_id="assistant-1",
-        append_text="partial",
+        message_id=assistant_message.message_id,
+        append_text="ial",
     )
-
-    running = store.load_session(scope_id="scope-a", session_id=session_id)
-    assert running.messages == [SystemMessage(content="system")]
-    assert [record.message for record in running.message_records] == [
-        SystemMessage(content="system"),
-        UserMessage(content="hello"),
-        AssistantMessage(content="partial"),
-    ]
-    assert [record.stream_id for record in running.message_records] == [None, "user-1", "assistant-1"]
-    assert [record.complete for record in running.message_records] == [True, True, False]
-
-    store.finish_run(
+    store.replace_message(
         scope_id="scope-a",
         session_id=session_id,
-        run_id="run-1",
-        messages=[UserMessage(content="hello"), AssistantMessage(content="complete")],
+        message_id=assistant_message.message_id,
+        message=AssistantMessage(content="complete"),
     )
 
-    finished = store.load_session(scope_id="scope-a", session_id=session_id)
-    assert finished.messages == [
+    loaded = store.load_session(scope_id="scope-a", session_id=session_id)
+    assert loaded.messages == [
         SystemMessage(content="system"),
         UserMessage(content="hello"),
         AssistantMessage(content="complete"),
     ]
-    assert all(record.stream_id is None and record.complete for record in finished.message_records)
+    assert loaded.message_records[1].message_id == user_message.message_id
+    assert loaded.message_records[2].message_id == assistant_message.message_id
 
 
-def test_discard_interrupted_runs_removes_only_temporary_messages(tmp_path: Path) -> None:
+def test_delete_message_removes_only_the_selected_message(tmp_path: Path) -> None:
     store = create_session_store(tmp_path)
-    created = store.create_session(scope_id="scope-a", messages=[SystemMessage(content="system")])
+    created = store.create_session(
+        scope_id="scope-a",
+        messages=[SystemMessage(content="system"), UserMessage(content="keep")],
+    )
     session_id = created.record.session_id
-    store.append_run_message_text(
+    removed = store.append_messages(
         scope_id="scope-a",
         session_id=session_id,
-        run_id="run-1",
-        stream_id="assistant-1",
-        append_text="partial",
-    )
+        messages=[AssistantMessage(content="remove")],
+    )[0]
 
-    store.discard_interrupted_runs()
+    store.delete_message(scope_id="scope-a", session_id=session_id, message_id=removed.message_id)
 
     loaded = store.load_session(scope_id="scope-a", session_id=session_id)
-    assert loaded.messages == [SystemMessage(content="system")]
-    assert [record.message for record in loaded.message_records] == [SystemMessage(content="system")]
+    assert loaded.messages == [SystemMessage(content="system"), UserMessage(content="keep")]
 
 
 def test_rename_session_updates_title(tmp_path: Path) -> None:

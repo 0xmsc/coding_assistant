@@ -105,10 +105,9 @@ Workers run from `CODING_ASSISTANT_WORKER_IMAGE` and join
 session workspace is mounted at `/workspace`. Session attachments are mounted
 read-only at `/attachments`.
 
-Run exactly one manager against a given `/data/sessions.sqlite`. The manager
-holds an exclusive lock beside the database and fails startup if another
-manager already owns it. Within that manager, only one worker may be active for
-each session.
+Run exactly one manager against a given `/data/sessions.sqlite`. Multiple
+managers sharing a database are unsupported. Within the manager, only one
+worker may be active for each session.
 
 Worker processes are one-shot. After returning the completed `_worker/run`
 result, the worker server exits normally and Docker removes the temporary

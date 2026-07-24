@@ -1432,6 +1432,8 @@ async def test_manager_logs_prompt_request_errors(tmp_path: Path, caplog: pytest
                 ),
             )
             response, updates = await _recv_response_with_updates(websocket)
+            await websocket.send(jsonrpc_request(5, "session/load", _scope_params("scope-a", sessionId=session_id)))
+            _, replay = await _recv_response_with_updates(websocket)
 
     assert any(
         _update(update).get("sessionUpdate") == "message_added"
@@ -1449,13 +1451,20 @@ async def test_manager_logs_prompt_request_errors(tmp_path: Path, caplog: pytest
         and _update(update)["run"].get("status") == "failed"
         for update in updates
     )
-    update_payloads = [_update(update) for update in updates]
-    reset_index = next(
-        index for index, update in enumerate(update_payloads) if update.get("sessionUpdate") == "history_reset"
-    )
-    assert _normalized_updates(update_payloads[reset_index:]) == [
+    assert not any(_update(update).get("sessionUpdate") == "history_reset" for update in updates)
+    assert _normalized_updates([_update(update) for update in replay]) == [
         {"sessionUpdate": "history_reset"},
         {"sessionUpdate": "message_added", "messageId": "message-0", "message": {"role": "system"}},
+        {
+            "sessionUpdate": "message_added",
+            "messageId": "message-1",
+            "message": {"role": "user", "content": "Do it"},
+        },
+        {
+            "sessionUpdate": "message_added",
+            "messageId": "message-2",
+            "message": {"role": "assistant", "content": "partial response"},
+        },
         {"sessionUpdate": "history_complete"},
     ]
     assert response["error"]["message"] == "provider returned JSON instead of event-stream"
@@ -1600,6 +1609,11 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
                 saw_delta = update.get("sessionUpdate") == "message_delta"
 
         assert any(_update(message).get("sessionUpdate") == "run_updated" for message in first_updates)
+        live_message_id = next(
+            _update(message)["messageId"]
+            for message in first_updates
+            if _update(message).get("sessionUpdate") == "message_delta"
+        )
 
         async with connect(endpoint) as second:
             await _initialize(second)
@@ -1608,9 +1622,19 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
             worker.release.set()
 
             completed_run: dict[str, Any] | None = None
+            completed_message_id: str | None = None
             while completed_run is None:
                 message = parse_jsonrpc_message(await second.recv())
                 update = _update(message)
+                if update.get("sessionUpdate") == "message_added" and _message_payload(update) == {
+                    "role": "assistant",
+                    "content": "done",
+                }:
+                    message_payload = update.get("message")
+                    if isinstance(message_payload, dict):
+                        message_id = message_payload.get("id")
+                        if isinstance(message_id, str):
+                            completed_message_id = message_id
                 if update.get("sessionUpdate") == "run_updated":
                     run = update.get("run")
                     if isinstance(run, dict) and run.get("status") == "completed":
@@ -1628,9 +1652,10 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
         tuple({"role": "user", "content": "Do it"}.items()),
     }
     assert any(
-        update.get("sessionUpdate") == "message_delta"
-        and update.get("messageId") == "msg_worker"
-        and update.get("appendText") == "done"
+        update.get("sessionUpdate") == "message_added"
+        and isinstance(update.get("message"), dict)
+        and update["message"].get("id") == live_message_id
+        and _message_payload(update) == {"role": "assistant", "content": "done"}
         for update in replay_payloads
     )
     assert any(
@@ -1640,6 +1665,7 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
         for update in replay_payloads
     )
     assert load_response["result"]["sessionId"] == session_id
+    assert completed_message_id == live_message_id
     assert completed_run["stopReason"] == "end_turn"
     final_payloads = [_update(message) for message in final_replay]
     assert {
@@ -1650,6 +1676,56 @@ async def test_manager_prompt_survives_client_disconnect_and_reconnect(tmp_path:
         tuple({"role": "user", "content": "Do it"}.items()),
         tuple({"role": "assistant", "content": "done"}.items()),
     }
+
+
+@pytest.mark.asyncio
+async def test_manager_replaces_a_superseded_streaming_attempt(tmp_path: Path) -> None:
+    class RetryingWorker:
+        async def run_prompt(
+            self,
+            *,
+            prompt: WorkerPrompt,
+            on_update: Callable[[SessionUpdate], Awaitable[None]],
+        ) -> WorkerRunResult:
+            await on_update(MessageDeltaUpdate(message_id="attempt-1", append_text="discarded"))
+            await on_update(MessageDeltaUpdate(message_id="attempt-2", append_text="kept"))
+            assistant_message = AssistantMessage(content="kept")
+            await on_update(MessageAddedUpdate(message_id="attempt-2", message=assistant_message))
+            return WorkerRunResult(
+                stop_reason="end_turn",
+                messages=[UserMessage(content=prompt_content_from_acp(prompt.prompt)), assistant_message],
+            )
+
+        async def cancel(self, *, session_id: str) -> None:
+            del session_id
+
+    async with _manager_endpoint(tmp_path=tmp_path, worker=RetryingWorker()) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
+            await _set_model(websocket, scope_id="scope-a", session_id=session_id, request_id=3)
+            await websocket.send(
+                jsonrpc_request(
+                    4,
+                    "session/prompt",
+                    _scope_params("scope-a", sessionId=session_id, prompt=[text_block("Do it")]),
+                ),
+            )
+            response, _ = await _recv_response_with_updates(websocket)
+            await websocket.send(jsonrpc_request(5, "session/load", _scope_params("scope-a", sessionId=session_id)))
+            _, replay = await _recv_response_with_updates(websocket)
+
+    assert response["result"] == {"stopReason": "end_turn"}
+    replayed_messages = [
+        _message_payload(update)
+        for update in (_update(message) for message in replay)
+        if update.get("sessionUpdate") == "message_added"
+    ]
+    assert replayed_messages == [
+        {"role": "system"},
+        {"role": "user", "content": "Do it"},
+        {"role": "assistant", "content": "kept"},
+    ]
 
 
 @pytest.mark.asyncio

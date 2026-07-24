@@ -244,9 +244,6 @@ sessions
 session_messages
   id integer primary key autoincrement
   session_id text not null
-  stream_id text null
-  run_id text null
-  complete boolean not null default true
   role text not null
   payload_json text not null
   created_at text not null
@@ -270,10 +267,8 @@ session_attachments
 `session/list`, `session/load`, or other public session metadata responses.
 `session_messages` is the source of truth for LLM history and replay. Every
 message row is replayed to clients in insertion order, including system
-messages, active-run messages, and upload messages. `stream_id`, `run_id`, and
-`complete` identify temporary active-run rows so a reconnect can reconstruct
-the transcript without exposing those implementation details in the protocol.
-Session attachments are metadata rows in
+messages, active-run messages, and upload messages. Session attachments are
+metadata rows in
 `session_attachments` linked to the upload message row that introduced them.
 
 Do not add a durable `session_runs` table for v1. Active runs live in manager
@@ -282,19 +277,21 @@ memory while a worker is running.
 ## Commit Semantics
 
 The manager reserves the session for one active worker and persists each
-message update before publishing it. A concurrent `session/load` therefore
-replays all output produced so far and then reports the in-memory running
-status.
+message update before publishing it. Assistant deltas update the message row
+created for that stream. The manager translates worker message ids to stable
+database message ids in memory, so later deltas and reconnect replay address
+the same message without additional database state.
 
-When the worker returns its completed `_worker/run` result, the manager
-atomically replaces that run's temporary rows with the authoritative completed
-messages. If the worker fails, those temporary rows are removed and canonical
-history is replayed. If the manager restarts, it removes interrupted-run rows
-because their owning workers can no longer finish them.
+A concurrent `session/load` therefore replays all output produced so far and
+then reports the in-memory running status. Streamed messages remain in history
+if a worker fails; there is no turn-level rollback or final-result
+reconciliation. The worker result supplies status and metadata, not an
+authoritative replacement transcript.
 
-Only one manager may own a SQLite database. The manager holds an exclusive
-lock file beside the database for its full lifetime. Combined with the
-per-session active-run reservation, this makes transcript versions unnecessary.
+Deployments must run only one manager against a SQLite database. Within that
+manager, the per-session reservation prevents concurrent workers or mutations
+for the same session. These ownership constraints make transcript versions
+unnecessary.
 
 ## Connection Lifecycle
 
@@ -1115,8 +1112,8 @@ uses a new message id; seeing that new provisional id supersedes the older
 unfinished draft. There is no retry, reset, or status update in the wire
 protocol.
 
-Live message updates are persisted as temporary run rows before the manager
-publishes them. Tool calls and tool results are
+Live message updates are inserted or updated before the manager publishes
+them. Tool calls and tool results are
 represented as assistant/tool messages; clients that want tool cards or image
 previews derive those UI elements from message content.
 The manager sends `session_updated` after persisted session metadata changes,
