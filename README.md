@@ -199,6 +199,13 @@ service on the server:
 just deploy
 ```
 
+Publishing requires a clean worktree. Before applying pending migrations, the
+container saves the existing SQLite database as
+`/data/backups/pre-migration-<revision>.sqlite3`. It never overwrites a snapshot
+for the same revision and retains the five newest snapshots. After the server
+deployment succeeds, the deployed commit is marked with a timestamped
+`deployed/<timestamp>` Git tag.
+
 ## License
 
 MIT
