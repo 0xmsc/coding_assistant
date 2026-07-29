@@ -93,6 +93,8 @@ def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
     full_reasoning_details: list[dict[str, Any]] = []
 
     for chunk in chunks:
+        if not chunk["choices"]:
+            continue
         delta = chunk["choices"][0]["delta"]
 
         if (reasoning := delta.get("reasoning")) or (reasoning := delta.get("reasoning_content")):
@@ -228,6 +230,8 @@ async def _try_completion(
                     chunk = json.loads(event.data)
                     chunks.append(chunk)
 
+                    if not chunk["choices"]:
+                        continue
                     delta = chunk["choices"][0]["delta"]
 
                     if (reasoning := delta.get("reasoning")) or (reasoning := delta.get("reasoning_content")):
