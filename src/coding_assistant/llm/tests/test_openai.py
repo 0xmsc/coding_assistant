@@ -202,7 +202,7 @@ class TestMergeChunks:
                 ],
             },
             {
-                "choices": [{"delta": {}}],
+                "choices": [],
                 "usage": {
                     "prompt_tokens": 100,
                     "completion_tokens": 50,
@@ -750,6 +750,7 @@ class TestOpenAIComplete:
         fake_events = [
             json.dumps({"choices": [{"delta": {"content": "Hello"}}]}),
             json.dumps({"choices": [{"delta": {"content": " world"}}]}),
+            json.dumps({"choices": [], "usage": {"total_tokens": 3, "cost": 0.001}}),
         ]
         mock_context_instance = FakeContext(fake_events)
         mock_ac = MagicMock(return_value=mock_context_instance)
@@ -763,7 +764,7 @@ class TestOpenAIComplete:
             CompletionEvent(
                 completion=Completion(
                     message=AssistantMessage(content="Hello world", provider_specific_fields={"reasoning_details": []}),
-                    usage=None,
+                    usage=Usage(tokens=3, cost=0.001),
                 ),
             ),
         ]
