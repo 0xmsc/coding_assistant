@@ -27,11 +27,7 @@ from coding_assistant.core.session_updates import (
     SessionUpdatedUpdate,
     content_text,
 )
-from coding_assistant.llm.openai import (
-    ProviderModel,
-    list_model_details as list_provider_models,
-    parse_model_and_reasoning,
-)
+from coding_assistant.llm.openai import list_models as list_provider_models
 from coding_assistant.llm.types import BaseMessage, UserMessage
 from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
 from coding_assistant.remote.jsonrpc import JsonObject, prompt_content_from_acp, session_id_from_params
@@ -39,7 +35,7 @@ from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instru
 
 MODEL_METADATA_KEY = "model"
 MODEL_CACHE_TTL_SECONDS = 300.0
-ModelLister = Callable[[], Awaitable[Sequence[ProviderModel | str]]]
+ModelLister = Callable[[], Awaitable[list[str]]]
 ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 SKILL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 MAX_WORKER_ENV_VARS = 32
@@ -427,14 +423,8 @@ def _model_from_record(record: SessionRecord) -> str:
     raise ManagerError("Session has no model selected.")
 
 
-def _model_entries(models: Sequence[ProviderModel]) -> list[JsonObject]:
-    entries: list[JsonObject] = []
-    for model in models:
-        entry: JsonObject = {"id": model.id}
-        if model.reasoning_metadata_available or model.reasoning_efforts is not None:
-            entry["reasoningEfforts"] = list(model.reasoning_efforts) if model.reasoning_efforts is not None else None
-        entries.append(entry)
-    return entries
+def _model_entries(models: list[str]) -> list[JsonObject]:
+    return [{"id": model} for model in models]
 
 
 def _model_param(params: JsonObject) -> str:
@@ -501,7 +491,7 @@ class ManagerService:
         self._model_cache_ttl_seconds = model_cache_ttl_seconds
         self._worker_workspace = worker_workspace
         self._user_instructions = tuple(user_instructions)
-        self._model_cache: tuple[float, list[ProviderModel]] | None = None
+        self._model_cache: tuple[float, list[str]] | None = None
         self._active_prompts: dict[str, ActivePrompt] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
 
@@ -577,21 +567,8 @@ class ManagerService:
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         model = _model_param(params)
-        try:
-            base_model, reasoning_effort = parse_model_and_reasoning(model)
-        except ValueError as exc:
-            raise ManagerError(str(exc)) from exc
-
-        available_models = await self._available_models()
-        selected_model = next((item for item in available_models if item.id == base_model), None)
-        if selected_model is None:
+        if model not in await self._available_models():
             raise ManagerError(f"Model {model} is not available.")
-        if (
-            reasoning_effort is not None
-            and selected_model.reasoning_efforts is not None
-            and reasoning_effort not in selected_model.reasoning_efforts
-        ):
-            raise ManagerError(f"Reasoning effort {reasoning_effort} is not available for model {base_model}.")
 
         async with self._session_lock(session_id):
             self._require_idle_session(session_id, "Cannot change model while session has an active prompt.")
@@ -847,7 +824,7 @@ class ManagerService:
         )
         return [build_initial_system_message(instructions=instructions)]
 
-    async def _available_models(self) -> list[ProviderModel]:
+    async def _available_models(self) -> list[str]:
         now = monotonic()
         if self._model_cache is not None:
             cached_at, cached_models = self._model_cache
@@ -861,18 +838,6 @@ class ManagerService:
                 return self._model_cache[1]
             return []
 
-        models_by_id: dict[str, ProviderModel] = {}
-        for provider_model in provider_models:
-            model = (
-                provider_model
-                if isinstance(provider_model, ProviderModel)
-                else ProviderModel(id=provider_model.strip())
-            )
-            if not model.id:
-                continue
-            existing = models_by_id.get(model.id)
-            if existing is None or (not existing.reasoning_metadata_available and model.reasoning_metadata_available):
-                models_by_id[model.id] = model
-        models = list(models_by_id.values())
+        models = list(dict.fromkeys(model for model in provider_models if model))
         self._model_cache = (now, models)
         return models

@@ -61,22 +61,15 @@ def _load_scripted_responses() -> list[dict[str, Any]]:
 def _model_list_payload() -> dict[str, Any]:
     configured = os.environ.get("CODING_ASSISTANT_FAKE_OPENAI_MODELS_JSON")
     if configured is None:
-        model_items: list[dict[str, Any]] = [{"id": "fake-model"}]
+        model_ids = ["fake-model"]
     else:
         decoded = json.loads(configured)
-        if not isinstance(decoded, list):
-            raise ValueError("Fake OpenAI models must be a JSON array.")
-        model_items = []
-        for item in decoded:
-            if isinstance(item, str):
-                model_items.append({"id": item})
-            elif isinstance(item, dict) and isinstance(item.get("id"), str):
-                model_items.append(dict(item))
-            else:
-                raise ValueError("Fake OpenAI models must contain strings or model objects.")
+        if not isinstance(decoded, list) or not all(isinstance(model_id, str) for model_id in decoded):
+            raise ValueError("Fake OpenAI models must be a JSON string array.")
+        model_ids = decoded
     return {
         "object": "list",
-        "data": [{"object": "model", **model} for model in model_items],
+        "data": [{"id": model_id, "object": "model"} for model_id in model_ids],
     }
 
 
