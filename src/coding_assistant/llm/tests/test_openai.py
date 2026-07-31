@@ -7,6 +7,7 @@ import pytest
 
 from coding_assistant.llm import openai as openai_model
 from coding_assistant.llm.openai import (
+    ProviderModel,
     _extract_usage,
     _get_base_url_and_api_key,
     _merge_chunks,
@@ -736,6 +737,30 @@ class TestHelperFunctions:
 
             assert await openai_model.list_models() == ["a-model", "z-model"]
 
+    @pytest.mark.asyncio
+    async def test_list_model_details_includes_reasoning_efforts(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv(
+            "CODING_ASSISTANT_FAKE_OPENAI_MODELS_JSON",
+            json.dumps(
+                [
+                    {"id": "reasoning-model", "reasoning": {"supported_efforts": ["high", "low"]}},
+                    {"id": "plain-model"},
+                ],
+            ),
+        )
+        with run_fake_openai_server() as fake_openai:
+            monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
+            monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+            assert await openai_model.list_model_details() == [
+                ProviderModel(id="plain-model"),
+                ProviderModel(
+                    id="reasoning-model",
+                    reasoning_efforts=("high", "low"),
+                    reasoning_metadata_available=True,
+                ),
+            ]
+
 
 async def collect_events(*, messages: list[UserMessage], model: str, tools: Any) -> list[Any]:
     return [event async for event in openai_model.stream_completion(messages, model=model, tools=tools)]
@@ -853,6 +878,26 @@ class TestOpenAIComplete:
 
         assert cast(Any, captured_payload)["model"] == "o1"
         assert cast(Any, captured_payload)["reasoning_effort"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_openrouter_complete_with_reasoning_effort(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
+        monkeypatch.setenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
+        captured_payload = None
+
+        def mock_aconnect_sse(client: Any, method: Any, url: Any, **kwargs: Any) -> Any:
+            nonlocal captured_payload
+            captured_payload = kwargs.get("json")
+            return FakeContext([json.dumps({"choices": [{"delta": {"content": "ok"}}]})])
+
+        monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
+        monkeypatch.setattr("coding_assistant.llm.openai._parse_model_and_reasoning", lambda m: ("o1", "high"))
+
+        await collect_events(messages=[UserMessage(content="Reason")], model="o1:high", tools=[])
+
+        assert cast(Any, captured_payload)["model"] == "o1"
+        assert cast(Any, captured_payload)["reasoning"] == {"effort": "high"}
+        assert "reasoning_effort" not in cast(Any, captured_payload)
 
     @pytest.mark.asyncio
     async def test_openai_complete_error_retry(self, monkeypatch: Any) -> None:
