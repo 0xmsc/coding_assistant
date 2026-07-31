@@ -368,8 +368,9 @@ Response result:
 
 ### model/list
 
-Lists model IDs available from the configured OpenAI-compatible provider. This
-method is authenticated by the manager connection but is not session-scoped.
+Lists models available from the configured OpenAI-compatible provider, along
+with advertised reasoning capabilities when available. This method is
+authenticated by the manager connection but is not session-scoped.
 
 Request:
 
@@ -391,7 +392,8 @@ Response:
   "result": {
     "models": [
       {
-        "id": "openai/gpt-5.1"
+        "id": "openai/gpt-5.1",
+        "reasoningEfforts": ["low", "medium", "high"]
       }
     ]
   }
@@ -401,7 +403,11 @@ Response:
 The manager caches provider results briefly. If provider discovery fails and no
 cached list is available, `models` is empty. The manager does not choose a
 default model; clients must persist a session model with `session/set_model`
-before sending `session/prompt`.
+before sending `session/prompt`. When the provider advertises reasoning
+capabilities, `reasoningEfforts` lists the accepted values. A `null` value
+means the provider did not publish a finite list; an omitted field means that
+the provider did not publish reasoning metadata. An empty list means that the
+model does not expose a selectable reasoning effort.
 
 ### session/list
 
@@ -643,7 +649,7 @@ Request:
       "scopeId": "tenant:abc123"
     },
     "sessionId": "sess_abc123",
-    "model": "openai/gpt-5.1"
+    "model": "openai/gpt-5.1 (high)"
   }
 }
 ```
@@ -665,8 +671,11 @@ Response:
 }
 ```
 
-The manager rejects models that are not in `model/list` and rejects model
-changes while the session has an active prompt.
+The manager rejects models that are not in `model/list`, rejects advertised
+reasoning efforts that the selected model does not support, and rejects model
+changes while the session has an active prompt. The optional ` (effort)` suffix
+is stored with the session model and is translated into the provider-specific
+reasoning request parameter by the worker.
 
 ### session/prompt
 

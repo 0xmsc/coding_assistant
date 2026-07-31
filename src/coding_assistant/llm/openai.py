@@ -8,6 +8,7 @@ import logging
 import re
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, Literal, cast
+from urllib.parse import urlparse
 
 import httpx
 from httpx_sse import SSEError, aconnect_sse
@@ -31,6 +32,18 @@ from coding_assistant.llm.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+
+
+@dataclasses.dataclass(frozen=True)
+class ProviderModel:
+    """A provider model and any reasoning-effort metadata it advertises."""
+
+    id: str
+    reasoning_efforts: tuple[ReasoningEffort, ...] | None = None
+    reasoning_metadata_available: bool = False
 
 
 async def _get_tools_payload(tools: Sequence[ToolDefinition]) -> list[dict[str, Any]]:
@@ -58,8 +71,42 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
     return (config.base_url, config.api_key)
 
 
-async def list_models() -> list[str]:
-    """Return model IDs from the configured OpenAI-compatible provider."""
+def _is_openrouter_base_url(base_url: str) -> bool:
+    hostname = urlparse(base_url).hostname
+    return hostname == "openrouter.ai" or (hostname is not None and hostname.endswith(".openrouter.ai"))
+
+
+def _reasoning_efforts_from_model(
+    item: dict[str, Any],
+    *,
+    provider_metadata_available: bool,
+) -> tuple[tuple[ReasoningEffort, ...] | None, bool]:
+    supported_parameters = item.get("supported_parameters")
+    has_reasoning_parameter = isinstance(supported_parameters, list) and "reasoning" in supported_parameters
+    reasoning = item.get("reasoning")
+
+    if isinstance(reasoning, dict):
+        supported_efforts = reasoning.get("supported_efforts")
+        if supported_efforts is None:
+            return None, True
+        if not isinstance(supported_efforts, list):
+            return (), True
+        efforts = tuple(
+            cast(ReasoningEffort, effort.strip().lower())
+            for effort in supported_efforts
+            if isinstance(effort, str) and effort.strip().lower() in REASONING_EFFORTS
+        )
+        return tuple(dict.fromkeys(efforts)), True
+
+    if has_reasoning_parameter:
+        return None, True
+    if provider_metadata_available:
+        return (), True
+    return None, False
+
+
+async def list_model_details() -> list[ProviderModel]:
+    """Return provider model IDs and any advertised reasoning capabilities."""
     base_url, api_key = _get_base_url_and_api_key()
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -75,14 +122,33 @@ async def list_models() -> list[str]:
     if not isinstance(data, list):
         raise ValueError("Provider model list response must include a data array.")
 
-    model_ids: list[str] = []
+    models: dict[str, ProviderModel] = {}
     for item in data:
         if not isinstance(item, dict):
             continue
         model_id = item.get("id")
         if isinstance(model_id, str) and model_id.strip():
-            model_ids.append(model_id.strip())
-    return sorted(dict.fromkeys(model_ids))
+            model_id = model_id.strip()
+            reasoning_efforts, reasoning_metadata_available = _reasoning_efforts_from_model(
+                item,
+                provider_metadata_available=_is_openrouter_base_url(base_url),
+            )
+            next_model = ProviderModel(
+                id=model_id,
+                reasoning_efforts=reasoning_efforts,
+                reasoning_metadata_available=reasoning_metadata_available,
+            )
+            existing = models.get(model_id)
+            if existing is None or (
+                not existing.reasoning_metadata_available and next_model.reasoning_metadata_available
+            ):
+                models[model_id] = next_model
+    return [models[model_id] for model_id in sorted(models)]
+
+
+async def list_models() -> list[str]:
+    """Return model IDs from the configured OpenAI-compatible provider."""
+    return [model.id for model in await list_model_details()]
 
 
 def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
@@ -196,7 +262,7 @@ async def _try_completion(
     messages: Sequence[BaseMessage],
     tools: Sequence[ToolDefinition],
     model: str,
-    reasoning_effort: Literal["low", "medium", "high"] | None,
+    reasoning_effort: ReasoningEffort | None,
 ) -> AsyncIterator[ReasoningDeltaEvent | ContentDeltaEvent | CompletionEvent]:
     """Perform one streaming chat completion request against the provider."""
     base_url, api_key = _get_base_url_and_api_key()
@@ -207,7 +273,7 @@ async def _try_completion(
     provider_messages = _prepare_messages(messages)
     provider_tools = await _get_tools_payload(tools)
 
-    payload = {
+    payload: dict[str, Any] = {
         "model": model,
         "messages": provider_messages,
         "tools": provider_tools,
@@ -215,9 +281,10 @@ async def _try_completion(
     }
 
     if reasoning_effort:
-        payload["reasoning_effort"] = reasoning_effort
-        # TODO: Does OpenAI support this?
-        # payload["reasoning"]["effort"] = reasoning_effort
+        if _is_openrouter_base_url(base_url):
+            payload["reasoning"] = {"effort": reasoning_effort}
+        else:
+            payload["reasoning_effort"] = reasoning_effort
 
     async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=httpx.Timeout(60)) as client:
         async with aconnect_sse(client, "POST", "/chat/completions", json=payload) as source:
@@ -274,7 +341,7 @@ async def _try_completion(
 @functools.cache
 def _parse_model_and_reasoning(
     model: str,
-) -> tuple[str, Literal["low", "medium", "high"] | None]:
+) -> tuple[str, ReasoningEffort | None]:
     """Split `model (effort)` syntax into the provider model and reasoning effort."""
     s = model.strip()
     m = re.match(r"^(.+?) \(([^)]*)\)$", s)
@@ -285,11 +352,15 @@ def _parse_model_and_reasoning(
     base = m.group(1).strip()
     effort = m.group(2).strip().lower()
 
-    if effort not in ("low", "medium", "high", "xhigh"):
+    if effort not in REASONING_EFFORTS:
         raise ValueError(f"Invalid reasoning effort level {effort} in {model}")
 
-    effort = cast(Literal["low", "medium", "high"], effort)
-    return base, effort
+    return base, cast(ReasoningEffort, effort)
+
+
+def parse_model_and_reasoning(model: str) -> tuple[str, ReasoningEffort | None]:
+    """Parse the manager's persisted `model (effort)` selection format."""
+    return _parse_model_and_reasoning(model)
 
 
 def fix_input_schema(input_schema: dict[str, Any]) -> None:
