@@ -189,11 +189,11 @@ async def _set_model(
     return response
 
 
-async def _test_model_lister() -> list[str]:
-    return ["test-model", "alternate-model"]
+async def _test_model_lister() -> list[ProviderModel]:
+    return [ProviderModel(id="test-model"), ProviderModel(id="alternate-model")]
 
 
-async def _failing_model_lister() -> list[str]:
+async def _failing_model_lister() -> list[ProviderModel]:
     raise RuntimeError("model provider unavailable")
 
 

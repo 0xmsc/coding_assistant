@@ -15,6 +15,7 @@ from coding_assistant.core.session_updates import (
     SessionUpdate,
     SessionUpdatedUpdate,
 )
+from coding_assistant.llm.openai import ProviderModel
 from coding_assistant.llm.types import (
     AssistantMessage,
     Completion,
@@ -200,8 +201,8 @@ async def _recv_response_with_updates(websocket: Any) -> tuple[dict[str, Any], l
         return message, updates
 
 
-async def _test_model_lister() -> list[str]:
-    return ["test-model"]
+async def _test_model_lister() -> list[ProviderModel]:
+    return [ProviderModel(id="test-model")]
 
 
 def _manager_service(*, tmp_path: Path, endpoint: str) -> tuple[ManagerService, SessionStore]:

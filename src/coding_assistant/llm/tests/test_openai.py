@@ -7,6 +7,7 @@ import pytest
 
 from coding_assistant.llm import openai as openai_model
 from coding_assistant.llm.openai import (
+    ProviderModel,
     _extract_usage,
     _get_base_url_and_api_key,
     _merge_chunks,
@@ -734,7 +735,10 @@ class TestHelperFunctions:
             monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
             monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
-            assert await openai_model.list_models() == ["a-model", "z-model"]
+            assert await openai_model.list_models() == [
+                ProviderModel(id="a-model"),
+                ProviderModel(id="z-model"),
+            ]
 
     def test_reasoning_efforts_use_only_provider_values(self) -> None:
         item = {
@@ -870,10 +874,7 @@ class TestOpenAIComplete:
         monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
 
         msgs = [UserMessage(content="Reason")]
-        # Mock _parse_model_and_reasoning
-        monkeypatch.setattr("coding_assistant.llm.openai._parse_model_and_reasoning", lambda m: ("o1", "high"))
-
-        await collect_events(messages=msgs, model="o1:high", tools=[])
+        await collect_events(messages=msgs, model="o1 (high)", tools=[])
 
         assert cast(Any, captured_payload)["model"] == "o1"
         assert cast(Any, captured_payload)["reasoning_effort"] == "high"
@@ -890,9 +891,8 @@ class TestOpenAIComplete:
             return FakeContext([json.dumps({"choices": [{"delta": {"content": "ok"}}]})])
 
         monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
-        monkeypatch.setattr("coding_assistant.llm.openai._parse_model_and_reasoning", lambda m: ("o1", "high"))
 
-        await collect_events(messages=[UserMessage(content="Reason")], model="o1:high", tools=[])
+        await collect_events(messages=[UserMessage(content="Reason")], model="o1 (high)", tools=[])
 
         assert cast(Any, captured_payload)["model"] == "o1"
         assert cast(Any, captured_payload)["reasoning"] == {"effort": "high"}
