@@ -30,7 +30,7 @@ from coding_assistant.core.session_updates import (
 from coding_assistant.llm.openai import (
     ProviderModel,
     format_model_and_reasoning,
-    list_model_details as list_provider_models,
+    list_models as list_provider_models,
     parse_model_and_reasoning,
 )
 from coding_assistant.llm.types import BaseMessage, UserMessage
@@ -41,7 +41,7 @@ from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instru
 MODEL_METADATA_KEY = "model"
 REASONING_EFFORT_METADATA_KEY = "reasoningEffort"
 MODEL_CACHE_TTL_SECONDS = 300.0
-ModelLister = Callable[[], Awaitable[Sequence[ProviderModel | str]]]
+ModelLister = Callable[[], Awaitable[list[ProviderModel]]]
 ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 SKILL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 MAX_WORKER_ENV_VARS = 32
@@ -867,12 +867,7 @@ class ManagerService:
             return []
 
         models_by_id: dict[str, ProviderModel] = {}
-        for provider_model in provider_models:
-            model = (
-                provider_model
-                if isinstance(provider_model, ProviderModel)
-                else ProviderModel(id=provider_model.strip())
-            )
+        for model in provider_models:
             if not model.id:
                 continue
             existing = models_by_id.get(model.id)

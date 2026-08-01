@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import functools
 import json
 import logging
 import re
@@ -91,7 +90,7 @@ def _reasoning_efforts_from_model(
     return ()
 
 
-async def list_model_details() -> list[ProviderModel]:
+async def list_models() -> list[ProviderModel]:
     """Return provider model IDs and any advertised reasoning capabilities."""
     base_url, api_key = _get_base_url_and_api_key()
     headers = {
@@ -124,11 +123,6 @@ async def list_model_details() -> list[ProviderModel]:
             if existing is None or (not existing.reasoning_efforts and next_model.reasoning_efforts):
                 models[model_id] = next_model
     return [models[model_id] for model_id in sorted(models)]
-
-
-async def list_models() -> list[str]:
-    """Return model IDs from the configured OpenAI-compatible provider."""
-    return [model.id for model in await list_model_details()]
 
 
 def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
@@ -318,8 +312,7 @@ async def _try_completion(
     )
 
 
-@functools.cache
-def _parse_model_and_reasoning(
+def parse_model_and_reasoning(
     model: str,
 ) -> tuple[str, str | None]:
     """Split `model (effort)` syntax into the provider model and reasoning effort."""
@@ -336,11 +329,6 @@ def _parse_model_and_reasoning(
         raise ValueError(f"Reasoning effort must not be empty in {model}")
 
     return base, effort
-
-
-def parse_model_and_reasoning(model: str) -> tuple[str, str | None]:
-    """Parse the public `model (effort)` selection format."""
-    return _parse_model_and_reasoning(model)
 
 
 def format_model_and_reasoning(model: str, reasoning_effort: str | None) -> str:
@@ -362,7 +350,7 @@ async def stream_completion(
     model: str,
 ) -> AsyncIterator[ContentDeltaEvent | ReasoningDeltaEvent | ModelRetryEvent | StatusEvent | CompletionEvent]:
     """Retry transient HTTP failures before surfacing the completion error."""
-    model, reasoning_effort = _parse_model_and_reasoning(model)
+    model, reasoning_effort = parse_model_and_reasoning(model)
 
     max_retries = 5
     for attempt in range(max_retries):
