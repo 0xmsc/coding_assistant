@@ -122,19 +122,19 @@ async def test_cleanup_exactly_max_finished(manager: TaskManager) -> None:
     manager._max_finished_tasks = 5
     shell_execute_tool = create_shell_tools(manager=manager)[0]
 
-    for i in range(10):
-        await shell_execute_tool.execute({"command": f"sleep 0.05; echo 'task {i + 1}'"})
+    for i in range(6):
+        await shell_execute_tool.execute({"command": f"echo 'task {i + 1}'"})
 
-    await asyncio.gather(*(task.handle.wait(timeout=5) for task in manager.list_tasks()))
-    await shell_execute_tool.execute({"command": "echo 'task 11'"})  # Trigger cleanup
+    await shell_execute_tool.execute({"command": "sleep 10", "background": True})
 
     tasks = manager.list_tasks()
     finished_tasks = [t for t in tasks if not t.handle.is_running]
+    running_tasks = [t for t in tasks if t.handle.is_running]
 
-    assert len(finished_tasks) == 6
+    assert [t.id for t in finished_tasks] == [2, 3, 4, 5, 6]
+    assert [t.id for t in running_tasks] == [7]
 
-    task_ids = [t.id for t in finished_tasks]
-    assert task_ids == [6, 7, 8, 9, 10, 11]
+    await running_tasks[0].handle.terminate()
 
 
 @pytest.mark.asyncio
