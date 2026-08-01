@@ -327,7 +327,7 @@ async def test_manager_lists_models_from_provider(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_manager_stores_reasoning_effort_separately_and_sends_model_spec(tmp_path: Path) -> None:
+async def test_manager_stores_and_sends_model_spec(tmp_path: Path) -> None:
     worker = FakeWorkerRunner()
     service = ManagerService(
         store=create_session_store(tmp_path),
@@ -339,7 +339,7 @@ async def test_manager_stores_reasoning_effort_separately_and_sends_model_spec(t
         params=_scope_params("scope-a", sessionId=session_id, model="reasoning-model (provider-level)"),
         on_update=_ignore_session_update,
     )
-    assert session["_meta"] == {"model": "reasoning-model", "reasoningEffort": "provider-level"}
+    assert session["_meta"] == {"model": "reasoning-model (provider-level)"}
 
     await service.prompt(
         params=_scope_params("scope-a", sessionId=session_id, prompt=[text_block("Do it")]),

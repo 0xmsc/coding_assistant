@@ -30,7 +30,6 @@ from coding_assistant.core.session_updates import (
 from coding_assistant.llm.openai import (
     ProviderModel,
     list_models as list_provider_models,
-    parse_model_and_reasoning,
 )
 from coding_assistant.llm.types import BaseMessage, UserMessage
 from coding_assistant.manager.store import LoadedSession, SessionRecord, SessionStore
@@ -38,7 +37,6 @@ from coding_assistant.remote.jsonrpc import JsonObject, prompt_content_from_acp,
 from coding_assistant.worker.agent import WorkerAgentConfig, build_worker_instructions
 
 MODEL_METADATA_KEY = "model"
-REASONING_EFFORT_METADATA_KEY = "reasoningEffort"
 MODEL_CACHE_TTL_SECONDS = 300.0
 ModelLister = Callable[[], Awaitable[list[ProviderModel]]]
 ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
@@ -424,9 +422,7 @@ def _verified_attachment_bytes(*, attachments: Path, attachment: SessionAttachme
 def _model_from_record(record: SessionRecord) -> str:
     model = record.metadata.get(MODEL_METADATA_KEY)
     if isinstance(model, str) and model.strip():
-        model = model.strip()
-        reasoning_effort = record.metadata.get(REASONING_EFFORT_METADATA_KEY)
-        return f"{model} ({reasoning_effort})" if isinstance(reasoning_effort, str) else model
+        return model.strip()
     raise ManagerError("Session has no model selected.")
 
 
@@ -580,17 +576,13 @@ class ManagerService:
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         model = _model_param(params)
-        base_model, reasoning_effort = parse_model_and_reasoning(model)
 
         async with self._session_lock(session_id):
             self._require_idle_session(session_id, "Cannot change model while session has an active prompt.")
             record = self._store.update_session_metadata(
                 scope_id=scope_id,
                 session_id=session_id,
-                metadata={
-                    MODEL_METADATA_KEY: base_model,
-                    REASONING_EFFORT_METADATA_KEY: reasoning_effort,
-                },
+                metadata={MODEL_METADATA_KEY: model},
             )
             await on_update(_session_updated(record))
             return _record_metadata(record)
