@@ -7,7 +7,6 @@ import pytest
 
 from coding_assistant.llm import openai as openai_model
 from coding_assistant.llm.openai import (
-    ProviderModel,
     _extract_usage,
     _get_base_url_and_api_key,
     _merge_chunks,
@@ -737,66 +736,29 @@ class TestHelperFunctions:
 
             assert await openai_model.list_models() == ["a-model", "z-model"]
 
-    @pytest.mark.asyncio
-    async def test_list_model_details_includes_reasoning_efforts(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv(
-            "CODING_ASSISTANT_FAKE_OPENAI_MODELS_JSON",
-            json.dumps(
-                [
-                    {"id": "reasoning-model", "reasoning": {"supported_efforts": ["high", "low"]}},
-                    {"id": "plain-model"},
-                ],
-            ),
-        )
-        with run_fake_openai_server() as fake_openai:
-            monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
-            monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    def test_reasoning_efforts_use_only_provider_values(self) -> None:
+        item = {
+            "reasoning": {
+                "supported_efforts": [" provider-high ", "provider-low", "provider-high", ""],
+                "default_effort": "ignored",
+                "mandatory": True,
+            },
+        }
 
-            assert await openai_model.list_model_details() == [
-                ProviderModel(id="plain-model"),
-                ProviderModel(
-                    id="reasoning-model",
-                    reasoning_efforts=("high", "low"),
-                    reasoning_metadata_available=True,
-                ),
-            ]
+        assert openai_model._reasoning_efforts_from_model(item) == ("provider-high", "provider-low")
 
-    @pytest.mark.asyncio
-    async def test_list_model_details_uses_only_advertised_efforts(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv(
-            "CODING_ASSISTANT_FAKE_OPENAI_MODELS_JSON",
-            json.dumps(
-                [
-                    {"id": "mandatory-model", "reasoning": {"mandatory": True}},
-                    {
-                        "id": "unbounded-model",
-                        "reasoning": {
-                            "supported_efforts": None,
-                            "default_effort": "medium",
-                            "mandatory": False,
-                        },
-                    },
-                ],
-            ),
-        )
-        with run_fake_openai_server() as fake_openai:
-            monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
-            monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-
-            assert await openai_model.list_model_details() == [
-                ProviderModel(
-                    id="mandatory-model",
-                    reasoning_efforts=(),
-                    reasoning_metadata_available=True,
-                    reasoning_mandatory=True,
-                ),
-                ProviderModel(
-                    id="unbounded-model",
-                    reasoning_efforts=(),
-                    reasoning_metadata_available=True,
-                    default_reasoning_effort="medium",
-                ),
-            ]
+    @pytest.mark.parametrize(
+        "item",
+        [
+            {},
+            {"reasoning": None},
+            {"reasoning": {}},
+            {"reasoning": {"supported_efforts": None}},
+            {"reasoning": {"supported_efforts": "high"}},
+        ],
+    )
+    def test_reasoning_efforts_require_an_advertised_list(self, item: dict[str, Any]) -> None:
+        assert openai_model._reasoning_efforts_from_model(item) == ()
 
 
 async def collect_events(*, messages: list[UserMessage], model: str, tools: Any) -> list[Any]:

@@ -437,14 +437,8 @@ def _model_entries(models: Sequence[ProviderModel]) -> list[JsonObject]:
     entries: list[JsonObject] = []
     for model in models:
         entry: JsonObject = {"id": model.id}
-        if model.reasoning_metadata_available:
-            reasoning: JsonObject = {
-                "supportedEfforts": list(model.reasoning_efforts),
-                "mandatory": model.reasoning_mandatory,
-            }
-            if model.default_reasoning_effort is not None:
-                reasoning["defaultEffort"] = model.default_reasoning_effort
-            entry["reasoning"] = reasoning
+        if model.reasoning_efforts:
+            entry["reasoning"] = {"supportedEfforts": list(model.reasoning_efforts)}
         entries.append(entry)
     return entries
 
@@ -598,11 +592,8 @@ class ManagerService:
         selected_model = next((item for item in available_models if item.id == base_model), None)
         if selected_model is None:
             raise ManagerError(f"Model {model} is not available.")
-        if reasoning_effort is not None:
-            if not selected_model.reasoning_metadata_available:
-                raise ManagerError(f"Model {base_model} does not advertise configurable reasoning effort.")
-            if reasoning_effort not in selected_model.reasoning_efforts:
-                raise ManagerError(f"Reasoning effort {reasoning_effort} is not available for model {base_model}.")
+        if reasoning_effort is not None and reasoning_effort not in selected_model.reasoning_efforts:
+            raise ManagerError(f"Reasoning effort {reasoning_effort} is not available for model {base_model}.")
 
         async with self._session_lock(session_id):
             self._require_idle_session(session_id, "Cannot change model while session has an active prompt.")
@@ -885,7 +876,7 @@ class ManagerService:
             if not model.id:
                 continue
             existing = models_by_id.get(model.id)
-            if existing is None or (not existing.reasoning_metadata_available and model.reasoning_metadata_available):
+            if existing is None or (not existing.reasoning_efforts and model.reasoning_efforts):
                 models_by_id[model.id] = model
         models = list(models_by_id.values())
         self._model_cache = (now, models)

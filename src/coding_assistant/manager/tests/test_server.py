@@ -325,8 +325,6 @@ async def test_manager_model_list_includes_reasoning_efforts(tmp_path: Path) -> 
             ProviderModel(
                 id="reasoning-model",
                 reasoning_efforts=("low", "high"),
-                reasoning_metadata_available=True,
-                default_reasoning_effort="low",
             ),
         ]
 
@@ -343,8 +341,6 @@ async def test_manager_model_list_includes_reasoning_efforts(tmp_path: Path) -> 
                 "id": "reasoning-model",
                 "reasoning": {
                     "supportedEfforts": ["low", "high"],
-                    "defaultEffort": "low",
-                    "mandatory": False,
                 },
             },
         ],
@@ -354,7 +350,7 @@ async def test_manager_model_list_includes_reasoning_efforts(tmp_path: Path) -> 
 @pytest.mark.asyncio
 async def test_manager_rejects_unsupported_reasoning_effort(tmp_path: Path) -> None:
     async def model_lister() -> list[ProviderModel]:
-        return [ProviderModel(id="reasoning-model", reasoning_efforts=("low",), reasoning_metadata_available=True)]
+        return [ProviderModel(id="reasoning-model", reasoning_efforts=("low",))]
 
     service = ManagerService(
         store=create_session_store(tmp_path),
@@ -377,7 +373,6 @@ async def test_manager_stores_reasoning_effort_separately_and_sends_model_spec(t
             ProviderModel(
                 id="reasoning-model",
                 reasoning_efforts=("provider-level",),
-                reasoning_metadata_available=True,
             )
         ]
 

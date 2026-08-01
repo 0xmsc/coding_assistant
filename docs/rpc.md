@@ -394,9 +394,7 @@ Response:
       {
         "id": "openai/gpt-5.1",
         "reasoning": {
-          "supportedEfforts": ["low", "medium", "high"],
-          "defaultEffort": "medium",
-          "mandatory": false
+          "supportedEfforts": ["low", "medium", "high"]
         }
       }
     ]
@@ -407,11 +405,11 @@ Response:
 The manager caches provider results briefly. If provider discovery fails and no
 cached list is available, `models` is empty. The manager does not choose a
 default model; clients must persist a session model with `session/set_model`
-before sending `session/prompt`. When the provider advertises reasoning
-capabilities, `reasoning.supportedEfforts` contains the provider's accepted
-values. Missing, `null`, malformed, and empty effort lists are exposed as an
-empty list, meaning that the model does not offer a selectable reasoning
-effort. `defaultEffort` is omitted when the provider does not advertise one.
+before sending `session/prompt`. When the provider advertises a non-empty
+reasoning-effort list, the optional `reasoning.supportedEfforts` field contains
+those exact values. Missing, `null`, malformed, and empty effort lists omit
+`reasoning`, meaning that the model does not offer a selectable reasoning
+effort.
 
 ### session/list
 
