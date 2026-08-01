@@ -190,7 +190,10 @@ async def _set_model(
 
 
 async def _test_model_lister() -> list[ProviderModel]:
-    return [ProviderModel(id="test-model"), ProviderModel(id="alternate-model")]
+    return [
+        ProviderModel(id="test-model"),
+        ProviderModel(id="alternate-model", reasoning_efforts=("low", "high")),
+    ]
 
 
 async def _failing_model_lister() -> list[ProviderModel]:
@@ -313,35 +316,11 @@ async def test_manager_lists_models_from_provider(tmp_path: Path) -> None:
             response = parse_jsonrpc_message(await websocket.recv())
 
     assert response["result"] == {
-        "models": [{"id": "test-model"}, {"id": "alternate-model"}],
-    }
-
-
-@pytest.mark.asyncio
-async def test_manager_model_list_includes_reasoning_efforts(tmp_path: Path) -> None:
-    async def model_lister() -> list[ProviderModel]:
-        return [
-            ProviderModel(id="plain-model"),
-            ProviderModel(
-                id="reasoning-model",
-                reasoning_efforts=("low", "high"),
-            ),
-        ]
-
-    service = ManagerService(
-        store=create_session_store(tmp_path),
-        worker_runner=FakeWorkerRunner(),
-        model_lister=model_lister,
-    )
-
-    assert await service.list_models() == {
         "models": [
-            {"id": "plain-model"},
+            {"id": "test-model"},
             {
-                "id": "reasoning-model",
-                "reasoning": {
-                    "supportedEfforts": ["low", "high"],
-                },
+                "id": "alternate-model",
+                "reasoning": {"supportedEfforts": ["low", "high"]},
             },
         ],
     }
