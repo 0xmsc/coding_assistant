@@ -40,9 +40,6 @@ class ProviderModel:
 
     id: str
     reasoning_efforts: tuple[str, ...] = ()
-    reasoning_metadata_available: bool = False
-    default_reasoning_effort: str | None = None
-    reasoning_mandatory: bool = False
 
 
 async def _get_tools_payload(tools: Sequence[ToolDefinition]) -> list[dict[str, Any]]:
@@ -77,31 +74,21 @@ def _is_openrouter_base_url(base_url: str) -> bool:
 
 def _reasoning_efforts_from_model(
     item: dict[str, Any],
-) -> tuple[tuple[str, ...], bool, str | None, bool]:
+) -> tuple[str, ...]:
     reasoning = item.get("reasoning")
 
     if not isinstance(reasoning, dict):
-        return (), False, None, False
+        return ()
 
     if isinstance(reasoning.get("supported_efforts"), list):
-        efforts = tuple(
+        return tuple(
             dict.fromkeys(
                 effort.strip()
                 for effort in reasoning["supported_efforts"]
                 if isinstance(effort, str) and effort.strip()
             )
         )
-    else:
-        efforts = ()
-
-    default_effort = reasoning.get("default_effort")
-    normalized_default = default_effort.strip() if isinstance(default_effort, str) and default_effort.strip() else None
-    return (
-        efforts,
-        True,
-        normalized_default,
-        reasoning.get("mandatory") is True,
-    )
+    return ()
 
 
 async def list_model_details() -> list[ProviderModel]:
@@ -128,20 +115,13 @@ async def list_model_details() -> list[ProviderModel]:
         model_id = item.get("id")
         if isinstance(model_id, str) and model_id.strip():
             model_id = model_id.strip()
-            reasoning_efforts, reasoning_metadata_available, default_reasoning_effort, reasoning_mandatory = (
-                _reasoning_efforts_from_model(item)
-            )
+            reasoning_efforts = _reasoning_efforts_from_model(item)
             next_model = ProviderModel(
                 id=model_id,
                 reasoning_efforts=reasoning_efforts,
-                reasoning_metadata_available=reasoning_metadata_available,
-                default_reasoning_effort=default_reasoning_effort,
-                reasoning_mandatory=reasoning_mandatory,
             )
             existing = models.get(model_id)
-            if existing is None or (
-                not existing.reasoning_metadata_available and next_model.reasoning_metadata_available
-            ):
+            if existing is None or (not existing.reasoning_efforts and next_model.reasoning_efforts):
                 models[model_id] = next_model
     return [models[model_id] for model_id in sorted(models)]
 
