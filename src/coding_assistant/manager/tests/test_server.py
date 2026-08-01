@@ -17,6 +17,7 @@ from coding_assistant.core.session_updates import (
     MessageDeltaUpdate,
     SessionUpdate,
 )
+from coding_assistant.llm.openai import ProviderModel
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, ToolMessage, UserMessage
 from coding_assistant.manager.server import start_manager_server
 from coding_assistant.manager.service import (
@@ -314,6 +315,112 @@ async def test_manager_lists_models_from_provider(tmp_path: Path) -> None:
     assert response["result"] == {
         "models": [{"id": "test-model"}, {"id": "alternate-model"}],
     }
+
+
+@pytest.mark.asyncio
+async def test_manager_model_list_includes_reasoning_efforts(tmp_path: Path) -> None:
+    async def model_lister() -> list[ProviderModel]:
+        return [
+            ProviderModel(id="plain-model"),
+            ProviderModel(
+                id="reasoning-model",
+                reasoning_efforts=("low", "high"),
+                reasoning_metadata_available=True,
+                default_reasoning_effort="low",
+            ),
+        ]
+
+    service = ManagerService(
+        store=create_session_store(tmp_path),
+        worker_runner=FakeWorkerRunner(),
+        model_lister=model_lister,
+    )
+
+    assert await service.list_models() == {
+        "models": [
+            {"id": "plain-model"},
+            {
+                "id": "reasoning-model",
+                "reasoning": {
+                    "supportedEfforts": ["low", "high"],
+                    "defaultEffort": "low",
+                    "mandatory": False,
+                },
+            },
+        ],
+    }
+
+
+@pytest.mark.asyncio
+async def test_manager_rejects_unsupported_reasoning_effort(tmp_path: Path) -> None:
+    async def model_lister() -> list[ProviderModel]:
+        return [ProviderModel(id="reasoning-model", reasoning_efforts=("low",), reasoning_metadata_available=True)]
+
+    service = ManagerService(
+        store=create_session_store(tmp_path),
+        worker_runner=FakeWorkerRunner(),
+        model_lister=model_lister,
+    )
+    session_id = service.new_session(params=_scope_params("scope-a"))["sessionId"]
+
+    with pytest.raises(ManagerError, match="Reasoning effort high is not available"):
+        await service.set_session_model(
+            params=_scope_params("scope-a", sessionId=session_id, model="reasoning-model (high)"),
+            on_update=_ignore_session_update,
+        )
+
+
+@pytest.mark.asyncio
+async def test_manager_stores_reasoning_effort_separately_and_sends_model_spec(tmp_path: Path) -> None:
+    async def model_lister() -> list[ProviderModel]:
+        return [ProviderModel(id="reasoning-model", reasoning_efforts=("high",), reasoning_metadata_available=True)]
+
+    worker = FakeWorkerRunner()
+    service = ManagerService(
+        store=create_session_store(tmp_path),
+        worker_runner=worker,
+        model_lister=model_lister,
+    )
+    session_id = service.new_session(params=_scope_params("scope-a"))["sessionId"]
+
+    session = await service.set_session_model(
+        params=_scope_params("scope-a", sessionId=session_id, model="reasoning-model (high)"),
+        on_update=_ignore_session_update,
+    )
+    assert session["_meta"] == {"model": "reasoning-model", "reasoningEffort": "high"}
+
+    await service.prompt(
+        params=_scope_params("scope-a", sessionId=session_id, prompt=[text_block("Do it")]),
+        on_update=_ignore_session_update,
+    )
+    assert worker.prompts is not None
+    assert worker.prompts[0].model == "reasoning-model (high)"
+
+
+@pytest.mark.asyncio
+async def test_manager_rejects_disabling_mandatory_reasoning(tmp_path: Path) -> None:
+    async def model_lister() -> list[ProviderModel]:
+        return [
+            ProviderModel(
+                id="reasoning-model",
+                reasoning_efforts=None,
+                reasoning_metadata_available=True,
+                reasoning_mandatory=True,
+            )
+        ]
+
+    service = ManagerService(
+        store=create_session_store(tmp_path),
+        worker_runner=FakeWorkerRunner(),
+        model_lister=model_lister,
+    )
+    session_id = service.new_session(params=_scope_params("scope-a"))["sessionId"]
+
+    with pytest.raises(ManagerError, match="Reasoning cannot be disabled"):
+        await service.set_session_model(
+            params=_scope_params("scope-a", sessionId=session_id, model="reasoning-model (none)"),
+            on_update=_ignore_session_update,
+        )
 
 
 @pytest.mark.asyncio
