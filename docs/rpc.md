@@ -674,12 +674,11 @@ Response:
 }
 ```
 
-The manager rejects models that are not in `model/list`, rejects reasoning
-efforts that the selected model does not advertise, and rejects model changes
-while the session has an active prompt. The optional ` (effort)` suffix is an
-API serialization convention. Session metadata stores `model` and
-`reasoningEffort` separately, and the worker sends the effort through the
-completion API's `reasoning_effort` parameter.
+The manager rejects model changes while the session has an active prompt. The
+optional ` (effort)` suffix is an API serialization convention. Session
+metadata stores `model` and `reasoningEffort` separately, and the worker sends
+the effort through the completion API's `reasoning_effort` parameter. The
+provider validates both values when the session sends a prompt.
 
 ### session/prompt
 

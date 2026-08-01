@@ -580,17 +580,7 @@ class ManagerService:
         scope_id = scope_id_from_params(params)
         session_id = session_id_from_params(params)
         model = _model_param(params)
-        try:
-            base_model, reasoning_effort = parse_model_and_reasoning(model)
-        except ValueError as exc:
-            raise ManagerError(str(exc)) from exc
-
-        available_models = await self._available_models()
-        selected_model = next((item for item in available_models if item.id == base_model), None)
-        if selected_model is None:
-            raise ManagerError(f"Model {model} is not available.")
-        if reasoning_effort is not None and reasoning_effort not in selected_model.reasoning_efforts:
-            raise ManagerError(f"Reasoning effort {reasoning_effort} is not available for model {base_model}.")
+        base_model, reasoning_effort = parse_model_and_reasoning(model)
 
         async with self._session_lock(session_id):
             self._require_idle_session(session_id, "Cannot change model while session has an active prompt.")

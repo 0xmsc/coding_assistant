@@ -298,16 +298,10 @@ def parse_model_and_reasoning(
     s = model.strip()
     m = re.match(r"^(.+?) \(([^)]*)\)$", s)
 
-    if not m:
+    if not m or not m.group(2).strip():
         return s, None
 
-    base = m.group(1).strip()
-    effort = m.group(2).strip()
-
-    if not effort:
-        raise ValueError(f"Reasoning effort must not be empty in {model}")
-
-    return base, effort
+    return m.group(1).strip(), m.group(2).strip()
 
 
 def fix_input_schema(input_schema: dict[str, Any]) -> None:

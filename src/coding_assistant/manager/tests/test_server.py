@@ -327,39 +327,11 @@ async def test_manager_lists_models_from_provider(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_manager_rejects_unsupported_reasoning_effort(tmp_path: Path) -> None:
-    async def model_lister() -> list[ProviderModel]:
-        return [ProviderModel(id="reasoning-model", reasoning_efforts=("low",))]
-
-    service = ManagerService(
-        store=create_session_store(tmp_path),
-        worker_runner=FakeWorkerRunner(),
-        model_lister=model_lister,
-    )
-    session_id = service.new_session(params=_scope_params("scope-a"))["sessionId"]
-
-    with pytest.raises(ManagerError, match="Reasoning effort high is not available"):
-        await service.set_session_model(
-            params=_scope_params("scope-a", sessionId=session_id, model="reasoning-model (high)"),
-            on_update=_ignore_session_update,
-        )
-
-
-@pytest.mark.asyncio
 async def test_manager_stores_reasoning_effort_separately_and_sends_model_spec(tmp_path: Path) -> None:
-    async def model_lister() -> list[ProviderModel]:
-        return [
-            ProviderModel(
-                id="reasoning-model",
-                reasoning_efforts=("provider-level",),
-            )
-        ]
-
     worker = FakeWorkerRunner()
     service = ManagerService(
         store=create_session_store(tmp_path),
         worker_runner=worker,
-        model_lister=model_lister,
     )
     session_id = service.new_session(params=_scope_params("scope-a"))["sessionId"]
 
@@ -1371,26 +1343,6 @@ async def test_manager_validates_injected_skill_paths(tmp_path: Path) -> None:
 
     assert response["error"]["code"] == -32602
     assert response["error"]["message"] == "Injected skill apps-api has an invalid file path: '../escape.md'."
-
-
-@pytest.mark.asyncio
-async def test_manager_rejects_unavailable_session_model(tmp_path: Path) -> None:
-    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
-        async with connect(endpoint) as websocket:
-            await _initialize(websocket)
-            session_id = await _new_session(websocket, scope_id="scope-a")
-
-            await websocket.send(
-                jsonrpc_request(
-                    3,
-                    "session/set_model",
-                    _scope_params("scope-a", sessionId=session_id, model="missing-model"),
-                ),
-            )
-            response = parse_jsonrpc_message(await websocket.recv())
-
-    assert response["error"]["code"] == -32602
-    assert response["error"]["message"] == "Model missing-model is not available."
 
 
 @pytest.mark.asyncio

@@ -740,30 +740,23 @@ class TestHelperFunctions:
                 ProviderModel(id="z-model"),
             ]
 
-    def test_reasoning_efforts_use_only_provider_values(self) -> None:
-        item = {
-            "reasoning": {
-                "supported_efforts": ["provider-high", "provider-low"],
-                "default_effort": "ignored",
-                "mandatory": True,
-            },
-        }
-
-        assert openai_model._reasoning_efforts_from_model(item) == ("provider-high", "provider-low")
-
     @pytest.mark.parametrize(
-        "item",
+        ("item", "expected"),
         [
-            {},
-            {"reasoning": None},
-            {"reasoning": {}},
-            {"reasoning": {"supported_efforts": None}},
-            {"reasoning": {"supported_efforts": "high"}},
-            {"reasoning": {"supported_efforts": ["high", None]}},
+            (
+                {"reasoning": {"supported_efforts": ["provider-high", "provider-low"]}},
+                ("provider-high", "provider-low"),
+            ),
+            ({}, ()),
+            ({"reasoning": None}, ()),
+            ({"reasoning": {}}, ()),
+            ({"reasoning": {"supported_efforts": None}}, ()),
+            ({"reasoning": {"supported_efforts": "high"}}, ()),
+            ({"reasoning": {"supported_efforts": ["high", None]}}, ()),
         ],
     )
-    def test_reasoning_efforts_require_an_advertised_list(self, item: dict[str, Any]) -> None:
-        assert openai_model._reasoning_efforts_from_model(item) == ()
+    def test_reasoning_efforts_from_model(self, item: dict[str, Any], expected: tuple[str, ...]) -> None:
+        assert openai_model._reasoning_efforts_from_model(item) == expected
 
 
 async def collect_events(*, messages: list[UserMessage], model: str, tools: Any) -> list[Any]:
