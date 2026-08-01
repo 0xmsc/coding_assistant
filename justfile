@@ -23,7 +23,16 @@ check: lint-check check-migrations test
 publish:
     ./docker/publish.sh
 
-deploy: check publish
+deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git fetch --quiet origin 'refs/tags/deployed/*:refs/tags/deployed/*'
+    if [[ -n "$(git tag --points-at HEAD --list 'deployed/*')" ]]; then
+        echo "Current commit is already deployed."
+        exit 0
+    fi
+    just check
+    just publish
     ./docker/deploy.sh
 
 dev-manager:
