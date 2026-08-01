@@ -29,7 +29,6 @@ from coding_assistant.core.session_updates import (
 )
 from coding_assistant.llm.openai import (
     ProviderModel,
-    format_model_and_reasoning,
     list_models as list_provider_models,
     parse_model_and_reasoning,
 )
@@ -425,11 +424,9 @@ def _verified_attachment_bytes(*, attachments: Path, attachment: SessionAttachme
 def _model_from_record(record: SessionRecord) -> str:
     model = record.metadata.get(MODEL_METADATA_KEY)
     if isinstance(model, str) and model.strip():
+        model = model.strip()
         reasoning_effort = record.metadata.get(REASONING_EFFORT_METADATA_KEY)
-        return format_model_and_reasoning(
-            model.strip(),
-            reasoning_effort if isinstance(reasoning_effort, str) else None,
-        )
+        return f"{model} ({reasoning_effort})" if isinstance(reasoning_effort, str) else model
     raise ManagerError("Session has no model selected.")
 
 
@@ -866,13 +863,5 @@ class ManagerService:
                 return self._model_cache[1]
             return []
 
-        models_by_id: dict[str, ProviderModel] = {}
-        for model in provider_models:
-            if not model.id:
-                continue
-            existing = models_by_id.get(model.id)
-            if existing is None or (not existing.reasoning_efforts and model.reasoning_efforts):
-                models_by_id[model.id] = model
-        models = list(models_by_id.values())
-        self._model_cache = (now, models)
-        return models
+        self._model_cache = (now, provider_models)
+        return provider_models

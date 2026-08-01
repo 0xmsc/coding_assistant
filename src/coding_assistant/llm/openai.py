@@ -7,7 +7,6 @@ import logging
 import re
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 from httpx_sse import SSEError, aconnect_sse
@@ -35,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass(frozen=True)
 class ProviderModel:
-    """A provider model and any reasoning-effort metadata it advertises."""
+    """A provider model and its advertised reasoning efforts."""
 
     id: str
     reasoning_efforts: tuple[str, ...] = ()
@@ -66,28 +65,15 @@ def _get_base_url_and_api_key() -> tuple[str, str]:
     return (config.base_url, config.api_key)
 
 
-def _is_openrouter_base_url(base_url: str) -> bool:
-    hostname = urlparse(base_url).hostname
-    return hostname == "openrouter.ai" or (hostname is not None and hostname.endswith(".openrouter.ai"))
-
-
 def _reasoning_efforts_from_model(
     item: dict[str, Any],
 ) -> tuple[str, ...]:
     reasoning = item.get("reasoning")
-
     if not isinstance(reasoning, dict):
         return ()
 
-    if isinstance(reasoning.get("supported_efforts"), list):
-        return tuple(
-            dict.fromkeys(
-                effort.strip()
-                for effort in reasoning["supported_efforts"]
-                if isinstance(effort, str) and effort.strip()
-            )
-        )
-    return ()
+    efforts = reasoning.get("supported_efforts")
+    return tuple(efforts) if isinstance(efforts, list) and all(isinstance(effort, str) for effort in efforts) else ()
 
 
 async def list_models() -> list[ProviderModel]:
@@ -114,14 +100,10 @@ async def list_models() -> list[ProviderModel]:
         model_id = item.get("id")
         if isinstance(model_id, str) and model_id.strip():
             model_id = model_id.strip()
-            reasoning_efforts = _reasoning_efforts_from_model(item)
-            next_model = ProviderModel(
+            models[model_id] = ProviderModel(
                 id=model_id,
-                reasoning_efforts=reasoning_efforts,
+                reasoning_efforts=_reasoning_efforts_from_model(item),
             )
-            existing = models.get(model_id)
-            if existing is None or (not existing.reasoning_efforts and next_model.reasoning_efforts):
-                models[model_id] = next_model
     return [models[model_id] for model_id in sorted(models)]
 
 
@@ -255,10 +237,7 @@ async def _try_completion(
     }
 
     if reasoning_effort:
-        if _is_openrouter_base_url(base_url):
-            payload["reasoning"] = {"effort": reasoning_effort}
-        else:
-            payload["reasoning_effort"] = reasoning_effort
+        payload["reasoning_effort"] = reasoning_effort
 
     async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=httpx.Timeout(60)) as client:
         async with aconnect_sse(client, "POST", "/chat/completions", json=payload) as source:
@@ -329,11 +308,6 @@ def parse_model_and_reasoning(
         raise ValueError(f"Reasoning effort must not be empty in {model}")
 
     return base, effort
-
-
-def format_model_and_reasoning(model: str, reasoning_effort: str | None) -> str:
-    """Serialize a model and optional effort for the completion API."""
-    return f"{model} ({reasoning_effort})" if reasoning_effort is not None else model
 
 
 def fix_input_schema(input_schema: dict[str, Any]) -> None:

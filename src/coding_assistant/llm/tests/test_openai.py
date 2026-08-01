@@ -743,7 +743,7 @@ class TestHelperFunctions:
     def test_reasoning_efforts_use_only_provider_values(self) -> None:
         item = {
             "reasoning": {
-                "supported_efforts": [" provider-high ", "provider-low", "provider-high", ""],
+                "supported_efforts": ["provider-high", "provider-low"],
                 "default_effort": "ignored",
                 "mandatory": True,
             },
@@ -759,6 +759,7 @@ class TestHelperFunctions:
             {"reasoning": {}},
             {"reasoning": {"supported_efforts": None}},
             {"reasoning": {"supported_efforts": "high"}},
+            {"reasoning": {"supported_efforts": ["high", None]}},
         ],
     )
     def test_reasoning_efforts_require_an_advertised_list(self, item: dict[str, Any]) -> None:
@@ -878,25 +879,6 @@ class TestOpenAIComplete:
 
         assert cast(Any, captured_payload)["model"] == "o1"
         assert cast(Any, captured_payload)["reasoning_effort"] == "high"
-
-    @pytest.mark.asyncio
-    async def test_openrouter_complete_with_reasoning_effort(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
-        monkeypatch.setenv("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
-        captured_payload = None
-
-        def mock_aconnect_sse(client: Any, method: Any, url: Any, **kwargs: Any) -> Any:
-            nonlocal captured_payload
-            captured_payload = kwargs.get("json")
-            return FakeContext([json.dumps({"choices": [{"delta": {"content": "ok"}}]})])
-
-        monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
-
-        await collect_events(messages=[UserMessage(content="Reason")], model="o1 (high)", tools=[])
-
-        assert cast(Any, captured_payload)["model"] == "o1"
-        assert cast(Any, captured_payload)["reasoning"] == {"effort": "high"}
-        assert "reasoning_effort" not in cast(Any, captured_payload)
 
     @pytest.mark.asyncio
     async def test_openai_complete_error_retry(self, monkeypatch: Any) -> None:
