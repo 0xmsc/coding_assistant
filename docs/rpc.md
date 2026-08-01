@@ -667,8 +667,7 @@ Response:
     "title": "Fix failing tests",
     "updatedAt": "2026-06-03T10:25:00Z",
     "_meta": {
-      "model": "openai/gpt-5.1",
-      "reasoningEffort": "high"
+      "model": "openai/gpt-5.1 (high)"
     }
   }
 }
@@ -676,9 +675,9 @@ Response:
 
 The manager rejects model changes while the session has an active prompt. The
 optional ` (effort)` suffix is an API serialization convention. Session
-metadata stores `model` and `reasoningEffort` separately, and the worker sends
-the effort through the completion API's `reasoning_effort` parameter. The
-provider validates both values when the session sends a prompt.
+metadata stores that model string unchanged. The completion API extracts the
+effort and sends it through `reasoning_effort`; the provider validates both
+values.
 
 ### session/prompt
 

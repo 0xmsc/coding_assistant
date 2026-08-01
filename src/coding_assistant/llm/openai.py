@@ -291,7 +291,7 @@ async def _try_completion(
     )
 
 
-def parse_model_and_reasoning(
+def _parse_model_and_reasoning(
     model: str,
 ) -> tuple[str, str | None]:
     """Split `model (effort)` syntax into the provider model and reasoning effort."""
@@ -318,7 +318,7 @@ async def stream_completion(
     model: str,
 ) -> AsyncIterator[ContentDeltaEvent | ReasoningDeltaEvent | ModelRetryEvent | StatusEvent | CompletionEvent]:
     """Retry transient HTTP failures before surfacing the completion error."""
-    model, reasoning_effort = parse_model_and_reasoning(model)
+    model, reasoning_effort = _parse_model_and_reasoning(model)
 
     max_retries = 5
     for attempt in range(max_retries):
