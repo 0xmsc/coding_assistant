@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from time import monotonic
-from typing import Protocol, cast
+from typing import Protocol
 from uuid import uuid4
 
 from coding_assistant.core.runtime import build_initial_system_message
@@ -29,7 +29,6 @@ from coding_assistant.core.session_updates import (
 )
 from coding_assistant.llm.openai import (
     ProviderModel,
-    ReasoningEffort,
     format_model_and_reasoning,
     list_model_details as list_provider_models,
     parse_model_and_reasoning,
@@ -429,7 +428,7 @@ def _model_from_record(record: SessionRecord) -> str:
         reasoning_effort = record.metadata.get(REASONING_EFFORT_METADATA_KEY)
         return format_model_and_reasoning(
             model.strip(),
-            cast(ReasoningEffort, reasoning_effort) if isinstance(reasoning_effort, str) else None,
+            reasoning_effort if isinstance(reasoning_effort, str) else None,
         )
     raise ManagerError("Session has no model selected.")
 
@@ -440,7 +439,7 @@ def _model_entries(models: Sequence[ProviderModel]) -> list[JsonObject]:
         entry: JsonObject = {"id": model.id}
         if model.reasoning_metadata_available:
             reasoning: JsonObject = {
-                "supportedEfforts": list(model.reasoning_efforts) if model.reasoning_efforts is not None else None,
+                "supportedEfforts": list(model.reasoning_efforts),
                 "mandatory": model.reasoning_mandatory,
             }
             if model.default_reasoning_effort is not None:
@@ -602,12 +601,7 @@ class ManagerService:
         if reasoning_effort is not None:
             if not selected_model.reasoning_metadata_available:
                 raise ManagerError(f"Model {base_model} does not advertise configurable reasoning effort.")
-            if selected_model.reasoning_mandatory and reasoning_effort == "none":
-                raise ManagerError(f"Reasoning cannot be disabled for model {base_model}.")
-            if (
-                selected_model.reasoning_efforts is not None
-                and reasoning_effort not in selected_model.reasoning_efforts
-            ):
+            if reasoning_effort not in selected_model.reasoning_efforts:
                 raise ManagerError(f"Reasoning effort {reasoning_effort} is not available for model {base_model}.")
 
         async with self._session_lock(session_id):

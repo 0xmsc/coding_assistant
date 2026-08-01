@@ -7,7 +7,7 @@ import json
 import logging
 import re
 from collections.abc import AsyncIterator, Sequence
-from typing import Any, Literal, cast
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -33,18 +33,15 @@ from coding_assistant.llm.types import (
 
 logger = logging.getLogger(__name__)
 
-REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
-ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
-
 
 @dataclasses.dataclass(frozen=True)
 class ProviderModel:
     """A provider model and any reasoning-effort metadata it advertises."""
 
     id: str
-    reasoning_efforts: tuple[ReasoningEffort, ...] | None = None
+    reasoning_efforts: tuple[str, ...] = ()
     reasoning_metadata_available: bool = False
-    default_reasoning_effort: ReasoningEffort | None = None
+    default_reasoning_effort: str | None = None
     reasoning_mandatory: bool = False
 
 
@@ -80,33 +77,29 @@ def _is_openrouter_base_url(base_url: str) -> bool:
 
 def _reasoning_efforts_from_model(
     item: dict[str, Any],
-) -> tuple[tuple[ReasoningEffort, ...] | None, bool, ReasoningEffort | None, bool]:
+) -> tuple[tuple[str, ...], bool, str | None, bool]:
     reasoning = item.get("reasoning")
 
     if not isinstance(reasoning, dict):
-        return None, False, None, False
+        return (), False, None, False
 
-    if "supported_efforts" not in reasoning:
-        efforts: tuple[ReasoningEffort, ...] | None = ()
-    elif reasoning["supported_efforts"] is None:
-        efforts = None
-    elif isinstance(reasoning["supported_efforts"], list):
+    if isinstance(reasoning.get("supported_efforts"), list):
         efforts = tuple(
             dict.fromkeys(
-                cast(ReasoningEffort, effort.strip().lower())
+                effort.strip()
                 for effort in reasoning["supported_efforts"]
-                if isinstance(effort, str) and effort.strip().lower() in REASONING_EFFORTS
+                if isinstance(effort, str) and effort.strip()
             )
         )
     else:
         efforts = ()
 
     default_effort = reasoning.get("default_effort")
-    normalized_default = default_effort.strip().lower() if isinstance(default_effort, str) else None
+    normalized_default = default_effort.strip() if isinstance(default_effort, str) and default_effort.strip() else None
     return (
         efforts,
         True,
-        cast(ReasoningEffort, normalized_default) if normalized_default in REASONING_EFFORTS else None,
+        normalized_default,
         reasoning.get("mandatory") is True,
     )
 
@@ -269,7 +262,7 @@ async def _try_completion(
     messages: Sequence[BaseMessage],
     tools: Sequence[ToolDefinition],
     model: str,
-    reasoning_effort: ReasoningEffort | None,
+    reasoning_effort: str | None,
 ) -> AsyncIterator[ReasoningDeltaEvent | ContentDeltaEvent | CompletionEvent]:
     """Perform one streaming chat completion request against the provider."""
     base_url, api_key = _get_base_url_and_api_key()
@@ -348,7 +341,7 @@ async def _try_completion(
 @functools.cache
 def _parse_model_and_reasoning(
     model: str,
-) -> tuple[str, ReasoningEffort | None]:
+) -> tuple[str, str | None]:
     """Split `model (effort)` syntax into the provider model and reasoning effort."""
     s = model.strip()
     m = re.match(r"^(.+?) \(([^)]*)\)$", s)
@@ -357,20 +350,20 @@ def _parse_model_and_reasoning(
         return s, None
 
     base = m.group(1).strip()
-    effort = m.group(2).strip().lower()
+    effort = m.group(2).strip()
 
-    if effort not in REASONING_EFFORTS:
-        raise ValueError(f"Invalid reasoning effort level {effort} in {model}")
+    if not effort:
+        raise ValueError(f"Reasoning effort must not be empty in {model}")
 
-    return base, cast(ReasoningEffort, effort)
+    return base, effort
 
 
-def parse_model_and_reasoning(model: str) -> tuple[str, ReasoningEffort | None]:
+def parse_model_and_reasoning(model: str) -> tuple[str, str | None]:
     """Parse the public `model (effort)` selection format."""
     return _parse_model_and_reasoning(model)
 
 
-def format_model_and_reasoning(model: str, reasoning_effort: ReasoningEffort | None) -> str:
+def format_model_and_reasoning(model: str, reasoning_effort: str | None) -> str:
     """Serialize a model and optional effort for the completion API."""
     return f"{model} ({reasoning_effort})" if reasoning_effort is not None else model
 
