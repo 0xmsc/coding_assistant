@@ -431,7 +431,7 @@ def _model_entries(models: Sequence[ProviderModel]) -> list[JsonObject]:
     for model in models:
         entry: JsonObject = {"id": model.id}
         if model.reasoning_efforts:
-            entry["reasoning"] = {"supportedEfforts": list(model.reasoning_efforts)}
+            entry["reasoningEfforts"] = list(model.reasoning_efforts)
         entries.append(entry)
     return entries
 

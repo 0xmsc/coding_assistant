@@ -320,7 +320,7 @@ async def test_manager_lists_models_from_provider(tmp_path: Path) -> None:
             {"id": "test-model"},
             {
                 "id": "alternate-model",
-                "reasoning": {"supportedEfforts": ["low", "high"]},
+                "reasoningEfforts": ["low", "high"],
             },
         ],
     }
