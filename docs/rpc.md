@@ -408,10 +408,9 @@ The manager caches provider results briefly. If provider discovery fails and no
 cached list is available, `models` is empty. The manager does not choose a
 default model; clients must persist a session model with `session/set_model`
 before sending `session/prompt`. When the provider advertises reasoning
-capabilities, `reasoning.supportedEfforts` lists the accepted values. A `null`
-value means the gateway accepts every standard effort value; an omitted
-`reasoning` field means that the provider did not publish reasoning metadata.
-An empty list means that the model does not expose a selectable reasoning
+capabilities, `reasoning.supportedEfforts` contains the provider's accepted
+values. Missing, `null`, malformed, and empty effort lists are exposed as an
+empty list, meaning that the model does not offer a selectable reasoning
 effort. `defaultEffort` is omitted when the provider does not advertise one.
 
 ### session/list

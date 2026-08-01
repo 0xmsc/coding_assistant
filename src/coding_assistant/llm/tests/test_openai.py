@@ -762,7 +762,7 @@ class TestHelperFunctions:
             ]
 
     @pytest.mark.asyncio
-    async def test_list_model_details_distinguishes_missing_and_unbounded_efforts(self, monkeypatch: Any) -> None:
+    async def test_list_model_details_uses_only_advertised_efforts(self, monkeypatch: Any) -> None:
         monkeypatch.setenv(
             "CODING_ASSISTANT_FAKE_OPENAI_MODELS_JSON",
             json.dumps(
@@ -792,7 +792,7 @@ class TestHelperFunctions:
                 ),
                 ProviderModel(
                     id="unbounded-model",
-                    reasoning_efforts=None,
+                    reasoning_efforts=(),
                     reasoning_metadata_available=True,
                     default_reasoning_effort="medium",
                 ),
