@@ -1107,8 +1107,6 @@ async def test_manager_stores_session_worker_env_privately_and_injects_session_s
             }
             new_session_params["_meta"]["skills"] = [
                 {
-                    "name": "apps-api",
-                    "description": "Use apps REST APIs.",
                     "files": {
                         "SKILL.md": "---\nname: apps-api\ndescription: Use apps REST APIs.\n---\n",
                         "references/calories.md": "calories",
@@ -1306,8 +1304,6 @@ async def test_manager_rejects_prompt_scoped_skills(tmp_path: Path) -> None:
             )
             params["_meta"]["skills"] = [
                 {
-                    "name": "prompt-skill",
-                    "description": "Use prompt-provided tools.",
                     "files": {
                         "SKILL.md": "---\nname: prompt-skill\ndescription: Use prompt-provided tools.\n---\n",
                     },
@@ -1329,10 +1325,8 @@ async def test_manager_validates_injected_skill_paths(tmp_path: Path) -> None:
             params = _scope_params("scope-a")
             params["_meta"]["skills"] = [
                 {
-                    "name": "apps-api",
-                    "description": "Use apps REST APIs.",
                     "files": {
-                        "SKILL.md": "skill",
+                        "SKILL.md": "---\nname: apps-api\ndescription: Use apps REST APIs.\n---\n",
                         "../escape.md": "bad",
                     },
                 },
@@ -1343,6 +1337,29 @@ async def test_manager_validates_injected_skill_paths(tmp_path: Path) -> None:
 
     assert response["error"]["code"] == -32602
     assert response["error"]["message"] == "Injected skill apps-api has an invalid file path: '../escape.md'."
+
+
+@pytest.mark.parametrize(
+    ("skill_file", "message"),
+    [
+        ("---\ndescription: Missing name.\n---\n", "Invalid injected skill name: None."),
+        ("---\nname: missing-description\n---\n", "Injected skill missing-description requires a description."),
+        ("---\nname: [\n---\n", "Invalid injected skill SKILL.md frontmatter."),
+    ],
+)
+@pytest.mark.asyncio
+async def test_manager_validates_injected_skill_frontmatter(tmp_path: Path, skill_file: str, message: str) -> None:
+    async with _manager_endpoint(tmp_path=tmp_path) as endpoint:
+        async with connect(endpoint) as websocket:
+            await _initialize(websocket)
+            params = _scope_params("scope-a")
+            params["_meta"]["skills"] = [{"files": {"SKILL.md": skill_file}}]
+
+            await websocket.send(jsonrpc_request(2, "session/new", params))
+            response = parse_jsonrpc_message(await websocket.recv())
+
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == message
 
 
 @pytest.mark.asyncio

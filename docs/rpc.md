@@ -477,8 +477,6 @@ Request:
       "scopeId": "tenant:abc123",
       "skills": [
         {
-          "name": "apps-api",
-          "description": "Use apps REST APIs.",
           "files": {
             "SKILL.md": "---\nname: apps-api\ndescription: Use apps REST APIs.\n---\n",
             "references/calories.md": "calories reference"
@@ -497,12 +495,12 @@ environment variable names and values must be strings. Send short-lived
 credentials as prompt-scoped worker env on `session/prompt`; prompt-scoped
 values override session-scoped values for that run only.
 
-`_meta.skills` is an optional array of injected skill bundles. The manager
-writes each bundle to `workspace/.agents/skills/<name>` in the session directory
-before building the initial system message. Workers then discover those skills
-through normal workspace skill loading. Each skill requires a valid `name`, a non-empty
-`description`, and a `files` object containing `SKILL.md`. File paths must be
-relative paths inside the skill directory.
+`_meta.skills` is an optional array of injected skill bundles. Each bundle
+requires a `files` object containing `SKILL.md`; the manager reads the skill name
+and description from that file's frontmatter, then writes the bundle to
+`workspace/.agents/skills/<name>` in the session directory before building the
+initial system message. Workers discover those skills through normal workspace
+skill loading. File paths must be relative paths inside the skill directory.
 
 These `_meta` fields are setup inputs only. They are not copied into public
 session metadata and are not returned by `session/list` or `session/load`.

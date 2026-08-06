@@ -14,6 +14,8 @@ from time import monotonic
 from typing import Protocol
 from uuid import uuid4
 
+import frontmatter  # type: ignore[import-untyped]
+
 from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.core.session_updates import (
     AttachmentAddedUpdate,
@@ -81,7 +83,6 @@ class PromptResult:
 @dataclass(frozen=True)
 class SkillBundle:
     name: str
-    description: str
     files: dict[str, str]
 
 
@@ -197,23 +198,36 @@ def _skill_bundles_from_value(raw_skills: object, *, field_name: str) -> list[Sk
     for raw_skill in raw_skills:
         if not isinstance(raw_skill, dict):
             raise ManagerError("Each injected skill must be an object.")
-        name = raw_skill.get("name")
-        description = raw_skill.get("description")
         raw_files = raw_skill.get("files")
-        if not isinstance(name, str) or not SKILL_NAME_RE.fullmatch(name):
-            raise ManagerError(f"Invalid injected skill name: {name!r}.")
+        if not isinstance(raw_files, dict):
+            raise ManagerError("Injected skill files must be an object.")
+        skill_file = raw_files.get("SKILL.md")
+        if not isinstance(skill_file, str):
+            raise ManagerError("Injected skill requires SKILL.md.")
+        if len(skill_file.encode("utf-8")) > MAX_SKILL_FILE_BYTES:
+            raise ManagerError("Injected skill file SKILL.md is too large.")
+        name = _injected_skill_name(skill_file)
         if name in seen_names:
             raise ManagerError(f"Duplicate injected skill name: {name}.")
-        if not isinstance(description, str) or not description.strip():
-            raise ManagerError(f"Injected skill {name} requires a description.")
-        if not isinstance(raw_files, dict):
-            raise ManagerError(f"Injected skill {name} files must be an object.")
         files = _skill_files_from_payload(name=name, raw_files=raw_files)
-        if "SKILL.md" not in files:
-            raise ManagerError(f"Injected skill {name} requires SKILL.md.")
-        bundles.append(SkillBundle(name=name, description=description, files=files))
+        bundles.append(SkillBundle(name=name, files=files))
         seen_names.add(name)
     return bundles
+
+
+def _injected_skill_name(skill_file: str) -> str:
+    try:
+        metadata = frontmatter.loads(skill_file).metadata
+    except Exception as exc:
+        raise ManagerError("Invalid injected skill SKILL.md frontmatter.") from exc
+
+    name = metadata.get("name")
+    if not isinstance(name, str) or not SKILL_NAME_RE.fullmatch(name):
+        raise ManagerError(f"Invalid injected skill name: {name!r}.")
+    description = metadata.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise ManagerError(f"Injected skill {name} requires a description.")
+    return name
 
 
 def _skill_files_from_payload(*, name: str, raw_files: dict[object, object]) -> dict[str, str]:
