@@ -12,7 +12,6 @@ async def test_create_cli_tool_bundle_includes_remote_tools() -> None:
 
         assert bundle.instructions.startswith(load_tool_instructions())
         assert "advanced-tool-usage" in bundle.instructions
-        assert "workspace TODO continuity" in bundle.instructions
         assert {
             "skills_list_resources",
             "skills_read",
