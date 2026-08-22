@@ -271,9 +271,11 @@ def _build_queued_window(session: AgentSession) -> ConditionalContainer:
 
 
 def _build_footer(session: AgentSession) -> Window:
+    model = getattr(session, "model", None)
+    model_str = model if isinstance(model, str) else None
     return Window(
         content=FormattedTextControl(
-            text=lambda: [("class:footer", format_session_status(session.state))],
+            text=lambda: [("class:footer", format_session_status(session.state, model=model_str))],
             show_cursor=False,
         ),
         height=Dimension.exact(1),

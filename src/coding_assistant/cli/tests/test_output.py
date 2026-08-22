@@ -299,6 +299,26 @@ class TestFormatSessionStatus:
         state = SessionState(running=False, usage=Usage(tokens=None, cost=0.01))
         assert format_session_status(state) == "idle — token count unavailable, $0.01"
 
+    def test_with_model_and_reasoning_and_context_window(self) -> None:
+        state = SessionState(running=False, usage=Usage(tokens=12345, cost=0.23))
+        result = format_session_status(state, model="openai/gpt-5.5 (high)")
+        assert result == "openai/gpt-5.5 (high) — 12k/200k tokens, $0.23 — idle"
+
+    def test_with_model_running_status(self) -> None:
+        state = SessionState(running=True, usage=Usage(tokens=5000, cost=0.10))
+        result = format_session_status(state, model="gpt-4o")
+        assert result == "gpt-4o — 5k/128k tokens, $0.10 — running"
+
+    def test_with_model_without_usage(self) -> None:
+        state = SessionState(running=True)
+        result = format_session_status(state, model="openai/gpt-5-mini")
+        assert result == "openai/gpt-5-mini — running"
+
+    def test_with_unknown_model_context_window(self) -> None:
+        state = SessionState(running=False, usage=Usage(tokens=500, cost=0.01))
+        result = format_session_status(state, model="custom-local-model")
+        assert result == "custom-local-model — 500 tokens, $0.01 — idle"
+
 
 # =============================================================================
 # print_* Function Tests

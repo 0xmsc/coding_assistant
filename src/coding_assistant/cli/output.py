@@ -8,6 +8,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from coding_assistant.core.agent_session import SessionState
+from coding_assistant.llm.openai import _parse_model_and_reasoning
 from coding_assistant.llm.types import AssistantMessage, SystemMessage, ToolCall
 
 
@@ -166,6 +167,27 @@ def print_active_prompt(content: str | list[dict[str, Any]]) -> None:
         rich_print(f"  [bold cyan]▌[/bold cyan] [white]{line}[/white]")
 
 
+def get_model_context_window(model: str) -> int | None:
+    """Return estimated maximum context window in tokens for known models."""
+    model_lower = model.lower()
+    if "gemini" in model_lower:
+        return 1_000_000
+    if any(k in model_lower for k in ("gpt-5", "claude", "o1", "o3")):
+        return 200_000
+    if any(k in model_lower for k in ("gpt-4", "deepseek")):
+        return 128_000
+    return None
+
+
+def format_tokens(count: int) -> str:
+    """Format token count into a human-readable string."""
+    if count >= 1_000_000:
+        return f"{count // 1_000_000}M"
+    if count >= 1_000:
+        return f"{count // 1_000}k"
+    return str(count)
+
+
 def format_prompt_preview(content: str | list[dict[str, Any]]) -> str:
     """Return one compact prompt preview suitable for footer/status display."""
     if not isinstance(content, str):
@@ -174,20 +196,51 @@ def format_prompt_preview(content: str | list[dict[str, Any]]) -> str:
     return " ".join(content.split())
 
 
-def format_session_status(state: SessionState) -> str:
+def format_session_status(state: SessionState, *, model: str | None = None) -> str:
     """Return one compact session status line for the prompt footer or worker output."""
+    status = "running" if state.running else ("paused" if state.paused else "idle")
+
+    # Format usage section if present
+    usage_part: str | None = None
+    if state.usage is not None and (state.usage.tokens, state.usage.cost) != (0, 0.0):
+        if state.usage.tokens is None:
+            tokens_str = "token count unavailable"
+        else:
+            tokens_val = format_tokens(state.usage.tokens)
+            if model:
+                base_model, _ = _parse_model_and_reasoning(model)
+                max_ctx = get_model_context_window(base_model)
+                if max_ctx:
+                    tokens_str = f"{tokens_val}/{format_tokens(max_ctx)} tokens"
+                else:
+                    tokens_str = f"{tokens_val} tokens"
+            else:
+                tokens_str = f"{tokens_val} tokens"
+
+        cost_str = "cost unavailable" if state.usage.cost is None else f"${state.usage.cost:.2f}"
+        usage_part = f"{tokens_str}, {cost_str}"
+
+    # Build model section if provided
+    model_part: str | None = None
+    if isinstance(model, str) and model.strip():
+        base_model, reasoning = _parse_model_and_reasoning(model)
+        if reasoning:
+            model_part = f"{base_model} ({reasoning})"
+        else:
+            model_part = base_model
+
+    if model_part:
+        if usage_part:
+            return f"{model_part} — {usage_part} — {status}"
+        return f"{model_part} — {status}"
+
+    # Fallback when model is not provided
     if state.running:
         return "running"
     if state.paused:
         return "paused"
-    if state.usage is not None and (state.usage.tokens, state.usage.cost) != (0, 0.0):
-        if state.usage.tokens is None:
-            tokens = "token count unavailable"
-        else:
-            token_count = f"{state.usage.tokens // 1000}k" if state.usage.tokens >= 1000 else str(state.usage.tokens)
-            tokens = f"{token_count} tokens"
-        cost = "cost unavailable" if state.usage.cost is None else f"${state.usage.cost:.2f}"
-        return f"idle — {tokens}, {cost}"
+    if usage_part:
+        return f"idle — {usage_part}"
     return "idle"
 
 

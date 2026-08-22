@@ -189,6 +189,11 @@ class AgentSession:
         self._run_loop_task = asyncio.create_task(self._run_loop())
 
     @property
+    def model(self) -> str:
+        """Return the configured model name."""
+        return self._model
+
+    @property
     def state(self) -> SessionState:
         """Return the current run state and pending prompt count."""
         pending_prompts = tuple(prompt.content for prompt in self._pending_steering_prompts) + tuple(
