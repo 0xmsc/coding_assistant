@@ -167,6 +167,19 @@ async def wait_for_matching_event(
 
 
 @pytest.mark.asyncio
+async def test_agent_session_exposes_configured_model() -> None:
+    session = AgentSession(
+        history=[SystemMessage(content="system")],
+        model="openai/gpt-5.5 (high)",
+        tools=[],
+    )
+    try:
+        assert session.model == "openai/gpt-5.5 (high)"
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
 async def test_agent_session_runs_prompt_and_updates_history() -> None:
     session = make_session(
         completion_streamer=ControlledStreamer([StreamStep(message=AssistantMessage(content="Hello from the worker"))]),
