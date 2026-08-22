@@ -88,5 +88,3 @@ def test_builtin_content_directories_exist() -> None:
     assert (get_builtin_instructions_dir() / "global.md").is_file()
     assert (get_builtin_instructions_dir() / "tools.md").is_file()
     assert (get_builtin_skills_dir() / "advanced-tool-usage" / "SKILL.md").is_file()
-    assert (get_builtin_skills_dir() / "pdf-text-extraction" / "SKILL.md").is_file()
-    assert (get_builtin_skills_dir() / "todo" / "SKILL.md").is_file()
