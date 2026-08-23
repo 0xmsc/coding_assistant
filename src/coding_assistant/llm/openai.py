@@ -5,14 +5,14 @@ import dataclasses
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 import httpx
 from httpx_sse import SSEError, aconnect_sse
 
 from coding_assistant.infra.trace import trace_json
-from coding_assistant.llm.provider_config import resolve_provider_config
+from coding_assistant.llm.provider_config import ProviderConfig, resolve_provider_config
 from coding_assistant.llm.types import (
     AssistantMessage,
     BaseMessage,
@@ -59,12 +59,6 @@ async def _get_tools_payload(tools: Sequence[ToolDefinition]) -> list[dict[str, 
     return result
 
 
-def _get_base_url_and_api_key(env: Mapping[str, str] | None = None) -> tuple[str, str]:
-    """Resolve the API base URL and key from the configured provider env vars."""
-    config = resolve_provider_config(env)
-    return (config.base_url, config.api_key)
-
-
 def _reasoning_efforts_from_model(
     item: dict[str, Any],
 ) -> tuple[str, ...]:
@@ -79,19 +73,15 @@ def _reasoning_efforts_from_model(
 async def list_models(
     *,
     transport: httpx.AsyncBaseTransport | None = None,
-    base_url: str | None = None,
-    api_key: str | None = None,
+    provider_config: ProviderConfig | None = None,
 ) -> list[ProviderModel]:
     """Return provider model IDs and any advertised reasoning capabilities."""
-    if base_url is None or api_key is None:
-        resolved_base_url, resolved_api_key = _get_base_url_and_api_key()
-        base_url = base_url or resolved_base_url
-        api_key = api_key or resolved_api_key
+    config = provider_config or resolve_provider_config()
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {config.api_key}",
     }
     async with httpx.AsyncClient(
-        base_url=base_url, headers=headers, transport=transport, timeout=httpx.Timeout(15)
+        base_url=config.base_url, headers=headers, transport=transport, timeout=httpx.Timeout(15)
     ) as client:
         response = await client.get("/models")
         response.raise_for_status()
@@ -243,16 +233,12 @@ async def _try_completion(
     reasoning_effort: str | None,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
-    base_url: str | None = None,
-    api_key: str | None = None,
+    provider_config: ProviderConfig | None = None,
 ) -> AsyncIterator[ReasoningDeltaEvent | ContentDeltaEvent | CompletionEvent]:
     """Perform one streaming chat completion request against the provider."""
-    if base_url is None or api_key is None:
-        resolved_base_url, resolved_api_key = _get_base_url_and_api_key()
-        base_url = base_url or resolved_base_url
-        api_key = api_key or resolved_api_key
+    config = provider_config or resolve_provider_config()
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {config.api_key}",
         "Content-Type": "application/json",
     }
     provider_messages = _prepare_messages(messages)
@@ -269,7 +255,7 @@ async def _try_completion(
         payload["reasoning_effort"] = reasoning_effort
 
     async with httpx.AsyncClient(
-        base_url=base_url, headers=headers, transport=transport, timeout=httpx.Timeout(60)
+        base_url=config.base_url, headers=headers, transport=transport, timeout=httpx.Timeout(60)
     ) as client:
         async with aconnect_sse(client, "POST", "/chat/completions", json=payload) as source:
             chunks: list[dict[str, Any]] = []
@@ -355,8 +341,7 @@ async def stream_completion(
     model: str,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
-    base_url: str | None = None,
-    api_key: str | None = None,
+    provider_config: ProviderConfig | None = None,
     retry_delay: float | None = None,
 ) -> AsyncIterator[ContentDeltaEvent | ReasoningDeltaEvent | ModelRetryEvent | StatusEvent | CompletionEvent]:
     """Retry transient HTTP failures before surfacing the completion error."""
@@ -371,8 +356,7 @@ async def stream_completion(
                 model,
                 reasoning_effort,
                 transport=transport,
-                base_url=base_url,
-                api_key=api_key,
+                provider_config=provider_config,
             ):
                 yield event
             return
