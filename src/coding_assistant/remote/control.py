@@ -17,6 +17,7 @@ from coding_assistant.core.agent_session import (
     RunOutcome,
     ScheduledRun,
 )
+from coding_assistant.core.compacting_session import AutoCompactingSession
 from coding_assistant.core.session_updates import (
     HistoryResetUpdate,
     MessageAddedUpdate,
@@ -135,7 +136,7 @@ class RemoteAgentController:
         *,
         agent_info: RemoteAgentInfo,
         session_id: str,
-        session: AgentSession,
+        session: AgentSession | AutoCompactingSession,
         busy_message: str = "Session is busy.",
     ) -> None:
         self._agent_info = agent_info

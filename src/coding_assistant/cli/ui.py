@@ -51,7 +51,9 @@ from coding_assistant.core.agent_session import (
     RunFailedEvent,
     RunFinishedEvent,
 )
+from coding_assistant.core.compacting_session import AutoCompactingSession
 from coding_assistant.infra.paths import get_app_cache_dir
+from coding_assistant.llm.context_window import resolve_auto_compaction_budget
 from coding_assistant.llm.types import (
     ModelRetryEvent,
     ReasoningDeltaEvent,
@@ -101,7 +103,7 @@ def _create_history(history_path: Path) -> FileHistory:
     return FileHistory(str(history_path))
 
 
-def _format_queued_prompts(session: AgentSession) -> str:
+def _format_queued_prompts(session: AgentSession | AutoCompactingSession) -> str:
     """Format pending prompts for display above input line."""
     state = session.state
     if not state.pending_prompts:
@@ -124,11 +126,23 @@ async def run_cli(args: Namespace) -> None:
 
     async with create_cli_agent(config=config) as bundle:
         system_message = build_initial_system_message(instructions=bundle.instructions)
-        session = AgentSession(
+        raw_session = AgentSession(
             history=[system_message],
             model=args.model,
             tools=bundle.tools,
         )
+        session: AgentSession | AutoCompactingSession
+        if getattr(args, "auto_compact", True):
+            token_budget = resolve_auto_compaction_budget(
+                args.model,
+                configured_budget=getattr(args, "auto_compact_token_budget", None),
+            )
+            session = AutoCompactingSession(
+                raw_session,
+                token_budget=token_budget,
+            )
+        else:
+            session = raw_session
         try:
             async with start_worker_server(session=session) as worker_server:
                 async with register_remote_instance(endpoint=worker_server.endpoint):
@@ -144,7 +158,7 @@ async def run_cli(args: Namespace) -> None:
 
 async def _run_ui(
     *,
-    session: AgentSession,
+    session: AgentSession | AutoCompactingSession,
     system_message: SystemMessage,
     history_path: Path,
 ) -> None:
@@ -181,7 +195,7 @@ async def _run_ui(
 
 
 def _create_application(
-    session: AgentSession, history_path: Path
+    session: AgentSession | AutoCompactingSession, history_path: Path
 ) -> tuple[Application[None], asyncio.Queue[PromptSubmission]]:
     """Build the terminal UI."""
     queued_window = _build_queued_window(session)
@@ -295,7 +309,7 @@ def _create_application(
     )
 
 
-def _build_queued_window(session: AgentSession) -> ConditionalContainer:
+def _build_queued_window(session: AgentSession | AutoCompactingSession) -> ConditionalContainer:
     return ConditionalContainer(
         content=Window(
             content=FormattedTextControl(
@@ -308,7 +322,7 @@ def _build_queued_window(session: AgentSession) -> ConditionalContainer:
     )
 
 
-def _build_footer(session: AgentSession) -> Window:
+def _build_footer(session: AgentSession | AutoCompactingSession) -> Window:
     model = getattr(session, "model", None)
     model_str = model if isinstance(model, str) else None
     return Window(
@@ -320,7 +334,7 @@ def _build_footer(session: AgentSession) -> Window:
     )
 
 
-async def _unqueue_to_buffer(session: AgentSession, buf: Buffer) -> None:
+async def _unqueue_to_buffer(session: AgentSession | AutoCompactingSession, buf: Buffer) -> None:
     """Move last queued prompt back to input buffer."""
     content = await session.pop_last_queued_prompt()
     if content is not None:
@@ -330,7 +344,7 @@ async def _unqueue_to_buffer(session: AgentSession, buf: Buffer) -> None:
 
 async def _run_output(
     *,
-    session: AgentSession,
+    session: AgentSession | AutoCompactingSession,
     system_message: SystemMessage,
 ) -> None:
     """Display session output to terminal."""
@@ -406,7 +420,7 @@ class PromptSubmission:
 
 async def _handle_submission(
     *,
-    session: AgentSession,
+    session: AgentSession | AutoCompactingSession,
     content: str,
     submit_type: PromptSubmitType,
     commands: Sequence[SlashCommand] | None = None,

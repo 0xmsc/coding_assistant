@@ -22,6 +22,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workspace", default="/workspace", help="Mounted worker workspace path.")
     parser.add_argument("--instructions", nargs="*", default=[], help="Additional worker instructions.")
     parser.add_argument("--skills-directories", nargs="*", default=[], help="Additional Agent Skill directories.")
+    parser.add_argument(
+        "--auto-compact",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Automatically compact conversation history when token usage exceeds the budget.",
+    )
+    parser.add_argument(
+        "--auto-compact-token-budget",
+        type=int,
+        default=None,
+        help="Token budget threshold to trigger automatic compaction (defaults to 80%% of the model's maximum context window).",
+    )
     return parser.parse_args()
 
 
@@ -45,6 +57,8 @@ async def _main(args: argparse.Namespace) -> None:
             model=args.model,
             tools=bundle.tools,
             finish_metadata_provider=bundle.session_title_state.finish_metadata,
+            auto_compact=args.auto_compact,
+            auto_compact_token_budget=args.auto_compact_token_budget,
         )
         async with start_session_worker_server(runtime=runtime, host=args.host, port=args.port) as server:
             print(f"Worker endpoint: {server.endpoint}", flush=True)

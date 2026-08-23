@@ -56,6 +56,18 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="Paths to additional directories containing Agent Skills (with SKILL.md files).",
     )
+    parser.add_argument(
+        "--auto-compact",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Automatically compact conversation history when token usage exceeds the budget.",
+    )
+    parser.add_argument(
+        "--auto-compact-token-budget",
+        type=int,
+        default=None,
+        help="Token budget threshold to trigger automatic compaction (defaults to 80%% of the model's maximum context window).",
+    )
 
     return parser.parse_args()
 
