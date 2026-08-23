@@ -1,6 +1,6 @@
+from collections.abc import AsyncIterator, Sequence
 import json
 from typing import Any, cast
-from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -25,29 +25,6 @@ from coding_assistant.llm.types import (
     Usage,
     UserMessage,
 )
-from coding_assistant.testing.fake_openai import run_fake_openai_server
-
-
-class FakeSource:
-    def __init__(self, events_data: Any) -> None:
-        self.events_data = events_data
-
-    async def aiter_sse(self) -> Any:
-        for data in self.events_data:
-            event = MagicMock()
-            event.data = data
-            yield event
-
-
-class FakeContext:
-    def __init__(self, events_data: Any) -> None:
-        self.source = FakeSource(events_data)
-
-    async def __aenter__(self) -> Any:
-        return self.source
-
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        pass
 
 
 class TestMergeChunks:
@@ -767,39 +744,27 @@ class TestIntegration:
 class TestHelperFunctions:
     """Tests for helper functions."""
 
-    def test_get_base_url_and_api_key_openai(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
-        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        url, key = _get_base_url_and_api_key()
+    def test_get_base_url_and_api_key_openai(self) -> None:
+        url, key = _get_base_url_and_api_key({"OPENAI_API_KEY": "sk-openai"})
         assert url == "https://api.openai.com/v1"
         assert key == "sk-openai"
 
-    def test_get_base_url_and_api_key_custom(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENAI_BASE_URL", "https://custom.api/v1")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-custom")
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        url, key = _get_base_url_and_api_key()
+    def test_get_base_url_and_api_key_custom(self) -> None:
+        url, key = _get_base_url_and_api_key(
+            {"OPENAI_BASE_URL": "https://custom.api/v1", "OPENAI_API_KEY": "sk-custom"}
+        )
         assert url == "https://custom.api/v1"
         assert key == "sk-custom"
 
-    def test_get_base_url_and_api_key_openrouter(self, monkeypatch: Any) -> None:
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
-        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter")
-
-        url, key = _get_base_url_and_api_key()
-
+    def test_get_base_url_and_api_key_openrouter(self) -> None:
+        url, key = _get_base_url_and_api_key({"OPENROUTER_API_KEY": "sk-openrouter"})
         assert url == "https://openrouter.ai/api/v1"
         assert key == "sk-openrouter"
 
-    def test_get_base_url_and_api_key_custom_with_openrouter_key(self, monkeypatch: Any) -> None:
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.setenv("OPENAI_BASE_URL", "https://custom.api/v1")
-        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-openrouter")
-
-        url, key = _get_base_url_and_api_key()
-
+    def test_get_base_url_and_api_key_custom_with_openrouter_key(self) -> None:
+        url, key = _get_base_url_and_api_key(
+            {"OPENAI_BASE_URL": "https://custom.api/v1", "OPENROUTER_API_KEY": "sk-openrouter"}
+        )
         assert url == "https://custom.api/v1"
         assert key == "sk-openrouter"
 
@@ -820,16 +785,31 @@ class TestHelperFunctions:
         assert "provider_specific_fields" not in prepared[1]
 
     @pytest.mark.asyncio
-    async def test_list_models(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("CODING_ASSISTANT_FAKE_OPENAI_MODELS_JSON", '["z-model", "a-model", "z-model"]')
-        with run_fake_openai_server() as fake_openai:
-            monkeypatch.setenv("OPENAI_BASE_URL", fake_openai.base_url)
-            monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    async def test_list_models(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.path == "/v1/models"
+            assert request.headers["Authorization"] == "Bearer test-key"
+            return httpx.Response(
+                200,
+                json={
+                    "object": "list",
+                    "data": [
+                        {"id": "z-model", "reasoning": {"supported_efforts": ["high"]}},
+                        {"id": "a-model"},
+                    ],
+                },
+            )
 
-            assert await openai_model.list_models() == [
-                ProviderModel(id="a-model"),
-                ProviderModel(id="z-model"),
-            ]
+        transport = httpx.MockTransport(handler)
+        models = await openai_model.list_models(
+            transport=transport,
+            base_url="https://api.openai.com/v1",
+            api_key="test-key",
+        )
+        assert models == [
+            ProviderModel(id="a-model", reasoning_efforts=()),
+            ProviderModel(id="z-model", reasoning_efforts=("high",)),
+        ]
 
     @pytest.mark.parametrize(
         ("item", "expected"),
@@ -850,27 +830,61 @@ class TestHelperFunctions:
         assert openai_model._reasoning_efforts_from_model(item) == expected
 
 
-async def collect_events(*, messages: list[UserMessage], model: str, tools: Any) -> list[Any]:
-    return [event async for event in openai_model.stream_completion(messages, model=model, tools=tools)]
+class _SSEStream(httpx.AsyncByteStream):
+    def __init__(self, sse_payloads: list[str]) -> None:
+        self._payloads = sse_payloads
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for payload in self._payloads:
+            yield f"data: {payload}\n\n".encode("utf-8")
+        yield b"data: [DONE]\n\n"
+
+
+def _sse_response(chunks: Sequence[Any]) -> httpx.Response:
+    payloads = [json.dumps(c) for c in chunks]
+    return httpx.Response(
+        200,
+        headers={"Content-Type": "text/event-stream"},
+        stream=_SSEStream(payloads),
+    )
+
+
+async def collect_events(
+    *,
+    messages: list[UserMessage],
+    model: str,
+    tools: Any,
+    transport: httpx.AsyncBaseTransport,
+    retry_delay: float | None = 0.0,
+) -> list[Any]:
+    return [
+        event
+        async for event in openai_model.stream_completion(
+            messages,
+            model=model,
+            tools=tools,
+            transport=transport,
+            base_url="https://api.openai.com/v1",
+            api_key="fake_key",
+            retry_delay=retry_delay,
+        )
+    ]
 
 
 class TestOpenAIComplete:
-    """Integration tests for the stream_completion() function."""
+    """Integration tests for the stream_completion() function using MockTransport."""
 
     @pytest.mark.asyncio
-    async def test_openai_complete_streaming_happy_path(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
-        fake_events = [
-            json.dumps({"choices": [{"delta": {"content": "Hello"}}]}),
-            json.dumps({"choices": [{"delta": {"content": " world"}}]}),
-            json.dumps({"choices": [], "usage": {"total_tokens": 3, "cost": 0.001}}),
+    async def test_openai_complete_streaming_happy_path(self) -> None:
+        chunks = [
+            {"choices": [{"delta": {"content": "Hello"}}]},
+            {"choices": [{"delta": {"content": " world"}}]},
+            {"choices": [], "usage": {"total_tokens": 3, "cost": 0.001}},
         ]
-        mock_context_instance = FakeContext(fake_events)
-        mock_ac = MagicMock(return_value=mock_context_instance)
-        monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
+        transport = httpx.MockTransport(lambda req: _sse_response(chunks))
 
         msgs = [UserMessage(content="Hello")]
-        events = await collect_events(messages=msgs, model="gpt-4o", tools=[])
+        events = await collect_events(messages=msgs, model="gpt-4o", tools=[], transport=transport)
         assert events == [
             ContentDeltaEvent(content="Hello"),
             ContentDeltaEvent(content=" world"),
@@ -883,35 +897,30 @@ class TestOpenAIComplete:
         ]
 
     @pytest.mark.asyncio
-    async def test_openai_complete_tool_calls(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
-        fake_events = [
-            json.dumps(
-                {
-                    "choices": [
-                        {
-                            "delta": {
-                                "tool_calls": [
-                                    {
-                                        "index": 0,
-                                        "id": "call_123",
-                                        "function": {"name": "get_weather", "arguments": '{"location": "New York"}'},
-                                    },
-                                ],
-                            },
+    async def test_openai_complete_tool_calls(self) -> None:
+        chunks = [
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "call_123",
+                                    "function": {"name": "get_weather", "arguments": '{"location": "New York"}'},
+                                },
+                            ],
                         },
-                    ],
-                },
-            ),
+                    },
+                ],
+            },
         ]
-        mock_context_instance = FakeContext(fake_events)
-        mock_ac = MagicMock(return_value=mock_context_instance)
-        monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
+        transport = httpx.MockTransport(lambda req: _sse_response(chunks))
 
         msgs = [UserMessage(content="What's the weather in New York")]
         tools: Any = []
 
-        events = await collect_events(messages=msgs, model="gpt-4o", tools=tools)
+        events = await collect_events(messages=msgs, model="gpt-4o", tools=tools, transport=transport)
         assert isinstance(events[-1], CompletionEvent)
         ret = events[-1].completion
 
@@ -920,19 +929,16 @@ class TestOpenAIComplete:
         assert ret.message.tool_calls[0].function.arguments == '{"location": "New York"}'
 
     @pytest.mark.asyncio
-    async def test_openai_complete_with_reasoning(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
-        fake_events = [
-            json.dumps({"choices": [{"delta": {"reasoning": "Thinking"}}]}),
-            json.dumps({"choices": [{"delta": {"reasoning": " step by step"}}]}),
-            json.dumps({"choices": [{"delta": {"content": "Answer"}}]}),
+    async def test_openai_complete_with_reasoning(self) -> None:
+        chunks = [
+            {"choices": [{"delta": {"reasoning": "Thinking"}}]},
+            {"choices": [{"delta": {"reasoning": " step by step"}}]},
+            {"choices": [{"delta": {"content": "Answer"}}]},
         ]
-        mock_context_instance = FakeContext(fake_events)
-        mock_ac = MagicMock(return_value=mock_context_instance)
-        monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
+        transport = httpx.MockTransport(lambda req: _sse_response(chunks))
 
         msgs = [UserMessage(content="Reason")]
-        events = await collect_events(messages=msgs, model="o1-preview", tools=[])
+        events = await collect_events(messages=msgs, model="o1-preview", tools=[], transport=transport)
         assert events[:-1] == [
             ReasoningDeltaEvent(content="Thinking"),
             ReasoningDeltaEvent(content=" step by step"),
@@ -944,61 +950,52 @@ class TestOpenAIComplete:
         assert ret.message.reasoning_content == "Thinking step by step"
 
     @pytest.mark.asyncio
-    async def test_openai_complete_with_reasoning_details(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
-        fake_events = [
-            json.dumps(
-                {
-                    "choices": [
-                        {
-                            "delta": {
-                                "reasoning_details": [
-                                    {
-                                        "format": "anthropic-claude-v1",
-                                        "index": 0,
-                                        "signature": "sig1",
-                                        "type": "reasoning.text",
-                                    },
-                                ],
-                            },
+    async def test_openai_complete_with_reasoning_details(self) -> None:
+        chunks = [
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "reasoning_details": [
+                                {
+                                    "format": "anthropic-claude-v1",
+                                    "index": 0,
+                                    "signature": "sig1",
+                                    "type": "reasoning.text",
+                                },
+                            ],
                         },
-                    ],
-                },
-            ),
-            json.dumps(
-                {
-                    "choices": [
-                        {
-                            "delta": {
-                                "reasoning_details": [
-                                    {"index": 0, "text": "Analyzing problem", "type": "reasoning.text"},
-                                ],
-                            },
+                    },
+                ],
+            },
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "reasoning_details": [
+                                {"index": 0, "text": "Analyzing problem", "type": "reasoning.text"},
+                            ],
                         },
-                    ],
-                },
-            ),
-            json.dumps(
-                {
-                    "choices": [
-                        {
-                            "delta": {
-                                "reasoning_details": [
-                                    {"index": 0, "text": " step by step", "type": "reasoning.text"},
-                                ],
-                            },
+                    },
+                ],
+            },
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "reasoning_details": [
+                                {"index": 0, "text": " step by step", "type": "reasoning.text"},
+                            ],
                         },
-                    ],
-                },
-            ),
-            json.dumps({"choices": [{"delta": {"content": "Solution"}}]}),
+                    },
+                ],
+            },
+            {"choices": [{"delta": {"content": "Solution"}}]},
         ]
-        mock_context_instance = FakeContext(fake_events)
-        mock_ac = MagicMock(return_value=mock_context_instance)
-        monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
+        transport = httpx.MockTransport(lambda req: _sse_response(chunks))
 
         msgs = [UserMessage(content="Solve")]
-        events = await collect_events(messages=msgs, model="claude-3-7-sonnet", tools=[])
+        events = await collect_events(messages=msgs, model="claude-3-7-sonnet", tools=[], transport=transport)
         assert events[:-1] == [
             ReasoningDeltaEvent(content="Analyzing problem"),
             ReasoningDeltaEvent(content=" step by step"),
@@ -1019,73 +1016,65 @@ class TestOpenAIComplete:
         ]
 
     @pytest.mark.asyncio
-    async def test_openai_complete_with_reasoning_effort(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
+    async def test_openai_complete_with_reasoning_effort(self) -> None:
+        captured_payload: dict[str, Any] | None = None
 
-        # We want to check if reasoning_effort is passed to the payload.
-        # We'll mock the AsyncClient.post or just check what's passed to aconnect_sse
-        captured_payload = None
-
-        def mock_aconnect_sse(client: Any, method: Any, url: Any, **kwargs: Any) -> Any:
+        def handler(request: httpx.Request) -> httpx.Response:
             nonlocal captured_payload
-            captured_payload = kwargs.get("json")
-            return FakeContext([json.dumps({"choices": [{"delta": {"content": "ok"}}]})])
+            captured_payload = json.loads(request.content.decode("utf-8"))
+            return _sse_response([{"choices": [{"delta": {"content": "ok"}}]}])
 
-        monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
+        transport = httpx.MockTransport(handler)
 
         msgs = [UserMessage(content="Reason")]
-        await collect_events(messages=msgs, model="o1 (high)", tools=[])
+        await collect_events(messages=msgs, model="o1 (high)", tools=[], transport=transport)
 
-        assert cast(Any, captured_payload)["model"] == "o1"
-        assert cast(Any, captured_payload)["reasoning_effort"] == "high"
+        assert captured_payload is not None
+        assert captured_payload["model"] == "o1"
+        assert captured_payload["reasoning_effort"] == "high"
 
     @pytest.mark.asyncio
-    async def test_openai_complete_error_retry(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
-
+    async def test_openai_complete_error_retry(self) -> None:
         call_count = 0
 
-        def mock_aconnect_sse(*args: Any, **kwargs: Any) -> Any:
+        def handler(request: httpx.Request) -> httpx.Response:
             nonlocal call_count
             call_count += 1
             raise httpx.ReadTimeout("Timeout")
 
-        monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
+        transport = httpx.MockTransport(handler)
 
-        # Patch sleep to avoid waiting
-        async def mocked_sleep(delay: Any) -> None:
-            pass
-
-        monkeypatch.setattr("asyncio.sleep", mocked_sleep)
-
-        # Now that we have max_retries = 5, it should call 5 times before failing
         with pytest.raises(httpx.ReadTimeout):
-            await collect_events(messages=[UserMessage(content="hi")], model="gpt-4o", tools=[])
+            await collect_events(
+                messages=[UserMessage(content="hi")],
+                model="gpt-4o",
+                tools=[],
+                transport=transport,
+                retry_delay=0.0,
+            )
 
         assert call_count == 5
 
     @pytest.mark.asyncio
-    async def test_openai_complete_error_recovery(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
-
+    async def test_openai_complete_error_recovery(self) -> None:
         call_count = 0
 
-        def mock_aconnect_sse(*args: Any, **kwargs: Any) -> Any:
+        def handler(request: httpx.Request) -> httpx.Response:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 raise httpx.ReadTimeout("Timeout")
-            return FakeContext([json.dumps({"choices": [{"delta": {"content": "Recovered"}}]})])
+            return _sse_response([{"choices": [{"delta": {"content": "Recovered"}}]}])
 
-        monkeypatch.setattr(openai_model, "aconnect_sse", mock_aconnect_sse)
+        transport = httpx.MockTransport(handler)
 
-        # Patch sleep to avoid waiting
-        async def mocked_sleep(delay: Any) -> None:
-            pass
-
-        monkeypatch.setattr("asyncio.sleep", mocked_sleep)
-
-        events = await collect_events(messages=[UserMessage(content="hi")], model="gpt-4o", tools=[])
+        events = await collect_events(
+            messages=[UserMessage(content="hi")],
+            model="gpt-4o",
+            tools=[],
+            transport=transport,
+            retry_delay=0.0,
+        )
         assert events[0] == ModelRetryEvent()
         assert isinstance(events[-1], CompletionEvent)
         assert events[-1].completion.message.content == "Recovered"

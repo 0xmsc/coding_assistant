@@ -5,7 +5,7 @@ import dataclasses
 import json
 import logging
 import re
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any
 
 import httpx
@@ -59,9 +59,9 @@ async def _get_tools_payload(tools: Sequence[ToolDefinition]) -> list[dict[str, 
     return result
 
 
-def _get_base_url_and_api_key() -> tuple[str, str]:
+def _get_base_url_and_api_key(env: Mapping[str, str] | None = None) -> tuple[str, str]:
     """Resolve the API base URL and key from the configured provider env vars."""
-    config = resolve_provider_config()
+    config = resolve_provider_config(env)
     return (config.base_url, config.api_key)
 
 
@@ -76,13 +76,23 @@ def _reasoning_efforts_from_model(
     return tuple(efforts) if isinstance(efforts, list) and all(isinstance(effort, str) for effort in efforts) else ()
 
 
-async def list_models() -> list[ProviderModel]:
+async def list_models(
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> list[ProviderModel]:
     """Return provider model IDs and any advertised reasoning capabilities."""
-    base_url, api_key = _get_base_url_and_api_key()
+    if base_url is None or api_key is None:
+        resolved_base_url, resolved_api_key = _get_base_url_and_api_key()
+        base_url = base_url or resolved_base_url
+        api_key = api_key or resolved_api_key
     headers = {
         "Authorization": f"Bearer {api_key}",
     }
-    async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=httpx.Timeout(15)) as client:
+    async with httpx.AsyncClient(
+        base_url=base_url, headers=headers, transport=transport, timeout=httpx.Timeout(15)
+    ) as client:
         response = await client.get("/models")
         response.raise_for_status()
 
@@ -231,9 +241,16 @@ async def _try_completion(
     tools: Sequence[ToolDefinition],
     model: str,
     reasoning_effort: str | None,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
 ) -> AsyncIterator[ReasoningDeltaEvent | ContentDeltaEvent | CompletionEvent]:
     """Perform one streaming chat completion request against the provider."""
-    base_url, api_key = _get_base_url_and_api_key()
+    if base_url is None or api_key is None:
+        resolved_base_url, resolved_api_key = _get_base_url_and_api_key()
+        base_url = base_url or resolved_base_url
+        api_key = api_key or resolved_api_key
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -251,7 +268,9 @@ async def _try_completion(
     if reasoning_effort:
         payload["reasoning_effort"] = reasoning_effort
 
-    async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=httpx.Timeout(60)) as client:
+    async with httpx.AsyncClient(
+        base_url=base_url, headers=headers, transport=transport, timeout=httpx.Timeout(60)
+    ) as client:
         async with aconnect_sse(client, "POST", "/chat/completions", json=payload) as source:
             chunks: list[dict[str, Any]] = []
             try:
@@ -334,6 +353,11 @@ async def stream_completion(
     messages: Sequence[BaseMessage],
     tools: Sequence[ToolDefinition],
     model: str,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    retry_delay: float | None = None,
 ) -> AsyncIterator[ContentDeltaEvent | ReasoningDeltaEvent | ModelRetryEvent | StatusEvent | CompletionEvent]:
     """Retry transient HTTP failures before surfacing the completion error."""
     model, reasoning_effort = _parse_model_and_reasoning(model)
@@ -341,7 +365,15 @@ async def stream_completion(
     max_retries = 5
     for attempt in range(max_retries):
         try:
-            async for event in _try_completion(messages, tools, model, reasoning_effort):
+            async for event in _try_completion(
+                messages,
+                tools,
+                model,
+                reasoning_effort,
+                transport=transport,
+                base_url=base_url,
+                api_key=api_key,
+            ):
                 yield event
             return
         except httpx.HTTPError as e:
@@ -349,4 +381,6 @@ async def stream_completion(
                 raise
             logger.warning(f"Retry {attempt + 1}/{max_retries} due to {e} for model {model}")
             yield ModelRetryEvent()
-            await asyncio.sleep(0.5 + attempt)
+            sleep_time = retry_delay if retry_delay is not None else (0.5 + attempt)
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
