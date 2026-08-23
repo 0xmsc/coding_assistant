@@ -60,7 +60,6 @@ async def test_openai_adapter_streams_against_fake_openai(monkeypatch: pytest.Mo
     assert isinstance(events[-1], CompletionEvent)
     assert events[-1].completion.message == AssistantMessage(
         content="fake response: smoke",
-        provider_specific_fields={"reasoning_details": []},
     )
     assert events[-1].completion.usage is not None
     assert events[-1].completion.usage.cost == 0.0

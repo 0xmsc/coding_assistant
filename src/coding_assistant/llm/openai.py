@@ -148,24 +148,34 @@ def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
         # Openrouter specific field
         if reasoning_details := delta.get("reasoning_details"):
             for rdc in reasoning_details:
-                # Try to merge with last
-                if rdc["type"] in ("reasoning.text", "reasoning.summary"):
+                rdc_type = rdc.get("type")
+                rdc_index = rdc.get("index")
+                if rdc_type in ("reasoning.text", "reasoning.summary"):
                     if (
                         full_reasoning_details
                         and (last := full_reasoning_details[-1])
-                        and last["type"] == rdc["type"]
-                        and last["index"] == rdc["index"]
+                        and last.get("type") == rdc_type
+                        and last.get("index") == rdc_index
                     ):
                         if text := rdc.get("text"):
-                            last["text"] += text
+                            last["text"] = last.get("text", "") + text
                         if summary := rdc.get("summary"):
-                            last["summary"] += summary
+                            last["summary"] = last.get("summary", "") + summary
                         if signature := rdc.get("signature"):
                             last["signature"] = signature
+                        if format_val := rdc.get("format"):
+                            last["format"] = format_val
+                        if id_val := rdc.get("id"):
+                            last["id"] = id_val
                     else:
-                        full_reasoning_details.append(rdc)
+                        full_reasoning_details.append(dict(rdc))
                 else:
-                    full_reasoning_details.append(rdc)
+                    full_reasoning_details.append(dict(rdc))
+
+    if not full_reasoning and full_reasoning_details:
+        extracted = [text for d in full_reasoning_details if (text := d.get("text") or d.get("summary"))]
+        if extracted:
+            full_reasoning = "".join(extracted)
 
     final_tool_calls = []
     for _, item in sorted(full_tool_calls.items()):
@@ -179,14 +189,16 @@ def _merge_chunks(chunks: list[dict[str, Any]]) -> AssistantMessage:
             ),
         )
 
+    provider_specific_fields: dict[str, Any] = {}
+    if full_reasoning_details:
+        provider_specific_fields["reasoning_details"] = full_reasoning_details
+
     return AssistantMessage(
         role="assistant",
         content=full_content if full_content else None,
         reasoning_content=full_reasoning if full_reasoning else None,
         tool_calls=final_tool_calls,
-        provider_specific_fields={
-            "reasoning_details": full_reasoning_details,
-        },
+        provider_specific_fields=provider_specific_fields,
     )
 
 
@@ -256,6 +268,12 @@ async def _try_completion(
 
                     if (reasoning := delta.get("reasoning")) or (reasoning := delta.get("reasoning_content")):
                         yield ReasoningDeltaEvent(content=reasoning)
+                    elif reasoning_details := delta.get("reasoning_details"):
+                        for rdc in reasoning_details:
+                            if text := rdc.get("text"):
+                                yield ReasoningDeltaEvent(content=text)
+                            elif summary := rdc.get("summary"):
+                                yield ReasoningDeltaEvent(content=summary)
 
                     if content := delta.get("content"):
                         yield ContentDeltaEvent(content=content)

@@ -177,7 +177,6 @@ async def test_cli_agent_smoke_runs_against_fake_openai(
         UserMessage(content="Run the fake smoke test."),
         AssistantMessage(
             content="cli agent smoke response",
-            provider_specific_fields={"reasoning_details": []},
         ),
     ]
 

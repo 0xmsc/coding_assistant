@@ -401,8 +401,99 @@ class TestMergeChunks:
         ]
         msg = _merge_chunks(cast(Any, chunks))
         usage = _extract_usage(cast(Any, chunks))
-        assert msg.provider_specific_fields["reasoning_details"] == []
+        assert msg.provider_specific_fields == {}
         assert usage is None
+
+    def test_merge_chunks_reasoning_details_initial_chunk_without_text(self) -> None:
+        """Test merging chunks where the first chunk only has signature/metadata and no text."""
+        chunks = [
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "reasoning_details": [
+                                {
+                                    "format": "google-gemini-v1",
+                                    "index": 0,
+                                    "signature": "sig123",
+                                    "type": "reasoning.text",
+                                },
+                            ],
+                        },
+                    },
+                ],
+            },
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "reasoning_details": [
+                                {"index": 0, "text": "Step 1", "type": "reasoning.text"},
+                            ],
+                        },
+                    },
+                ],
+            },
+        ]
+        msg = _merge_chunks(cast(Any, chunks))
+        assert len(msg.provider_specific_fields["reasoning_details"]) == 1
+        assert msg.provider_specific_fields["reasoning_details"][0] == {
+            "format": "google-gemini-v1",
+            "index": 0,
+            "signature": "sig123",
+            "text": "Step 1",
+            "type": "reasoning.text",
+        }
+        assert msg.reasoning_content == "Step 1"
+
+    def test_merge_chunks_reasoning_details_missing_index(self) -> None:
+        """Test merging chunks when index is omitted."""
+        chunks = [
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "reasoning_details": [
+                                {"text": "Step 1", "type": "reasoning.text"},
+                            ],
+                        },
+                    },
+                ],
+            },
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "reasoning_details": [
+                                {"text": " Step 2", "type": "reasoning.text"},
+                            ],
+                        },
+                    },
+                ],
+            },
+        ]
+        msg = _merge_chunks(cast(Any, chunks))
+        assert len(msg.provider_specific_fields["reasoning_details"]) == 1
+        assert msg.provider_specific_fields["reasoning_details"][0]["text"] == "Step 1 Step 2"
+        assert msg.reasoning_content == "Step 1 Step 2"
+
+    def test_merge_chunks_populates_reasoning_content_from_summary(self) -> None:
+        """Test that reasoning_content is populated from summary when delta.reasoning is absent."""
+        chunks = [
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "reasoning_details": [
+                                {"index": 0, "summary": "Analyzed constraints", "type": "reasoning.summary"},
+                            ],
+                        },
+                    },
+                ],
+            },
+        ]
+        msg = _merge_chunks(cast(Any, chunks))
+        assert msg.reasoning_content == "Analyzed constraints"
 
     def test_merge_chunks_multiple_tool_calls(self) -> None:
         """Test merging multiple tool calls."""
@@ -785,7 +876,7 @@ class TestOpenAIComplete:
             ContentDeltaEvent(content=" world"),
             CompletionEvent(
                 completion=Completion(
-                    message=AssistantMessage(content="Hello world", provider_specific_fields={"reasoning_details": []}),
+                    message=AssistantMessage(content="Hello world"),
                     usage=Usage(tokens=3, cost=0.001),
                 ),
             ),
@@ -851,6 +942,81 @@ class TestOpenAIComplete:
         ret = events[-1].completion
         assert ret.message.content == "Answer"
         assert ret.message.reasoning_content == "Thinking step by step"
+
+    @pytest.mark.asyncio
+    async def test_openai_complete_with_reasoning_details(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
+        fake_events = [
+            json.dumps(
+                {
+                    "choices": [
+                        {
+                            "delta": {
+                                "reasoning_details": [
+                                    {
+                                        "format": "anthropic-claude-v1",
+                                        "index": 0,
+                                        "signature": "sig1",
+                                        "type": "reasoning.text",
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                },
+            ),
+            json.dumps(
+                {
+                    "choices": [
+                        {
+                            "delta": {
+                                "reasoning_details": [
+                                    {"index": 0, "text": "Analyzing problem", "type": "reasoning.text"},
+                                ],
+                            },
+                        },
+                    ],
+                },
+            ),
+            json.dumps(
+                {
+                    "choices": [
+                        {
+                            "delta": {
+                                "reasoning_details": [
+                                    {"index": 0, "text": " step by step", "type": "reasoning.text"},
+                                ],
+                            },
+                        },
+                    ],
+                },
+            ),
+            json.dumps({"choices": [{"delta": {"content": "Solution"}}]}),
+        ]
+        mock_context_instance = FakeContext(fake_events)
+        mock_ac = MagicMock(return_value=mock_context_instance)
+        monkeypatch.setattr(openai_model, "aconnect_sse", mock_ac)
+
+        msgs = [UserMessage(content="Solve")]
+        events = await collect_events(messages=msgs, model="claude-3-7-sonnet", tools=[])
+        assert events[:-1] == [
+            ReasoningDeltaEvent(content="Analyzing problem"),
+            ReasoningDeltaEvent(content=" step by step"),
+            ContentDeltaEvent(content="Solution"),
+        ]
+        assert isinstance(events[-1], CompletionEvent)
+        ret = events[-1].completion
+        assert ret.message.content == "Solution"
+        assert ret.message.reasoning_content == "Analyzing problem step by step"
+        assert ret.message.provider_specific_fields["reasoning_details"] == [
+            {
+                "format": "anthropic-claude-v1",
+                "index": 0,
+                "signature": "sig1",
+                "text": "Analyzing problem step by step",
+                "type": "reasoning.text",
+            },
+        ]
 
     @pytest.mark.asyncio
     async def test_openai_complete_with_reasoning_effort(self, monkeypatch: Any) -> None:
