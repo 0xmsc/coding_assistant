@@ -24,24 +24,7 @@ async def test_create_cli_tool_bundle_tools() -> None:
             "tasks_get_status",
             "tasks_kill_task",
             "tasks_remove_task",
-        } <= tool_names
-        assert {
-            "remote_connect",
-            "remotes_discover",
-            "remotes_list",
-            "remote_prompt",
-            "remote_wait",
-            "remotes_wait_any",
-            "remote_cancel",
-            "remote_disconnect",
-            "mcp_start",
-            "mcp_stop",
-            "mcp_call",
-            "mcp_list_tools",
-            "todo_add",
-            "todo_list_todos",
-            "todo_complete",
-        }.isdisjoint(tool_names)
+        } == tool_names
     finally:
         await bundle.close()
 

@@ -11,7 +11,6 @@ from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import ConnectionClosed
 
 from coding_assistant.core.session_updates import SessionUpdate
-from coding_assistant.llm.types import BaseMessage
 from coding_assistant.remote.jsonrpc import (
     ACP_PROTOCOL_VERSION,
     JsonObject,
@@ -20,10 +19,9 @@ from coding_assistant.remote.jsonrpc import (
     jsonrpc_notification,
     jsonrpc_request,
     parse_jsonrpc_message,
-    text_block,
 )
 from coding_assistant.remote.limits import WEBSOCKET_MAX_SIZE
-from coding_assistant.remote.protocol import messages_from_jsonrpc, session_update_from_jsonrpc_update
+from coding_assistant.remote.protocol import session_update_from_jsonrpc_update
 
 
 def _client_version() -> str:
@@ -41,13 +39,6 @@ def _finish_title(metadata: object) -> str | None:
         return None
     stripped = title.strip()
     return stripped or None
-
-
-@dataclass(frozen=True)
-class RemoteRunResult:
-    stop_reason: str
-    messages: list[BaseMessage]
-    title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -203,58 +194,6 @@ class _JsonRpcClient:
             response_future.set_result(payload.get("result", {}))
 
 
-class RemoteSessionClient(_JsonRpcClient):
-    """Client for observing and controlling one existing live session."""
-
-    def __init__(
-        self,
-        *,
-        endpoint: str,
-        websocket: ClientConnection,
-        on_update: Callable[[SessionUpdate], Awaitable[None]] | None = None,
-        on_disconnect: Callable[[str], Awaitable[None]] | None = None,
-    ) -> None:
-        super().__init__(
-            endpoint=endpoint,
-            websocket=websocket,
-            on_update=on_update,
-            on_disconnect=on_disconnect,
-        )
-        self._session_id: str | None = None
-
-    async def new_session(self, params: JsonObject | None = None) -> str:
-        result = await self._request("session/new", params or {})
-        session_id = result.get("sessionId")
-        if not isinstance(session_id, str):
-            raise RuntimeError("session/new response did not include a sessionId.")
-        self._session_id = session_id
-        return session_id
-
-    async def prompt(self, prompt: str, *, session_id: str | None = None) -> RemoteRunResult:
-        return await self.prompt_blocks([text_block(prompt)], session_id=session_id)
-
-    async def prompt_blocks(
-        self,
-        prompt: list[JsonObject],
-        *,
-        session_id: str | None = None,
-    ) -> RemoteRunResult:
-        target_session_id = session_id or self._session_id
-        if target_session_id is None:
-            raise RuntimeError("Remote session is not initialized.")
-        result = await self._request(
-            "session/prompt",
-            {"sessionId": target_session_id, "prompt": prompt},
-        )
-        return _run_result_from_jsonrpc(result, method="session/prompt")
-
-    async def cancel(self, *, session_id: str | None = None) -> None:
-        target_session_id = session_id or self._session_id
-        if target_session_id is None:
-            raise RuntimeError("Remote session is not initialized.")
-        await self._cancel_session(target_session_id)
-
-
 class WorkerClient(_JsonRpcClient):
     """Client for one manager-owned, one-shot worker run."""
 
@@ -272,19 +211,3 @@ class WorkerClient(_JsonRpcClient):
 
     async def cancel(self, *, session_id: str) -> None:
         await self._cancel_session(session_id)
-
-
-def _run_result_from_jsonrpc(result: JsonObject, *, method: str) -> RemoteRunResult:
-    stop_reason = result.get("stopReason")
-    messages = result.get("messages")
-    if (
-        stop_reason not in {STOP_REASON_END_TURN, STOP_REASON_CANCELLED}
-        or not isinstance(messages, list)
-        or not all(isinstance(message, dict) for message in messages)
-    ):
-        raise RuntimeError(f"{method} response did not include a completed run result.")
-    return RemoteRunResult(
-        stop_reason=stop_reason,
-        messages=messages_from_jsonrpc(messages),
-        title=_finish_title(result.get("_meta")),
-    )

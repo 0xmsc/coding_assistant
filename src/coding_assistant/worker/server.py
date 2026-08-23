@@ -4,18 +4,28 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
+from uuid import uuid4
 
 from websockets.asyncio.server import ServerConnection
 from websockets.exceptions import ConnectionClosed
 
-from coding_assistant.core.agent_session import AgentSession, AgentSessionEvent, CompletionStreamer, RunOutcome
-from coding_assistant.llm.types import BaseMessage, Tool, UserMessage
-from coding_assistant.remote.control import (
-    send_session_update,
-    session_updates_from_agent_event,
-    wait_for_session_events,
-    worker_run_result,
+from coding_assistant.core.agent_session import (
+    AgentSession,
+    AgentSessionEvent,
+    AssistantMessageCompletedEvent,
+    AssistantMessageDeltaEvent,
+    CompletionStreamer,
+    HistoryResetEvent,
+    RunOutcome,
 )
+from coding_assistant.core.session_updates import (
+    HistoryResetUpdate,
+    MessageAddedUpdate,
+    MessageDeltaUpdate,
+    SessionUpdate,
+)
+from coding_assistant.core.tool_calls import ToolMessageProduced
+from coding_assistant.llm.types import BaseMessage, Tool, UserMessage
 from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
@@ -29,7 +39,7 @@ from coding_assistant.remote.jsonrpc import (
     response_id_from_payload,
     session_id_from_params,
 )
-from coding_assistant.remote.protocol import messages_from_jsonrpc
+from coding_assistant.remote.protocol import messages_from_jsonrpc, session_update_notification
 from coding_assistant.remote.websocket_server import receive_jsonrpc_messages, serve_jsonrpc_websocket
 
 
@@ -75,6 +85,66 @@ def _prompt_from_params(params: JsonObject) -> str | list[JsonObject]:
     return prompt_content_from_acp(prompt)
 
 
+def _worker_run_result(
+    *,
+    outcome: RunOutcome,
+    metadata: JsonObject | None = None,
+) -> JsonObject:
+    result: JsonObject = {"stopReason": outcome.stop_reason}
+    if metadata:
+        result["_meta"] = metadata
+    return result
+
+
+def _session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUpdate]:
+    """Project one core runtime event to transport-safe session updates."""
+    if isinstance(event, AssistantMessageDeltaEvent):
+        return [MessageDeltaUpdate(message_id=event.message_id, append_text=event.content)]
+    if isinstance(event, AssistantMessageCompletedEvent):
+        return [MessageAddedUpdate(message_id=event.message_id, message=event.completion.message)]
+    if isinstance(event, ToolMessageProduced):
+        return [MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=event.message)]
+    if isinstance(event, HistoryResetEvent):
+        return [
+            HistoryResetUpdate(),
+            *(MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=message) for message in event.history),
+        ]
+    return []
+
+
+async def _send_session_update(
+    *,
+    websocket: ServerConnection,
+    session_id: str,
+    update: SessionUpdate,
+) -> None:
+    notification = session_update_notification(session_id=session_id, update=update)
+    if notification is not None:
+        await websocket.send(notification)
+
+
+async def _wait_for_session_events(
+    *,
+    queue: asyncio.Queue[AgentSessionEvent],
+    publisher_task: asyncio.Task[None],
+) -> None:
+    """Wait until queued events are sent, or propagate publisher failure."""
+    drain_task = asyncio.create_task(queue.join())
+    try:
+        done, _ = await asyncio.wait(
+            {drain_task, publisher_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if publisher_task in done:
+            await publisher_task
+            raise RuntimeError("Session event publisher stopped before queued events were sent.")
+        await drain_task
+    finally:
+        if not drain_task.done():
+            drain_task.cancel()
+        await asyncio.gather(drain_task, return_exceptions=True)
+
+
 async def _publish_session_events(
     *,
     websocket: ServerConnection,
@@ -84,8 +154,8 @@ async def _publish_session_events(
     while True:
         event = await queue.get()
         try:
-            for update in session_updates_from_agent_event(event):
-                await send_session_update(websocket=websocket, session_id=session_id, update=update)
+            for update in _session_updates_from_agent_event(event):
+                await _send_session_update(websocket=websocket, session_id=session_id, update=update)
         finally:
             queue.task_done()
 
@@ -123,7 +193,7 @@ async def _execute_run(
                     outcome = await scheduled_run.completion
             else:
                 outcome = await scheduled_run.completion
-            await wait_for_session_events(queue=queue, publisher_task=sender_task)
+            await _wait_for_session_events(queue=queue, publisher_task=sender_task)
             if outcome.stop_reason == "failed":
                 await websocket.send(jsonrpc_error(response_id, ERROR_SERVER, outcome.error or "Worker run failed."))
                 return
@@ -131,7 +201,7 @@ async def _execute_run(
             await websocket.send(
                 jsonrpc_result(
                     response_id,
-                    worker_run_result(outcome=outcome, metadata=metadata),
+                    _worker_run_result(outcome=outcome, metadata=metadata),
                 ),
             )
     except ConnectionClosed:

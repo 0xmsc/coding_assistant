@@ -37,7 +37,6 @@ from coding_assistant.remote.jsonrpc import (
     parse_jsonrpc_message,
     text_block,
 )
-from coding_assistant.remote.client import RemoteSessionClient
 
 
 IMAGE_BLOCK: dict[str, Any] = {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}
@@ -254,17 +253,11 @@ async def test_manager_auth_accepts_correct_bearer_token(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
-async def test_remote_session_client_sends_manager_auth_token(tmp_path: Path) -> None:
+async def test_manager_auth_creates_session_with_bearer_token(tmp_path: Path) -> None:
     async with _manager_endpoint(tmp_path=tmp_path, auth_secret="secret-token") as endpoint:
-        client = await RemoteSessionClient.connect(
-            endpoint=endpoint,
-            auth_token="secret-token",
-        )
-        try:
-            await client.initialize()
-            session_id = await client.new_session(_scope_params("scope-a"))
-        finally:
-            await client.close()
+        async with connect(endpoint, additional_headers={"Authorization": "Bearer secret-token"}) as websocket:
+            await _initialize(websocket)
+            session_id = await _new_session(websocket, scope_id="scope-a")
 
     assert session_id.startswith("sess_")
 

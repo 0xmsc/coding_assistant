@@ -33,11 +33,10 @@ terminal. The terminal UI itself is not a JSON-RPC client.
 
 - `jsonrpc.py` contains the custom ACP-inspired JSON-RPC helpers and common payload
   validation.
-- `control.py` contains the shared run-result and event-to-update serializers.
 - `protocol.py` converts between core messages/session updates and JSON-RPC
   payloads.
-- `client.py` exposes separate `RemoteSessionClient` and `WorkerClient` APIs on
-  top of shared JSON-RPC connection machinery.
+- `client.py` exposes `WorkerClient` on top of shared JSON-RPC connection machinery.
+- `websocket_server.py` contains the async WebSocket server loop.
 
 `coding_assistant.manager` owns durable web-session state and manager-facing
 RPC.
