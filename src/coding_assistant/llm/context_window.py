@@ -9,25 +9,13 @@ DEFAULT_MODEL_CONTEXT_WINDOW = 128_000
 DEFAULT_COMPACTION_RATIO = 0.8
 
 
-def get_model_context_window(model: str) -> int | None:
-    """Return estimated maximum context window in tokens for known models."""
-    model_lower = model.lower()
-    if "gemini" in model_lower:
-        return 1_000_000
-    if any(k in model_lower for k in ("gpt-5", "claude", "o1", "o3")):
-        return 200_000
-    if any(k in model_lower for k in ("gpt-4", "deepseek")):
-        return 128_000
-    return None
-
-
 async def fetch_model_context_window(
     model: str,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
     provider_config: ProviderConfig | None = None,
 ) -> int | None:
-    """Query provider /models (e.g. OpenRouter) for advertised context length, falling back to static lookup."""
+    """Query provider /models (e.g. OpenRouter) for advertised context length."""
     base_model, _ = _parse_model_and_reasoning(model)
     try:
         models = await list_models(transport=transport, provider_config=provider_config)
@@ -36,7 +24,7 @@ async def fetch_model_context_window(
                 return m.context_length
     except Exception:
         pass
-    return get_model_context_window(base_model)
+    return None
 
 
 async def resolve_auto_compaction_budget(

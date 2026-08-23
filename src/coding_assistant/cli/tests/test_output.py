@@ -305,12 +305,12 @@ class TestFormatSessionStatus:
     def test_with_model_and_reasoning_and_context_window(self) -> None:
         state = SessionState(running=False, usage=Usage(tokens=12345, cost=0.23))
         result = format_session_status(state, model="openai/gpt-5.5 (high)")
-        assert result == "openai/gpt-5.5 (high) — 12k/200k tokens, $0.23 — idle"
+        assert result == "openai/gpt-5.5 (high) — 12k tokens, $0.23 — idle"
 
     def test_with_model_running_status(self) -> None:
         state = SessionState(running=True, usage=Usage(tokens=5000, cost=0.10))
         result = format_session_status(state, model="gpt-4o")
-        assert result == "gpt-4o — 5k/128k tokens, $0.10 — running"
+        assert result == "gpt-4o — 5k tokens, $0.10 — running"
 
     def test_with_model_without_usage(self) -> None:
         state = SessionState(running=True)

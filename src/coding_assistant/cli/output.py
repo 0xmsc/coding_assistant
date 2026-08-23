@@ -9,7 +9,6 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from coding_assistant.core.agent_session import SessionState
-from coding_assistant.llm.context_window import get_model_context_window
 from coding_assistant.llm.openai import _parse_model_and_reasoning
 from coding_assistant.llm.types import AssistantMessage, SystemMessage, ToolCall
 
@@ -196,16 +195,7 @@ def format_session_status(state: SessionState, *, model: str | None = None) -> s
         if state.usage.tokens is None:
             tokens_str = "token count unavailable"
         else:
-            tokens_val = format_tokens(state.usage.tokens)
-            if model:
-                base_model, _ = _parse_model_and_reasoning(model)
-                max_ctx = get_model_context_window(base_model)
-                if max_ctx:
-                    tokens_str = f"{tokens_val}/{format_tokens(max_ctx)} tokens"
-                else:
-                    tokens_str = f"{tokens_val} tokens"
-            else:
-                tokens_str = f"{tokens_val} tokens"
+            tokens_str = f"{format_tokens(state.usage.tokens)} tokens"
 
         cost_str = "cost unavailable" if state.usage.cost is None else f"${state.usage.cost:.2f}"
         usage_part = f"{tokens_str}, {cost_str}"
