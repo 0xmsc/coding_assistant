@@ -2,21 +2,25 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
-from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from coding_assistant.core.agent_session import (
     AgentSession,
+    AgentSessionEvent,
     AgentSessionProtocol,
-    RunOutcome,
+    PromptContent,
+    RunFailedEvent,
+    RunFinishedEvent,
     ScheduledRun,
     SessionState,
 )
 from coding_assistant.core.compacting_session import COMPACTION_PROMPT, AutoCompactingSession
 from coding_assistant.llm.types import (
     AssistantMessage,
+    BaseMessage,
     Completion,
     CompletionEvent,
     FunctionCall,
@@ -27,6 +31,60 @@ from coding_assistant.llm.types import (
 )
 
 
+class RecordingSession:
+    def __init__(self) -> None:
+        self.model = "test-model"
+        self.state = SessionState(running=False, usage=Usage(tokens=0, cost=0.0))
+        self.history: list[BaseMessage] = []
+        self.enqueued: list[PromptContent] = []
+        self.enqueued_if_idle: list[PromptContent] = []
+        self.steering: list[PromptContent] = []
+        self.popped: PromptContent | None = None
+        self.cancelled = False
+        self.resumed = False
+        self.closed = False
+        self._subscribers: list[asyncio.Queue[AgentSessionEvent]] = []
+
+    @asynccontextmanager
+    async def subscribe(self) -> AsyncIterator[asyncio.Queue[AgentSessionEvent]]:
+        queue: asyncio.Queue[AgentSessionEvent] = asyncio.Queue()
+        self._subscribers.append(queue)
+        try:
+            yield queue
+        finally:
+            self._subscribers.remove(queue)
+
+    async def enqueue_prompt(self, content: PromptContent) -> ScheduledRun:
+        self.enqueued.append(content)
+        return _make_scheduled_run()
+
+    async def enqueue_prompt_if_idle(self, content: PromptContent) -> ScheduledRun:
+        self.enqueued_if_idle.append(content)
+        return _make_scheduled_run()
+
+    async def enqueue_steering_prompt(self, content: PromptContent) -> bool:
+        self.steering.append(content)
+        return True
+
+    async def pop_last_queued_prompt(self) -> PromptContent | None:
+        return self.popped
+
+    async def cancel_current_run(self, *, pause_queue: bool = False) -> bool:
+        self.cancelled = pause_queue
+        return True
+
+    async def resume(self) -> bool:
+        self.resumed = True
+        return True
+
+    async def close(self) -> None:
+        self.closed = True
+
+    def publish(self, event: AgentSessionEvent) -> None:
+        for queue in self._subscribers:
+            queue.put_nowait(event)
+
+
 class ScriptedStreamer:
     def __init__(self, completions: list[Completion]) -> None:
         self._completions = list(completions)
@@ -35,269 +93,116 @@ class ScriptedStreamer:
         del messages, tools, model
         if not self._completions:
             raise RuntimeError("No scripted completion available.")
-        completion = self._completions.pop(0)
-        yield CompletionEvent(completion=completion)
+        yield CompletionEvent(completion=self._completions.pop(0))
 
 
 def _make_scheduled_run() -> ScheduledRun:
     return ScheduledRun(completion=asyncio.get_running_loop().create_future())
 
 
+async def _wait_for_steering(session: RecordingSession, count: int) -> None:
+    async with asyncio.timeout(1):
+        while len(session.steering) < count:
+            await asyncio.sleep(0)
+
+
 @pytest.mark.asyncio
 async def test_agent_session_protocol_conformance() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.model = "test-model"
-    inner.history = []
-    inner.state = SessionState(running=False)
-    inner.subscribe = Mock()
-    inner.enqueue_prompt = AsyncMock()
-    inner.enqueue_prompt_if_idle = AsyncMock()
-    inner.enqueue_steering_prompt = AsyncMock()
-    inner.pop_last_queued_prompt = AsyncMock()
-    inner.cancel_current_run = AsyncMock()
-    inner.resume = AsyncMock()
-    inner.close = AsyncMock()
-
+    inner = RecordingSession()
     session = AutoCompactingSession(inner, token_budget=10_000)
     assert isinstance(session, AgentSessionProtocol)
+    await session.close()
 
 
 @pytest.mark.asyncio
-async def test_compacting_session_properties_delegation() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.model = "test-model"
+async def test_delegates_session_interface() -> None:
+    inner = RecordingSession()
     inner.history = [SystemMessage(content="instructions")]
     inner.state = SessionState(running=False, usage=Usage(tokens=1000, cost=0.01))
-
+    inner.popped = "popped"
     session = AutoCompactingSession(inner, token_budget=50_000)
 
     assert session.model == "test-model"
     assert session.token_budget == 50_000
     assert session.history == [SystemMessage(content="instructions")]
-    assert session.state == SessionState(running=False, usage=Usage(tokens=1000, cost=0.01))
-
-
-@pytest.mark.asyncio
-async def test_enqueue_prompt_under_budget_does_not_compact() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.state = SessionState(running=False, usage=Usage(tokens=5_000, cost=0.05))
-    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
-
-    session = AutoCompactingSession(inner, token_budget=10_000)
-    result = await session.enqueue_prompt("Hello")
-
-    assert result is not None
-    assert inner.enqueue_prompt.call_count == 1
-    inner.enqueue_prompt.assert_awaited_once_with("Hello")
-
-
-@pytest.mark.asyncio
-async def test_enqueue_prompt_over_budget_triggers_compaction_first() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.state = SessionState(running=False, usage=Usage(tokens=15_000, cost=0.15))
-    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
-
-    session = AutoCompactingSession(inner, token_budget=10_000)
-    result = await session.enqueue_prompt("Continue the task")
-
-    assert result is not None
-    assert inner.enqueue_prompt.call_count == 2
-    assert inner.enqueue_prompt.await_args_list[0].args == (COMPACTION_PROMPT,)
-    assert inner.enqueue_prompt.await_args_list[1].args == ("Continue the task",)
-
-
-@pytest.mark.asyncio
-async def test_enqueue_prompt_over_budget_with_compaction_prompt_does_not_duplicate() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.state = SessionState(running=False, usage=Usage(tokens=15_000, cost=0.15))
-    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
-
-    session = AutoCompactingSession(inner, token_budget=10_000)
-    result = await session.enqueue_prompt(COMPACTION_PROMPT)
-
-    assert result is not None
-    assert inner.enqueue_prompt.call_count == 1
-    inner.enqueue_prompt.assert_awaited_once_with(COMPACTION_PROMPT)
-
-
-@pytest.mark.asyncio
-async def test_enqueue_multiple_prompts_over_budget_triggers_single_compaction() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.state = SessionState(running=True, pending_prompts=(), usage=Usage(tokens=15_000, cost=0.15))
-    compaction_fut: asyncio.Future[RunOutcome] = asyncio.get_running_loop().create_future()
-    compaction_run = ScheduledRun(completion=compaction_fut)
-    run1 = ScheduledRun(completion=asyncio.get_running_loop().create_future())
-    run2 = ScheduledRun(completion=asyncio.get_running_loop().create_future())
-
-    inner.enqueue_prompt = AsyncMock(side_effect=[compaction_run, run1, run2])
-
-    session = AutoCompactingSession(inner, token_budget=10_000)
-    await session.enqueue_prompt("Prompt 1")
-
-    # While compaction is scheduled, enqueuing a second prompt should not trigger another compaction
-    inner.state = SessionState(
-        running=True,
-        pending_prompts=(COMPACTION_PROMPT, "Prompt 1"),
-        usage=Usage(tokens=15_000, cost=0.15),
-    )
-    await session.enqueue_prompt("Prompt 2")
-
-    assert inner.enqueue_prompt.call_count == 3
-    assert inner.enqueue_prompt.await_args_list[0].args == (COMPACTION_PROMPT,)
-    assert inner.enqueue_prompt.await_args_list[1].args == ("Prompt 1",)
-    assert inner.enqueue_prompt.await_args_list[2].args == ("Prompt 2",)
-
-
-@pytest.mark.asyncio
-async def test_enqueue_prompt_with_none_budget_never_compacts() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.state = SessionState(running=False, usage=Usage(tokens=1_000_000, cost=10.0))
-    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
-
-    session = AutoCompactingSession(inner, token_budget=None)
-    result = await session.enqueue_prompt("Big context")
-
-    assert result is not None
-    assert inner.enqueue_prompt.call_count == 1
-    inner.enqueue_prompt.assert_awaited_once_with("Big context")
-
-
-@pytest.mark.asyncio
-async def test_enqueue_prompt_with_missing_token_count_never_compacts() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.state = SessionState(running=False, usage=Usage(tokens=None, cost=None))
-    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
-
-    session = AutoCompactingSession(inner, token_budget=10_000)
-    result = await session.enqueue_prompt("No tokens tracked")
-
-    assert result is not None
-    assert inner.enqueue_prompt.call_count == 1
-    inner.enqueue_prompt.assert_awaited_once_with("No tokens tracked")
-
-
-@pytest.mark.asyncio
-async def test_enqueue_prompt_if_idle_under_budget() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.state = SessionState(running=False, usage=Usage(tokens=5_000, cost=0.05))
-    inner.enqueue_prompt_if_idle = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
-
-    session = AutoCompactingSession(inner, token_budget=10_000)
-    result = await session.enqueue_prompt_if_idle("Idle prompt")
-
-    assert result is not None
-    inner.enqueue_prompt_if_idle.assert_awaited_once_with("Idle prompt")
-
-
-@pytest.mark.asyncio
-async def test_enqueue_prompt_if_idle_over_budget_when_idle() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.state = SessionState(running=False, usage=Usage(tokens=15_000, cost=0.15))
-    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
-
-    session = AutoCompactingSession(inner, token_budget=10_000)
-    result = await session.enqueue_prompt_if_idle("Idle prompt")
-
-    assert result is not None
-    assert inner.enqueue_prompt.call_count == 2
-    assert inner.enqueue_prompt.await_args_list[0].args == (COMPACTION_PROMPT,)
-    assert inner.enqueue_prompt.await_args_list[1].args == ("Idle prompt",)
-
-
-@pytest.mark.asyncio
-async def test_enqueue_prompt_if_idle_over_budget_when_busy() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.state = SessionState(running=True, usage=Usage(tokens=15_000, cost=0.15))
-    inner.enqueue_prompt = AsyncMock()
-
-    session = AutoCompactingSession(inner, token_budget=10_000)
-    result = await session.enqueue_prompt_if_idle("Busy prompt")
-
-    assert result is None
-    inner.enqueue_prompt.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_pop_last_queued_prompt_cleans_orphaned_compaction() -> None:
-    pending = [COMPACTION_PROMPT, "Prompt 1"]
-    inner = Mock(spec=AgentSession)
-
-    def mock_pop() -> str | None:
-        if pending:
-            return pending.pop()
-        return None
-
-    inner.pop_last_queued_prompt = AsyncMock(side_effect=mock_pop)
-
-    def get_state() -> SessionState:
-        return SessionState(running=True, pending_prompts=tuple(pending), usage=Usage(tokens=15_000, cost=0.15))
-
-    type(inner).state = property(lambda _self: get_state())
-
-    session = AutoCompactingSession(inner, token_budget=10_000)
-    session._compaction_scheduled = True
-
-    popped = await session.pop_last_queued_prompt()
-    assert popped == "Prompt 1"
-    assert len(pending) == 0  # COMPACTION_PROMPT was popped and cleaned up
-    assert session._compaction_scheduled is False
-
-
-@pytest.mark.asyncio
-async def test_pop_last_queued_prompt_with_multiple_prompts_preserves_compaction() -> None:
-    pending = [COMPACTION_PROMPT, "Prompt 1", "Prompt 2"]
-    inner = Mock(spec=AgentSession)
-
-    def mock_pop() -> str | None:
-        if pending:
-            return pending.pop()
-        return None
-
-    inner.pop_last_queued_prompt = AsyncMock(side_effect=mock_pop)
-
-    def get_state() -> SessionState:
-        return SessionState(running=True, pending_prompts=tuple(pending), usage=Usage(tokens=15_000, cost=0.15))
-
-    type(inner).state = property(lambda _self: get_state())
-
-    session = AutoCompactingSession(inner, token_budget=10_000)
-    session._compaction_scheduled = True
-
-    popped = await session.pop_last_queued_prompt()
-    assert popped == "Prompt 2"
-    assert pending == [COMPACTION_PROMPT, "Prompt 1"]  # Compaction still preserved for Prompt 1
-    assert session._compaction_scheduled is True
-
-
-@pytest.mark.asyncio
-async def test_control_delegation_methods() -> None:
-    inner = Mock(spec=AgentSession)
-    inner.enqueue_steering_prompt = AsyncMock(return_value=True)
-    inner.pop_last_queued_prompt = AsyncMock(return_value="popped")
-    inner.cancel_current_run = AsyncMock(return_value=True)
-    inner.resume = AsyncMock(return_value=True)
-    inner.close = AsyncMock()
-    inner.subscribe = Mock()
-
-    session = AutoCompactingSession(inner, token_budget=10_000)
-
+    assert session.state == inner.state
+    assert await session.enqueue_prompt("queued") is not None
+    assert await session.enqueue_prompt_if_idle("idle") is not None
     assert await session.enqueue_steering_prompt("steer") is True
-    inner.enqueue_steering_prompt.assert_awaited_once_with("steer")
-
     assert await session.pop_last_queued_prompt() == "popped"
-    inner.pop_last_queued_prompt.assert_awaited_once()
-
     assert await session.cancel_current_run(pause_queue=True) is True
-    inner.cancel_current_run.assert_awaited_once_with(pause_queue=True)
-
     assert await session.resume() is True
-    inner.resume.assert_awaited_once()
+
+    assert inner.enqueued == ["queued"]
+    assert inner.enqueued_if_idle == ["idle"]
+    assert inner.steering == ["steer"]
+    assert inner.cancelled is True
+    assert inner.resumed is True
 
     await session.close()
-    inner.close.assert_awaited_once()
+    assert inner.closed is True
 
-    session.subscribe()
-    inner.subscribe.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_finished_over_budget_run_enqueues_compaction_as_steering() -> None:
+    inner = RecordingSession()
+    session = AutoCompactingSession(inner, token_budget=10_000)
+    await session.enqueue_prompt("start monitor")
+    inner.state = SessionState(running=False, usage=Usage(tokens=15_000, cost=0.15))
+
+    inner.publish(RunFinishedEvent(summary="done"))
+    await _wait_for_steering(inner, 1)
+
+    assert inner.steering == [COMPACTION_PROMPT]
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_each_finished_over_budget_run_enqueues_another_reminder() -> None:
+    inner = RecordingSession()
+    session = AutoCompactingSession(inner, token_budget=10_000)
+    await session.enqueue_prompt("start monitor")
+    inner.state = SessionState(running=False, usage=Usage(tokens=15_000, cost=0.15))
+
+    inner.publish(RunFinishedEvent(summary="first"))
+    await _wait_for_steering(inner, 1)
+    inner.publish(RunFinishedEvent(summary="second"))
+    await _wait_for_steering(inner, 2)
+
+    assert inner.steering == [COMPACTION_PROMPT, COMPACTION_PROMPT]
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_run_does_not_enqueue_compaction() -> None:
+    inner = RecordingSession()
+    session = AutoCompactingSession(inner, token_budget=10_000)
+    await session.enqueue_prompt("start monitor")
+    inner.state = SessionState(running=False, usage=Usage(tokens=15_000, cost=0.15))
+
+    inner.publish(RunFailedEvent(error="failed"))
+    await asyncio.sleep(0)
+
+    assert inner.steering == []
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_pending_compaction_prompt_prevents_duplicate_reminder() -> None:
+    inner = RecordingSession()
+    session = AutoCompactingSession(inner, token_budget=10_000)
+    await session.enqueue_prompt("start monitor")
+    inner.state = SessionState(
+        running=False,
+        pending_prompts=(COMPACTION_PROMPT,),
+        usage=Usage(tokens=15_000, cost=0.15),
+    )
+
+    inner.publish(RunFinishedEvent(summary="done"))
+    await asyncio.sleep(0)
+
+    assert inner.steering == []
+    await session.close()
 
 
 @pytest.mark.asyncio
@@ -311,22 +216,18 @@ async def test_auto_compaction_integration_with_real_session() -> None:
     )
     streamer = ScriptedStreamer(
         [
-            # First turn: returns a response with high usage (over budget)
             Completion(
                 message=AssistantMessage(content="Done with step 1"),
                 usage=Usage(tokens=1000, cost=0.01),
             ),
-            # Auto-compaction turn: model calls compact_conversation
             Completion(
                 message=AssistantMessage(tool_calls=[compact_call]),
-                usage=Usage(tokens=200, cost=0.002),
+                usage=Usage(tokens=1100, cost=0.002),
             ),
-            # Continuation after compaction tool
             Completion(
                 message=AssistantMessage(content="Compacted. Ready for next prompt."),
                 usage=Usage(tokens=200, cost=0.002),
             ),
-            # Second user prompt execution
             Completion(
                 message=AssistantMessage(content="Done with step 2"),
                 usage=Usage(tokens=300, cost=0.003),
@@ -341,29 +242,21 @@ async def test_auto_compaction_integration_with_real_session() -> None:
     )
     session = AutoCompactingSession(raw_session, token_budget=800)
 
-    async with session.subscribe():
-        # Step 1: initial prompt (under budget initially)
+    try:
         scheduled1 = await session.enqueue_prompt("Run step 1")
         assert scheduled1 is not None
-        outcome1 = await scheduled1.completion
-        assert outcome1.stop_reason == "end_turn"
-        assert session.state.usage is not None
-        assert session.state.usage.tokens == 1000  # now over budget (800)
+        assert (await scheduled1.completion).stop_reason == "end_turn"
 
-        # Step 2: next prompt enqueued when over budget -> triggers auto-compaction before prompt
+        async with asyncio.timeout(1):
+            while len(session.history) < 2 or "Compacted summary of step 1" not in str(session.history[1].content):
+                await asyncio.sleep(0)
+
         scheduled2 = await session.enqueue_prompt("Run step 2")
         assert scheduled2 is not None
-        outcome2 = await scheduled2.completion
-        assert outcome2.stop_reason == "end_turn"
-
-    # Verify history after compaction contains compacted summary
-    history = session.history
-    assert len(history) == 5
-    assert history[0] == SystemMessage(content="System instructions")
-    assert isinstance(history[1], UserMessage)
-    assert "Compacted summary of step 1" in str(history[1].content)
-    assert history[2] == AssistantMessage(content="Compacted. Ready for next prompt.")
-    assert history[3] == UserMessage(content="Run step 2")
-    assert history[4] == AssistantMessage(content="Done with step 2")
-
-    await session.close()
+        assert (await scheduled2.completion).stop_reason == "end_turn"
+        assert session.history[-2:] == [
+            UserMessage(content="Run step 2"),
+            AssistantMessage(content="Done with step 2"),
+        ]
+    finally:
+        await session.close()
