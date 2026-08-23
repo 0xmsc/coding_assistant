@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections.abc import AsyncIterator
 
 import pytest
@@ -67,21 +68,33 @@ async def test_python_run_happy_path_stdout(execute: Tool) -> None:
 
 
 @pytest.mark.asyncio
-async def test_python_run_uses_explicit_process_env(manager: TaskManager) -> None:
-    tool = create_python_tools(manager=manager, process_env={"APPS_API_TOKEN": "prompt-token"})[0]
+async def test_python_run_inherits_ambient_environment_by_default(
+    execute: Tool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CUSTOM_PYTHON_VAR", "hello-world")
 
-    out = _text(await tool.execute({"code": "import os; print(os.environ['APPS_API_TOKEN'], end='')"}))
+    out = _text(
+        await execute.execute({"code": "import os; print(os.environ.get('CUSTOM_PYTHON_VAR', 'unset'), end='')"})
+    )
 
-    assert out == "prompt-token"
+    assert out == "hello-world"
 
 
 @pytest.mark.asyncio
-async def test_python_run_does_not_inherit_unlisted_env(execute: Tool, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "provider-secret")
+async def test_python_run_uses_explicit_process_env(manager: TaskManager, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PARENT_VAR", "parent-val")
+    tool = create_python_tools(
+        manager=manager,
+        process_env={"PATH": os.environ["PATH"], "APPS_API_TOKEN": "prompt-token"},
+    )[0]
 
-    out = _text(await execute.execute({"code": "import os; print(os.environ.get('OPENAI_API_KEY', 'unset'), end='')"}))
+    out = _text(
+        await tool.execute(
+            {"code": ("import os; print(os.environ['APPS_API_TOKEN'], os.environ.get('PARENT_VAR', 'unset'), end='')")}
+        )
+    )
 
-    assert out == "unset"
+    assert out == "prompt-token unset"
 
 
 @pytest.mark.asyncio

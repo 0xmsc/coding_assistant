@@ -27,7 +27,7 @@ class PythonExecuteTool(Tool):
 
     def __init__(self, *, manager: TaskManager, process_env: dict[str, str] | None = None) -> None:
         self._manager = manager
-        self._process_env = dict(process_env or {})
+        self._process_env = process_env
 
     def name(self) -> str:
         return "python_execute"
