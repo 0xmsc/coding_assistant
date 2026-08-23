@@ -38,6 +38,7 @@ from coding_assistant.cli.output import (
     print_info_message,
     print_system_message,
     print_tool_calls,
+    ring_bell,
 )
 from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.core.agent_session import (
@@ -137,6 +138,7 @@ async def run_cli(args: Namespace) -> None:
                         session=session,
                         system_message=system_message,
                         history_path=get_app_cache_dir() / "history",
+                        bell=getattr(args, "bell", True),
                     )
         finally:
             await session.close()
@@ -147,11 +149,12 @@ async def _run_ui(
     session: AgentSession,
     system_message: SystemMessage,
     history_path: Path,
+    bell: bool = True,
 ) -> None:
     """Run the terminal UI loop."""
     application, answer_queue = _create_application(session, history_path)
 
-    output_task = asyncio.create_task(_run_output(session=session, system_message=system_message))
+    output_task = asyncio.create_task(_run_output(session=session, system_message=system_message, bell=bell))
 
     with patch_stdout(raw=True):
         app_task = asyncio.create_task(application.run_async())
@@ -332,6 +335,7 @@ async def _run_output(
     *,
     session: AgentSession,
     system_message: SystemMessage,
+    bell: bool = True,
 ) -> None:
     """Display session output to terminal."""
     renderer = StreamRenderer()
@@ -349,6 +353,7 @@ async def _run_output(
                     event=event,
                     renderer=renderer,
                     printed_tool_call_messages=printed_tool_call_messages,
+                    bell=bell,
                 )
         finally:
             renderer.finish()
@@ -359,6 +364,7 @@ def _render_agent_event(
     event: AgentSessionEvent,
     renderer: StreamRenderer,
     printed_tool_call_messages: set[int],
+    bell: bool = True,
 ) -> None:
     if isinstance(event, AssistantMessageDeltaEvent):
         renderer.on_content_delta(event.content)
@@ -385,7 +391,12 @@ def _render_agent_event(
         renderer.finish()
         print_tool_calls(message)
         return
-    if isinstance(event, (RunFinishedEvent, RunCancelledEvent)):
+    if isinstance(event, RunFinishedEvent):
+        renderer.finish()
+        if bell:
+            ring_bell()
+        return
+    if isinstance(event, RunCancelledEvent):
         renderer.finish()
         return
     if isinstance(event, RunFailedEvent):

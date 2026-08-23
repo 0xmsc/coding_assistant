@@ -9,13 +9,15 @@ from prompt_toolkit.layout.containers import ConditionalContainer
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 
 from coding_assistant.cli.commands import CompactCommand, ExitCommand
+from coding_assistant.cli.output import StreamRenderer
 from coding_assistant.cli.ui import (
     PromptSubmitType,
     SlashCompleter,
     _create_application,
     _format_queued_prompts,
+    _render_agent_event,
 )
-from coding_assistant.core.agent_session import SessionState
+from coding_assistant.core.agent_session import RunCancelledEvent, RunFinishedEvent, SessionState
 
 
 def test_slash_completer_with_strings() -> None:
@@ -185,3 +187,51 @@ def test_format_queued_prompts_shows_pending_prompts() -> None:
     )
 
     assert _format_queued_prompts(session) == "↳ first queued prompt\n↳ second queued prompt\n↳ +1 more"
+
+
+def test_render_agent_event_rings_bell_on_run_finished_when_enabled() -> None:
+    renderer = Mock(spec=StreamRenderer)
+    printed_tool_calls: set[int] = set()
+
+    with patch("coding_assistant.cli.ui.ring_bell") as mock_ring_bell:
+        _render_agent_event(
+            event=RunFinishedEvent(summary="Done"),
+            renderer=renderer,
+            printed_tool_call_messages=printed_tool_calls,
+            bell=True,
+        )
+
+    renderer.finish.assert_called_once()
+    mock_ring_bell.assert_called_once()
+
+
+def test_render_agent_event_does_not_ring_bell_when_disabled() -> None:
+    renderer = Mock(spec=StreamRenderer)
+    printed_tool_calls: set[int] = set()
+
+    with patch("coding_assistant.cli.ui.ring_bell") as mock_ring_bell:
+        _render_agent_event(
+            event=RunFinishedEvent(summary="Done"),
+            renderer=renderer,
+            printed_tool_call_messages=printed_tool_calls,
+            bell=False,
+        )
+
+    renderer.finish.assert_called_once()
+    mock_ring_bell.assert_not_called()
+
+
+def test_render_agent_event_does_not_ring_bell_on_cancelled() -> None:
+    renderer = Mock(spec=StreamRenderer)
+    printed_tool_calls: set[int] = set()
+
+    with patch("coding_assistant.cli.ui.ring_bell") as mock_ring_bell:
+        _render_agent_event(
+            event=RunCancelledEvent(),
+            renderer=renderer,
+            printed_tool_call_messages=printed_tool_calls,
+            bell=True,
+        )
+
+    renderer.finish.assert_called_once()
+    mock_ring_bell.assert_not_called()

@@ -45,6 +45,12 @@ def parse_args() -> argparse.Namespace:
         help="Wait for a debugger to attach.",
     )
     parser.add_argument(
+        "--bell",
+        action=BooleanOptionalAction,
+        default=True,
+        help="Ring the terminal bell when a run finishes.",
+    )
+    parser.add_argument(
         "--trace",
         action=BooleanOptionalAction,
         default=True,

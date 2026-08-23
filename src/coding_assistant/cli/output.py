@@ -247,3 +247,8 @@ def format_session_status(state: SessionState, *, model: str | None = None) -> s
 def print_info_message(message: str) -> None:
     """Render one informational status line."""
     rich_print(f"[bold blue]ℹ[/bold blue] {message}")
+
+
+def ring_bell() -> None:
+    """Emit a terminal alert bell."""
+    rich_print("\a", end="")

@@ -29,6 +29,19 @@ def test_parse_args_defaults() -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "gpt-4"]):
         args = parse_args()
         assert args.skills_directories == []
+        assert args.bell is True
+
+
+def test_parse_args_no_bell() -> None:
+    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--no-bell"]):
+        args = parse_args()
+        assert args.bell is False
+
+
+def test_parse_args_bell() -> None:
+    with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--bell"]):
+        args = parse_args()
+        assert args.bell is True
 
 
 def test_parse_args_with_multiple_flags() -> None:
@@ -88,6 +101,7 @@ def test_help_exits_with_zero() -> None:
 @pytest.mark.asyncio
 async def test_run_cli_prints_system_message_before_running_agent() -> None:
     args = Namespace(
+        bell=True,
         instructions=[],
         mcp_servers=[],
         model="gpt-4",
@@ -132,6 +146,7 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
         content="Follow the repo instructions.",
     )
     assert mock_run_ui.await_args.kwargs["history_path"].name == "history"
+    assert mock_run_ui.await_args.kwargs["bell"] is True
     mock_rich_print.assert_called_once()
 
 

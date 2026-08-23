@@ -22,6 +22,7 @@ from coding_assistant.cli.output import (
     print_info_message,
     print_system_message,
     print_tool_calls,
+    ring_bell,
 )
 from coding_assistant.core.agent_session import SessionState
 from coding_assistant.llm.types import AssistantMessage, FunctionCall, SystemMessage, ToolCall, Usage
@@ -346,6 +347,11 @@ class TestPrintFunctions:
         output = _capture_output(lambda: print_info_message("Test message"))
         assert "Test message" in output
         assert "ℹ" in output
+
+    def test_ring_bell(self) -> None:
+        with patch("coding_assistant.cli.output.rich_print") as mock_print:
+            ring_bell()
+        mock_print.assert_called_once_with("\a", end="")
 
     def test_print_active_prompt_string(self) -> None:
         output = _capture_output(lambda: print_active_prompt("Hello world"))
