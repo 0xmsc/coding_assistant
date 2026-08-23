@@ -220,7 +220,7 @@ def test_render_agent_event_rings_bell_on_run_finished_when_enabled() -> None:
 
     with patch("coding_assistant.cli.ui.ring_bell") as mock_ring_bell:
         _render_agent_event(
-            event=RunFinishedEvent(summary="Done"),
+            event=RunFinishedEvent(),
             renderer=renderer,
             printed_tool_call_messages=printed_tool_calls,
             bell=True,
@@ -236,7 +236,7 @@ def test_render_agent_event_does_not_ring_bell_when_disabled() -> None:
 
     with patch("coding_assistant.cli.ui.ring_bell") as mock_ring_bell:
         _render_agent_event(
-            event=RunFinishedEvent(summary="Done"),
+            event=RunFinishedEvent(),
             renderer=renderer,
             printed_tool_call_messages=printed_tool_calls,
             bell=False,
@@ -301,7 +301,7 @@ async def test_run_output_renders_system_message_and_streamed_content() -> None:
         task = asyncio.create_task(_run_output(session=session, system_message=system_message))
         try:
             await asyncio.sleep(0)
-            assert await session.enqueue_prompt("Hi") is not None
+            assert await session.enqueue_prompt("Hi") is True
 
             while session.state.running or session.state.pending_prompts:
                 await asyncio.sleep(0)

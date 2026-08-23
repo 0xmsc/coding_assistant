@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
+from typing import Literal
 from uuid import uuid4
 
 from websockets.asyncio.server import ServerConnection
@@ -16,7 +17,10 @@ from coding_assistant.core.agent_session import (
     AssistantMessageDeltaEvent,
     CompletionStreamer,
     HistoryResetEvent,
-    RunOutcome,
+    RunCancelledEvent,
+    RunFailedEvent,
+    RunFinishedEvent,
+    RunTerminalEvent,
 )
 from coding_assistant.core.session_updates import (
     HistoryResetUpdate,
@@ -25,7 +29,7 @@ from coding_assistant.core.session_updates import (
     SessionUpdate,
 )
 from coding_assistant.core.tool_calls import ToolMessageProduced
-from coding_assistant.llm.types import BaseMessage, Tool, UserMessage
+from coding_assistant.llm.types import BaseMessage, Tool
 from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_PARAMS,
     ERROR_INVALID_REQUEST,
@@ -87,10 +91,10 @@ def _prompt_from_params(params: JsonObject) -> str | list[JsonObject]:
 
 def _worker_run_result(
     *,
-    outcome: RunOutcome,
+    stop_reason: Literal["end_turn", "cancelled"],
     metadata: JsonObject | None = None,
 ) -> JsonObject:
-    result: JsonObject = {"stopReason": outcome.stop_reason}
+    result: JsonObject = {"stopReason": stop_reason}
     if metadata:
         result["_meta"] = metadata
     return result
@@ -123,39 +127,19 @@ async def _send_session_update(
         await websocket.send(notification)
 
 
-async def _wait_for_session_events(
-    *,
-    queue: asyncio.Queue[AgentSessionEvent],
-    publisher_task: asyncio.Task[None],
-) -> None:
-    """Wait until queued events are sent, or propagate publisher failure."""
-    drain_task = asyncio.create_task(queue.join())
-    try:
-        done, _ = await asyncio.wait(
-            {drain_task, publisher_task},
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-        if publisher_task in done:
-            await publisher_task
-            raise RuntimeError("Session event publisher stopped before queued events were sent.")
-        await drain_task
-    finally:
-        if not drain_task.done():
-            drain_task.cancel()
-        await asyncio.gather(drain_task, return_exceptions=True)
-
-
 async def _publish_session_events(
     *,
     websocket: ServerConnection,
     session_id: str,
     queue: asyncio.Queue[AgentSessionEvent],
-) -> None:
+) -> RunTerminalEvent:
     while True:
         event = await queue.get()
         try:
             for update in _session_updates_from_agent_event(event):
                 await _send_session_update(websocket=websocket, session_id=session_id, update=update)
+            if isinstance(event, (RunFinishedEvent, RunCancelledEvent, RunFailedEvent)):
+                return event
         finally:
             queue.task_done()
 
@@ -171,37 +155,35 @@ async def _execute_run(
     runtime: WorkerRuntimeConfig,
     finished: asyncio.Event,
 ) -> None:
-    sender_task: asyncio.Task[None] | None = None
+    sender_task: asyncio.Task[RunTerminalEvent] | None = None
     try:
         async with session.subscribe() as queue:
             sender_task = asyncio.create_task(
                 _publish_session_events(websocket=websocket, session_id=session_id, queue=queue),
             )
-            scheduled_run = await session.enqueue_prompt(prompt)
-            if scheduled_run is None:
+            if not await session.enqueue_prompt(prompt):
                 raise RuntimeError("Worker session closed before its run could start.")
             state.run_ready.set()
             if state.cancel_requested_session_id == session_id:
                 pending_prompt = await session.pop_last_queued_prompt()
                 if pending_prompt is not None:
-                    outcome = RunOutcome(
-                        stop_reason="cancelled",
-                        messages=[UserMessage(content=pending_prompt)],
-                    )
+                    terminal_event: RunTerminalEvent = RunCancelledEvent()
                 else:
                     await session.cancel_current_run()
-                    outcome = await scheduled_run.completion
+                    terminal_event = await sender_task
             else:
-                outcome = await scheduled_run.completion
-            await _wait_for_session_events(queue=queue, publisher_task=sender_task)
-            if outcome.stop_reason == "failed":
-                await websocket.send(jsonrpc_error(response_id, ERROR_SERVER, outcome.error or "Worker run failed."))
+                terminal_event = await sender_task
+            if isinstance(terminal_event, RunFailedEvent):
+                await websocket.send(jsonrpc_error(response_id, ERROR_SERVER, terminal_event.error))
                 return
+            stop_reason: Literal["end_turn", "cancelled"] = (
+                "end_turn" if isinstance(terminal_event, RunFinishedEvent) else "cancelled"
+            )
             metadata = runtime.finish_metadata_provider() if runtime.finish_metadata_provider is not None else None
             await websocket.send(
                 jsonrpc_result(
                     response_id,
-                    _worker_run_result(outcome=outcome, metadata=metadata),
+                    _worker_run_result(stop_reason=stop_reason, metadata=metadata),
                 ),
             )
     except ConnectionClosed:

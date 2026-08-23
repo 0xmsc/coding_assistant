@@ -14,7 +14,6 @@ from coding_assistant.core.agent_session import (
     PromptContent,
     RunFailedEvent,
     RunFinishedEvent,
-    ScheduledRun,
     SessionState,
 )
 from coding_assistant.core.compacting_session import COMPACTION_PROMPT, AutoCompactingSession
@@ -54,13 +53,13 @@ class RecordingSession:
         finally:
             self._subscribers.remove(queue)
 
-    async def enqueue_prompt(self, content: PromptContent) -> ScheduledRun:
+    async def enqueue_prompt(self, content: PromptContent) -> bool:
         self.enqueued.append(content)
-        return _make_scheduled_run()
+        return True
 
-    async def enqueue_prompt_if_idle(self, content: PromptContent) -> ScheduledRun:
+    async def enqueue_prompt_if_idle(self, content: PromptContent) -> bool:
         self.enqueued_if_idle.append(content)
-        return _make_scheduled_run()
+        return True
 
     async def enqueue_steering_prompt(self, content: PromptContent) -> bool:
         self.steering.append(content)
@@ -96,10 +95,6 @@ class ScriptedStreamer:
         yield CompletionEvent(completion=self._completions.pop(0))
 
 
-def _make_scheduled_run() -> ScheduledRun:
-    return ScheduledRun(completion=asyncio.get_running_loop().create_future())
-
-
 async def _wait_for_steering(session: RecordingSession, count: int) -> None:
     async with asyncio.timeout(1):
         while len(session.steering) < count:
@@ -126,8 +121,8 @@ async def test_delegates_session_interface() -> None:
     assert session.token_budget == 50_000
     assert session.history == [SystemMessage(content="instructions")]
     assert session.state == inner.state
-    assert await session.enqueue_prompt("queued") is not None
-    assert await session.enqueue_prompt_if_idle("idle") is not None
+    assert await session.enqueue_prompt("queued") is True
+    assert await session.enqueue_prompt_if_idle("idle") is True
     assert await session.enqueue_steering_prompt("steer") is True
     assert await session.pop_last_queued_prompt() == "popped"
     assert await session.cancel_current_run(pause_queue=True) is True
@@ -150,7 +145,7 @@ async def test_finished_over_budget_run_enqueues_compaction_as_steering() -> Non
     await session.enqueue_prompt("start monitor")
     inner.state = SessionState(running=False, usage=Usage(tokens=15_000, cost=0.15))
 
-    inner.publish(RunFinishedEvent(summary="done"))
+    inner.publish(RunFinishedEvent())
     await _wait_for_steering(inner, 1)
 
     assert inner.steering == [COMPACTION_PROMPT]
@@ -164,9 +159,9 @@ async def test_each_finished_over_budget_run_enqueues_another_reminder() -> None
     await session.enqueue_prompt("start monitor")
     inner.state = SessionState(running=False, usage=Usage(tokens=15_000, cost=0.15))
 
-    inner.publish(RunFinishedEvent(summary="first"))
+    inner.publish(RunFinishedEvent())
     await _wait_for_steering(inner, 1)
-    inner.publish(RunFinishedEvent(summary="second"))
+    inner.publish(RunFinishedEvent())
     await _wait_for_steering(inner, 2)
 
     assert inner.steering == [COMPACTION_PROMPT, COMPACTION_PROMPT]
@@ -198,7 +193,7 @@ async def test_pending_compaction_prompt_prevents_duplicate_reminder() -> None:
         usage=Usage(tokens=15_000, cost=0.15),
     )
 
-    inner.publish(RunFinishedEvent(summary="done"))
+    inner.publish(RunFinishedEvent())
     await asyncio.sleep(0)
 
     assert inner.steering == []
@@ -243,17 +238,16 @@ async def test_auto_compaction_integration_with_real_session() -> None:
     session = AutoCompactingSession(raw_session, token_budget=800)
 
     try:
-        scheduled1 = await session.enqueue_prompt("Run step 1")
-        assert scheduled1 is not None
-        assert (await scheduled1.completion).stop_reason == "end_turn"
+        assert await session.enqueue_prompt("Run step 1") is True
 
         async with asyncio.timeout(1):
             while len(session.history) < 2 or "Compacted summary of step 1" not in str(session.history[1].content):
                 await asyncio.sleep(0)
 
-        scheduled2 = await session.enqueue_prompt("Run step 2")
-        assert scheduled2 is not None
-        assert (await scheduled2.completion).stop_reason == "end_turn"
+        assert await session.enqueue_prompt("Run step 2") is True
+        async with asyncio.timeout(1):
+            while session.history[-1] != AssistantMessage(content="Done with step 2"):
+                await asyncio.sleep(0)
         assert session.history[-2:] == [
             UserMessage(content="Run step 2"),
             AssistantMessage(content="Done with step 2"),

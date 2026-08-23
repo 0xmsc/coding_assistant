@@ -8,7 +8,6 @@ from coding_assistant.core.agent_session import (
     AgentSessionProtocol,
     PromptContent,
     RunFinishedEvent,
-    ScheduledRun,
     SessionState,
 )
 from coding_assistant.llm.types import BaseMessage
@@ -49,12 +48,12 @@ class AutoCompactingSession:
         """Subscribe to streamed session events."""
         return self._inner.subscribe()
 
-    async def enqueue_prompt(self, content: PromptContent) -> ScheduledRun | None:
+    async def enqueue_prompt(self, content: PromptContent) -> bool:
         """Queue one prompt."""
         await self._monitor_ready.wait()
         return await self._inner.enqueue_prompt(content)
 
-    async def enqueue_prompt_if_idle(self, content: PromptContent) -> ScheduledRun | None:
+    async def enqueue_prompt_if_idle(self, content: PromptContent) -> bool:
         """Queue one prompt only when idle."""
         await self._monitor_ready.wait()
         return await self._inner.enqueue_prompt_if_idle(content)

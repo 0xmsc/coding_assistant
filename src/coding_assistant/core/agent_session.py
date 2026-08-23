@@ -6,7 +6,7 @@ from collections import deque
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from uuid import uuid4
 
 from coding_assistant.core.tool_calls import (
@@ -83,7 +83,7 @@ class AssistantMessageCompletedEvent:
 class RunFinishedEvent:
     """Event emitted after a completed run is committed to history."""
 
-    summary: str
+    pass
 
 
 @dataclass(frozen=True)
@@ -100,6 +100,9 @@ class RunFailedEvent:
     error: str
 
 
+RunTerminalEvent = RunFinishedEvent | RunCancelledEvent | RunFailedEvent
+
+
 AgentSessionEvent = (
     AssistantMessageDeltaEvent
     | AssistantMessageCompletedEvent
@@ -109,27 +112,8 @@ AgentSessionEvent = (
     | PromptStartedEvent
     | HistoryResetEvent
     | ToolMessageProduced
-    | RunFinishedEvent
-    | RunCancelledEvent
-    | RunFailedEvent
+    | RunTerminalEvent
 )
-
-
-@dataclass(frozen=True)
-class RunOutcome:
-    """Terminal outcome of one session run, including its model-visible messages."""
-
-    stop_reason: Literal["end_turn", "cancelled", "failed"]
-    messages: list[BaseMessage]
-    summary: str = ""
-    error: str | None = None
-
-
-@dataclass(frozen=True)
-class ScheduledRun:
-    """A queued run whose outcome can be awaited independently of session events."""
-
-    completion: asyncio.Future[RunOutcome]
 
 
 @dataclass(frozen=True)
@@ -137,7 +121,6 @@ class _QueuedPrompt:
     """Internal representation of a prompt waiting to be processed."""
 
     content: PromptContent
-    scheduled_run: ScheduledRun | None = None
 
 
 @dataclass(frozen=True)
@@ -145,7 +128,7 @@ class _RunResult:
     """Result of a single queued prompt run."""
 
     history: list[BaseMessage] | None  # Updated transcript, or None on fatal error
-    outcome: RunOutcome
+    terminal_event: RunTerminalEvent
 
 
 @runtime_checkable
@@ -171,11 +154,11 @@ class AgentSessionProtocol(Protocol):
         """Subscribe to streamed session events."""
         ...
 
-    async def enqueue_prompt(self, content: PromptContent) -> ScheduledRun | None:
+    async def enqueue_prompt(self, content: PromptContent) -> bool:
         """Queue one prompt."""
         ...
 
-    async def enqueue_prompt_if_idle(self, content: PromptContent) -> ScheduledRun | None:
+    async def enqueue_prompt_if_idle(self, content: PromptContent) -> bool:
         """Queue one prompt only when the session has no running or pending work."""
         ...
 
@@ -238,7 +221,6 @@ class AgentSession:
         self._pending_prompts: deque[_QueuedPrompt] = deque()
         self._pending_steering_prompts: deque[_QueuedPrompt] = deque()
         self._current_run_task: asyncio.Task[_RunResult] | None = None
-        self._current_scheduled_run: ScheduledRun | None = None
         self._subscribers: list[asyncio.Queue[AgentSessionEvent]] = []
         # Protects all state mutations; public mutating methods acquire this lock.
         self._mutation_lock = asyncio.Lock()
@@ -275,18 +257,17 @@ class AgentSession:
         """Subscribe to streamed session events."""
         return self._subscribe()
 
-    async def enqueue_prompt(self, content: PromptContent) -> ScheduledRun | None:
+    async def enqueue_prompt(self, content: PromptContent) -> bool:
         """Queue one prompt."""
         async with self._mutation_lock:
             if self._closed:
-                return None
+                return False
             self._paused = False
-            scheduled_run = self._new_scheduled_run()
-            self._pending_prompts.append(_QueuedPrompt(content=content, scheduled_run=scheduled_run))
+            self._pending_prompts.append(_QueuedPrompt(content=content))
             self._run_loop_wakeup.set()
-        return scheduled_run
+        return True
 
-    async def enqueue_prompt_if_idle(self, content: PromptContent) -> ScheduledRun | None:
+    async def enqueue_prompt_if_idle(self, content: PromptContent) -> bool:
         """Queue one prompt only when the session has no running or pending work."""
         async with self._mutation_lock:
             if (
@@ -296,12 +277,11 @@ class AgentSession:
                 or self._pending_prompts
                 or self._pending_steering_prompts
             ):
-                return None
+                return False
             self._paused = False
-            scheduled_run = self._new_scheduled_run()
-            self._pending_prompts.append(_QueuedPrompt(content=content, scheduled_run=scheduled_run))
+            self._pending_prompts.append(_QueuedPrompt(content=content))
             self._run_loop_wakeup.set()
-        return scheduled_run
+        return True
 
     async def enqueue_steering_prompt(self, content: PromptContent) -> bool:
         """Inject one prompt into the active run at the next agent-loop boundary."""
@@ -309,14 +289,11 @@ class AgentSession:
             if self._closed:
                 return False
             self._paused = False
-            queued_prompt = _QueuedPrompt(content=content)
             if self._current_run_task is None:
-                self._pending_prompts.appendleft(
-                    _QueuedPrompt(content=content, scheduled_run=self._new_scheduled_run()),
-                )
+                self._pending_prompts.appendleft(_QueuedPrompt(content=content))
                 self._run_loop_wakeup.set()
             else:
-                self._pending_steering_prompts.append(queued_prompt)
+                self._pending_steering_prompts.append(_QueuedPrompt(content=content))
         return True
 
     async def pop_last_queued_prompt(self) -> PromptContent | None:
@@ -330,8 +307,6 @@ class AgentSession:
                 last = self._pending_steering_prompts.pop()
             else:
                 return None
-            if last.scheduled_run is not None:
-                self._resolve_run(last.scheduled_run, RunOutcome(stop_reason="cancelled", messages=[]))
         return last.content
 
     async def cancel_current_run(self, *, pause_queue: bool = False) -> bool:
@@ -366,9 +341,6 @@ class AgentSession:
             if self._closed:
                 return
             self._closed = True
-            for prompt in self._pending_prompts:
-                assert prompt.scheduled_run is not None
-                self._resolve_run(prompt.scheduled_run, RunOutcome(stop_reason="cancelled", messages=[]))
             self._pending_prompts.clear()
             self._pending_steering_prompts.clear()
             run_task = self._current_run_task
@@ -378,12 +350,6 @@ class AgentSession:
             run_task.cancel()
             with suppress(asyncio.CancelledError):
                 await run_task
-            if self._current_scheduled_run is not None:
-                self._resolve_run(
-                    self._current_scheduled_run,
-                    RunOutcome(stop_reason="cancelled", messages=[]),
-                )
-
         self._run_loop_task.cancel()
         with suppress(asyncio.CancelledError):
             await self._run_loop_task
@@ -440,11 +406,9 @@ class AgentSession:
 
                     # Start running the next prompt
                     prompt = self._pending_prompts.popleft()
-                    assert prompt.scheduled_run is not None
                     current_history = [*self._history, UserMessage(content=prompt.content)]
                     run_task = asyncio.create_task(self._run_prompt(current_history))
                     self._current_run_task = run_task
-                    self._current_scheduled_run = prompt.scheduled_run
 
                 self._publish_event(PromptStartedEvent(content=prompt.content))
                 try:
@@ -455,9 +419,8 @@ class AgentSession:
                     async with self._mutation_lock:
                         if self._current_run_task is run_task:
                             self._current_run_task = None
-                            self._current_scheduled_run = None
                         # On cancellation or error, move steering prompts back to main queue
-                        if result is not None and result.outcome.stop_reason != "end_turn":
+                        if result is not None and not isinstance(result.terminal_event, RunFinishedEvent):
                             self._drain_steering_prompts_to_front_of_queue()
 
                 if result is None:
@@ -465,14 +428,7 @@ class AgentSession:
                 if result.history is not None:
                     self._history = result.history
 
-                outcome = result.outcome
-                self._resolve_run(prompt.scheduled_run, outcome)
-                if outcome.stop_reason == "cancelled":
-                    self._publish_event(RunCancelledEvent())
-                elif outcome.stop_reason == "failed":
-                    self._publish_event(RunFailedEvent(error=outcome.error or "Run failed."))
-                else:
-                    self._publish_event(RunFinishedEvent(summary=outcome.summary))
+                self._publish_event(result.terminal_event)
 
     async def _run_prompt(self, history: list[BaseMessage]) -> _RunResult:
         """Run model and tool turns until the agent needs another user prompt.
@@ -480,10 +436,9 @@ class AgentSession:
         Args:
             history: The starting conversation history (includes the initial user prompt).
         Returns:
-            A `_RunResult` capturing the final history, outcome, and optional error.
+            A `_RunResult` containing updated history and its terminal event.
         """
         current_history = list(history)
-        run_messages = [history[-1]]
         streamer = self._completion_streamer or openai_stream_completion
         try:
             while True:
@@ -532,7 +487,6 @@ class AgentSession:
                 if completion_message is None:
                     raise RuntimeError("Completion streamer stopped without yielding a completion.")
                 current_history.append(completion_message)
-                run_messages.append(completion_message)
 
                 if completion_message.tool_calls:
                     completed_history: list[BaseMessage] | None = None
@@ -542,7 +496,6 @@ class AgentSession:
                         tools=self._tools,
                     ):
                         if isinstance(item, ToolMessageProduced):
-                            run_messages.append(item.message)
                             self._publish_event(item)
                             continue
                         if isinstance(item, ToolCallExecutionCompleted):
@@ -551,7 +504,6 @@ class AgentSession:
                     if completed_history is None:
                         raise RuntimeError("Tool execution stopped without returning history.")
                     if len(completed_history) < len(current_history):
-                        run_messages = list(completed_history[1:])
                         self._publish_event(HistoryResetEvent(history=tuple(completed_history)))
                     current_history = list(completed_history)
 
@@ -559,7 +511,6 @@ class AgentSession:
                 if steering_prompt is not None:
                     steering_message = UserMessage(content=steering_prompt.content)
                     current_history.append(steering_message)
-                    run_messages.append(steering_message)
                     self._publish_event(PromptStartedEvent(content=steering_prompt.content))
                     continue
 
@@ -568,27 +519,23 @@ class AgentSession:
 
                 return _RunResult(
                     history=current_history,
-                    outcome=RunOutcome(
-                        stop_reason="end_turn",
-                        messages=run_messages,
-                        summary=_get_latest_assistant_summary(current_history),
-                    ),
+                    terminal_event=RunFinishedEvent(),
                 )
         except ToolExecutionCancelled as exc:
             return _RunResult(
                 history=exc.history,
-                outcome=RunOutcome(stop_reason="cancelled", messages=run_messages),
+                terminal_event=RunCancelledEvent(),
             )
         except asyncio.CancelledError:
             return _RunResult(
                 history=current_history,
-                outcome=RunOutcome(stop_reason="cancelled", messages=run_messages),
+                terminal_event=RunCancelledEvent(),
             )
         except Exception as exc:
             logger.exception("Agent session run failed.")
             return _RunResult(
                 history=None,
-                outcome=RunOutcome(stop_reason="failed", messages=[], error=str(exc)),
+                terminal_event=RunFailedEvent(error=str(exc)),
             )
 
     async def _pop_next_steering_prompt(self) -> _QueuedPrompt | None:
@@ -613,9 +560,7 @@ class AgentSession:
         """
         while self._pending_steering_prompts:
             prompt = self._pending_steering_prompts.pop()
-            self._pending_prompts.appendleft(
-                _QueuedPrompt(content=prompt.content, scheduled_run=self._new_scheduled_run()),
-            )
+            self._pending_prompts.appendleft(_QueuedPrompt(content=prompt.content))
 
     def _publish_event(self, event: AgentSessionEvent) -> None:
         """Broadcast an event to all subscriber queues.
@@ -625,20 +570,3 @@ class AgentSession:
         """
         for queue in list(self._subscribers):
             queue.put_nowait(event)
-
-    @staticmethod
-    def _new_scheduled_run() -> ScheduledRun:
-        return ScheduledRun(completion=asyncio.get_running_loop().create_future())
-
-    @staticmethod
-    def _resolve_run(scheduled_run: ScheduledRun, outcome: RunOutcome) -> None:
-        if not scheduled_run.completion.done():
-            scheduled_run.completion.set_result(outcome)
-
-
-def _get_latest_assistant_summary(history: Sequence[BaseMessage]) -> str:
-    """Return the newest non-empty assistant text from committed history."""
-    for message in reversed(history):
-        if isinstance(message, AssistantMessage) and message.content:
-            return message.content
-    return ""

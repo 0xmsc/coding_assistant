@@ -208,7 +208,7 @@ async def test_cli_agent_smoke_runs_against_fake_openai(
             )
             try:
                 async with session.subscribe() as queue:
-                    assert await session.enqueue_prompt("Run the fake smoke test.") is not None
+                    assert await session.enqueue_prompt("Run the fake smoke test.") is True
                     while True:
                         event = await asyncio.wait_for(queue.get(), timeout=2)
                         if isinstance(event, RunFinishedEvent):
