@@ -800,9 +800,46 @@ class TestHelperFunctions:
             provider_config=ProviderConfig(base_url="https://api.openai.com/v1", api_key="test-key"),
         )
         assert models == [
-            ProviderModel(id="a-model", reasoning_efforts=()),
-            ProviderModel(id="z-model", reasoning_efforts=("high",)),
+            ProviderModel(id="a-model", reasoning_efforts=(), context_length=None),
+            ProviderModel(id="z-model", reasoning_efforts=("high",), context_length=None),
         ]
+
+    @pytest.mark.asyncio
+    async def test_list_models_extracts_openrouter_context_length(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": "anthropic/claude-3.7-sonnet", "context_length": 200000},
+                        {"id": "meta-llama/llama-3-8b", "context_length": 8192},
+                    ],
+                },
+            )
+
+        transport = httpx.MockTransport(handler)
+        models = await openai_model.list_models(
+            transport=transport,
+            provider_config=ProviderConfig(base_url="https://openrouter.ai/api/v1", api_key="test-key"),
+        )
+        assert models == [
+            ProviderModel(id="anthropic/claude-3.7-sonnet", reasoning_efforts=(), context_length=200000),
+            ProviderModel(id="meta-llama/llama-3-8b", reasoning_efforts=(), context_length=8192),
+        ]
+
+    @pytest.mark.parametrize(
+        ("item", "expected"),
+        [
+            ({"context_length": 128000}, 128000),
+            ({"context_length": 0}, None),
+            ({"context_length": -10}, None),
+            ({"context_length": "200000"}, None),
+            ({}, None),
+            ({"context_length": None}, None),
+        ],
+    )
+    def test_context_length_from_model(self, item: dict[str, Any], expected: int | None) -> None:
+        assert openai_model._context_length_from_model(item) == expected
 
     @pytest.mark.parametrize(
         ("item", "expected"),

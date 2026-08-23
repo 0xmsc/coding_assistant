@@ -38,6 +38,7 @@ class ProviderModel:
 
     id: str
     reasoning_efforts: tuple[str, ...] = ()
+    context_length: int | None = None
 
 
 async def _get_tools_payload(tools: Sequence[ToolDefinition]) -> list[dict[str, Any]]:
@@ -68,6 +69,13 @@ def _reasoning_efforts_from_model(
 
     efforts = reasoning.get("supported_efforts")
     return tuple(efforts) if isinstance(efforts, list) and all(isinstance(effort, str) for effort in efforts) else ()
+
+
+def _context_length_from_model(item: dict[str, Any]) -> int | None:
+    context_length = item.get("context_length")
+    if isinstance(context_length, int) and context_length > 0:
+        return context_length
+    return None
 
 
 async def list_models(
@@ -103,6 +111,7 @@ async def list_models(
             models[model_id] = ProviderModel(
                 id=model_id,
                 reasoning_efforts=_reasoning_efforts_from_model(item),
+                context_length=_context_length_from_model(item),
             )
     return [models[model_id] for model_id in sorted(models)]
 

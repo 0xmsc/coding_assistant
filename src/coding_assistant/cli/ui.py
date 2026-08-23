@@ -133,7 +133,7 @@ async def run_cli(args: Namespace) -> None:
         )
         session: AgentSessionProtocol
         if getattr(args, "auto_compact", True):
-            token_budget = resolve_auto_compaction_budget(
+            token_budget = await resolve_auto_compaction_budget(
                 args.model,
                 configured_budget=getattr(args, "auto_compact_token_budget", None),
             )
