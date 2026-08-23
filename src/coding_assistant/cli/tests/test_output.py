@@ -19,6 +19,7 @@ from coding_assistant.cli.output import (
     _format_tool_call,
     _truncate_value,
     format_prompt_preview,
+    format_session_footer,
     format_session_status,
     print_active_prompt,
     print_info_message,
@@ -302,25 +303,52 @@ class TestFormatSessionStatus:
         state = SessionState(running=False, usage=Usage(tokens=None, cost=0.01))
         assert format_session_status(state) == "idle — token count unavailable, $0.01"
 
-    def test_with_model_and_reasoning_and_context_window(self) -> None:
+    def test_footer_with_all_values(self) -> None:
         state = SessionState(running=False, usage=Usage(tokens=12345, cost=0.23))
-        result = format_session_status(state, model="openai/gpt-5.5 (high)")
-        assert result == "openai/gpt-5.5 (high) — 12k tokens, $0.23 — idle"
+        result = format_session_footer(
+            state,
+            model="openai/gpt-5.5 (high)",
+            context_window=200_000,
+            compaction_budget=160_000,
+        )
+        assert result == (
+            "idle · openai/gpt-5.5 (high)",
+            "12k/200k tokens · compact at 160k · $0.23",
+        )
 
-    def test_with_model_running_status(self) -> None:
-        state = SessionState(running=True, usage=Usage(tokens=5000, cost=0.10))
-        result = format_session_status(state, model="gpt-4o")
-        assert result == "gpt-4o — 5k tokens, $0.10 — running"
+    def test_footer_keeps_zero_values(self) -> None:
+        state = SessionState(running=True, usage=Usage(tokens=0, cost=0.0))
+        result = format_session_footer(
+            state,
+            model="gpt-4o",
+            context_window=128_000,
+            compaction_budget=102_400,
+        )
+        assert result == (
+            "running · gpt-4o",
+            "0/128k tokens · compact at 102k · $0.00",
+        )
 
-    def test_with_model_without_usage(self) -> None:
-        state = SessionState(running=True)
-        result = format_session_status(state, model="openai/gpt-5-mini")
-        assert result == "openai/gpt-5-mini — running"
+    def test_footer_omits_unavailable_current_usage_and_cost(self) -> None:
+        state = SessionState(running=True, usage=Usage(tokens=None, cost=None))
+        result = format_session_footer(
+            state,
+            model="openai/gpt-5-mini",
+            context_window=200_000,
+            compaction_budget=160_000,
+        )
+        assert result == (
+            "running · openai/gpt-5-mini",
+            "200k context · compact at 160k",
+        )
 
-    def test_with_unknown_model_context_window(self) -> None:
+    def test_footer_omits_unavailable_context_window(self) -> None:
         state = SessionState(running=False, usage=Usage(tokens=500, cost=0.01))
-        result = format_session_status(state, model="custom-local-model")
-        assert result == "custom-local-model — 500 tokens, $0.01 — idle"
+        result = format_session_footer(state, model="custom-local-model")
+        assert result == (
+            "idle · custom-local-model",
+            "500 tokens · compact off · $0.01",
+        )
 
 
 # =============================================================================

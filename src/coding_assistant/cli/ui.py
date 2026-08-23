@@ -16,7 +16,7 @@ from prompt_toolkit.filters import Condition
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import Float, FloatContainer, HSplit, Layout, VSplit, Window
-from prompt_toolkit.layout.containers import ConditionalContainer
+from prompt_toolkit.layout.containers import ConditionalContainer, WindowAlign
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.menus import CompletionsMenu
@@ -32,8 +32,8 @@ from coding_assistant.cli.commands import (
 )
 from coding_assistant.cli.output import (
     StreamRenderer,
+    format_session_footer,
     format_prompt_preview,
-    format_session_status,
     print_active_prompt,
     print_info_message,
     print_system_message,
@@ -55,7 +55,7 @@ from coding_assistant.core.agent_session import (
 )
 from coding_assistant.core.compacting_session import AutoCompactingSession
 from coding_assistant.infra.paths import get_app_cache_dir
-from coding_assistant.llm.context_window import resolve_auto_compaction_budget
+from coding_assistant.llm.context_window import resolve_model_limits
 from coding_assistant.llm.types import (
     ModelRetryEvent,
     ReasoningDeltaEvent,
@@ -131,24 +131,28 @@ async def run_cli(args: Namespace) -> None:
             model=args.model,
             tools=bundle.tools,
         )
+        model_limits = await resolve_model_limits(
+            args.model,
+            configured_budget=getattr(args, "auto_compact_token_budget", None),
+        )
         session: AgentSessionProtocol
         if getattr(args, "auto_compact", True):
-            token_budget = await resolve_auto_compaction_budget(
-                args.model,
-                configured_budget=getattr(args, "auto_compact_token_budget", None),
-            )
             session = AutoCompactingSession(
                 raw_session,
-                token_budget=token_budget,
+                token_budget=model_limits.compaction_budget,
             )
+            compaction_budget: int | None = model_limits.compaction_budget
         else:
             session = raw_session
+            compaction_budget = None
         try:
             await _run_ui(
                 session=session,
                 system_message=system_message,
                 history_path=get_app_cache_dir() / "history",
                 bell=getattr(args, "bell", True),
+                context_window=model_limits.context_window,
+                compaction_budget=compaction_budget,
             )
         finally:
             await session.close()
@@ -160,9 +164,16 @@ async def _run_ui(
     system_message: SystemMessage,
     history_path: Path,
     bell: bool = True,
+    context_window: int | None = None,
+    compaction_budget: int | None = None,
 ) -> None:
     """Run the terminal UI loop."""
-    application, answer_queue = _create_application(session, history_path)
+    application, answer_queue = _create_application(
+        session,
+        history_path,
+        context_window=context_window,
+        compaction_budget=compaction_budget,
+    )
 
     output_task = asyncio.create_task(_run_output(session=session, system_message=system_message, bell=bell))
 
@@ -194,11 +205,19 @@ async def _run_ui(
 
 
 def _create_application(
-    session: AgentSessionProtocol, history_path: Path
+    session: AgentSessionProtocol,
+    history_path: Path,
+    *,
+    context_window: int | None = None,
+    compaction_budget: int | None = None,
 ) -> tuple[Application[None], asyncio.Queue[PromptSubmission]]:
     """Build the terminal UI."""
     queued_window = _build_queued_window(session)
-    footer = _build_footer(session)
+    footer = _build_footer(
+        session,
+        context_window=context_window,
+        compaction_budget=compaction_budget,
+    )
 
     key_bindings = KeyBindings()
     answer_queue: asyncio.Queue[PromptSubmission] = asyncio.Queue()
@@ -321,14 +340,40 @@ def _build_queued_window(session: AgentSessionProtocol) -> ConditionalContainer:
     )
 
 
-def _build_footer(session: AgentSessionProtocol) -> Window:
+def _build_footer(
+    session: AgentSessionProtocol,
+    *,
+    context_window: int | None = None,
+    compaction_budget: int | None = None,
+) -> VSplit:
     model = getattr(session, "model", None)
     model_str = model if isinstance(model, str) else None
-    return Window(
-        content=FormattedTextControl(
-            text=lambda: [("class:footer", format_session_status(session.state, model=model_str))],
-            show_cursor=False,
-        ),
+
+    def footer_parts() -> tuple[str, str]:
+        return format_session_footer(
+            session.state,
+            model=model_str,
+            context_window=context_window,
+            compaction_budget=compaction_budget,
+        )
+
+    return VSplit(
+        [
+            Window(
+                content=FormattedTextControl(
+                    text=lambda: [("class:footer", footer_parts()[0])],
+                    show_cursor=False,
+                ),
+            ),
+            Window(
+                content=FormattedTextControl(
+                    text=lambda: [("class:footer", footer_parts()[1])],
+                    show_cursor=False,
+                ),
+                align=WindowAlign.RIGHT,
+                dont_extend_width=True,
+            ),
+        ],
         height=Dimension.exact(1),
     )
 

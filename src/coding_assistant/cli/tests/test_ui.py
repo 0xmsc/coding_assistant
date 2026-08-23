@@ -8,7 +8,7 @@ import pytest
 from prompt_toolkit.document import Document
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import FloatContainer, HSplit, VSplit, Window
-from prompt_toolkit.layout.containers import ConditionalContainer
+from prompt_toolkit.layout.containers import ConditionalContainer, WindowAlign
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from rich.markdown import Markdown
 
@@ -17,6 +17,7 @@ from coding_assistant.cli.output import StreamRenderer
 from coding_assistant.cli.ui import (
     PromptSubmitType,
     SlashCompleter,
+    _build_footer,
     _create_application,
     _format_queued_prompts,
     _render_agent_event,
@@ -120,6 +121,31 @@ def test_create_application_builds_non_fullscreen_interactive_ui(tmp_path: Path)
     input_window = input_row.children[1]
     assert isinstance(input_window, Window)
     assert input_window.wrap_lines() is True
+
+
+def test_footer_aligns_identity_left_and_metrics_right() -> None:
+    session = Mock()
+    session.model = "openai/gpt-5.5 (high)"
+    session.state = SessionState(running=False, usage=Usage(tokens=0, cost=0.0))
+
+    footer = _build_footer(
+        session,
+        context_window=200_000,
+        compaction_budget=160_000,
+    )
+
+    assert isinstance(footer, VSplit)
+    left, right = footer.children
+    assert isinstance(left, Window)
+    assert isinstance(right, Window)
+    assert isinstance(left.content, FormattedTextControl)
+    assert isinstance(right.content, FormattedTextControl)
+    assert callable(left.content.text)
+    assert callable(right.content.text)
+    assert left.content.text() == [("class:footer", "idle · openai/gpt-5.5 (high)")]
+    assert right.content.text() == [("class:footer", "0/200k tokens · compact at 160k · $0.00")]
+    assert right.align is WindowAlign.RIGHT
+    assert right.dont_extend_width()
 
 
 def test_create_application_submits_as_steering_with_enter(tmp_path: Path) -> None:

@@ -6,16 +6,38 @@ import pytest
 from coding_assistant.llm.context_window import (
     DEFAULT_COMPACTION_RATIO,
     DEFAULT_MODEL_CONTEXT_WINDOW,
+    ModelLimits,
     fetch_model_context_window,
     resolve_auto_compaction_budget,
+    resolve_model_limits,
 )
 from coding_assistant.llm.provider_config import ProviderConfig
 
 
 @pytest.mark.asyncio
 async def test_resolve_auto_compaction_budget_explicit_budget() -> None:
-    assert await resolve_auto_compaction_budget("gpt-4o", configured_budget=50_000) == 50_000
-    assert await resolve_auto_compaction_budget("unknown-model", configured_budget=12_345) == 12_345
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"data": []}))
+    assert await resolve_auto_compaction_budget("gpt-4o", configured_budget=50_000, transport=transport) == 50_000
+    assert (
+        await resolve_auto_compaction_budget("unknown-model", configured_budget=12_345, transport=transport) == 12_345
+    )
+
+
+@pytest.mark.asyncio
+async def test_configured_budget_is_clamped_to_80_percent_of_known_context_window() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "known-model", "context_length": 100_000}]},
+        )
+
+    limits = await resolve_model_limits(
+        "known-model",
+        configured_budget=90_000,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert limits == ModelLimits(context_window=100_000, compaction_budget=80_000)
 
 
 @pytest.mark.asyncio
@@ -84,12 +106,35 @@ async def test_fetch_model_context_window_from_provider_api() -> None:
     )
     assert context == 131072
 
+    limits = await resolve_model_limits(
+        "meta-llama/llama-3.3-70b-instruct",
+        transport=transport,
+        provider_config=config,
+    )
+    assert limits == ModelLimits(
+        context_window=131072,
+        compaction_budget=int(131072 * DEFAULT_COMPACTION_RATIO),
+    )
+
     budget = await resolve_auto_compaction_budget(
         "meta-llama/llama-3.3-70b-instruct",
         transport=transport,
         provider_config=config,
     )
     assert budget == int(131072 * DEFAULT_COMPACTION_RATIO)
+
+
+@pytest.mark.asyncio
+async def test_resolve_model_limits_keeps_unknown_context_separate_from_fallback_budget() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": []})
+
+    limits = await resolve_model_limits(
+        "unknown-model",
+        configured_budget=12_345,
+        transport=httpx.MockTransport(handler),
+    )
+    assert limits == ModelLimits(context_window=None, compaction_budget=12_345)
 
 
 @pytest.mark.asyncio

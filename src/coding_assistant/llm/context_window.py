@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import httpx
 
 from coding_assistant.llm.openai import _parse_model_and_reasoning, list_models
@@ -7,6 +9,12 @@ from coding_assistant.llm.provider_config import ProviderConfig
 
 DEFAULT_MODEL_CONTEXT_WINDOW = 128_000
 DEFAULT_COMPACTION_RATIO = 0.8
+
+
+@dataclass(frozen=True)
+class ModelLimits:
+    context_window: int | None
+    compaction_budget: int
 
 
 async def fetch_model_context_window(
@@ -27,6 +35,30 @@ async def fetch_model_context_window(
     return None
 
 
+async def resolve_model_limits(
+    model: str,
+    *,
+    configured_budget: int | None = None,
+    ratio: float = DEFAULT_COMPACTION_RATIO,
+    transport: httpx.AsyncBaseTransport | None = None,
+    provider_config: ProviderConfig | None = None,
+) -> ModelLimits:
+    """Resolve the advertised context window and effective compaction budget."""
+    context_window = await fetch_model_context_window(
+        model,
+        transport=transport,
+        provider_config=provider_config,
+    )
+    maximum_compaction_budget = int((context_window or DEFAULT_MODEL_CONTEXT_WINDOW) * ratio)
+    if configured_budget is None:
+        compaction_budget = maximum_compaction_budget
+    elif context_window is None:
+        compaction_budget = configured_budget
+    else:
+        compaction_budget = min(configured_budget, maximum_compaction_budget)
+    return ModelLimits(context_window=context_window, compaction_budget=compaction_budget)
+
+
 async def resolve_auto_compaction_budget(
     model: str,
     *,
@@ -36,10 +68,11 @@ async def resolve_auto_compaction_budget(
     provider_config: ProviderConfig | None = None,
 ) -> int:
     """Return the effective token budget before triggering automatic compaction."""
-    if configured_budget is not None:
-        return configured_budget
-    context_window = (
-        await fetch_model_context_window(model, transport=transport, provider_config=provider_config)
-        or DEFAULT_MODEL_CONTEXT_WINDOW
+    limits = await resolve_model_limits(
+        model,
+        configured_budget=configured_budget,
+        ratio=ratio,
+        transport=transport,
+        provider_config=provider_config,
     )
-    return int(context_window * ratio)
+    return limits.compaction_budget

@@ -185,13 +185,51 @@ def format_prompt_preview(content: str | list[dict[str, Any]]) -> str:
     return " ".join(content.split())
 
 
-def format_session_status(state: SessionState, *, model: str | None = None) -> str:
-    """Return one compact session status line for the prompt footer or worker output."""
-    status = "running" if state.running else ("paused" if state.paused else "idle")
+def _format_run_status(state: SessionState) -> str:
+    return "running" if state.running else ("paused" if state.paused else "idle")
+
+
+def format_session_footer(
+    state: SessionState,
+    *,
+    model: str | None = None,
+    context_window: int | None = None,
+    compaction_budget: int | None = None,
+) -> tuple[str, str]:
+    """Return the left and right sections of the interactive prompt footer."""
+    status = _format_run_status(state)
+    model_part: str | None = None
+    if isinstance(model, str) and model.strip():
+        base_model, reasoning = _parse_model_and_reasoning(model)
+        model_part = f"{base_model} ({reasoning})" if reasoning else base_model
+    left = f"{status} · {model_part}" if model_part else status
+
+    current_tokens = state.usage.tokens if state.usage is not None else None
+    if current_tokens is not None and context_window is not None:
+        token_usage = f"{format_tokens(current_tokens)}/{format_tokens(context_window)} tokens"
+    elif current_tokens is not None:
+        token_usage = f"{format_tokens(current_tokens)} tokens"
+    elif context_window is not None:
+        token_usage = f"{format_tokens(context_window)} context"
+    else:
+        token_usage = None
+
+    metrics = [token_usage] if token_usage is not None else []
+    metrics.append(f"compact at {format_tokens(compaction_budget)}" if compaction_budget is not None else "compact off")
+    if state.usage is not None and state.usage.cost is not None:
+        metrics.append(f"${state.usage.cost:.2f}")
+    return left, " · ".join(metrics)
+
+
+def format_session_status(state: SessionState) -> str:
+    """Return one compact session status line for worker output."""
+    status = _format_run_status(state)
 
     # Format usage section if present
     usage_part: str | None = None
-    if state.usage is not None and (state.usage.tokens, state.usage.cost) != (0, 0.0):
+    has_usage = state.usage is not None and (state.usage.tokens, state.usage.cost) != (0, 0.0)
+    if has_usage:
+        assert state.usage is not None
         if state.usage.tokens is None:
             tokens_str = "token count unavailable"
         else:
@@ -200,28 +238,12 @@ def format_session_status(state: SessionState, *, model: str | None = None) -> s
         cost_str = "cost unavailable" if state.usage.cost is None else f"${state.usage.cost:.2f}"
         usage_part = f"{tokens_str}, {cost_str}"
 
-    # Build model section if provided
-    model_part: str | None = None
-    if isinstance(model, str) and model.strip():
-        base_model, reasoning = _parse_model_and_reasoning(model)
-        if reasoning:
-            model_part = f"{base_model} ({reasoning})"
-        else:
-            model_part = base_model
-
-    if model_part:
-        if usage_part:
-            return f"{model_part} — {usage_part} — {status}"
-        return f"{model_part} — {status}"
-
     # Fallback when model is not provided
-    if state.running:
-        return "running"
-    if state.paused:
-        return "paused"
+    if state.running or state.paused:
+        return status
     if usage_part:
-        return f"idle — {usage_part}"
-    return "idle"
+        return f"{status} — {usage_part}"
+    return status
 
 
 def print_info_message(message: str) -> None:

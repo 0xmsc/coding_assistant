@@ -66,7 +66,10 @@ def parse_args() -> argparse.Namespace:
         "--auto-compact-token-budget",
         type=int,
         default=None,
-        help="Token budget threshold to trigger automatic compaction (defaults to 80%% of the model's maximum context window).",
+        help=(
+            "Token budget threshold to trigger automatic compaction "
+            "(defaults to, and is capped at, 80%% of the model's known context window)."
+        ),
     )
 
     return parser.parse_args()

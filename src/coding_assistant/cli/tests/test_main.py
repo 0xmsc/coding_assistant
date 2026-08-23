@@ -15,6 +15,7 @@ from coding_assistant.cli.main import main, parse_args
 from coding_assistant.core.agent_session import AgentSession, RunFinishedEvent
 from coding_assistant.core.compacting_session import AutoCompactingSession
 from coding_assistant.core.runtime import build_initial_system_message
+from coding_assistant.llm.context_window import ModelLimits
 from coding_assistant.llm.types import AssistantMessage, SystemMessage, UserMessage
 from coding_assistant.testing.fake_openai import run_fake_openai_server
 
@@ -130,6 +131,10 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
 
     with (
         patch("coding_assistant.cli.ui.create_cli_agent", fake_create_cli_agent),
+        patch(
+            "coding_assistant.cli.ui.resolve_model_limits",
+            new=AsyncMock(return_value=ModelLimits(context_window=200_000, compaction_budget=160_000)),
+        ),
         patch("coding_assistant.cli.ui._run_ui", new=AsyncMock()) as mock_run_ui,
     ):
         await run_cli(args)
@@ -145,6 +150,8 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     )
     assert mock_run_ui.await_args.kwargs["history_path"].name == "history"
     assert mock_run_ui.await_args.kwargs["bell"] is True
+    assert mock_run_ui.await_args.kwargs["context_window"] == 200_000
+    assert mock_run_ui.await_args.kwargs["compaction_budget"] == 160_000
 
 
 @pytest.mark.asyncio
@@ -170,6 +177,10 @@ async def test_run_cli_with_auto_compact_disabled_uses_raw_session() -> None:
 
     with (
         patch("coding_assistant.cli.ui.create_cli_agent", fake_create_cli_agent),
+        patch(
+            "coding_assistant.cli.ui.resolve_model_limits",
+            new=AsyncMock(return_value=ModelLimits(context_window=200_000, compaction_budget=160_000)),
+        ),
         patch("coding_assistant.cli.ui._run_ui", new=AsyncMock()) as mock_run_ui,
     ):
         await run_cli(args)
@@ -177,6 +188,8 @@ async def test_run_cli_with_auto_compact_disabled_uses_raw_session() -> None:
     assert mock_run_ui.await_args is not None
     session = mock_run_ui.await_args.kwargs["session"]
     assert type(session) is AgentSession
+    assert mock_run_ui.await_args.kwargs["context_window"] == 200_000
+    assert mock_run_ui.await_args.kwargs["compaction_budget"] is None
 
 
 @pytest.mark.asyncio
