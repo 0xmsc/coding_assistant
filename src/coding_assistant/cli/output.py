@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from typing import Any, Literal
 
 from rich import print as rich_print
@@ -251,4 +252,5 @@ def print_info_message(message: str) -> None:
 
 def ring_bell() -> None:
     """Emit a terminal alert bell."""
-    rich_print("\a", end="")
+    sys.stdout.write("\a")
+    sys.stdout.flush()
