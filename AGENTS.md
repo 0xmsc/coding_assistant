@@ -1,6 +1,7 @@
 # AGENTS.md
 
 - Make sure `just test` and `just lint` are green before committing.
+- This repository is hosted on Forgejo. Use the `fj` CLI for pull requests and other Forgejo operations.
 
 ## Philosophy & Architecture
 
