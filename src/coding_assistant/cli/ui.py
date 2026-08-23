@@ -60,7 +60,6 @@ from coding_assistant.llm.types import (
     SystemMessage,
     UserMessage,
 )
-from coding_assistant.remote.registry import register_remote_instance
 from coding_assistant.remote.server import start_worker_server
 
 
@@ -132,14 +131,13 @@ async def run_cli(args: Namespace) -> None:
         )
         try:
             async with start_worker_server(session=session) as worker_server:
-                async with register_remote_instance(endpoint=worker_server.endpoint):
-                    rich_print(f"[dim]Remote endpoint:[/dim] {worker_server.endpoint}")
-                    await _run_ui(
-                        session=session,
-                        system_message=system_message,
-                        history_path=get_app_cache_dir() / "history",
-                        bell=getattr(args, "bell", True),
-                    )
+                rich_print(f"[dim]Remote endpoint:[/dim] {worker_server.endpoint}")
+                await _run_ui(
+                    session=session,
+                    system_message=system_message,
+                    history_path=get_app_cache_dir() / "history",
+                    bell=getattr(args, "bell", True),
+                )
         finally:
             await session.close()
 

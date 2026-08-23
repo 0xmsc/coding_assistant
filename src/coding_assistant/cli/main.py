@@ -33,12 +33,6 @@ def parse_args() -> argparse.Namespace:
         help="Custom instructions for the agent.",
     )
     parser.add_argument(
-        "--mcp-servers",
-        nargs="*",
-        default=[],
-        help='MCP server configurations as JSON strings. Format: \'{"name": "server_name", "command": "command", "args": ["arg1", "arg2"], "env": ["ENV_VAR1", "ENV_VAR2"]}\' or \'{"name": "server_name", "url": "http://localhost:8000/sse"}\'',
-    )
-    parser.add_argument(
         "--wait-for-debugger",
         action=BooleanOptionalAction,
         default=False,

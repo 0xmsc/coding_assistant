@@ -52,7 +52,6 @@ def test_parse_args_with_multiple_flags() -> None:
 
 def test_build_cli_agent_config_from_args(tmp_path: Any) -> None:
     args = type("MockArgs", (), {})()
-    args.mcp_servers = []
     args.skills_directories = []
     args.instructions = []
 
@@ -103,7 +102,6 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     args = Namespace(
         bell=True,
         instructions=[],
-        mcp_servers=[],
         model="gpt-4",
         skills_directories=[],
         trace=False,
@@ -122,15 +120,9 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     async def fake_start_worker_server(*, session: Any) -> Any:
         yield RemoteServer(endpoint="ws://127.0.0.1:1234")
 
-    @asynccontextmanager
-    async def fake_register_remote_instance(*, endpoint: str) -> Any:
-        assert endpoint == "ws://127.0.0.1:1234"
-        yield
-
     with (
         patch("coding_assistant.cli.ui.create_cli_agent", fake_create_cli_agent),
         patch("coding_assistant.cli.ui.start_worker_server", fake_start_worker_server),
-        patch("coding_assistant.cli.ui.register_remote_instance", fake_register_remote_instance),
         patch("coding_assistant.cli.ui.rich_print") as mock_rich_print,
         patch("coding_assistant.cli.ui._run_ui", new=AsyncMock()) as mock_run_ui,
     ):
@@ -157,7 +149,6 @@ async def test_cli_agent_smoke_runs_against_fake_openai(
 ) -> None:
     args = Namespace(
         instructions=[],
-        mcp_servers=[],
         model="fake-model",
         skills_directories=[],
         trace=False,

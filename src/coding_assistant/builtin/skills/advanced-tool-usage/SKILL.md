@@ -20,7 +20,7 @@ When a tool's output is the input for another tool:
 
 ### 2. The Context Buffer Pattern
 When working with large files or long logs:
-- Redirect the reading tool (e.g., `cat`, `mcp_call`) to a temporary file.
+- Redirect the reading tool to a temporary file.
 - Use `rg` or `grep` to extract only the relevant lines from that file.
 
 ### 3. Workspace Management for Pipelines
@@ -37,7 +37,7 @@ When the user requests a result that is too large for markdown (e.g., a 5MB JSON
 ## When to use `redirect_tool_call`
 - The expected output is > 50 lines and the tool does NOT support its own redirection (e.g., searches, API calls).
 - The output is raw data (JSON, CSV) that needs further processing by another tool.
-- You are chaining an MCP tool into a local processing tool.
+- You are chaining a reading tool into a local processing tool.
 
 **Note**: For `shell_execute` or `python_execute`, use internal file writing instead of `redirect_tool_call` for maximum efficiency.
 

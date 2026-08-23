@@ -200,7 +200,6 @@ def test_docker_run_args_mount_session_workspace_and_start_worker() -> None:
         args.index("--add-host") : args.index("--add-host") + 2
     ]
     assert "Be concise." in args
-    assert "--mcp-servers" not in args
     assert "/skills" in args
 
 

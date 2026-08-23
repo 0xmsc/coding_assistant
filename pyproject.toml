@@ -11,7 +11,6 @@ dependencies = [
     "pydantic",
     "debugpy",
     "prompt-toolkit",
-    "fastmcp",
     "dacite",
     "json5",
     "httpx",

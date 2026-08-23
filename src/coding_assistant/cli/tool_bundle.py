@@ -7,10 +7,7 @@ from typing import Sequence
 from coding_assistant.infra.paths import get_builtin_instructions_dir, get_builtin_skills_dir
 from coding_assistant.llm.types import Tool
 from coding_assistant.tools.filesystem import create_filesystem_tools
-from coding_assistant.tools.mcp_manager import MCPServerConfig, MCPServerManager
-from coding_assistant.tools.mcp_tools import create_mcp_tools
 from coding_assistant.tools.python import create_python_tools
-from coding_assistant.tools.remote import WorkerToolRuntime
 from coding_assistant.tools.shell import create_shell_tools
 from coding_assistant.tools.skills import create_skill_tools, format_instructions_with_skills, load_skills
 from coding_assistant.tools.tasks import TaskManager, create_task_tools
@@ -23,14 +20,9 @@ class CliToolBundle:
     tools: list[Tool]
     instructions: str
     _task_manager: TaskManager
-    _worker_runtime: WorkerToolRuntime
-    _mcp_manager: MCPServerManager | None = None
 
     async def close(self) -> None:
         await self._task_manager.close()
-        if self._mcp_manager:
-            await self._mcp_manager.close()
-        await self._worker_runtime.close()
 
 
 def load_tool_instructions() -> str:
@@ -41,12 +33,10 @@ def load_tool_instructions() -> str:
 def create_cli_tool_bundle(
     *,
     skills_directories: Sequence[Path],
-    mcp_server_configs: Sequence[MCPServerConfig] = (),
     working_directory: Path | None = None,
 ) -> CliToolBundle:
     """Build the in-process tool bundle used by the interactive CLI."""
     task_manager = TaskManager()
-    worker_runtime = WorkerToolRuntime()
 
     skills = load_skills(skills_directories=[get_builtin_skills_dir(), *skills_directories])
     skill_tools = create_skill_tools(skills=skills)
@@ -58,21 +48,10 @@ def create_cli_tool_bundle(
         *create_filesystem_tools(),
         *create_task_tools(manager=task_manager),
         *skill_tools,
-        *worker_runtime.tools,
     ]
-
-    mcp_manager: MCPServerManager | None = None
-    if mcp_server_configs and working_directory:
-        mcp_manager = MCPServerManager(
-            configs=list(mcp_server_configs),
-            working_directory=working_directory,
-        )
-        tools.extend(create_mcp_tools(mcp_manager))
 
     return CliToolBundle(
         tools=tools,
         instructions=instructions,
         _task_manager=task_manager,
-        _worker_runtime=worker_runtime,
-        _mcp_manager=mcp_manager,
     )

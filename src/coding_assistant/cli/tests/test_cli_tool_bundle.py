@@ -5,7 +5,7 @@ from coding_assistant.llm.types import TextToolResult
 
 
 @pytest.mark.asyncio
-async def test_create_cli_tool_bundle_includes_remote_tools() -> None:
+async def test_create_cli_tool_bundle_tools() -> None:
     bundle = create_cli_tool_bundle(skills_directories=[])
     try:
         tool_names = {tool.name() for tool in bundle.tools}
@@ -17,6 +17,15 @@ async def test_create_cli_tool_bundle_includes_remote_tools() -> None:
             "skills_read",
             "shell_execute",
             "python_execute",
+            "filesystem_write_file",
+            "filesystem_edit_file",
+            "tasks_list_tasks",
+            "tasks_get_output",
+            "tasks_get_status",
+            "tasks_kill_task",
+            "tasks_remove_task",
+        } <= tool_names
+        assert {
             "remote_connect",
             "remotes_discover",
             "remotes_list",
@@ -25,8 +34,10 @@ async def test_create_cli_tool_bundle_includes_remote_tools() -> None:
             "remotes_wait_any",
             "remote_cancel",
             "remote_disconnect",
-        } <= tool_names
-        assert {
+            "mcp_start",
+            "mcp_stop",
+            "mcp_call",
+            "mcp_list_tools",
             "todo_add",
             "todo_list_todos",
             "todo_complete",

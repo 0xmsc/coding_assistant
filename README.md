@@ -58,7 +58,6 @@ The supported public interface is the CLI. Internal Python modules may change wi
 
 - `--model` selects the model to use. Required.
 - `--instructions` appends custom instructions.
-- `--mcp-servers` configures external MCP servers as JSON strings.
 - `--trace` writes model request and response traces.
 - `--wait-for-debugger` waits for a debugger on port `1234`.
 - `--skills-directories` loads additional skill directories.
@@ -72,41 +71,6 @@ The interactive CLI also supports:
 - `/help`
 - `/compact`
 - `/image <path-or-url>`
-
-## MCP Servers
-
-Pass MCP servers with repeated `--mcp-servers` flags as JSON strings. Both stdio-based servers and remote SSE servers are supported.
-
-Example stdio server:
-
-```json
-{
-  "name": "filesystem",
-  "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]
-}
-```
-
-Example SSE server:
-
-```json
-{
-  "name": "remote-mcp",
-  "url": "http://localhost:8000/sse"
-}
-```
-
-Arguments support variable substitution for `{home_directory}` and `{working_directory}`.
-
-Example:
-
-```bash
-coding-assistant \
-  --model "openrouter/openai/gpt-4o-mini" \
-  --mcp-servers \
-    '{"name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "{home_directory}"]}' \
-    '{"name": "fetch", "command": "uvx", "args": ["mcp-server-fetch"]}'
-```
 
 ## Built-In Local Tools
 
