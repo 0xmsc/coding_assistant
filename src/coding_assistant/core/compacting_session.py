@@ -7,6 +7,7 @@ from coding_assistant.core.agent_session import (
     AgentSession,
     AgentSessionEvent,
     PromptContent,
+    RunOutcome,
     ScheduledRun,
     SessionState,
 )
@@ -21,6 +22,7 @@ class AutoCompactingSession:
     def __init__(self, inner: AgentSession, *, token_budget: int | None) -> None:
         self._inner = inner
         self._token_budget = token_budget
+        self._compaction_scheduled = False
 
     @property
     def token_budget(self) -> int | None:
@@ -49,7 +51,12 @@ class AutoCompactingSession:
     async def enqueue_prompt(self, content: PromptContent) -> ScheduledRun | None:
         """Queue one prompt, triggering compaction first if usage exceeds budget."""
         if self._should_compact() and content != COMPACTION_PROMPT:
-            await self._inner.enqueue_prompt(COMPACTION_PROMPT)
+            self._compaction_scheduled = True
+            compaction_run = await self._inner.enqueue_prompt(COMPACTION_PROMPT)
+            if compaction_run is not None:
+                compaction_run.completion.add_done_callback(self._on_compaction_finished)
+            else:
+                self._compaction_scheduled = False
         return await self._inner.enqueue_prompt(content)
 
     async def enqueue_prompt_if_idle(self, content: PromptContent) -> ScheduledRun | None:
@@ -58,7 +65,12 @@ class AutoCompactingSession:
             state = self._inner.state
             if state.running or state.paused or state.pending_prompts:
                 return None
-            await self._inner.enqueue_prompt(COMPACTION_PROMPT)
+            self._compaction_scheduled = True
+            compaction_run = await self._inner.enqueue_prompt(COMPACTION_PROMPT)
+            if compaction_run is not None:
+                compaction_run.completion.add_done_callback(self._on_compaction_finished)
+            else:
+                self._compaction_scheduled = False
             return await self._inner.enqueue_prompt(content)
         return await self._inner.enqueue_prompt_if_idle(content)
 
@@ -67,8 +79,21 @@ class AutoCompactingSession:
         return await self._inner.enqueue_steering_prompt(content)
 
     async def pop_last_queued_prompt(self) -> PromptContent | None:
-        """Remove and return the last queued prompt, or None if the queue is empty."""
-        return await self._inner.pop_last_queued_prompt()
+        """Remove and return the last queued prompt, or None if the queue is empty.
+
+        If popping the prompt leaves an auto-scheduled compaction prompt orphaned,
+        pops and cancels that compaction prompt as well.
+        """
+        popped = await self._inner.pop_last_queued_prompt()
+        if popped is None:
+            return None
+
+        state = self._inner.state
+        if self._compaction_scheduled and state.pending_prompts == (COMPACTION_PROMPT,):
+            await self._inner.pop_last_queued_prompt()
+            self._compaction_scheduled = False
+
+        return popped
 
     async def cancel_current_run(self, *, pause_queue: bool = False) -> bool:
         """Cancel the active run, optionally pausing the queue."""
@@ -80,10 +105,17 @@ class AutoCompactingSession:
 
     async def close(self) -> None:
         """Stop the session loop and cancel any active or queued work."""
+        self._compaction_scheduled = False
         await self._inner.close()
 
     def _should_compact(self) -> bool:
-        if self._token_budget is None:
+        if self._token_budget is None or self._compaction_scheduled:
             return False
-        usage = self._inner.state.usage
+        state = self._inner.state
+        if COMPACTION_PROMPT in state.pending_prompts:
+            return False
+        usage = state.usage
         return usage is not None and usage.tokens is not None and usage.tokens >= self._token_budget
+
+    def _on_compaction_finished(self, _future: asyncio.Future[RunOutcome]) -> None:
+        self._compaction_scheduled = False

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, Mock
@@ -8,6 +9,7 @@ import pytest
 
 from coding_assistant.core.agent_session import (
     AgentSession,
+    RunOutcome,
     ScheduledRun,
     SessionState,
 )
@@ -36,6 +38,10 @@ class ScriptedStreamer:
         yield CompletionEvent(completion=completion)
 
 
+def _make_scheduled_run() -> ScheduledRun:
+    return ScheduledRun(completion=asyncio.get_running_loop().create_future())
+
+
 @pytest.mark.asyncio
 async def test_compacting_session_properties_delegation() -> None:
     inner = Mock(spec=AgentSession)
@@ -55,7 +61,7 @@ async def test_compacting_session_properties_delegation() -> None:
 async def test_enqueue_prompt_under_budget_does_not_compact() -> None:
     inner = Mock(spec=AgentSession)
     inner.state = SessionState(running=False, usage=Usage(tokens=5_000, cost=0.05))
-    inner.enqueue_prompt = AsyncMock(return_value=Mock(spec=ScheduledRun))
+    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
 
     session = AutoCompactingSession(inner, token_budget=10_000)
     result = await session.enqueue_prompt("Hello")
@@ -69,7 +75,7 @@ async def test_enqueue_prompt_under_budget_does_not_compact() -> None:
 async def test_enqueue_prompt_over_budget_triggers_compaction_first() -> None:
     inner = Mock(spec=AgentSession)
     inner.state = SessionState(running=False, usage=Usage(tokens=15_000, cost=0.15))
-    inner.enqueue_prompt = AsyncMock(return_value=Mock(spec=ScheduledRun))
+    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
 
     session = AutoCompactingSession(inner, token_budget=10_000)
     result = await session.enqueue_prompt("Continue the task")
@@ -84,7 +90,7 @@ async def test_enqueue_prompt_over_budget_triggers_compaction_first() -> None:
 async def test_enqueue_prompt_over_budget_with_compaction_prompt_does_not_duplicate() -> None:
     inner = Mock(spec=AgentSession)
     inner.state = SessionState(running=False, usage=Usage(tokens=15_000, cost=0.15))
-    inner.enqueue_prompt = AsyncMock(return_value=Mock(spec=ScheduledRun))
+    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
 
     session = AutoCompactingSession(inner, token_budget=10_000)
     result = await session.enqueue_prompt(COMPACTION_PROMPT)
@@ -95,10 +101,38 @@ async def test_enqueue_prompt_over_budget_with_compaction_prompt_does_not_duplic
 
 
 @pytest.mark.asyncio
+async def test_enqueue_multiple_prompts_over_budget_triggers_single_compaction() -> None:
+    inner = Mock(spec=AgentSession)
+    inner.state = SessionState(running=True, pending_prompts=(), usage=Usage(tokens=15_000, cost=0.15))
+    compaction_fut: asyncio.Future[RunOutcome] = asyncio.get_running_loop().create_future()
+    compaction_run = ScheduledRun(completion=compaction_fut)
+    run1 = ScheduledRun(completion=asyncio.get_running_loop().create_future())
+    run2 = ScheduledRun(completion=asyncio.get_running_loop().create_future())
+
+    inner.enqueue_prompt = AsyncMock(side_effect=[compaction_run, run1, run2])
+
+    session = AutoCompactingSession(inner, token_budget=10_000)
+    await session.enqueue_prompt("Prompt 1")
+
+    # While compaction is scheduled, enqueuing a second prompt should not trigger another compaction
+    inner.state = SessionState(
+        running=True,
+        pending_prompts=(COMPACTION_PROMPT, "Prompt 1"),
+        usage=Usage(tokens=15_000, cost=0.15),
+    )
+    await session.enqueue_prompt("Prompt 2")
+
+    assert inner.enqueue_prompt.call_count == 3
+    assert inner.enqueue_prompt.await_args_list[0].args == (COMPACTION_PROMPT,)
+    assert inner.enqueue_prompt.await_args_list[1].args == ("Prompt 1",)
+    assert inner.enqueue_prompt.await_args_list[2].args == ("Prompt 2",)
+
+
+@pytest.mark.asyncio
 async def test_enqueue_prompt_with_none_budget_never_compacts() -> None:
     inner = Mock(spec=AgentSession)
     inner.state = SessionState(running=False, usage=Usage(tokens=1_000_000, cost=10.0))
-    inner.enqueue_prompt = AsyncMock(return_value=Mock(spec=ScheduledRun))
+    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
 
     session = AutoCompactingSession(inner, token_budget=None)
     result = await session.enqueue_prompt("Big context")
@@ -112,7 +146,7 @@ async def test_enqueue_prompt_with_none_budget_never_compacts() -> None:
 async def test_enqueue_prompt_with_missing_token_count_never_compacts() -> None:
     inner = Mock(spec=AgentSession)
     inner.state = SessionState(running=False, usage=Usage(tokens=None, cost=None))
-    inner.enqueue_prompt = AsyncMock(return_value=Mock(spec=ScheduledRun))
+    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
 
     session = AutoCompactingSession(inner, token_budget=10_000)
     result = await session.enqueue_prompt("No tokens tracked")
@@ -126,7 +160,7 @@ async def test_enqueue_prompt_with_missing_token_count_never_compacts() -> None:
 async def test_enqueue_prompt_if_idle_under_budget() -> None:
     inner = Mock(spec=AgentSession)
     inner.state = SessionState(running=False, usage=Usage(tokens=5_000, cost=0.05))
-    inner.enqueue_prompt_if_idle = AsyncMock(return_value=Mock(spec=ScheduledRun))
+    inner.enqueue_prompt_if_idle = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
 
     session = AutoCompactingSession(inner, token_budget=10_000)
     result = await session.enqueue_prompt_if_idle("Idle prompt")
@@ -139,7 +173,7 @@ async def test_enqueue_prompt_if_idle_under_budget() -> None:
 async def test_enqueue_prompt_if_idle_over_budget_when_idle() -> None:
     inner = Mock(spec=AgentSession)
     inner.state = SessionState(running=False, usage=Usage(tokens=15_000, cost=0.15))
-    inner.enqueue_prompt = AsyncMock(return_value=Mock(spec=ScheduledRun))
+    inner.enqueue_prompt = AsyncMock(side_effect=lambda _content: _make_scheduled_run())
 
     session = AutoCompactingSession(inner, token_budget=10_000)
     result = await session.enqueue_prompt_if_idle("Idle prompt")
@@ -161,6 +195,58 @@ async def test_enqueue_prompt_if_idle_over_budget_when_busy() -> None:
 
     assert result is None
     inner.enqueue_prompt.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pop_last_queued_prompt_cleans_orphaned_compaction() -> None:
+    pending = [COMPACTION_PROMPT, "Prompt 1"]
+    inner = Mock(spec=AgentSession)
+
+    def mock_pop() -> str | None:
+        if pending:
+            return pending.pop()
+        return None
+
+    inner.pop_last_queued_prompt = AsyncMock(side_effect=mock_pop)
+
+    def get_state() -> SessionState:
+        return SessionState(running=True, pending_prompts=tuple(pending), usage=Usage(tokens=15_000, cost=0.15))
+
+    type(inner).state = property(lambda _self: get_state())
+
+    session = AutoCompactingSession(inner, token_budget=10_000)
+    session._compaction_scheduled = True
+
+    popped = await session.pop_last_queued_prompt()
+    assert popped == "Prompt 1"
+    assert len(pending) == 0  # COMPACTION_PROMPT was popped and cleaned up
+    assert session._compaction_scheduled is False
+
+
+@pytest.mark.asyncio
+async def test_pop_last_queued_prompt_with_multiple_prompts_preserves_compaction() -> None:
+    pending = [COMPACTION_PROMPT, "Prompt 1", "Prompt 2"]
+    inner = Mock(spec=AgentSession)
+
+    def mock_pop() -> str | None:
+        if pending:
+            return pending.pop()
+        return None
+
+    inner.pop_last_queued_prompt = AsyncMock(side_effect=mock_pop)
+
+    def get_state() -> SessionState:
+        return SessionState(running=True, pending_prompts=tuple(pending), usage=Usage(tokens=15_000, cost=0.15))
+
+    type(inner).state = property(lambda _self: get_state())
+
+    session = AutoCompactingSession(inner, token_budget=10_000)
+    session._compaction_scheduled = True
+
+    popped = await session.pop_last_queued_prompt()
+    assert popped == "Prompt 2"
+    assert pending == [COMPACTION_PROMPT, "Prompt 1"]  # Compaction still preserved for Prompt 1
+    assert session._compaction_scheduled is True
 
 
 @pytest.mark.asyncio

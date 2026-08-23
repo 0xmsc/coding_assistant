@@ -18,8 +18,6 @@ from coding_assistant.core.agent_session import (
     HistoryResetEvent,
     RunOutcome,
 )
-from coding_assistant.core.compacting_session import AutoCompactingSession
-from coding_assistant.llm.context_window import resolve_auto_compaction_budget
 from coding_assistant.core.session_updates import (
     HistoryResetUpdate,
     MessageAddedUpdate,
@@ -60,14 +58,12 @@ class WorkerRuntimeConfig:
     tools: list[Tool]
     completion_streamer: CompletionStreamer | None = None
     finish_metadata_provider: Callable[[], JsonObject | None] | None = None
-    auto_compact: bool = True
-    auto_compact_token_budget: int | None = None
 
 
 @dataclass
 class _WorkerConnectionState:
     session_id: str | None = None
-    session: AgentSession | AutoCompactingSession | None = None
+    session: AgentSession | None = None
     run_task: asyncio.Task[None] | None = None
     cancel_requested_session_id: str | None = None
     run_ready: asyncio.Event = field(default_factory=asyncio.Event)
@@ -170,7 +166,7 @@ async def _execute_run(
     response_id: int | str,
     session_id: str,
     prompt: str | list[JsonObject],
-    session: AgentSession | AutoCompactingSession,
+    session: AgentSession,
     state: _WorkerConnectionState,
     runtime: WorkerRuntimeConfig,
     finished: asyncio.Event,
@@ -242,21 +238,12 @@ async def _handle_run(
         await websocket.send(jsonrpc_error(response_id, ERROR_SERVER, "Worker already has a run."))
         return
 
-    raw_session = AgentSession(
+    session = AgentSession(
         history=messages,
         model=runtime.model,
         tools=runtime.tools,
         completion_streamer=runtime.completion_streamer,
     )
-    session: AgentSession | AutoCompactingSession
-    if runtime.auto_compact:
-        token_budget = resolve_auto_compaction_budget(
-            runtime.model,
-            configured_budget=runtime.auto_compact_token_budget,
-        )
-        session = AutoCompactingSession(raw_session, token_budget=token_budget)
-    else:
-        session = raw_session
     state.session_id = session_id
     state.session = session
     state.run_task = asyncio.create_task(
