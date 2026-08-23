@@ -8,18 +8,6 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-DEFAULT_PROCESS_ENV_KEYS = {
-    "HOME",
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "LOGNAME",
-    "PATH",
-    "SHELL",
-    "TERM",
-    "USER",
-}
-
 MAX_RETAINED_OUTPUT_BYTES = 5_000_000
 
 
@@ -143,11 +131,6 @@ class ProcessHandle:
         await self.wait(timeout=5.0)
 
 
-def default_process_env() -> dict[str, str]:
-    """Return the default scrubbed environment for tool subprocesses."""
-    return {key: value for key, value in os.environ.items() if key in DEFAULT_PROCESS_ENV_KEYS}
-
-
 async def start_process(
     *,
     args: Sequence[str],
@@ -157,16 +140,12 @@ async def start_process(
     """Start a process and return a handle to it."""
     stdin = asyncio.subprocess.PIPE if stdin_input is not None else asyncio.subprocess.DEVNULL
 
-    merged_env = default_process_env()
-    if env:
-        merged_env.update(env)
-
     process = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
         stdin=stdin,
-        env=merged_env,
+        env=env,
         start_new_session=os.name == "posix",
     )
 
