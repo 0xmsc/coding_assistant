@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import re
 from argparse import Namespace
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
@@ -11,21 +10,26 @@ from typing import Any
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.completion import CompleteEvent, Completer, Completion, WordCompleter
+from prompt_toolkit.completion import CompleteEvent, Completer, Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import HSplit, Layout, VSplit, Window
+from prompt_toolkit.layout import Float, FloatContainer, HSplit, Layout, VSplit, Window
 from prompt_toolkit.layout.containers import ConditionalContainer
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
+from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
 from rich import print as rich_print
 
 from coding_assistant.cli.agent import build_cli_agent_config, create_cli_agent
-from coding_assistant.cli.image import get_image
+from coding_assistant.cli.commands import (
+    SlashCommand,
+    execute_slash_command,
+    get_default_commands,
+)
 from coding_assistant.cli.output import (
     StreamRenderer,
     format_prompt_preview,
@@ -66,19 +70,29 @@ class PromptSubmitType(Enum):
     QUEUED = auto()  # TAB - added to back of queue
 
 
-CLI_COMMANDS = ["/exit", "/help", "/compact", "/image"]
+CLI_COMMANDS = [cmd.name for cmd in get_default_commands()]
 
 
 class SlashCompleter(Completer):
     """Autocomplete slash-prefixed commands."""
 
-    def __init__(self, words: list[str]):
-        self.pattern = re.compile(r"/[a-zA-Z0-9_]*")
-        self.word_completer = WordCompleter(words, pattern=self.pattern)
+    def __init__(self, commands: Sequence[SlashCommand | str]):
+        self._commands = commands
 
     def get_completions(self, document: Document, complete_event: CompleteEvent) -> Iterable[Completion]:
-        if document.text_before_cursor.startswith("/"):
-            yield from self.word_completer.get_completions(document, complete_event)
+        text = document.text_before_cursor
+        if text.startswith("/"):
+            query = text.lower()
+            for cmd in self._commands:
+                name = cmd.name if isinstance(cmd, SlashCommand) else cmd
+                desc = cmd.description if isinstance(cmd, SlashCommand) else None
+                if name.lower().startswith(query):
+                    yield Completion(
+                        text=name,
+                        start_position=-len(text),
+                        display=name,
+                        display_meta=desc,
+                    )
 
 
 def _create_history(history_path: Path) -> FileHistory:
@@ -219,8 +233,9 @@ def _create_application(
         answer_queue.put_nowait(PromptSubmission(content=buff.text, type=st))
         return False
 
+    commands = get_default_commands()
     buff = Buffer(
-        completer=SlashCompleter(CLI_COMMANDS),
+        completer=SlashCompleter(commands),
         complete_while_typing=True,
         history=_create_history(history_path),
         multiline=True,
@@ -229,19 +244,29 @@ def _create_application(
     input_buffer.append(buff)
 
     layout = Layout(
-        HSplit(
-            [
-                Window(height=Dimension.exact(1)),
-                queued_window,
-                VSplit(
-                    [
-                        Window(
-                            FormattedTextControl([("class:prompt", "> ")], show_cursor=False), width=Dimension.exact(2)
-                        ),
-                        Window(BufferControl(buffer=buff), height=Dimension(min=1, max=10), wrap_lines=True),
-                    ],
+        FloatContainer(
+            content=HSplit(
+                [
+                    Window(height=Dimension.exact(1)),
+                    queued_window,
+                    VSplit(
+                        [
+                            Window(
+                                FormattedTextControl([("class:prompt", "> ")], show_cursor=False),
+                                width=Dimension.exact(2),
+                            ),
+                            Window(BufferControl(buffer=buff), height=Dimension(min=1, max=10), wrap_lines=True),
+                        ],
+                    ),
+                    footer,
+                ],
+            ),
+            floats=[
+                Float(
+                    xcursor=True,
+                    ycursor=True,
+                    content=CompletionsMenu(max_height=8, scroll_offset=1),
                 ),
-                footer,
             ],
         ),
         focused_element=buff,
@@ -251,7 +276,18 @@ def _create_application(
         Application(
             layout=layout,
             key_bindings=key_bindings,
-            style=Style.from_dict({"prompt": "#bbbbbb", "queued": "#888888", "footer": "#888888"}),
+            style=Style.from_dict(
+                {
+                    "prompt": "#bbbbbb",
+                    "queued": "#888888",
+                    "footer": "#888888",
+                    "completion-menu": "bg:#2b2b2b #ffffff",
+                    "completion-menu.completion": "bg:#2b2b2b #cccccc",
+                    "completion-menu.completion.current": "bg:#444444 #ffffff bold",
+                    "completion-menu.meta": "bg:#2b2b2b #888888",
+                    "completion-menu.meta.completion.current": "bg:#444444 #aaaaaa",
+                }
+            ),
             full_screen=False,
             refresh_interval=0.1,
         ),
@@ -368,26 +404,22 @@ class PromptSubmission:
     type: PromptSubmitType
 
 
-async def _handle_submission(*, session: AgentSession, content: str, submit_type: PromptSubmitType) -> bool:
+async def _handle_submission(
+    *,
+    session: AgentSession,
+    content: str,
+    submit_type: PromptSubmitType,
+    commands: Sequence[SlashCommand] | None = None,
+) -> bool:
     """Handle one prompt and return True to exit."""
-    stripped = content.strip()
-    if stripped == "/exit":
-        return True
-    if stripped == "/help":
-        rich_print("Available commands:\n  /exit\n  /help\n  /compact\n  /image <path-or-url>")
-        return False
-    if stripped == "/compact":
-        return not await session.enqueue_prompt(
-            "Immediately compact our conversation so far by using the `compact_conversation` tool.",
-        )
-    if stripped.startswith("/image"):
-        parts = stripped.split(maxsplit=1)
-        if len(parts) < 2:
-            rich_print("[red]/image requires a path or URL[/red]")
-            return False
-        data_url = await get_image(parts[1])
-        image_content = [{"type": "image_url", "image_url": {"url": data_url}}]
-        return not await session.enqueue_prompt(image_content)
+    active_commands = commands if commands is not None else get_default_commands()
+    command_result = await execute_slash_command(
+        commands=active_commands,
+        content=content,
+        session=session,
+    )
+    if command_result is not None:
+        return command_result
 
     if submit_type == PromptSubmitType.STEERING:
         return not await session.enqueue_steering_prompt(content)
