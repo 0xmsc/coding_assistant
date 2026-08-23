@@ -9,10 +9,10 @@ from coding_assistant.llm import openai as openai_model
 from coding_assistant.llm.openai import (
     ProviderModel,
     _extract_usage,
-    _get_base_url_and_api_key,
     _merge_chunks,
     _prepare_messages,
 )
+from coding_assistant.llm.provider_config import ProviderConfig, resolve_provider_config
 from coding_assistant.llm.types import (
     AssistantMessage,
     Completion,
@@ -744,29 +744,23 @@ class TestIntegration:
 class TestHelperFunctions:
     """Tests for helper functions."""
 
-    def test_get_base_url_and_api_key_openai(self) -> None:
-        url, key = _get_base_url_and_api_key({"OPENAI_API_KEY": "sk-openai"})
-        assert url == "https://api.openai.com/v1"
-        assert key == "sk-openai"
+    def test_resolve_provider_config_openai(self) -> None:
+        config = resolve_provider_config({"OPENAI_API_KEY": "sk-openai"})
+        assert config == ProviderConfig(base_url="https://api.openai.com/v1", api_key="sk-openai")
 
-    def test_get_base_url_and_api_key_custom(self) -> None:
-        url, key = _get_base_url_and_api_key(
-            {"OPENAI_BASE_URL": "https://custom.api/v1", "OPENAI_API_KEY": "sk-custom"}
-        )
-        assert url == "https://custom.api/v1"
-        assert key == "sk-custom"
+    def test_resolve_provider_config_custom(self) -> None:
+        config = resolve_provider_config({"OPENAI_BASE_URL": "https://custom.api/v1", "OPENAI_API_KEY": "sk-custom"})
+        assert config == ProviderConfig(base_url="https://custom.api/v1", api_key="sk-custom")
 
-    def test_get_base_url_and_api_key_openrouter(self) -> None:
-        url, key = _get_base_url_and_api_key({"OPENROUTER_API_KEY": "sk-openrouter"})
-        assert url == "https://openrouter.ai/api/v1"
-        assert key == "sk-openrouter"
+    def test_resolve_provider_config_openrouter(self) -> None:
+        config = resolve_provider_config({"OPENROUTER_API_KEY": "sk-openrouter"})
+        assert config == ProviderConfig(base_url="https://openrouter.ai/api/v1", api_key="sk-openrouter")
 
-    def test_get_base_url_and_api_key_custom_with_openrouter_key(self) -> None:
-        url, key = _get_base_url_and_api_key(
+    def test_resolve_provider_config_custom_with_openrouter_key(self) -> None:
+        config = resolve_provider_config(
             {"OPENAI_BASE_URL": "https://custom.api/v1", "OPENROUTER_API_KEY": "sk-openrouter"}
         )
-        assert url == "https://custom.api/v1"
-        assert key == "sk-openrouter"
+        assert config == ProviderConfig(base_url="https://custom.api/v1", api_key="sk-openrouter")
 
     def test_prepare_messages(self) -> None:
         msgs = [
@@ -803,8 +797,7 @@ class TestHelperFunctions:
         transport = httpx.MockTransport(handler)
         models = await openai_model.list_models(
             transport=transport,
-            base_url="https://api.openai.com/v1",
-            api_key="test-key",
+            provider_config=ProviderConfig(base_url="https://api.openai.com/v1", api_key="test-key"),
         )
         assert models == [
             ProviderModel(id="a-model", reasoning_efforts=()),
@@ -855,6 +848,7 @@ async def collect_events(
     model: str,
     tools: Any,
     transport: httpx.AsyncBaseTransport,
+    provider_config: ProviderConfig | None = None,
     retry_delay: float | None = 0.0,
 ) -> list[Any]:
     return [
@@ -864,8 +858,7 @@ async def collect_events(
             model=model,
             tools=tools,
             transport=transport,
-            base_url="https://api.openai.com/v1",
-            api_key="fake_key",
+            provider_config=provider_config or ProviderConfig(base_url="https://api.openai.com/v1", api_key="fake_key"),
             retry_delay=retry_delay,
         )
     ]
