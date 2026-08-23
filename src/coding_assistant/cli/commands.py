@@ -8,6 +8,7 @@ from rich import print as rich_print
 
 from coding_assistant.cli.image import get_image
 from coding_assistant.core.agent_session import AgentSession
+from coding_assistant.core.compacting_session import COMPACTION_PROMPT, AutoCompactingSession
 
 
 class SlashCommand(ABC):
@@ -31,7 +32,7 @@ class SlashCommand(ABC):
         return ""
 
     @abstractmethod
-    async def execute(self, *, session: AgentSession, args: str) -> bool:
+    async def execute(self, *, session: AgentSession | AutoCompactingSession, args: str) -> bool:
         """Execute the command.
 
         Returns:
@@ -49,7 +50,7 @@ class ExitCommand(SlashCommand):
     def description(self) -> str:
         return "Exit the assistant"
 
-    async def execute(self, *, session: AgentSession, args: str) -> bool:
+    async def execute(self, *, session: AgentSession | AutoCompactingSession, args: str) -> bool:
         return True
 
 
@@ -65,7 +66,7 @@ class HelpCommand(SlashCommand):
     def description(self) -> str:
         return "Show available commands"
 
-    async def execute(self, *, session: AgentSession, args: str) -> bool:
+    async def execute(self, *, session: AgentSession | AutoCompactingSession, args: str) -> bool:
         commands = self._commands_provider if self._commands_provider is not None else get_default_commands()
         lines = ["Available commands:"]
         for cmd in commands:
@@ -84,10 +85,8 @@ class CompactCommand(SlashCommand):
     def description(self) -> str:
         return "Immediately compact conversation history"
 
-    async def execute(self, *, session: AgentSession, args: str) -> bool:
-        return not await session.enqueue_prompt(
-            "Immediately compact our conversation so far by using the `compact_conversation` tool.",
-        )
+    async def execute(self, *, session: AgentSession | AutoCompactingSession, args: str) -> bool:
+        return not await session.enqueue_prompt(COMPACTION_PROMPT)
 
 
 class ImageCommand(SlashCommand):
@@ -103,7 +102,7 @@ class ImageCommand(SlashCommand):
     def usage(self) -> str:
         return "<path-or-url>"
 
-    async def execute(self, *, session: AgentSession, args: str) -> bool:
+    async def execute(self, *, session: AgentSession | AutoCompactingSession, args: str) -> bool:
         stripped_args = args.strip()
         if not stripped_args:
             rich_print("[red]/image requires a path or URL[/red]")
@@ -133,7 +132,7 @@ async def execute_slash_command(
     *,
     commands: Sequence[SlashCommand],
     content: str,
-    session: AgentSession,
+    session: AgentSession | AutoCompactingSession,
 ) -> bool | None:
     """If content is a slash command, execute it and return the exit boolean; otherwise return None."""
     stripped = content.strip()

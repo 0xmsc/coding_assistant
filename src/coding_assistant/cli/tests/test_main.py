@@ -13,6 +13,7 @@ from coding_assistant.cli.agent import (
 )
 from coding_assistant.cli.main import main, parse_args
 from coding_assistant.core.agent_session import AgentSession, RunFinishedEvent
+from coding_assistant.core.compacting_session import AutoCompactingSession
 from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.llm.types import AssistantMessage, SystemMessage, UserMessage
 from coding_assistant.testing.fake_openai import run_fake_openai_server
@@ -29,6 +30,8 @@ def test_parse_args_defaults() -> None:
         args = parse_args()
         assert args.skills_directories == []
         assert args.bell is True
+        assert args.auto_compact is True
+        assert args.auto_compact_token_budget is None
 
 
 def test_parse_args_no_bell() -> None:
@@ -41,6 +44,16 @@ def test_parse_args_bell() -> None:
     with patch("sys.argv", ["coding-assistant", "--model", "gpt-4", "--bell"]):
         args = parse_args()
         assert args.bell is True
+
+
+def test_parse_args_auto_compact_flags() -> None:
+    with patch(
+        "sys.argv",
+        ["coding-assistant", "--model", "gpt-4", "--no-auto-compact", "--auto-compact-token-budget", "50000"],
+    ):
+        args = parse_args()
+        assert args.auto_compact is False
+        assert args.auto_compact_token_budget == 50000
 
 
 def test_parse_args_with_multiple_flags() -> None:
@@ -123,7 +136,7 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
 
     assert mock_run_ui.await_args is not None
     session = mock_run_ui.await_args.kwargs["session"]
-    assert isinstance(session, AgentSession)
+    assert isinstance(session, AutoCompactingSession)
     assert session.history == [
         SystemMessage(content="Follow the repo instructions."),
     ]
@@ -132,6 +145,38 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     )
     assert mock_run_ui.await_args.kwargs["history_path"].name == "history"
     assert mock_run_ui.await_args.kwargs["bell"] is True
+
+
+@pytest.mark.asyncio
+async def test_run_cli_with_auto_compact_disabled_uses_raw_session() -> None:
+    args = Namespace(
+        bell=True,
+        instructions=[],
+        model="gpt-4",
+        skills_directories=[],
+        trace=False,
+        wait_for_debugger=False,
+        auto_compact=False,
+        auto_compact_token_budget=None,
+    )
+
+    @asynccontextmanager
+    async def fake_create_cli_agent(*, config: Any) -> Any:
+        del config
+        yield CliAgentBundle(
+            tools=[],
+            instructions="Follow the repo instructions.",
+        )
+
+    with (
+        patch("coding_assistant.cli.ui.create_cli_agent", fake_create_cli_agent),
+        patch("coding_assistant.cli.ui._run_ui", new=AsyncMock()) as mock_run_ui,
+    ):
+        await run_cli(args)
+
+    assert mock_run_ui.await_args is not None
+    session = mock_run_ui.await_args.kwargs["session"]
+    assert type(session) is AgentSession
 
 
 @pytest.mark.asyncio

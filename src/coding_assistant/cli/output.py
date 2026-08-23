@@ -9,6 +9,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 
 from coding_assistant.core.agent_session import SessionState
+from coding_assistant.llm.context_window import get_model_context_window
 from coding_assistant.llm.openai import _parse_model_and_reasoning
 from coding_assistant.llm.types import AssistantMessage, SystemMessage, ToolCall
 
@@ -166,18 +167,6 @@ def print_active_prompt(content: str | list[dict[str, Any]]) -> None:
     rich_print()  # leading blank
     for line in lines:
         rich_print(f"  [bold cyan]▌[/bold cyan] [white]{line}[/white]")
-
-
-def get_model_context_window(model: str) -> int | None:
-    """Return estimated maximum context window in tokens for known models."""
-    model_lower = model.lower()
-    if "gemini" in model_lower:
-        return 1_000_000
-    if any(k in model_lower for k in ("gpt-5", "claude", "o1", "o3")):
-        return 200_000
-    if any(k in model_lower for k in ("gpt-4", "deepseek")):
-        return 128_000
-    return None
 
 
 def format_tokens(count: int) -> str:
