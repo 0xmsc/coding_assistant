@@ -4,8 +4,8 @@ import asyncio
 from contextlib import AbstractAsyncContextManager
 
 from coding_assistant.core.agent_session import (
-    AgentSession,
     AgentSessionEvent,
+    AgentSessionProtocol,
     PromptContent,
     RunOutcome,
     ScheduledRun,
@@ -19,7 +19,7 @@ COMPACTION_PROMPT = "Immediately compact our conversation so far by using the `c
 class AutoCompactingSession:
     """Wraps an AgentSession to automatically compact history when token usage crosses a threshold."""
 
-    def __init__(self, inner: AgentSession, *, token_budget: int | None) -> None:
+    def __init__(self, inner: AgentSessionProtocol, *, token_budget: int | None) -> None:
         self._inner = inner
         self._token_budget = token_budget
         self._compaction_scheduled = False

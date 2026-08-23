@@ -44,6 +44,7 @@ from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.core.agent_session import (
     AgentSession,
     AgentSessionEvent,
+    AgentSessionProtocol,
     AssistantMessageCompletedEvent,
     AssistantMessageDeltaEvent,
     HistoryResetEvent,
@@ -102,7 +103,7 @@ def _create_history(history_path: Path) -> FileHistory:
     return FileHistory(str(history_path))
 
 
-def _format_queued_prompts(session: AgentSession | AutoCompactingSession) -> str:
+def _format_queued_prompts(session: AgentSessionProtocol) -> str:
     """Format pending prompts for display above input line."""
     state = session.state
     if not state.pending_prompts:
@@ -130,7 +131,7 @@ async def run_cli(args: Namespace) -> None:
             model=args.model,
             tools=bundle.tools,
         )
-        session: AgentSession | AutoCompactingSession
+        session: AgentSessionProtocol
         if getattr(args, "auto_compact", True):
             token_budget = resolve_auto_compaction_budget(
                 args.model,
@@ -155,7 +156,7 @@ async def run_cli(args: Namespace) -> None:
 
 async def _run_ui(
     *,
-    session: AgentSession | AutoCompactingSession,
+    session: AgentSessionProtocol,
     system_message: SystemMessage,
     history_path: Path,
     bell: bool = True,
@@ -193,7 +194,7 @@ async def _run_ui(
 
 
 def _create_application(
-    session: AgentSession | AutoCompactingSession, history_path: Path
+    session: AgentSessionProtocol, history_path: Path
 ) -> tuple[Application[None], asyncio.Queue[PromptSubmission]]:
     """Build the terminal UI."""
     queued_window = _build_queued_window(session)
@@ -307,7 +308,7 @@ def _create_application(
     )
 
 
-def _build_queued_window(session: AgentSession | AutoCompactingSession) -> ConditionalContainer:
+def _build_queued_window(session: AgentSessionProtocol) -> ConditionalContainer:
     return ConditionalContainer(
         content=Window(
             content=FormattedTextControl(
@@ -320,7 +321,7 @@ def _build_queued_window(session: AgentSession | AutoCompactingSession) -> Condi
     )
 
 
-def _build_footer(session: AgentSession | AutoCompactingSession) -> Window:
+def _build_footer(session: AgentSessionProtocol) -> Window:
     model = getattr(session, "model", None)
     model_str = model if isinstance(model, str) else None
     return Window(
@@ -332,7 +333,7 @@ def _build_footer(session: AgentSession | AutoCompactingSession) -> Window:
     )
 
 
-async def _unqueue_to_buffer(session: AgentSession | AutoCompactingSession, buf: Buffer) -> None:
+async def _unqueue_to_buffer(session: AgentSessionProtocol, buf: Buffer) -> None:
     """Move last queued prompt back to input buffer."""
     content = await session.pop_last_queued_prompt()
     if content is not None:
@@ -342,7 +343,7 @@ async def _unqueue_to_buffer(session: AgentSession | AutoCompactingSession, buf:
 
 async def _run_output(
     *,
-    session: AgentSession | AutoCompactingSession,
+    session: AgentSessionProtocol,
     system_message: SystemMessage,
     bell: bool = True,
 ) -> None:
@@ -426,7 +427,7 @@ class PromptSubmission:
 
 async def _handle_submission(
     *,
-    session: AgentSession | AutoCompactingSession,
+    session: AgentSessionProtocol,
     content: str,
     submit_type: PromptSubmitType,
     commands: Sequence[SlashCommand] | None = None,

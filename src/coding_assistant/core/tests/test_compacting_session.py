@@ -9,6 +9,7 @@ import pytest
 
 from coding_assistant.core.agent_session import (
     AgentSession,
+    AgentSessionProtocol,
     RunOutcome,
     ScheduledRun,
     SessionState,
@@ -40,6 +41,25 @@ class ScriptedStreamer:
 
 def _make_scheduled_run() -> ScheduledRun:
     return ScheduledRun(completion=asyncio.get_running_loop().create_future())
+
+
+@pytest.mark.asyncio
+async def test_agent_session_protocol_conformance() -> None:
+    inner = Mock(spec=AgentSession)
+    inner.model = "test-model"
+    inner.history = []
+    inner.state = SessionState(running=False)
+    inner.subscribe = Mock()
+    inner.enqueue_prompt = AsyncMock()
+    inner.enqueue_prompt_if_idle = AsyncMock()
+    inner.enqueue_steering_prompt = AsyncMock()
+    inner.pop_last_queued_prompt = AsyncMock()
+    inner.cancel_current_run = AsyncMock()
+    inner.resume = AsyncMock()
+    inner.close = AsyncMock()
+
+    session = AutoCompactingSession(inner, token_budget=10_000)
+    assert isinstance(session, AgentSessionProtocol)
 
 
 @pytest.mark.asyncio

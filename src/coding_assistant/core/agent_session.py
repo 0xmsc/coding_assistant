@@ -6,7 +6,7 @@ from collections import deque
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Protocol, runtime_checkable
 from uuid import uuid4
 
 from coding_assistant.core.tool_calls import (
@@ -146,6 +146,58 @@ class _RunResult:
 
     history: list[BaseMessage] | None  # Updated transcript, or None on fatal error
     outcome: RunOutcome
+
+
+@runtime_checkable
+class AgentSessionProtocol(Protocol):
+    """Structural interface for live agent sessions and session wrappers."""
+
+    @property
+    def model(self) -> str:
+        """Return the configured model name."""
+        ...
+
+    @property
+    def state(self) -> SessionState:
+        """Return the current run state and pending prompt count."""
+        ...
+
+    @property
+    def history(self) -> list[BaseMessage]:
+        """Return a copy of the committed transcript history."""
+        ...
+
+    def subscribe(self) -> AbstractAsyncContextManager[asyncio.Queue[AgentSessionEvent]]:
+        """Subscribe to streamed session events."""
+        ...
+
+    async def enqueue_prompt(self, content: PromptContent) -> ScheduledRun | None:
+        """Queue one prompt."""
+        ...
+
+    async def enqueue_prompt_if_idle(self, content: PromptContent) -> ScheduledRun | None:
+        """Queue one prompt only when the session has no running or pending work."""
+        ...
+
+    async def enqueue_steering_prompt(self, content: PromptContent) -> bool:
+        """Inject one prompt into the active run at the next agent-loop boundary."""
+        ...
+
+    async def pop_last_queued_prompt(self) -> PromptContent | None:
+        """Remove and return the last queued prompt, or None if the queue is empty."""
+        ...
+
+    async def cancel_current_run(self, *, pause_queue: bool = False) -> bool:
+        """Cancel the active run, optionally pausing the queue."""
+        ...
+
+    async def resume(self) -> bool:
+        """Resume consuming queued prompts after an explicit pause."""
+        ...
+
+    async def close(self) -> None:
+        """Stop the session loop and cancel any active or queued work."""
+        ...
 
 
 class AgentSession:
