@@ -41,6 +41,7 @@ from coding_assistant.core.agent_session import (
     AgentSessionEvent,
     AssistantMessageCompletedEvent,
     AssistantMessageDeltaEvent,
+    HistoryResetEvent,
     PromptStartedEvent,
     RunCancelledEvent,
     RunFailedEvent,
@@ -52,6 +53,7 @@ from coding_assistant.llm.types import (
     ReasoningDeltaEvent,
     StatusEvent,
     SystemMessage,
+    UserMessage,
 )
 from coding_assistant.remote.registry import register_remote_instance
 from coding_assistant.remote.server import start_worker_server
@@ -331,6 +333,12 @@ def _render_agent_event(
     if isinstance(event, PromptStartedEvent):
         renderer.finish()
         print_active_prompt(event.content)
+        return
+    if isinstance(event, HistoryResetEvent):
+        renderer.finish()
+        for message in event.history:
+            if isinstance(message, UserMessage):
+                print_active_prompt(message.content)
         return
     if isinstance(event, AssistantMessageCompletedEvent) and event.completion.message.tool_calls:
         message = event.completion.message
