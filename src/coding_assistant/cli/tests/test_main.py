@@ -15,7 +15,6 @@ from coding_assistant.cli.main import main, parse_args
 from coding_assistant.core.agent_session import AgentSession, RunFinishedEvent
 from coding_assistant.core.runtime import build_initial_system_message
 from coding_assistant.llm.types import AssistantMessage, SystemMessage, UserMessage
-from coding_assistant.remote.server import RemoteServer
 from coding_assistant.testing.fake_openai import run_fake_openai_server
 
 
@@ -116,14 +115,8 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
             instructions="Follow the repo instructions.",
         )
 
-    @asynccontextmanager
-    async def fake_start_worker_server(*, session: Any) -> Any:
-        yield RemoteServer(endpoint="ws://127.0.0.1:1234")
-
     with (
         patch("coding_assistant.cli.ui.create_cli_agent", fake_create_cli_agent),
-        patch("coding_assistant.cli.ui.start_worker_server", fake_start_worker_server),
-        patch("coding_assistant.cli.ui.rich_print") as mock_rich_print,
         patch("coding_assistant.cli.ui._run_ui", new=AsyncMock()) as mock_run_ui,
     ):
         await run_cli(args)
@@ -139,7 +132,6 @@ async def test_run_cli_prints_system_message_before_running_agent() -> None:
     )
     assert mock_run_ui.await_args.kwargs["history_path"].name == "history"
     assert mock_run_ui.await_args.kwargs["bell"] is True
-    mock_rich_print.assert_called_once()
 
 
 @pytest.mark.asyncio

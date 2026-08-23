@@ -1,7 +1,7 @@
 # Architecture
 
 This project has one core agent runtime with several ways to drive it. The
-terminal CLI, local remote endpoint, manager service, and worker service should
+terminal CLI, manager service, and worker service should
 share the same core types instead of inventing separate event or history models.
 
 ## Packages
@@ -26,22 +26,18 @@ executed by `AgentSession` and the core agent loop, not by the manager or the
 JSON-RPC transport.
 
 `coding_assistant.cli` owns the interactive terminal application. It builds an
-agent, creates an `AgentSession` directly, renders its runtime events in the
-terminal, and may expose a local single-session remote endpoint for other
-clients. The terminal UI itself is not a JSON-RPC client.
+agent, creates an `AgentSession` directly, and renders its runtime events in the
+terminal. The terminal UI itself is not a JSON-RPC client.
 
 `coding_assistant.remote` owns JSON-RPC framing and protocol serialization.
 
 - `jsonrpc.py` contains the custom ACP-inspired JSON-RPC helpers and common payload
   validation.
-- `control.py` exposes an existing live `AgentSession` and contains the shared
-  run-result and event-to-update serializers.
+- `control.py` contains the shared run-result and event-to-update serializers.
 - `protocol.py` converts between core messages/session updates and JSON-RPC
   payloads.
 - `client.py` exposes separate `RemoteSessionClient` and `WorkerClient` APIs on
   top of shared JSON-RPC connection machinery.
-- `server.py` contains the local single-session endpoint used around an
-  existing `AgentSession`.
 
 `coding_assistant.manager` owns durable web-session state and manager-facing
 RPC.
@@ -73,22 +69,6 @@ terminal UI
 The CLI is the simplest runtime path. It creates and owns one local
 `AgentSession`. History is in memory for that process unless a caller adds a
 separate persistence layer.
-
-### Local Remote Endpoint
-
-```text
-remote client
-  -> remote/server.py
-  -> existing AgentSession
-  -> projected session updates
-```
-
-This endpoint wraps one already-created `AgentSession`. A connected client
-observes all projected session events, including activity initiated by the CLI
-or another local source. A `session/prompt` response awaits the exact
-`ScheduledRun` created for that request, so observation never changes request
-ownership. It is useful for CLI-owned remote access and tests. It is not the
-web manager.
 
 ### Managed Web Sessions
 
@@ -134,8 +114,7 @@ should use core dataclasses such as `BaseMessage`, `AgentSessionEvent`, and
 Every remotely observed `AgentSession` emits provisional `session/update`
 notifications independently of whether this connection submitted a prompt.
 Live `session/prompt` and private `_worker/run` responses carry run status.
-Persistence is still caller-specific: the manager persists complete messages,
-while CLI-owned local remote callers do not.
+The manager persists complete messages.
 
 Assistant streaming uses one message id per model attempt. Deltas create a
 provisional draft, and the complete assistant message finalizes that same id.

@@ -60,7 +60,6 @@ from coding_assistant.llm.types import (
     SystemMessage,
     UserMessage,
 )
-from coding_assistant.remote.server import start_worker_server
 
 
 class PromptSubmitType(Enum):
@@ -130,14 +129,12 @@ async def run_cli(args: Namespace) -> None:
             tools=bundle.tools,
         )
         try:
-            async with start_worker_server(session=session) as worker_server:
-                rich_print(f"[dim]Remote endpoint:[/dim] {worker_server.endpoint}")
-                await _run_ui(
-                    session=session,
-                    system_message=system_message,
-                    history_path=get_app_cache_dir() / "history",
-                    bell=getattr(args, "bell", True),
-                )
+            await _run_ui(
+                session=session,
+                system_message=system_message,
+                history_path=get_app_cache_dir() / "history",
+                bell=getattr(args, "bell", True),
+            )
         finally:
             await session.close()
 

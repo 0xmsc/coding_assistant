@@ -1,11 +1,10 @@
 # Coding Assistant
 
-Coding Assistant is a Python-based CLI for coding workflows. It combines a streaming agent loop, built-in local tools, and optional external MCP servers.
+Coding Assistant is a Python-based CLI for coding workflows. It combines a streaming agent loop, built-in local tools, and prompt-driven skills.
 
 ## Key Features
 
 - Built-in local shell, Python, filesystem, TODO, and background-task tools.
-- Support for external MCP servers over stdio or SSE.
 - Prompt-toolkit powered interactive CLI.
 - Bundled default instructions and skills, plus optional extra skill directories.
 - No built-in sandboxing; run it inside an external sandbox if you need isolation.
@@ -17,7 +16,6 @@ Coding Assistant is a Python-based CLI for coding workflows. It combines a strea
 - API keys for your chosen OpenAI-compatible provider. Set `OPENAI_API_KEY`, or
   set `OPENROUTER_API_KEY` for OpenRouter. Set `OPENAI_BASE_URL` for other
   OpenAI-compatible providers with custom endpoints.
-- Optional dependencies for external MCP servers, such as Node.js/npm for NPM-based servers.
 
 ## Installation
 
@@ -63,7 +61,6 @@ The supported public interface is the CLI. Internal Python modules may change wi
 - `--skills-directories` loads additional skill directories.
 
 The CLI is interactive.
-At startup it also prints a localhost websocket endpoint; remote clients can prompt the same live session when it is idle, stream updates, and cancel the current run.
 
 The interactive CLI also supports:
 

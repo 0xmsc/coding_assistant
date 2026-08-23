@@ -5,12 +5,11 @@ Client Protocol (ACP). It uses ACP method names and payload shapes where they
 fit, but it is not a complete ACP implementation.
 
 The interactive CLI does not use this protocol for its own terminal UI. It
-creates and drives `AgentSession` directly, and currently exposes a local
-single-session remote endpoint as an additional endpoint for other clients.
+creates and drives `AgentSession` directly.
 
 The web chat integration should not introduce a separate remote mode. The core
 and CLI use `AgentSessionEvent` for in-process runtime events. Remote endpoints,
-the web manager, workers/subagents, and persistence use `SessionUpdate` for the
+the web manager, workers, and persistence use `SessionUpdate` for the
 smaller set of updates that cross a process boundary. JSON-RPC is their single
 transport serialization.
 
@@ -53,11 +52,6 @@ terminal UI
   -> AgentSession events
   -> CLI renderer
 ```
-
-The CLI may continue to expose a local remote endpoint for one live session,
-but that endpoint should use the same protocol helpers as manager-controlled
-remote workers/subagents. The CLI terminal UI itself does not need to become a
-JSON-RPC client.
 
 ## Compatibility Boundary
 
@@ -1177,9 +1171,7 @@ or private `_worker/*` methods into a module named as if it were pure ACP.
 
 ## Current Limitations
 
-- The current CLI-owned remote endpoint is local-only and single-session.
 - No permission request round trip before tools execute.
-- The CLI-owned live endpoint has no model or configuration methods.
 - No prompt queueing or steering through the remote protocol.
 - Workspace seeding/import is not part of v1.
 
