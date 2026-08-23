@@ -288,7 +288,7 @@ def _make_agent_session(*, completion_streamer: Any) -> AgentSession:
 
 
 @pytest.mark.asyncio
-async def test__run_output_renders_system_message_and_streamed_content() -> None:
+async def test_run_output_renders_system_message_and_streamed_content() -> None:
     session = _make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="Hello from the worker")]),
     )
@@ -320,7 +320,7 @@ async def test__run_output_renders_system_message_and_streamed_content() -> None
 
 
 @pytest.mark.asyncio
-async def test__run_output_prints_started_prompt_before_run_output() -> None:
+async def test_run_output_prints_started_prompt_before_run_output() -> None:
     session = _make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="Hello from the worker")]),
     )
@@ -347,7 +347,7 @@ async def test__run_output_prints_started_prompt_before_run_output() -> None:
 
 
 @pytest.mark.asyncio
-async def test__run_output_prints_tool_calls_without_extra_spacing() -> None:
+async def test_run_output_prints_tool_calls_without_extra_spacing() -> None:
     session = _make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
@@ -396,7 +396,7 @@ async def test__run_output_prints_tool_calls_without_extra_spacing() -> None:
 
 
 @pytest.mark.asyncio
-async def test__run_output_prints_status_events_as_info_lines() -> None:
+async def test_run_output_prints_status_events_as_info_lines() -> None:
     session = _make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
@@ -421,7 +421,7 @@ async def test__run_output_prints_status_events_as_info_lines() -> None:
 
 
 @pytest.mark.asyncio
-async def test__run_output_prints_reasoning_deltas_before_content() -> None:
+async def test_run_output_prints_reasoning_deltas_before_content() -> None:
     session = _make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="unused")]),
     )
