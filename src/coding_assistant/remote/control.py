@@ -13,10 +13,16 @@ from coding_assistant.core.agent_session import (
     AgentSessionEvent,
     AssistantMessageCompletedEvent,
     AssistantMessageDeltaEvent,
+    HistoryResetEvent,
     RunOutcome,
     ScheduledRun,
 )
-from coding_assistant.core.session_updates import MessageAddedUpdate, MessageDeltaUpdate, SessionUpdate
+from coding_assistant.core.session_updates import (
+    HistoryResetUpdate,
+    MessageAddedUpdate,
+    MessageDeltaUpdate,
+    SessionUpdate,
+)
 from coding_assistant.core.tool_calls import ToolMessageProduced
 from coding_assistant.remote.jsonrpc import (
     ERROR_INVALID_PARAMS,
@@ -80,6 +86,11 @@ def session_updates_from_agent_event(event: AgentSessionEvent) -> list[SessionUp
         return [MessageAddedUpdate(message_id=event.message_id, message=event.completion.message)]
     if isinstance(event, ToolMessageProduced):
         return [MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=event.message)]
+    if isinstance(event, HistoryResetEvent):
+        return [
+            HistoryResetUpdate(),
+            *(MessageAddedUpdate(message_id=f"msg_{uuid4().hex}", message=message) for message in event.history),
+        ]
     return []
 
 

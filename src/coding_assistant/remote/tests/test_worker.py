@@ -258,7 +258,7 @@ async def test__run_output_renders_system_message_and_streamed_content() -> None
     session = make_agent_session(
         completion_streamer=ScriptedStreamer([AssistantMessage(content="Hello from the worker")]),
     )
-    system_message = SystemMessage(content="System")
+    system_message = SystemMessage(content="# Instructions\n\nTest instructions")
 
     with (
         patch("coding_assistant.cli.ui.print_system_message") as mock_print_system,
@@ -707,5 +707,79 @@ async def test_worker_server_streams_tool_messages_before_final_answer() -> None
                 "message": {"role": "assistant", "content": "Done"},
             },
         ]
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_server_streams_history_reset_on_compaction() -> None:
+    compact_call = ToolCall(
+        id="call-compact",
+        function=FunctionCall(
+            name="compact_conversation",
+            arguments='{"summary": "Summary of conversation"}',
+        ),
+    )
+    session = make_agent_session(
+        completion_streamer=ScriptedStreamer(
+            [
+                AssistantMessage(tool_calls=[compact_call]),
+                AssistantMessage(content="After compaction"),
+            ],
+        ),
+    )
+
+    try:
+        async with start_worker_server(session=session) as worker_server:
+            async with connect(worker_server.endpoint) as websocket:
+                session_id = await _open_acp_session(websocket)
+
+                await websocket.send(
+                    jsonrpc_request(
+                        3,
+                        "session/prompt",
+                        {
+                            "sessionId": session_id,
+                            "prompt": [text_block("Please compact")],
+                        },
+                    ),
+                )
+
+                updates: list[dict[str, Any]] = []
+                response: dict[str, Any] | None = None
+                while response is None:
+                    payload = parse_jsonrpc_message(await websocket.recv())
+                    if payload.get("method") == "session/update":
+                        updates.append(payload)
+                    else:
+                        response = payload
+
+        assert response == {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "result": {
+                "messages": messages_to_jsonrpc(
+                    [
+                        UserMessage(
+                            content="A summary of your conversation until now:\n\nSummary of conversation\n\nPlease continue your work.",
+                        ),
+                        AssistantMessage(content="After compaction"),
+                    ],
+                ),
+                "stopReason": "end_turn",
+            },
+        }
+        update_payloads = [update["params"]["update"] for update in updates]
+        assert any(payload.get("sessionUpdate") == "history_reset" for payload in update_payloads)
+        reset_index = next(
+            i for i, payload in enumerate(update_payloads) if payload.get("sessionUpdate") == "history_reset"
+        )
+        post_reset_updates = update_payloads[reset_index:]
+        assert post_reset_updates[0] == {"sessionUpdate": "history_reset"}
+        assert post_reset_updates[1]["sessionUpdate"] == "message_added"
+        assert post_reset_updates[1]["message"]["role"] == "system"
+        assert post_reset_updates[2]["sessionUpdate"] == "message_added"
+        assert post_reset_updates[2]["message"]["role"] == "user"
+        assert "Summary of conversation" in post_reset_updates[2]["message"]["content"]
     finally:
         await session.close()

@@ -57,6 +57,13 @@ class PromptStartedEvent:
 
 
 @dataclass(frozen=True)
+class HistoryResetEvent:
+    """Event emitted when the session history is replaced or truncated."""
+
+    history: Sequence[BaseMessage]
+
+
+@dataclass(frozen=True)
 class AssistantMessageDeltaEvent:
     """One streamed text delta for an assistant message attempt."""
 
@@ -100,6 +107,7 @@ AgentSessionEvent = (
     | ModelRetryEvent
     | StatusEvent
     | PromptStartedEvent
+    | HistoryResetEvent
     | ToolMessageProduced
     | RunFinishedEvent
     | RunCancelledEvent
@@ -492,7 +500,8 @@ class AgentSession:
                         raise RuntimeError("Tool execution stopped without returning history.")
                     if len(completed_history) < len(current_history):
                         run_messages = list(completed_history[1:])
-                    current_history = completed_history
+                        self._publish_event(HistoryResetEvent(history=tuple(completed_history)))
+                    current_history = list(completed_history)
 
                 steering_prompt = await self._pop_next_steering_prompt()
                 if steering_prompt is not None:

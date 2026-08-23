@@ -12,6 +12,7 @@ from coding_assistant.core.agent_session import (
     AgentSession,
     AgentSessionEvent,
     AssistantMessageCompletedEvent,
+    HistoryResetEvent,
     PromptStartedEvent,
     RunCancelledEvent,
     RunFailedEvent,
@@ -704,5 +705,38 @@ async def test_agent_session_handles_incomplete_usage() -> None:
         await wait_for_event(queue, RunFinishedEvent)
 
         assert session.state.usage == Usage(tokens=None, cost=None)
+
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_agent_session_emits_history_reset_event_on_compaction() -> None:
+    compact_call = ToolCall(
+        id="call-compact",
+        function=FunctionCall(name="compact_conversation", arguments='{"summary": "Summary of earlier steps"}'),
+    )
+    streamer = ControlledStreamer(
+        [
+            StreamStep(message=AssistantMessage(tool_calls=[compact_call])),
+            StreamStep(message=AssistantMessage(content="Continuing work after compaction.")),
+        ],
+    )
+    session = make_session(completion_streamer=streamer)
+
+    async with session.subscribe() as queue:
+        assert await session.enqueue_prompt("Initial task") is not None
+
+        event1 = await wait_for_event(queue, PromptStartedEvent)
+        assert isinstance(event1, PromptStartedEvent)
+        assert event1.content == "Initial task"
+
+        event2 = await wait_for_event(queue, HistoryResetEvent)
+        assert isinstance(event2, HistoryResetEvent)
+        assert len(event2.history) == 2
+        assert event2.history[0] == SystemMessage(content="# Instructions\n\nTest instructions")
+        assert isinstance(event2.history[1], UserMessage)
+        assert "Summary of earlier steps" in str(event2.history[1].content)
+
+        await wait_for_event(queue, RunFinishedEvent)
 
     await session.close()
