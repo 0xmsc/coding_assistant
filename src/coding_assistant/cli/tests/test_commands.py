@@ -65,6 +65,21 @@ async def test_image_command_loads_image_and_enqueues_prompt() -> None:
 
 
 @pytest.mark.asyncio
+async def test_image_command_handles_image_load_failure() -> None:
+    session = Mock()
+    cmd = ImageCommand()
+
+    with (
+        patch("coding_assistant.cli.commands.get_image", new=AsyncMock(side_effect=RuntimeError("Download failed"))),
+        patch("coding_assistant.cli.commands.rich_print") as mock_print,
+    ):
+        result = await cmd.execute(session=session, args="https://example.com/bad.png")
+        assert result is False
+        mock_print.assert_called_once()
+        assert "Failed to load image: Download failed" in mock_print.call_args[0][0]
+
+
+@pytest.mark.asyncio
 async def test_help_command_prints_registered_commands() -> None:
     session = Mock()
     cmd = HelpCommand()
@@ -101,6 +116,18 @@ async def test_execute_slash_command_executes_matched_command() -> None:
     commands = get_default_commands()
     result = await execute_slash_command(commands=commands, content="/exit", session=session)
     assert result is True
+
+
+@pytest.mark.asyncio
+async def test_execute_slash_command_forwards_arguments() -> None:
+    session = Mock()
+    mock_cmd = Mock(spec=ImageCommand)
+    mock_cmd.name = "/image"
+    mock_cmd.execute = AsyncMock(return_value=False)
+
+    result = await execute_slash_command(commands=[mock_cmd], content="/image path/to/file.png", session=session)
+    assert result is False
+    mock_cmd.execute.assert_awaited_once_with(session=session, args="path/to/file.png")
 
 
 @pytest.mark.asyncio

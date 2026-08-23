@@ -53,6 +53,13 @@ def test_slash_completer_with_slash_commands() -> None:
     assert completions[0].display_meta is not None
     assert "Exit" in str(completions[0].display_meta)
 
+    doc = Document("/c", cursor_position=2)
+    completions = list(completer.get_completions(doc, cast(Any, None)))
+    assert len(completions) == 1
+    assert completions[0].text == "/compact"
+    assert completions[0].start_position == -2
+    assert "compact" in str(completions[0].display_meta).lower()
+
 
 def test_create_application_builds_non_fullscreen_interactive_ui(tmp_path: Path) -> None:
     session = Mock()
