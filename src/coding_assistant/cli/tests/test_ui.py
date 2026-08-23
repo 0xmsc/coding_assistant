@@ -4,10 +4,11 @@ from unittest.mock import Mock, patch
 
 from prompt_toolkit.document import Document
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import HSplit, VSplit, Window
+from prompt_toolkit.layout import FloatContainer, HSplit, VSplit, Window
 from prompt_toolkit.layout.containers import ConditionalContainer
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 
+from coding_assistant.cli.commands import CompactCommand, ExitCommand
 from coding_assistant.cli.ui import (
     PromptSubmitType,
     SlashCompleter,
@@ -17,7 +18,7 @@ from coding_assistant.cli.ui import (
 from coding_assistant.core.agent_session import SessionState
 
 
-def test_slash_completer() -> None:
+def test_slash_completer_with_strings() -> None:
     words = ["/exit", "/compact", "/clear"]
     completer = SlashCompleter(words)
 
@@ -42,6 +43,17 @@ def test_slash_completer() -> None:
     assert [c.text for c in completions] == []
 
 
+def test_slash_completer_with_slash_commands() -> None:
+    commands = [ExitCommand(), CompactCommand()]
+    completer = SlashCompleter(commands)
+
+    doc = Document("/", cursor_position=1)
+    completions = list(completer.get_completions(doc, cast(Any, None)))
+    assert [c.text for c in completions] == ["/exit", "/compact"]
+    assert completions[0].display_meta is not None
+    assert "Exit" in str(completions[0].display_meta)
+
+
 def test_create_application_builds_non_fullscreen_interactive_ui(tmp_path: Path) -> None:
     session = Mock()
     session.state = SessionState(
@@ -59,8 +71,10 @@ def test_create_application_builds_non_fullscreen_interactive_ui(tmp_path: Path)
     assert answer_queue is not None
     assert answer_queue.empty()
     container = application.layout.container
-    assert isinstance(container, HSplit)
-    layout_children = container.children
+    assert isinstance(container, FloatContainer)
+    hsplit = container.content
+    assert isinstance(hsplit, HSplit)
+    layout_children = hsplit.children
     assert isinstance(layout_children[0], Window)  # spacer
     assert isinstance(layout_children[1], ConditionalContainer)
     input_row = layout_children[2]
@@ -83,8 +97,9 @@ def test_create_application_submits_as_steering_with_enter(tmp_path: Path) -> No
         history_path=tmp_path / "history",
     )
 
-    layout = cast(HSplit, application.layout.container)
-    input_row = cast(VSplit, layout.children[2])
+    layout = cast(FloatContainer, application.layout.container)
+    hsplit = cast(HSplit, layout.content)
+    input_row = cast(VSplit, hsplit.children[2])
     assert isinstance(input_row, VSplit)
     input_window = input_row.children[1]
     assert isinstance(input_window, Window)
@@ -110,8 +125,9 @@ def test_create_application_submits_as_queued_with_tab(tmp_path: Path) -> None:
         history_path=tmp_path / "history",
     )
 
-    layout = cast(HSplit, application.layout.container)
-    input_row = cast(VSplit, layout.children[2])
+    layout = cast(FloatContainer, application.layout.container)
+    hsplit = cast(HSplit, layout.content)
+    input_row = cast(VSplit, hsplit.children[2])
     assert isinstance(input_row, VSplit)
     input_window = input_row.children[1]
     assert isinstance(input_window, Window)
@@ -137,8 +153,9 @@ def test_create_application_inserts_newline_with_ctrl_j(tmp_path: Path) -> None:
         history_path=tmp_path / "history",
     )
 
-    layout = cast(HSplit, application.layout.container)
-    input_row = cast(VSplit, layout.children[2])
+    layout = cast(FloatContainer, application.layout.container)
+    hsplit = cast(HSplit, layout.content)
+    input_row = cast(VSplit, hsplit.children[2])
     assert isinstance(input_row, VSplit)
     input_window = input_row.children[1]
     assert isinstance(input_window, Window)
